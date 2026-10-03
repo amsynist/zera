@@ -1,0 +1,38 @@
+name: CI
+
+# Every push to main and every pull request: build, run the tests, and assemble the app so a
+# broken bundle never reaches a release. The built app is attached to the run for a quick try.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # tags + history → version and build number
+
+      - name: Toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app 2>/dev/null || true
+          swift --version
+
+      - name: Test
+        run: swift test
+
+      - name: Build Zera.app
+        run: ./build.sh
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zera-${{ github.sha }}
+          path: dist/Zera.app
+          retention-days: 7

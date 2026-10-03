@@ -1,0 +1,103 @@
+name: Release
+
+# Push a tag like v0.3.0 (or run this by hand with a version) and this builds a universal
+# Zera.app, signs and notarizes it when the Apple secrets are set, and publishes Zera-<v>.dmg,
+# Zera-<v>.zip and SHA256SUMS.txt on the repository's Releases page.
+#
+# Optional secrets (without them the release is ad-hoc signed; users right-click → Open once):
+#   MACOS_CERTIFICATE          base64 of your "Developer ID Application" .p12
+#   MACOS_CERTIFICATE_PASSWORD password of that .p12
+#   CODESIGN_IDENTITY          e.g. "Developer ID Application: Your Name (TEAMID)"
+#   APPLE_ID / APPLE_TEAM_ID / APPLE_APP_PASSWORD   for notarization
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 0.3.0 (creates tag v<version>)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      CODESIGN_IDENTITY: ${{ secrets.CODESIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: v
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            V="${{ github.event.inputs.version }}"
+          else
+            V="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "ZERA_VERSION=$V" >> "$GITHUB_ENV"
+          echo "ZERA_BUILD=${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "Releasing $V (build ${{ github.run_number }})"
+
+      - name: Toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app 2>/dev/null || true
+          swift --version
+
+      - name: Test
+        run: swift test
+
+      - name: Import signing certificate
+        if: env.CODESIGN_IDENTITY != ''
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/zera.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Build Zera.app
+        run: ./build.sh
+
+      - name: Package (notarize when configured)
+        run: ./scripts/package.sh
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: Zera ${{ steps.v.outputs.version }}
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(steps.v.outputs.version, '-') }}
+          body: |
+            **Download:** `Zera-${{ steps.v.outputs.version }}.dmg` — open it and drag Zera to Applications.
+            Requires macOS 13 or newer (Apple silicon and Intel).
+
+            ${{ env.CODESIGN_IDENTITY == '' && 'This build is not notarized yet: the first time, right-click Zera in Applications → **Open** → **Open**.' || 'Signed and notarized by Apple.' }}
+
+            Verify: `shasum -a 256 -c SHA256SUMS.txt`
+          files: |
+            dist/Zera-${{ steps.v.outputs.version }}.dmg
+            dist/Zera-${{ steps.v.outputs.version }}.zip
+            dist/SHA256SUMS.txt
+
+      - name: Clean up keychain
+        if: always() && env.CODESIGN_IDENTITY != ''
+        run: security delete-keychain "$RUNNER_TEMP/zera.keychain-db" || true
