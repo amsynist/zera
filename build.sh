@@ -5,7 +5,11 @@ cd "$(dirname "$0")"
 
 APP_NAME="Zera"
 BUNDLE_ID="io.github.amsynist.zera"
-VERSION="0.1"
+# Version: $ZERA_VERSION (CI sets it from the tag, e.g. v0.3.0 → 0.3.0), else the latest
+# git tag, else 0.1. Build number: $ZERA_BUILD (CI run number), else the commit count.
+VERSION="${ZERA_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)}"
+VERSION="${VERSION:-0.1}"
+BUILD="${ZERA_BUILD:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
 DIST="dist"
 APP="$DIST/$APP_NAME.app"
 
@@ -24,6 +28,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
 mkdir -p "$APP/Contents/Resources/Sprites"
 cp Resources/Sprites/*.png "$APP/Contents/Resources/Sprites/"
+# Optional: GitHub's mark for the PR screen (download it yourself from github.com/logos).
+if [ -f Resources/github-mark.png ]; then cp Resources/github-mark.png "$APP/Contents/Resources/"; fi
 
 echo "==> Rendering icon"
 ICONSET="$DIST/AppIcon.iconset"
@@ -54,7 +60,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$BUILD</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
@@ -78,8 +84,18 @@ PLIST
 
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
-echo "==> Signing (ad-hoc)"
-codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || echo "    codesign skipped"
+# Signing: a Developer ID identity when $CODESIGN_IDENTITY is set (release builds — hardened
+# runtime + entitlements, ready for notarization); otherwise ad-hoc for local use.
+if [ -n "${CODESIGN_IDENTITY:-}" ]; then
+  echo "==> Signing with $CODESIGN_IDENTITY"
+  codesign --force --deep --options runtime --timestamp \
+    --entitlements Resources/Zera.entitlements \
+    --sign "$CODESIGN_IDENTITY" "$APP"
+  codesign --verify --deep --strict --verbose=2 "$APP"
+else
+  echo "==> Signing (ad-hoc)"
+  codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || echo "    codesign skipped"
+fi
 
 rm -f "$DIST/icon_1024.png"
-echo "==> Done: $(pwd)/$APP"
+echo "==> Done: $(pwd)/$APP (version $VERSION, build $BUILD)"

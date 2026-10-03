@@ -413,7 +413,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     var onAction: ((QuickAction) -> Void)?
     var onOpenURL: ((URL) -> Void)?
 
-    private let zera = ZeraCompanion(pose: "card_greet", size: 76)
+    private let zera = ZeraCompanion(pose: "card_greet", size: 92)
     private let search = SearchBox(placeholder: "Search files, notes, or ask Zera…")
     private let attentionHeader = SectionHeader("Needs attention")
     private var attentionRows: [ListRow] = []
@@ -446,7 +446,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             addSubview(t)
             tiles.append(t)
         }
-        for name in [ShelfStore.changed, GitHubService.changed, ClaudeHookService.changed, ReminderService.changed] {
+        for name in [ShelfStore.changed, GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ClaudeActivityService.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(refresh), name: name, object: nil)
         }
         refresh()
@@ -489,6 +489,15 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
                             subtitle: hook.pending.first?.command ?? "")
             r.badge = hook.pending.count; r.emphasized = true
             r.onTap = { [weak self] in self?.onOpen?(.approval) }
+            attentionRows.append(r)
+        }
+        if let s = ClaudeActivityService.shared.active.first {
+            let waiting = s.status == .waiting
+            let r = ListRow(symbol: waiting ? "hand.raised.fill" : "terminal.fill", color: p.tileClaude,
+                            title: waiting ? "Claude is waiting for you" : "Claude is working in \(s.folderName)",
+                            subtitle: s.currentStep?.text ?? (s.title.isEmpty ? "Claude Code session" : s.title))
+            r.showsChevron = true; r.emphasized = waiting
+            r.onTap = { [weak self] in self?.onOpen?(.claude) }
             attentionRows.append(r)
         }
         let alerts = rs.pendingAlerts
@@ -606,212 +615,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 }
 
 // MARK: - GitHub
-
-final class GitHubCard: CardBase, CardContent {
-    var cardWidth: CGFloat { 420 }
-    var onOpenSettings: (() -> Void)?
-    var onOpenURL: ((URL) -> Void)?
-    var say: ((String, ZeraMood) -> Void)?
-
-    private let refreshButton: IconButton
-    private let spinner = NSProgressIndicator()
-    private let tabs = PillTabs(titles: ["Open", "Review", "CI", "Approvals"])
-    private let scroll = NSScrollView()
-    private let list = FlippedView()
-    private let empty = NSTextField(labelWithString: "")
-    private var errorRow: ListRow?
-    private let openBrowser: CardButton
-    private let connect: CardButton
-    private var rows: [ListRow] = []
-    private var skeletons: [SkeletonRow] = []
-    private let zera = ZeraCompanion(pose: "card_point_sparkle", size: 56)
-    private let maxRows = 5
-    private let footerH: CGFloat = 56
-
-    init() {
-        refreshButton = IconButton(symbol: "arrow.clockwise", label: "Check now", target: nil, action: #selector(GitHubCard.refreshTapped))
-        openBrowser = CardButton("Open in Browser", style: .secondary, symbol: "safari", target: nil, action: #selector(GitHubCard.openBrowserTapped))
-        connect = CardButton("Connect GitHub", style: .primary, target: nil, action: #selector(GitHubCard.connectTapped))
-        super.init(width: 420, title: "GitHub PRs")
-        refreshButton.target = self; openBrowser.target = self; connect.target = self
-        addSubview(refreshButton)
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
-        addSubview(spinner)
-        tabs.onSelect = { [weak self] _ in self?.reload() }
-        addSubview(tabs)
-        scroll.hasVerticalScroller = false
-        scroll.hasHorizontalScroller = false
-        scroll.borderType = .noBorder
-        scroll.drawsBackground = false
-        scroll.contentView.drawsBackground = false
-        scroll.verticalScrollElasticity = .allowed
-        scroll.documentView = list
-        addSubview(scroll)
-        empty.font = Typo.body; empty.textColor = Pal.textSecondary; empty.alignment = .center
-        addSubview(empty)
-        addSubview(openBrowser)
-        addSubview(connect)
-        addSubview(zera)
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: GitHubService.changed, object: nil)
-        reload()
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    private var filtered: [GHEvent] {
-        let all = GitHubService.shared.events
-        switch tabs.selected {
-        case 0: return all.filter { $0.kind == .prOpened || $0.isActivity }   // your PRs and what people said on them
-        case 1: return all.filter { $0.kind == .reviewRequested }
-        case 2: return all.filter { $0.isCI }
-        default: return all.filter { $0.kind == .needsApproval }
-        }
-    }
-
-    private var listTop: CGFloat { headerBottom + Metrics.control + 2 + Space.m }
-
-    var desiredHeight: CGFloat {
-        guard GitHubService.shared.isConnected else { return headerBottom + 20 + Space.m + Metrics.button + Metrics.cardPad }
-        let n = max(rows.count, skeletons.count)
-        let listH: CGFloat = (errorRow == nil ? 0 : Metrics.row + Space.xs) + (n == 0 ? 36 : CGFloat(min(n, maxRows)) * (Metrics.row + Space.xs) - Space.xs)
-        return listTop + listH + Space.m + footerH + Metrics.cardPad
-    }
-
-    @objc func reload() {
-        let gh = GitHubService.shared, p = Pal
-        rows.forEach { $0.removeFromSuperview() }
-        rows = []
-        skeletons.forEach { $0.removeFromSuperview() }
-        skeletons = []
-        errorRow?.removeFromSuperview(); errorRow = nil
-        let counts = [gh.events.filter { $0.kind == .prOpened || $0.isActivity }.count, gh.events.filter { $0.kind == .reviewRequested }.count,
-                      gh.events.filter { $0.isCI }.count, gh.events.filter { $0.kind == .needsApproval }.count]
-        tabs.titles = zip(["Open", "Review", "CI", "Approvals"], counts).map { $1 > 0 ? "\($0) \($1)" : $0 }
-        if gh.isRefreshing { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
-        refreshButton.isHidden = gh.isRefreshing || !gh.isConnected
-
-        if gh.isConnected {
-            var sub = "@\(gh.login ?? "")"
-            if gh.isRefreshing { sub += " · checking…" }
-            else if let t = gh.lastChecked { sub += " · checked \(relativeTime(t))" }
-            setSubtitle(sub)
-            connect.isHidden = true
-            tabs.isHidden = false
-            openBrowser.isHidden = false
-            if let e = gh.lastError {
-                let expired = e.contains("401") || e.localizedCaseInsensitiveContains("bad credentials")
-                let r = ListRow(symbol: "exclamationmark.triangle.fill", color: p.danger,
-                                title: expired ? "GitHub token expired or revoked" : "Couldn't reach GitHub",
-                                subtitle: expired ? "Paste a new token to reconnect." : e)
-                r.accessory = CardButton(expired ? "Reconnect" : "Retry", style: .secondary, target: self,
-                                         action: expired ? #selector(connectTapped) : #selector(refreshTapped))
-                addSubview(r)
-                errorRow = r
-            }
-            for e in filtered {
-                // PR rows wear the dark GitHub tile; CI and approvals keep their state colour.
-                let r = ListRow(symbol: e.symbol, color: e.isPR ? p.tileGitHub : e.tint, title: e.title,
-                                subtitle: e.subtitle, trailing: relativeTime(e.date))
-                r.emphasized = gh.unseen.contains(e.id)
-                if e.approval != nil {
-                    let b = CardButton("Approve", style: .primary, target: self, action: #selector(approveTapped(_:)))
-                    b.tag = gh.events.firstIndex(of: e) ?? -1
-                    r.accessory = b
-                } else {
-                    r.showsChevron = true
-                }
-                r.onTap = { [weak self] in self?.onOpenURL?(e.url) }
-                list.addSubview(r)
-                rows.append(r)
-            }
-            // First load: placeholders instead of a bare "nothing" while GitHub answers.
-            if rows.isEmpty, gh.isRefreshing, gh.events.isEmpty {
-                for _ in 0..<3 { let sk = SkeletonRow(); list.addSubview(sk); skeletons.append(sk) }
-            }
-            empty.isHidden = !rows.isEmpty || !skeletons.isEmpty
-            empty.stringValue = gh.events.isEmpty ? "No PRs need your attention." : "Nothing in this tab."
-            scroll.isHidden = rows.isEmpty && skeletons.isEmpty
-            // Her take on the board, in her own words.
-            let reviews = gh.events.filter { $0.kind == .reviewRequested }.count
-            let failed = gh.events.filter { $0.kind == .ciFailed }.count
-            let approvals = gh.events.filter { $0.kind == .needsApproval }.count
-            let fresh = gh.events.filter { $0.isActivity && gh.unseen.contains($0.id) }.count
-            zera.isHidden = false
-            if gh.isRefreshing && gh.events.isEmpty { zera.set(pose: "card_read_q"); zera.line = "Checking GitHub…" }
-            else if failed > 0 { zera.set(pose: "worried"); zera.line = "\(failed) PR\(failed == 1 ? " has" : "s have") failing checks 😬" }
-            else if reviews > 0 { zera.set(pose: "card_point_sparkle"); zera.line = "\(reviews) PR\(reviews == 1 ? " needs" : "s need") your review! 👀" }
-            else if approvals > 0 { zera.set(pose: "card_bell"); zera.line = "\(approvals) run\(approvals == 1 ? "" : "s") waiting for your approval 🙋" }
-            else if fresh > 0 { zera.set(pose: "card_notify"); zera.line = "News on your PRs — \(fresh) new 💬" }
-            else { zera.set(pose: "card_thumbs_wink"); zera.line = "All quiet — nothing waiting on you ✨" }
-        } else {
-            setSubtitle(nil)
-            tabs.isHidden = true
-            scroll.isHidden = true
-            openBrowser.isHidden = true
-            zera.isHidden = true
-            empty.isHidden = false
-            empty.stringValue = "Connect GitHub to watch your PRs, CI and approvals."
-            connect.isHidden = false
-        }
-        needsLayout = true
-        layoutSubtreeIfNeeded()
-        onHeightChange?()
-    }
-
-    @objc private func approveTapped(_ sender: NSButton) {
-        let events = GitHubService.shared.events
-        guard sender.tag >= 0, sender.tag < events.count else { return }
-        let e = events[sender.tag]
-        sender.isEnabled = false
-        Task { @MainActor in
-            do {
-                try await GitHubService.shared.approve(e)
-                say?("approved! ✅", .approved)
-            } catch {
-                sender.isEnabled = true
-                say?("GitHub said no: \(error.localizedDescription)", .worried)
-            }
-        }
-    }
-
-    @objc private func refreshTapped() { Task { @MainActor in await GitHubService.shared.refresh() } }
-    @objc private func connectTapped() { onOpenSettings?() }
-    @objc private func openBrowserTapped() {
-        let login = GitHubService.shared.login ?? ""
-        onOpenURL?(URL(string: "https://github.com/pulls?q=is%3Aopen+is%3Apr+involves%3A\(login)")!)
-    }
-
-    override func layout() {
-        super.layout()
-        layoutHeader(trailingWidth: 40)
-        let x = Metrics.cardPad, w = bounds.width - x * 2
-        refreshButton.frame = NSRect(x: bounds.width - x - Metrics.control, y: Space.l - 3, width: Metrics.control, height: Metrics.control)
-        spinner.frame = NSRect(x: bounds.width - x - 20, y: Space.l + 2, width: 16, height: 16)
-        if connect.isHidden {
-            tabs.frame = NSRect(x: x, y: headerBottom, width: w, height: Metrics.control + 2)
-            var y = listTop
-            if let er = errorRow { er.frame = NSRect(x: x, y: y, width: w, height: Metrics.row); y += Metrics.row + Space.xs }
-            let bottom = bounds.height - Metrics.cardPad - footerH
-            let box = NSRect(x: x, y: y, width: w, height: max(0, bottom - Space.m - y))
-            scroll.frame = box
-            empty.frame = NSRect(x: x, y: y + 8, width: w, height: 20)
-            // Footer: Zera + her line on the left, Open in Browser on the right.
-            let bw = openBrowser.fittedWidth
-            openBrowser.frame = NSRect(x: bounds.width - x - bw, y: bottom + (footerH - Metrics.button) / 2, width: bw, height: Metrics.button)
-            zera.frame = NSRect(x: x, y: bottom, width: w - bw - Space.m, height: footerH)
-            var ry: CGFloat = 0
-            for r in rows { r.frame = NSRect(x: 0, y: ry, width: box.width, height: Metrics.row); ry += Metrics.row + Space.xs }
-            for sk in skeletons { sk.frame = NSRect(x: 0, y: ry, width: box.width, height: Metrics.row); ry += Metrics.row + Space.xs }
-            list.frame = NSRect(x: 0, y: 0, width: box.width, height: max(ry, box.height))
-        } else {
-            empty.frame = NSRect(x: x, y: headerBottom, width: w, height: 20)
-            let cw = connect.fittedWidth
-            connect.frame = NSRect(x: (bounds.width - cw) / 2, y: headerBottom + 20 + Space.m, width: cw, height: Metrics.button)
-        }
-    }
-}
+//
+// The PR screen lives in GitHubCard.swift; its building blocks in GitHubComponents.swift.
 
 // MARK: - Settings
 
@@ -892,7 +697,7 @@ final class SettingsCard: CardBase, CardContent {
         paneTitle.textColor = Pal.text
         addSubview(paneTitle)
         addSubview(pane)
-        for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed] {
+        for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed, ClaudeActivityService.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(serviceChanged), name: name, object: nil)
         }
         rebuildPane()
@@ -1033,7 +838,7 @@ final class SettingsCard: CardBase, CardContent {
     private static let timeoutChoices = [60, 120, 180, 300, 600, 900]
     private static let cliModelChoices = ["", "sonnet", "opus", "haiku"]
     private static let maxOutputChoices = [1024, 2048, 4096, 8192]
-    private static let defaultChoices: [CardKind] = [.shelf, .home, .reminders, .github]
+    private static let defaultChoices: [CardKind] = [.shelf, .home, .claude, .reminders, .github]
     private static let breakChoices = [0, 30, 45, 60, 90, 120]
 
     private func buildGeneral(_ s: inout Stack) {
@@ -1100,7 +905,7 @@ final class SettingsCard: CardBase, CardContent {
         let hook = ClaudeHookService.shared, gh = GitHubService.shared, rs = ReminderService.shared, p = Pal
         let (claudeState, claudeDetail) = Self.claudeSummary()
         integrationRow(symbol: "sparkles", color: p.tileClaude, title: "Claude",
-                       state: claudeState, detail: claudeDetail + (hook.isInstalled ? " · approvals" : ""),
+                       state: claudeState, detail: claudeDetail + (hook.isInstalled ? " · approvals" : "") + (ClaudeActivityService.shared.isInstalled ? " · live progress" : ""),
                        on: false, enabled: false, toggle: false, &s, pane: .claude) { _ in }
         let ghState: ConnectionState = gh.isConnected ? ((gh.lastError?.contains("401") ?? false) ? .error : .connected) : .disconnected
         integrationRow(symbol: "arrow.triangle.pull", color: p.tileGitHub, title: "GitHub",
@@ -1229,6 +1034,13 @@ final class SettingsCard: CardBase, CardContent {
         toggleRow("Keep Claude's error output for diagnostics", on: a.debugLogging, &s) { on in ZeraAssistant.shared.debugLogging = on }
         buttonRow("Diagnostics", style: .tertiary, status: a.lastRunSummary, &s, action: #selector(diagnosticsTapped))
 
+        sectionLabel("Live progress · Claude Code sessions", &s)
+        let act = ClaudeActivityService.shared
+        statusLine(act.isInstalled ? .connected : .disconnected,
+                   detail: act.isInstalled ? (act.active.isEmpty ? "no session running" : "\(act.active.count) session\(act.active.count == 1 ? "" : "s") running") : "see Reading → Editing → Running → Done as it happens", &s)
+        buttonRow(act.isInstalled ? "Stop following" : "Follow Claude's work", style: act.isInstalled ? .secondary : .primary,
+                  status: act.isInstalled ? "Non-blocking hooks; nothing is sent anywhere" : "Adds non-blocking hooks to ~/.claude/settings.json", &s, action: #selector(activityTapped))
+
         sectionLabel("Approvals · Claude Code hook", &s)
         statusLine(hook.isInstalled ? .connected : .disconnected,
                    detail: hook.isInstalled ? (hook.pending.isEmpty ? "Bash commands ask here first" : "\(hook.pending.count) waiting") : "approve commands from Zera instead of the terminal", &s)
@@ -1353,7 +1165,7 @@ final class SettingsCard: CardBase, CardContent {
         statusLine(.connected, detail: n == 0 ? "nothing held" : (n == 1 ? "holding 1 item" : "holding \(n) items"), &s)
         hint("Files are referenced, not copied. Pasted text and images live in a staging folder until you remove them.", &s)
         buttonRow("Open staging folder", style: .secondary, status: "~/Library/Application Support/Zera/Staged", &s, action: #selector(openStagingTapped))
-        buttonRow("Clear shelf", style: .destructive, status: "Removes every item", &s, action: #selector(clearShelfTapped))
+        buttonRow("Clear shelf", style: .destructive, status: "Takes everything off the Shelf — your files stay on your Mac", &s, action: #selector(clearShelfTapped))
     }
 
     private func buildShortcuts(_ s: inout Stack) {
@@ -1401,6 +1213,15 @@ final class SettingsCard: CardBase, CardContent {
         do {
             if hook.isInstalled { try hook.uninstall(); say?("hook removed", .idle) }
             else { try hook.install(); say?("I'll ask you before Claude runs commands 💜", .approved) }
+        } catch { say?("couldn't edit ~/.claude/settings.json 😬", .worried) }
+        rebuildPane()
+    }
+
+    @objc private func activityTapped() {
+        let act = ClaudeActivityService.shared
+        do {
+            if act.isInstalled { try act.uninstall(); say?("okay, I'll stop following Claude", .idle) }
+            else { try act.install(); say?("I'll show Claude's progress live 💜 Restart open sessions.", .approved) }
         } catch { say?("couldn't edit ~/.claude/settings.json 😬", .worried) }
         rebuildPane()
     }
@@ -1725,7 +1546,7 @@ final class ToastCard: CardBase, CardContent {
     private let when = NSTextField(labelWithString: "")
     private let primary: CardButton
     private let later: CardButton
-    private let zera = ZeraCompanion(pose: "card_notify", size: 60)
+    private let zera = ZeraCompanion(pose: "card_notify", size: 74)
     private var url: URL?
 
     init() {

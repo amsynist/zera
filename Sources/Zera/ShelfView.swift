@@ -16,6 +16,8 @@ protocol ShelfViewDelegate: AnyObject {
     func shelfSettles()
     /// Summarize / Explain / Extract / Ask about a shelf item — answered inside Zera.
     func shelfRequests(_ action: FileAction, on item: ShelfItem)
+    /// Same, but the answer shows in the Drop Files screen's result panel (no card switch).
+    func shelfRunsInPlace(_ action: FileAction, on item: ShelfItem)
 }
 
 /// Which kinds of items the shelf is showing.

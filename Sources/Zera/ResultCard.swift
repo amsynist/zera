@@ -343,7 +343,7 @@ final class ProcessingBlock: NSView {
         track.frame = NSRect(x: x, y: ty, width: w, height: 4)
         fill.frame = NSRect(x: x, y: ty, width: max(6, w * CGFloat(progress)), height: 4)
         var y = ty + 4 + Space.m
-        let zw: CGFloat = 84
+        let zw: CGFloat = 104
         for i in 0..<Self.steps.count {
             stepDots[i].frame = NSRect(x: x + 2, y: y + 5, width: 10, height: 10)
             stepLabels[i].frame = NSRect(x: x + 22, y: y + 1, width: w - 22 - zw, height: 16)

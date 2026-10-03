@@ -27,11 +27,40 @@ struct ShelfItem: Codable, Equatable {
     static func == (a: ShelfItem, b: ShelfItem) -> Bool { a.id == b.id }
 }
 
+/// A file you dropped at some point — the Recent list. It outlives the Shelf entry.
+struct RecentFile: Codable, Equatable {
+    let path: String
+    var addedAt: Date
+    /// "Summary", "Explanation", "Extracted text", "Answer" — what Zera last did with it.
+    var lastAction: String?
+    var url: URL { URL(fileURLWithPath: path) }
+    var name: String { url.lastPathComponent }
+    var exists: Bool { FileManager.default.fileExists(atPath: path) }
+}
+
+/// One request and its outcome, kept per file so the result panel can show it again later.
+/// In memory only: Claude's answers about your documents are never written to disk.
+struct FileResultTurn: Equatable {
+    let request: FileAction
+    var answer: String?
+    var failure: String?
+}
+
+/// The one source of truth for files in Zera: the Shelf (what you're working with now), the
+/// Recent history, and the results per file. Every view observes `changed`.
+///
+/// Removing a file — from a row, the menu, Clear all or the Drop Bin — only drops Zera's
+/// reference. The original file on disk is never touched. (Zera only ever deletes copies it
+/// made itself in its staging folder, for pasted images and text, once nothing refers to them.)
 final class ShelfStore {
     static let shared = ShelfStore()
     static let changed = Notification.Name("ShelfStoreChanged")
 
     private(set) var items: [ShelfItem] = []
+    private(set) var recent: [RecentFile] = []
+    private(set) var threads: [String: [FileResultTurn]] = [:]
+    private let recentKey = "zera.recent.v1"
+    private let maxRecent = 30
     private let defaultsKey = "zera.items.v1"
     /// ShelfCorner's key — read once so an existing shelf carries over.
     private let legacyDefaultsKey = "shelf.items.v1"
@@ -56,23 +85,102 @@ final class ShelfStore {
             if items.contains(where: { $0.path == std.path }) { continue }
             items.insert(ShelfItem(id: UUID(), path: std.path, addedAt: Date(),
                                    staged: std.path.hasPrefix(stagingDir.path)), at: 0)
+            touchRecent(std.path)
             added += 1
         }
         if added > 0 { save() }
         return added
     }
 
-    func remove(ids: Set<UUID>) {
-        guard !ids.isEmpty else { return }
-        for item in items where ids.contains(item.id) && item.staged {
-            try? FileManager.default.removeItem(at: item.url)
-        }
+    /// Removes the Shelf references (never the files themselves) and returns what was removed,
+    /// so the caller can offer Undo.
+    @discardableResult
+    func remove(ids: Set<UUID>) -> [ShelfItem] {
+        guard !ids.isEmpty else { return [] }
+        let removed = items.filter { ids.contains($0.id) }
         items.removeAll { ids.contains($0.id) }
+        cleanStaged(removed)
+        save()
+        return removed
+    }
+
+    @discardableResult
+    func clear() -> [ShelfItem] {
+        remove(ids: Set(items.map { $0.id }))
+    }
+
+    /// Undo for a removal: puts the references back where they were (newest first).
+    func restore(_ restored: [ShelfItem]) {
+        let fresh = restored.filter { r in r.exists && !items.contains { $0.path == r.path } }
+        guard !fresh.isEmpty else { return }
+        items = (fresh + items).sorted { $0.addedAt > $1.addedAt }
         save()
     }
 
-    func clear() {
-        remove(ids: Set(items.map { $0.id }))
+    /// Adds a Recent file back onto the Shelf.
+    @discardableResult
+    func reshelve(_ r: RecentFile) -> ShelfItem? {
+        if let existing = items.first(where: { $0.path == r.path }) { return existing }
+        guard r.exists else { return nil }
+        let item = ShelfItem(id: UUID(), path: r.path, addedAt: Date(), staged: r.path.hasPrefix(stagingDir.path))
+        items.insert(item, at: 0)
+        touchRecent(r.path)
+        save()
+        return item
+    }
+
+    // MARK: - Recent
+
+    private func touchRecent(_ path: String) {
+        var entry = recent.first { $0.path == path } ?? RecentFile(path: path, addedAt: Date(), lastAction: nil)
+        entry.addedAt = Date()
+        recent.removeAll { $0.path == path }
+        recent.insert(entry, at: 0)
+        if recent.count > maxRecent { recent.removeLast(recent.count - maxRecent) }
+    }
+
+    func setLastAction(_ title: String, for path: String) {
+        guard let i = recent.firstIndex(where: { $0.path == path }) else { return }
+        recent[i].lastAction = title
+        save()
+    }
+
+    func removeRecent(path: String) {
+        recent.removeAll { $0.path == path }
+        threads.removeValue(forKey: path)
+        cleanStaged([])
+        save()
+    }
+
+    func clearRecent() {
+        let onShelf = Set(items.map { $0.path })
+        recent.removeAll { !onShelf.contains($0.path) }
+        threads = threads.filter { onShelf.contains($0.key) }
+        cleanStaged([])
+        save()
+    }
+
+    /// Zera's own staged copies that nothing refers to any more.
+    private func cleanStaged(_ candidates: [ShelfItem]) {
+        let referenced = Set(items.map { $0.path }).union(recent.map { $0.path })
+        let stage = stagingDir.path
+        var paths = Set(candidates.filter { $0.staged }.map { $0.path })
+        if let names = try? FileManager.default.contentsOfDirectory(atPath: stage) {
+            for n in names { paths.insert((stage as NSString).appendingPathComponent(n)) }
+        }
+        for path in paths where path.hasPrefix(stage) && !referenced.contains(path) {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+    }
+
+    // MARK: - Results (memory only)
+
+    func thread(for path: String) -> [FileResultTurn] { threads[path] ?? [] }
+
+    func saveThread(_ turns: [FileResultTurn], for path: String) {
+        guard threads[path] != turns else { return }
+        threads[path] = turns
+        NotificationCenter.default.post(name: ShelfStore.changed, object: nil)
     }
 
     func pruneMissing() {
@@ -89,11 +197,21 @@ final class ShelfStore {
         guard let data = data,
               let decoded = try? JSONDecoder().decode([ShelfItem].self, from: data) else { return }
         items = decoded.filter { $0.exists }
+        if let r = UserDefaults.standard.data(forKey: recentKey), let rs = try? JSONDecoder().decode([RecentFile].self, from: r) {
+            recent = rs
+        }
+        // Older shelves had no history: seed it with what's on the shelf.
+        for item in items.reversed() where !recent.contains(where: { $0.path == item.path }) {
+            recent.insert(RecentFile(path: item.path, addedAt: item.addedAt, lastAction: nil), at: 0)
+        }
     }
 
     private func save() {
         if let data = try? JSONEncoder().encode(items) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
+        }
+        if let data = try? JSONEncoder().encode(recent) {
+            UserDefaults.standard.set(data, forKey: recentKey)
         }
         NSApp.dockTile.badgeLabel = items.isEmpty ? nil : String(items.count)
         NotificationCenter.default.post(name: ShelfStore.changed, object: nil)

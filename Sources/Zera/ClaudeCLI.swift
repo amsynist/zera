@@ -411,6 +411,10 @@ enum ProcessRunner {
         let q = DispatchQueue.global(qos: .userInitiated)
         q.async { outData = out.fileHandleForReading.readDataToEndOfFile(); group.leave() }
         q.async { errData = err.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+        
+        let semaphore = DispatchSemaphore(value: 0)
+        p.terminationHandler = { _ in semaphore.signal() }
+        
         do { try p.run() } catch {
             return Result(status: -1, stdout: "", stderr: error.localizedDescription, timedOut: false)
         }
@@ -418,18 +422,18 @@ enum ProcessRunner {
             inPipe.fileHandleForWriting.write(d)
             try? inPipe.fileHandleForWriting.close()
         }
+        
         var timedOut = false
         let deadline = DispatchTime.now() + timeout
-        let waiter = DispatchWorkItem { p.waitUntilExit() }
-        q.async(execute: waiter)
-        if waiter.wait(timeout: deadline) == .timedOut {
+        if semaphore.wait(timeout: deadline) == .timedOut {
             timedOut = true
             p.terminate()
-            _ = waiter.wait(timeout: .now() + 2)
-            if p.isRunning { _ = kill(p.processIdentifier, SIGKILL) }
-            waiter.wait()
+            if semaphore.wait(timeout: .now() + 2) == .timedOut {
+                _ = kill(p.processIdentifier, SIGKILL)
+                _ = semaphore.wait(timeout: .now() + 2)
+            }
         }
-        group.wait()
+        _ = group.wait(timeout: .now() + 2)
         return Result(status: p.terminationStatus,
                       stdout: String(decoding: outData, as: UTF8.self),
                       stderr: String(decoding: errData, as: UTF8.self),

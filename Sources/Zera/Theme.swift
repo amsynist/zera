@@ -4,13 +4,13 @@ enum Theme {
     // MARK: Notch buddy
 
     /// How tall she is below the notch / menu bar.
-    static let figureHeight: CGFloat = 44
+    static let figureHeight: CGFloat = 58
     /// How far her picture reaches up into the notch / menu bar band, so the rope stays short.
     static let topTuck: CGFloat = 6
     /// Within this distance of the notch centre she snaps back to it when dropped.
     static let snapDistance: CGFloat = 28
     /// Width of her window — wider than she is so the sway has room.
-    static let buddyWidth: CGFloat = 110
+    static let buddyWidth: CGFloat = 130
     /// Width of the pretend notch on Macs without one.
     static let virtualNotchWidth: CGFloat = 180
     /// Pointer stillness before she dozes off.
@@ -89,7 +89,7 @@ final class FloatingPanel: NSPanel {
         p.isOpaque = false
         p.backgroundColor = .clear
         p.isMovable = false
-        p.hasShadow = false
+        p.hasShadow = true
         p.animationBehavior = .none
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         return p

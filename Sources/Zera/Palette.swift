@@ -89,6 +89,14 @@ struct Palette {
     var accentHover: NSColor { isDark ? rgb(0.62, 0.55, 1.0) : rgb(0.55, 0.48, 0.98) }
     var accentPressed: NSColor { isDark ? rgb(0.48, 0.41, 0.90) : rgb(0.42, 0.36, 0.88) }
     var accentSoft: NSColor { isDark ? rgb(0.36, 0.32, 0.62) : rgb(0.86, 0.84, 1.0) }
+    /// Deeper end of the violet gradient on primary buttons and the selected segment.
+    var accentDeep: NSColor { isDark ? rgb(0.43, 0.33, 0.96) : rgb(0.40, 0.31, 0.90) }
+    /// Low-opacity violet edge for selected / highlighted surfaces.
+    var accentBorder: NSColor { accent.withAlphaComponent(isDark ? 0.45 : 0.40) }
+    /// List rows sitting on the card: a touch darker than `surface`, so the card reads as depth.
+    var surfaceRow: NSColor { isDark ? rgb(0.15, 0.15, 0.27, 0.92) : rgb(1, 1, 1, 0.72) }
+    /// Raised panels (insight card, speech bubble): slightly brighter indigo.
+    var surfaceElevated: NSColor { isDark ? rgb(0.20, 0.19, 0.35) : rgb(1, 1, 1, 0.95) }
     var onAccent: NSColor { .white }
     var success: NSColor { rgb(0.30, 0.78, 0.50) }
     var warning: NSColor { rgb(1.00, 0.72, 0.30) }

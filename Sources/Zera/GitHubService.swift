@@ -20,6 +20,8 @@ struct GHEvent: Equatable {
     let approval: Approval?
     /// A PR you authored (or activity on one).
     var mine = false
+    /// "owner/repo#123" of the pull request this event belongs to, when there is one.
+    var prID: String? = nil
 
     struct Approval: Equatable {
         let owner: String
@@ -66,6 +68,55 @@ struct GHEvent: Equatable {
     var isActivity: Bool { kind == .prApproved || kind == .prChangesRequested || kind == .prCommented }
 }
 
+/// One open pull request as the PR screen shows it: where it lives, who is on it, and what
+/// state its checks and reviews are in.
+struct GHPullRequest: Equatable {
+    enum CI: Equatable { case none, running, passed, failed }
+    enum Review: Equatable { case none, approved, changesRequested }
+    struct Person: Equatable { let login: String; let avatar: URL? }
+    struct Check: Equatable { let name: String; let title: String; let summary: String; let url: URL? }
+
+    let id: String            // "owner/repo#123"
+    let owner: String
+    let repo: String
+    let number: Int
+    var title: String
+    var author: Person
+    var created: Date
+    var updated: Date
+    var url: URL
+    var draft = false
+    var labels: [String] = []
+    var branch: String?
+    var base: String?
+    /// Requested reviewers plus everyone who has reviewed, without duplicates.
+    var reviewers: [Person] = []
+    var approvedBy: [String] = []
+    var changesBy: [String] = []
+    var comments = 0
+    var additions: Int?
+    var deletions: Int?
+    var changedFiles: Int?
+    var ci: CI = .none
+    var checksTotal = 0
+    var failing: [Check] = []
+    var review: Review = .none
+    /// You were asked to review it.
+    var reviewRequested = false
+    /// You opened it.
+    var mine = false
+    /// Workflow runs on it waiting for someone to approve them.
+    var approvalsWaiting = 0
+
+    var fullRepo: String { "\(owner)/\(repo)" }
+    var filesURL: URL { URL(string: url.absoluteString + "/files") ?? url }
+    var checksURL: URL { URL(string: url.absoluteString + "/checks") ?? url }
+
+    static func == (a: GHPullRequest, b: GHPullRequest) -> Bool {
+        a.id == b.id && a.updated == b.updated && a.ci == b.ci && a.approvalsWaiting == b.approvalsWaiting && a.review == b.review
+    }
+}
+
 enum GHError: LocalizedError {
     case noToken, http(Int, String), badResponse
 
@@ -98,6 +149,25 @@ final class GitHubService {
     private(set) var lastError: String?
     private(set) var isRefreshing = false
     private(set) var unseen: Set<String> = []
+    /// Open PRs involving you, newest activity first — what the PR screen lists.
+    private(set) var pulls: [GHPullRequest] = []
+
+    /// PRs that have news you have not looked at yet (new PR, review, comment, CI change).
+    var unseenPRIDs: Set<String> { Set(events.filter { unseen.contains($0.id) }.compactMap { $0.prID }) }
+    /// The token was refused (expired / revoked) rather than GitHub being unreachable.
+    var authExpired: Bool {
+        guard let e = lastError else { return false }
+        return e.contains("401") || e.localizedCaseInsensitiveContains("bad credentials")
+    }
+    /// How many PRs get the full treatment (details, reviews, checks) each poll.
+    private static let maxTracked = 30
+    /// The PR screen covers PRs opened in this window, across your repos.
+    static let openedWindow: TimeInterval = 24 * 3600
+    private struct PRDetail { let updated: Date; let pull: [String: Any]; let reviews: [[String: Any]] }
+    /// PR details and reviews, reused until the PR's `updated_at` moves.
+    private var detailCache: [String: PRDetail] = [:]
+    private var reviewed: Set<String> = []
+    private static let reviewedKey = "zera.github.reviewed"
 
     /// Every 2 minutes: ~20 small requests per poll, far inside the 5 000/hour limit.
     let pollInterval: TimeInterval = 120
@@ -110,6 +180,7 @@ final class GitHubService {
 
     private init() {
         seen = Set(UserDefaults.standard.stringArray(forKey: Self.seenKey) ?? [])
+        reviewed = Set(UserDefaults.standard.stringArray(forKey: Self.reviewedKey) ?? [])
         login = UserDefaults.standard.string(forKey: Self.loginKey)
     }
 
@@ -157,6 +228,8 @@ final class GitHubService {
         try? FileManager.default.removeItem(at: tokenURL)
         login = nil
         events = []
+        pulls = []
+        detailCache = [:]
         unseen = []
         lastChecked = nil
         lastError = nil
@@ -203,31 +276,40 @@ final class GitHubService {
             // Two sources, because GitHub's search index can lag a new PR by minutes:
             //  1. the pull-request lists of the repos you pushed to most recently (real time),
             //  2. search for PRs involving you / in your repos (catches mentions anywhere).
-            let (live, liveReviewIDs) = (try? await recentRepoPRs(token: token)) ?? ([], [])
-            let involving = (try? await searchPRs("is:pr is:open involves:@me", token: token)) ?? []
-            let mine = (try? await searchPRs("is:pr is:open user:@me", token: token)) ?? []
-            let reviews = (try? await searchPRs("is:pr is:open review-requested:@me", token: token)) ?? []
+            // PRs opened in the last 24 hours, from two sources (GitHub's search index can lag a
+            // new PR by minutes): every open PR in the repos you pushed to most recently (real
+            // time), plus searches for ones involving you or in your repos anywhere else.
+            let openedCutoff = Date().addingTimeInterval(-Self.openedWindow)
+            let since = "created:>=" + Self.iso.string(from: openedCutoff)
+            let (live, liveReviewIDs) = (try? await recentRepoPRs(token: token, since: openedCutoff)) ?? ([], [])
+            let involving = (try? await searchPRs("is:pr is:open involves:@me \(since)", token: token)) ?? []
+            let mine = (try? await searchPRs("is:pr is:open user:@me \(since)", token: token)) ?? []
+            let reviews = (try? await searchPRs("is:pr is:open review-requested:@me \(since)", token: token)) ?? []
             if live.isEmpty && involving.isEmpty && mine.isEmpty && reviews.isEmpty {
                 // Everything failed at once — surface it rather than pretending the board is clear.
-                _ = try await searchPRs("is:pr is:open involves:@me", token: token)
+                _ = try await searchPRs("is:pr is:open involves:@me \(since)", token: token)
             }
             let reviewIDs = Set(reviews.map { $0.id }).union(liveReviewIDs)
+            // Only PRs that concern you become notifications; the rest just appear on the screen.
+            let relevantIDs = reviewIDs.union(involving.map { $0.id }).union(mine.map { $0.id })
 
+            // Merge the sources; the live pull lists carry the most detail, so they win.
             var prs: [PRRef] = []
             var seenIDs = Set<String>()
-            for pr in live + involving + mine where !seenIDs.contains(pr.id) {
+            for pr in live + involving + mine + reviews where !seenIDs.contains(pr.id) && pr.created >= openedCutoff {
                 seenIDs.insert(pr.id)
                 prs.append(pr)
             }
+            prs.sort { $0.updated > $1.updated }
 
-            for pr in prs {
+            for pr in prs where pr.author == login || relevantIDs.contains(pr.id) {
                 let isReview = reviewIDs.contains(pr.id)
                 let kind: GHEvent.Kind = isReview ? .reviewRequested : .prOpened
                 let who = pr.author == login ? "" : " · by \(pr.author)"
                 found.append(GHEvent(id: "pr-\(pr.id)", kind: kind,
                                      title: pr.title,
                                      subtitle: "\(pr.repo) #\(pr.number)\(who)",
-                                     date: pr.updated, url: pr.url, approval: nil, mine: pr.author == login))
+                                     date: pr.updated, url: pr.url, approval: nil, mine: pr.author == login, prID: pr.id))
             }
 
             // Approvals, change requests and comments on the PRs you raised in the last day.
@@ -236,17 +318,32 @@ final class GitHubService {
                 if let acts = try? await activity(on: pr, since: recentCutoff, token: token) { found.append(contentsOf: acts) }
             }
 
-            // CI and approvals on PRs you authored.
-            for pr in prs.filter({ $0.author == login }).prefix(12) {
-                guard let sha = try? await headSHA(pr, token: token) else { continue }
-                let ci = try? await checkState(pr, sha: sha, token: token)
-                if let ci = ci {
-                    found.append(ci)
+            // Details, reviews and checks for the PR screen; CI events and approvable runs on
+            // the PRs you authored.
+            var built: [GHPullRequest] = []
+            for pr in prs.prefix(Self.maxTracked) {
+                var p = makePull(pr, reviewRequested: reviewIDs.contains(pr.id))
+                var sha = pr.headSHA
+                if let d = await detail(for: pr, token: token) {
+                    apply(d, to: &p)
+                    sha = sha ?? ((d.pull["head"] as? [String: Any])?["sha"] as? String)
                 }
-                if let runs = try? await approvableRuns(pr, sha: sha, token: token) {
-                    found.append(contentsOf: runs)
+                if let sha = sha {
+                    if let c = try? await checkSummary(pr, sha: sha, token: token) {
+                        p.ci = c.ci; p.failing = c.failing; p.checksTotal = c.total
+                        if p.mine, let e = c.event { found.append(e) }
+                    }
+                    if p.mine, let runs = try? await approvableRuns(pr, sha: sha, token: token) {
+                        found.append(contentsOf: runs)
+                        p.approvalsWaiting = runs.count
+                    }
                 }
+                built.append(p)
             }
+            // Anything beyond the tracked set still gets a row, just without checks.
+            for pr in prs.dropFirst(Self.maxTracked) { built.append(makePull(pr, reviewRequested: reviewIDs.contains(pr.id))) }
+            pulls = built
+            detailCache = detailCache.filter { seenIDs.contains($0.key) }
 
             found.sort { $0.date > $1.date }
             events = found
@@ -287,6 +384,117 @@ final class GitHubService {
         NotificationCenter.default.post(name: Self.changed, object: nil)
     }
 
+    /// Approves every waiting workflow run on one PR.
+    func approveRuns(for p: GHPullRequest) async throws {
+        let runs = events.filter { $0.kind == .needsApproval && $0.prID == p.id }
+        guard !runs.isEmpty else { throw GHError.badResponse }
+        for e in runs { try await approve(e) }
+        if let i = pulls.firstIndex(where: { $0.id == p.id }) { pulls[i].approvalsWaiting = 0 }
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+
+    /// "Mark reviewed" keeps a PR out of the Review tab until it changes again.
+    func isMarkedReviewed(_ p: GHPullRequest) -> Bool { reviewed.contains(Self.reviewKey(p)) }
+
+    func setReviewed(_ p: GHPullRequest, _ on: Bool) {
+        if on { reviewed.insert(Self.reviewKey(p)) } else { reviewed.remove(Self.reviewKey(p)) }
+        if reviewed.count > 500 { reviewed = Set(pulls.map { Self.reviewKey($0) }).intersection(reviewed) }
+        UserDefaults.standard.set(Array(reviewed), forKey: Self.reviewedKey)
+        for e in events where e.prID == p.id { unseen.remove(e.id) }
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+
+    private static func reviewKey(_ p: GHPullRequest) -> String { "\(p.id)@\(Int(p.updated.timeIntervalSince1970))" }
+
+    func markSeen(_ p: GHPullRequest) {
+        let ids = events.filter { $0.prID == p.id }.map { $0.id }
+        guard ids.contains(where: { unseen.contains($0) }) else { return }
+        ids.forEach { unseen.remove($0) }
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+
+    // MARK: - Briefs for Zera
+    //
+    // "Summarize" hands Claude a Markdown brief of the PR — description, checks, file list and
+    // diff excerpts — written to Zera's caches folder (mode 600) and read like any dropped file.
+
+    private var briefsFolder: URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Zera/PRs", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
+    }
+
+    private func writeBrief(_ text: String, name: String) throws -> URL {
+        let safe = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        let url = briefsFolder.appendingPathComponent(safe)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        return url
+    }
+
+    func brief(for p: GHPullRequest) async throws -> URL {
+        guard let token = token else { throw GHError.noToken }
+        let base = "/repos/\(p.owner)/\(p.repo)/pulls/\(p.number)"
+        let pull = (try? await get(base, token: token)) ?? [:]
+        let files = (try? await getArray("\(base)/files?per_page=100", token: token)) ?? []
+        var md = "# Pull request: \(p.title)\n\n"
+        md += "- Repository: \(p.fullRepo) #\(p.number)\n- Author: @\(p.author.login)\n"
+        if let b = p.branch { md += "- Branch: \(b) → \(p.base ?? "default")\n" }
+        md += "- Opened: \(longAgo(p.created)), last update \(longAgo(p.updated))\n"
+        md += "- CI: \(Self.ciText(p))\n"
+        if !p.approvedBy.isEmpty { md += "- Approved by: \(p.approvedBy.joined(separator: ", "))\n" }
+        if !p.changesBy.isEmpty { md += "- Changes requested by: \(p.changesBy.joined(separator: ", "))\n" }
+        if let a = p.additions, let d = p.deletions { md += "- Size: +\(a) −\(d) in \(p.changedFiles ?? files.count) files\n" }
+        if !p.labels.isEmpty { md += "- Labels: \(p.labels.joined(separator: ", "))\n" }
+        let body = ((pull["body"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        md += "\n## Description\n\n" + (body.isEmpty ? "_No description._" : String(body.prefix(6000))) + "\n"
+        if !p.failing.isEmpty {
+            md += "\n## Failing checks\n"
+            for c in p.failing.prefix(6) {
+                md += "\n### \(c.name)\n" + (c.title.isEmpty ? "" : "\(c.title)\n") + String(c.summary.prefix(1500)) + "\n"
+            }
+        }
+        if !files.isEmpty {
+            md += "\n## Changed files\n\n"
+            for f in files {
+                md += "- \(f["filename"] as? String ?? "?") (\(f["status"] as? String ?? "changed"), +\(f["additions"] as? Int ?? 0) −\(f["deletions"] as? Int ?? 0))\n"
+            }
+            md += "\n## Diff excerpts\n"
+            var budget = 40_000
+            for f in files {
+                guard budget > 0, let patch = f["patch"] as? String else { continue }
+                let cut = String(patch.prefix(min(budget, 6000)))
+                budget -= cut.count
+                md += "\n### \(f["filename"] as? String ?? "?")\n```diff\n\(cut)\n```\n"
+            }
+        }
+        return try writeBrief(md, name: "\(p.repo)-PR-\(p.number).md")
+    }
+
+    /// Every failing check across your open PRs, for "summarize the issues / check the logs".
+    func failingChecksBrief() throws -> URL? {
+        let bad = pulls.filter { $0.ci == .failed }
+        guard !bad.isEmpty else { return nil }
+        var md = "# Failing checks on open pull requests\n"
+        for p in bad {
+            md += "\n## \(p.fullRepo) #\(p.number): \(p.title)\n\(p.checksURL.absoluteString)\n"
+            for c in p.failing.prefix(6) {
+                md += "\n### \(c.name)\n" + (c.title.isEmpty ? "" : "\(c.title)\n") + String(c.summary.prefix(1500)) + "\n"
+            }
+        }
+        return try writeBrief(md, name: "failing-checks.md")
+    }
+
+    static func ciText(_ p: GHPullRequest) -> String {
+        switch p.ci {
+        case .none: return "no checks"
+        case .running: return "running"
+        case .passed: return "all \(p.checksTotal) checks passed"
+        case .failed: return "\(p.failing.count) of \(p.checksTotal) checks failing (\(p.failing.prefix(3).map { $0.name }.joined(separator: ", ")))"
+        }
+    }
+
     // MARK: - Pieces
 
     private struct PRRef {
@@ -299,9 +507,81 @@ final class GitHubService {
         let updated: Date
         let created: Date
         let url: URL
+        var authorAvatar: URL? = nil
+        var draft = false
+        var labels: [String] = []
+        var comments = 0
+        var requested: [GHPullRequest.Person] = []
+        var headSHA: String? = nil
+        var branch: String? = nil
+        var base: String? = nil
         var fullRepo: String { "\(owner)/\(repo)" }
         var repoName: String { fullRepo }
         var repoDisplay: String { fullRepo }
+    }
+
+    private static func person(_ any: Any?) -> GHPullRequest.Person? {
+        guard let d = any as? [String: Any], let login = d["login"] as? String else { return nil }
+        let avatar = (d["avatar_url"] as? String).flatMap { URL(string: $0.contains("?") ? "\($0)&s=64" : "\($0)?s=64") }
+        return GHPullRequest.Person(login: login, avatar: avatar)
+    }
+
+    private static func labels(_ any: Any?) -> [String] {
+        ((any as? [[String: Any]]) ?? []).compactMap { $0["name"] as? String }
+    }
+
+    private func makePull(_ r: PRRef, reviewRequested: Bool) -> GHPullRequest {
+        var p = GHPullRequest(id: r.id, owner: r.owner, repo: r.repo, number: r.number, title: r.title,
+                              author: .init(login: r.author, avatar: r.authorAvatar),
+                              created: r.created, updated: r.updated, url: r.url)
+        p.draft = r.draft
+        p.labels = r.labels
+        p.comments = r.comments
+        p.reviewers = r.requested
+        p.branch = r.branch
+        p.base = r.base
+        p.mine = r.author == login
+        p.reviewRequested = reviewRequested
+        p.approvalsWaiting = events.filter { $0.kind == .needsApproval && $0.prID == r.id }.count
+        // Keep last poll's checks for PRs outside the tracked set.
+        if let old = pulls.first(where: { $0.id == r.id }) { p.ci = old.ci; p.failing = old.failing; p.checksTotal = old.checksTotal }
+        return p
+    }
+
+    private func detail(for pr: PRRef, token: String) async -> PRDetail? {
+        if let c = detailCache[pr.id], c.updated == pr.updated { return c }
+        let base = "/repos/\(pr.owner)/\(pr.repo)/pulls/\(pr.number)"
+        guard let pull = try? await get(base, token: token) else { return detailCache[pr.id] }
+        let reviews = (try? await getArray("\(base)/reviews?per_page=100", token: token)) ?? []
+        let d = PRDetail(updated: pr.updated, pull: pull, reviews: reviews)
+        detailCache[pr.id] = d
+        return d
+    }
+
+    private func apply(_ d: PRDetail, to p: inout GHPullRequest) {
+        let j = d.pull
+        p.branch = (j["head"] as? [String: Any])?["ref"] as? String ?? p.branch
+        p.base = (j["base"] as? [String: Any])?["ref"] as? String ?? p.base
+        p.comments = (j["comments"] as? Int ?? 0) + (j["review_comments"] as? Int ?? 0)
+        p.additions = j["additions"] as? Int
+        p.deletions = j["deletions"] as? Int
+        p.changedFiles = j["changed_files"] as? Int
+        p.draft = j["draft"] as? Bool ?? p.draft
+        if let a = Self.person(j["user"]) { p.author = a }
+        let ls = Self.labels(j["labels"]); if !ls.isEmpty { p.labels = ls }
+        var people = ((j["requested_reviewers"] as? [[String: Any]]) ?? []).compactMap { Self.person($0) }
+        // Latest decisive review per person.
+        var latest: [String: String] = [:]
+        for r in d.reviews {
+            guard let who = Self.person(r["user"]), who.login != p.author.login else { continue }
+            if !people.contains(where: { $0.login == who.login }) { people.append(who) }
+            let state = (r["state"] as? String ?? "").uppercased()
+            if state == "APPROVED" || state == "CHANGES_REQUESTED" || state == "DISMISSED" { latest[who.login] = state }
+        }
+        p.reviewers = people
+        p.approvedBy = latest.filter { $0.value == "APPROVED" }.map { $0.key }.sorted()
+        p.changesBy = latest.filter { $0.value == "CHANGES_REQUESTED" }.map { $0.key }.sorted()
+        p.review = !p.changesBy.isEmpty ? .changesRequested : (!p.approvedBy.isEmpty ? .approved : .none)
     }
 
     private func searchPRs(_ q: String, token: String) async throws -> [PRRef] {
@@ -316,20 +596,29 @@ final class GitHubService {
             let parts = repoURL.split(separator: "/")
             guard parts.count >= 2 else { return nil }
             let owner = String(parts[parts.count - 2]), repo = String(parts[parts.count - 1])
-            let author = (item["user"] as? [String: Any])?["login"] as? String ?? "someone"
+            let user = Self.person(item["user"])
             let updated = Self.iso.date(from: item["updated_at"] as? String ?? "") ?? Date()
             let created = Self.iso.date(from: item["created_at"] as? String ?? "") ?? updated
-            return PRRef(id: "\(owner)/\(repo)#\(number)", owner: owner, repo: repo, number: number,
-                         title: title, author: author, updated: updated, created: created, url: url)
+            var ref = PRRef(id: "\(owner)/\(repo)#\(number)", owner: owner, repo: repo, number: number,
+                            title: title, author: user?.login ?? "someone", updated: updated, created: created, url: url)
+            ref.authorAvatar = user?.avatar
+            ref.draft = item["draft"] as? Bool ?? false
+            ref.labels = Self.labels(item["labels"])
+            ref.comments = item["comments"] as? Int ?? 0
+            return ref
         }
     }
 
-    /// Open PRs you authored, were assigned, or were asked to review, read straight from the
-    /// repos you pushed to most recently. Unlike search this is not index-lagged, so the PR you
-    /// just raised shows up on the next poll. Returns the refs and the ids that are review requests.
-    private func recentRepoPRs(token: String) async throws -> ([PRRef], Set<String>) {
+    /// Every open PR opened since `since` in the repos you pushed to most recently (any author),
+    /// read straight from each repo's pull list. Unlike search this is not index-lagged, so a
+    /// PR raised a minute ago shows up on the next poll. Returns the refs and the ids that ask
+    /// you for a review.
+    private func recentRepoPRs(token: String, since: Date) async throws -> ([PRRef], Set<String>) {
         guard let me = login else { return ([], []) }
-        let repos = try await getArray("/user/repos?sort=pushed&direction=desc&per_page=15&affiliation=owner,collaborator,organization_member", token: token)
+        let all = try await getArray("/user/repos?sort=pushed&direction=desc&per_page=30&affiliation=owner,collaborator,organization_member", token: token)
+        // A repo nobody pushed to in a month is very unlikely to have a PR from today.
+        let quiet = Date().addingTimeInterval(-30 * 86400)
+        let repos = all.filter { (Self.iso.date(from: $0["pushed_at"] as? String ?? "") ?? Date()) > quiet }
         var out: [PRRef] = []
         var reviewIDs = Set<String>()
         for r in repos {
@@ -337,18 +626,26 @@ final class GitHubService {
             let parts = full.split(separator: "/")
             guard parts.count == 2 else { continue }
             let owner = String(parts[0]), repo = String(parts[1])
-            let pulls = (try? await getArray("/repos/\(full)/pulls?state=open&sort=updated&direction=desc&per_page=30", token: token)) ?? []
+            // Newest first, so we can stop at the first PR older than the window.
+            let pulls = (try? await getArray("/repos/\(full)/pulls?state=open&sort=created&direction=desc&per_page=30", token: token)) ?? []
             for p in pulls {
                 let author = (p["user"] as? [String: Any])?["login"] as? String ?? ""
                 let reviewers = (p["requested_reviewers"] as? [[String: Any]])?.compactMap { $0["login"] as? String } ?? []
-                let assignees = (p["assignees"] as? [[String: Any]])?.compactMap { $0["login"] as? String } ?? []
-                guard author == me || reviewers.contains(me) || assignees.contains(me) else { continue }
                 guard let number = p["number"] as? Int, let title = p["title"] as? String,
                       let html = p["html_url"] as? String, let url = URL(string: html) else { continue }
                 let updated = Self.iso.date(from: p["updated_at"] as? String ?? "") ?? Date()
                 let created = Self.iso.date(from: p["created_at"] as? String ?? "") ?? updated
-                let ref = PRRef(id: "\(owner)/\(repo)#\(number)", owner: owner, repo: repo, number: number,
+                if created < since { break }
+                var ref = PRRef(id: "\(owner)/\(repo)#\(number)", owner: owner, repo: repo, number: number,
                                 title: title, author: author, updated: updated, created: created, url: url)
+                ref.authorAvatar = Self.person(p["user"])?.avatar
+                ref.draft = p["draft"] as? Bool ?? false
+                ref.labels = Self.labels(p["labels"])
+                ref.requested = ((p["requested_reviewers"] as? [[String: Any]]) ?? []).compactMap { Self.person($0) }
+                let head = p["head"] as? [String: Any]
+                ref.headSHA = head?["sha"] as? String
+                ref.branch = head?["ref"] as? String
+                ref.base = (p["base"] as? [String: Any])?["ref"] as? String
                 out.append(ref)
                 if reviewers.contains(me) { reviewIDs.insert(ref.id) }
             }
@@ -375,11 +672,11 @@ final class GitHubService {
             let url = URL(string: r["html_url"] as? String ?? "") ?? pr.url
             switch state {
             case "APPROVED":
-                out.append(GHEvent(id: "review-\(id)", kind: .prApproved, title: "\(who) approved your PR", subtitle: sub, date: at, url: url, approval: nil, mine: true))
+                out.append(GHEvent(id: "review-\(id)", kind: .prApproved, title: "\(who) approved your PR", subtitle: sub, date: at, url: url, approval: nil, mine: true, prID: pr.id))
             case "CHANGES_REQUESTED":
-                out.append(GHEvent(id: "review-\(id)", kind: .prChangesRequested, title: "\(who) requested changes" + (body.isEmpty ? "" : ": \(body)"), subtitle: sub, date: at, url: url, approval: nil, mine: true))
+                out.append(GHEvent(id: "review-\(id)", kind: .prChangesRequested, title: "\(who) requested changes" + (body.isEmpty ? "" : ": \(body)"), subtitle: sub, date: at, url: url, approval: nil, mine: true, prID: pr.id))
             case "COMMENTED" where !body.isEmpty:
-                out.append(GHEvent(id: "review-\(id)", kind: .prCommented, title: "\(who): \(body)", subtitle: sub, date: at, url: url, approval: nil, mine: true))
+                out.append(GHEvent(id: "review-\(id)", kind: .prCommented, title: "\(who): \(body)", subtitle: sub, date: at, url: url, approval: nil, mine: true, prID: pr.id))
             default: break
             }
         }
@@ -393,7 +690,7 @@ final class GitHubService {
                       let at = Self.iso.date(from: c["created_at"] as? String ?? ""), at > since else { continue }
                 let body = Self.snippet(c["body"] as? String)
                 let url = URL(string: c["html_url"] as? String ?? "") ?? pr.url
-                out.append(GHEvent(id: "comment-\(id)", kind: .prCommented, title: "\(who): \(body.isEmpty ? "commented" : body)", subtitle: sub, date: at, url: url, approval: nil, mine: true))
+                out.append(GHEvent(id: "comment-\(id)", kind: .prCommented, title: "\(who): \(body.isEmpty ? "commented" : body)", subtitle: sub, date: at, url: url, approval: nil, mine: true, prID: pr.id))
             }
         }
         return out
@@ -406,41 +703,51 @@ final class GitHubService {
         return one.count > 90 ? String(one.prefix(88)) + "…" : one
     }
 
-    private func headSHA(_ pr: PRRef, token: String) async throws -> String {
-        let json = try await get("/repos/\(pr.owner)/\(pr.repo)/pulls/\(pr.number)", token: token)
-        guard let sha = (json["head"] as? [String: Any])?["sha"] as? String else { throw GHError.badResponse }
-        return sha
+    private struct CheckSummary {
+        var ci: GHPullRequest.CI
+        var failing: [GHPullRequest.Check]
+        var total: Int
+        var event: GHEvent?
     }
 
-    /// One summary line for all check runs on the PR's head commit.
-    private func checkState(_ pr: PRRef, sha: String, token: String) async throws -> GHEvent? {
-        let json = try await get("/repos/\(pr.owner)/\(pr.repo)/commits/\(sha)/check-runs?per_page=50", token: token)
+    /// All check runs on the PR's head commit, folded into one state plus the failing ones.
+    private func checkSummary(_ pr: PRRef, sha: String, token: String) async throws -> CheckSummary {
+        let json = try await get("/repos/\(pr.owner)/\(pr.repo)/commits/\(sha)/check-runs?per_page=100", token: token)
         let runs = json["check_runs"] as? [[String: Any]] ?? []
-        guard !runs.isEmpty else { return nil }
-        var failed: [String] = [], running = 0
+        guard !runs.isEmpty else { return CheckSummary(ci: .none, failing: [], total: 0, event: nil) }
+        var failed: [GHPullRequest.Check] = [], running = 0
         var latest = Date.distantPast
         for r in runs {
             let status = r["status"] as? String ?? ""
             let conclusion = r["conclusion"] as? String ?? ""
             let name = r["name"] as? String ?? "check"
             if status != "completed" { running += 1 }
-            else if ["failure", "timed_out", "cancelled", "action_required"].contains(conclusion) { failed.append(name) }
+            else if ["failure", "timed_out", "cancelled", "action_required"].contains(conclusion) {
+                let out = r["output"] as? [String: Any]
+                failed.append(.init(name: name, title: out?["title"] as? String ?? "",
+                                    summary: (out?["summary"] as? String) ?? (out?["text"] as? String) ?? "",
+                                    url: (r["html_url"] as? String).flatMap { URL(string: $0) }))
+            }
             if let d = Self.iso.date(from: (r["completed_at"] as? String) ?? (r["started_at"] as? String) ?? ""), d > latest { latest = d }
         }
         let url = URL(string: "\(pr.url.absoluteString)/checks") ?? pr.url
         let sub = "\(pr.fullRepo) #\(pr.number)"
+        let when = latest == .distantPast ? pr.updated : latest
         if !failed.isEmpty {
-            let list = failed.prefix(2).joined(separator: ", ") + (failed.count > 2 ? " +\(failed.count - 2)" : "")
-            return GHEvent(id: "ci-\(pr.id)-\(sha)-failed", kind: .ciFailed, title: "CI failed: \(list)",
-                           subtitle: sub, date: latest == .distantPast ? pr.updated : latest, url: url, approval: nil)
+            let list = failed.prefix(2).map { $0.name }.joined(separator: ", ") + (failed.count > 2 ? " +\(failed.count - 2)" : "")
+            let e = GHEvent(id: "ci-\(pr.id)-\(sha)-failed", kind: .ciFailed, title: "CI failed: \(list)",
+                            subtitle: sub, date: when, url: url, approval: nil, prID: pr.id)
+            return CheckSummary(ci: .failed, failing: failed, total: runs.count, event: e)
         }
         if running > 0 {
-            return GHEvent(id: "ci-\(pr.id)-\(sha)-running", kind: .ciRunning,
-                           title: running == 1 ? "1 check running" : "\(running) checks running",
-                           subtitle: sub, date: pr.updated, url: url, approval: nil)
+            let e = GHEvent(id: "ci-\(pr.id)-\(sha)-running", kind: .ciRunning,
+                            title: running == 1 ? "1 check running" : "\(running) checks running",
+                            subtitle: sub, date: pr.updated, url: url, approval: nil, prID: pr.id)
+            return CheckSummary(ci: .running, failing: [], total: runs.count, event: e)
         }
-        return GHEvent(id: "ci-\(pr.id)-\(sha)-passed", kind: .ciPassed, title: "All \(runs.count) checks passed",
-                       subtitle: sub, date: latest == .distantPast ? pr.updated : latest, url: url, approval: nil)
+        let e = GHEvent(id: "ci-\(pr.id)-\(sha)-passed", kind: .ciPassed, title: "All \(runs.count) checks passed",
+                        subtitle: sub, date: when, url: url, approval: nil, prID: pr.id)
+        return CheckSummary(ci: .passed, failing: [], total: runs.count, event: e)
     }
 
     /// Workflow runs on the PR's head that are stuck waiting for someone to say yes.
@@ -459,7 +766,7 @@ final class GitHubService {
             return GHEvent(id: "approve-\(pr.id)-\(id)", kind: .needsApproval,
                            title: waiting ? "\(name) is waiting for approval" : "\(name) needs approval to run",
                            subtitle: "\(pr.fullRepo) #\(pr.number)", date: date, url: url,
-                           approval: .init(owner: pr.owner, repo: pr.repo, runID: id, waiting: waiting))
+                           approval: .init(owner: pr.owner, repo: pr.repo, runID: id, waiting: waiting), prID: pr.id)
         }
     }
 
@@ -513,4 +820,16 @@ func relativeTime(_ date: Date) -> String {
     if s < 86400 { return "\(s / 3600) h ago" }
     if s < 172800 { return "yesterday" }
     return "\(s / 86400) d ago"
+}
+
+/// "just now", "5 min ago", "9 hours ago", "yesterday", "15 days ago", "3 months ago".
+func longAgo(_ date: Date) -> String {
+    let s = Int(Date().timeIntervalSince(date))
+    if s < 60 { return "just now" }
+    if s < 3600 { return "\(s / 60) min ago" }
+    if s < 7200 { return "1 hour ago" }
+    if s < 86400 { return "\(s / 3600) hours ago" }
+    if s < 172800 { return "yesterday" }
+    if s < 86400 * 60 { return "\(s / 86400) days ago" }
+    return "\(s / (86400 * 30)) months ago"
 }

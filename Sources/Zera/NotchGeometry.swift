@@ -46,7 +46,7 @@ struct NotchGeometry {
 
     /// Where she actually is on screen (below the menu bar), for hover tests and layout.
     func figureRect(centerX: CGFloat) -> NSRect {
-        NSRect(x: centerX - 24, y: notchRect.minY - Theme.figureHeight, width: 48, height: Theme.figureHeight)
+        NSRect(x: centerX - 32, y: notchRect.minY - Theme.figureHeight, width: 64, height: Theme.figureHeight)
     }
 
     /// Clamp a requested centre so she never leaves the screen.

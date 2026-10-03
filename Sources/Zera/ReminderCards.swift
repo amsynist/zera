@@ -169,8 +169,8 @@ final class RemindersCard: CardBase, CardContent {
     private let list = FlippedView()
     private let empty = NSTextField(labelWithString: "")
     private var rows: [ReminderRow] = []
-    private let zera = ZeraCompanion(pose: "card_bell", size: 52)
-    private let zeraH: CGFloat = 52
+    private let zera = ZeraCompanion(pose: "card_bell", size: 64)
+    private let zeraH: CGFloat = 64
 
     private let maxRows = 6
     private let composerFullHeight: CGFloat = Space.m + Metrics.control + Space.s + Metrics.control + Space.m

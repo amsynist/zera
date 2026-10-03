@@ -92,7 +92,7 @@ final class BuddyView: NSView {
 
     /// Her body, in view coordinates: the strip below the notch, as wide as she is.
     var figureBounds: NSRect {
-        NSRect(x: bounds.midX - 24, y: 0, width: 48, height: max(0, bounds.height - hangInset))
+        NSRect(x: bounds.midX - 32, y: 0, width: 64, height: max(0, bounds.height - hangInset))
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -196,6 +196,8 @@ enum CardKind: Int, CaseIterable {
     case shelf, home, github, settings, approval, reminders, reminderAlert, toast
     /// Zera's answer about a file (Summarize / Explain / Extract / Ask).
     case result
+    /// Live progress of your Claude Code sessions.
+    case claude
 
     var title: String {
         switch self {
@@ -208,6 +210,7 @@ enum CardKind: Int, CaseIterable {
         case .reminderAlert: return "Reminder"
         case .toast: return "Notification"
         case .result: return "Zera"
+        case .claude: return "Claude"
         }
     }
 
@@ -220,6 +223,7 @@ enum CardKind: Int, CaseIterable {
         case .approval: return "terminal.fill"
         case .reminders, .reminderAlert, .toast: return "bell.fill"
         case .result: return "sparkles"
+        case .claude: return "terminal.fill"
         }
     }
 }
@@ -232,14 +236,14 @@ final class ActionPill: NSView {
     var activeKind: CardKind? { didSet { if activeKind != oldValue { needsDisplay = true } } }
     /// Red dot on a button (e.g. unseen GitHub activity).
     var badges: Set<CardKind> = [] { didSet { needsDisplay = true } }
-    let kinds: [CardKind] = [.shelf, .home, .reminders, .github, .settings]
+    let kinds: [CardKind] = [.shelf, .home, .claude, .reminders, .github, .settings]
 
     static let buttonSize: CGFloat = 28
     static let gap: CGFloat = 4
     static let inset: CGFloat = 4
 
     static var preferredSize: NSSize {
-        let n = CGFloat(5)
+        let n = CGFloat(6)
         return NSSize(width: inset * 2 + n * buttonSize + (n - 1) * gap, height: inset * 2 + buttonSize)
     }
 

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Hardened runtime (Developer ID builds). Zera is not sandboxed: it reads files you drop,
+       runs your Claude Code CLI and edits ~/.claude/settings.json when you install hooks. -->
+  <!-- "Open Claude" opens Terminal via Apple Events when the Claude app isn't installed. -->
+  <key>com.apple.security.automation.apple-events</key><true/>
+  <!-- Meeting reminders read today's calendar events. -->
+  <key>com.apple.security.personal-information.calendars</key><true/>
+</dict>
+</plist>

@@ -15,6 +15,14 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private let bubble = BubbleView()
     private let pillPanel: FloatingPanel
     private let pill = ActionPill()
+    /// Compact live readout of the current Claude Code step, beside her while a session runs.
+    private let livePanel: FloatingPanel
+    private let live = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.compactSize))
+    private var liveVisible = false
+    private var liveHideWork: DispatchWorkItem?
+    /// ✕ on the readout hides it until Claude's next prompt / wait / finish.
+    private var liveDismissed = false
+    private static let liveExpandedKey = "zera.live.expanded"
     private let cardPanel: FloatingPanel
 
     /// Cards are built on demand and thrown away when the palette changes.
@@ -81,6 +89,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         buddyPanel = FloatingPanel.make(size: NSSize(width: Theme.buddyWidth, height: 90), level: aboveMenuBar, keyable: false)
         bubblePanel = FloatingPanel.make(size: NSSize(width: 120, height: 30), level: aboveMenuBar, keyable: false)
         pillPanel = FloatingPanel.make(size: ActionPill.preferredSize, level: aboveMenuBar, keyable: false)
+        livePanel = FloatingPanel.make(size: LiveActivityView.compactSize, level: .floating, keyable: false)
         cardPanel = FloatingPanel.make(size: NSSize(width: Theme.panelWidth, height: 240), level: .floating, keyable: true)
         super.init()
 
@@ -96,7 +105,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                 self.suppressUntil = .distantPast
                 let answerWaiting = self.userHidResult && MainActor.assumeIsolated { !ZeraAssistant.shared.isBusy && ZeraAssistant.shared.session != nil }
                 self.userHidResult = false
-                self.show(answerWaiting ? .result : self.defaultCard)
+                self.show(answerWaiting ? (self.resultsInShelf ? .shelf : .result) : self.defaultCard)
             }
         }
         buddy.onDrop = { [weak self] pb in
@@ -164,6 +173,28 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             self.show(kind)
         }
 
+        livePanel.contentView = live
+        livePanel.hasShadow = true
+        livePanel.appearance = Pal.nsAppearance
+        livePanel.alphaValue = 0
+        live.expanded = UserDefaults.standard.bool(forKey: Self.liveExpandedKey)
+        live.onTap = { [weak self] in
+            guard let self = self else { return }
+            self.suppressUntil = .distantPast
+            self.show(.claude)
+        }
+        live.onToggle = { [weak self] in
+            guard let self = self else { return }
+            self.live.expanded.toggle()
+            UserDefaults.standard.set(self.live.expanded, forKey: Self.liveExpandedKey)
+            self.positionLive(animated: true)
+        }
+        live.onClose = { [weak self] in
+            guard let self = self else { return }
+            self.liveDismissed = true
+            self.hideLive()
+        }
+
         cardPanel.hasShadow = true
         cardPanel.appearance = Pal.nsAppearance
         cardPanel.alphaValue = 0
@@ -179,6 +210,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         nc.addObserver(self, selector: #selector(remindersChanged), name: ReminderService.changed, object: nil)
         nc.addObserver(self, selector: #selector(paletteChanged), name: Palette.changed, object: nil)
         nc.addObserver(self, selector: #selector(assistantChanged), name: ZeraAssistant.changed, object: nil)
+        nc.addObserver(self, selector: #selector(activityChanged), name: ClaudeActivityService.changed, object: nil)
+        nc.addObserver(self, selector: #selector(activityMilestone(_:)), name: ClaudeActivityService.milestone, object: nil)
         Palette.observeSystem()
         // Find `claude` in the background now, so the first Summarize does not wait for it.
         ClaudeCLI.shared.ensureProbed { _ in }
@@ -190,7 +223,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             if self.currentCard == .approval, self.approvalPending { return }
             let m = NSEvent.mouseLocation
             if NSPointInRect(m, self.cardPanel.frame) || NSPointInRect(m, self.figureRect.insetBy(dx: -8, dy: -6))
-                || (self.pillVisible && NSPointInRect(m, self.pillPanel.frame)) { return }
+                || (self.pillVisible && NSPointInRect(m, self.pillPanel.frame))
+                || (self.liveVisible && NSPointInRect(m, self.livePanel.frame)) { return }
             self.dismissCardByUser()
         }
 
@@ -207,6 +241,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         MainActor.assumeIsolated {
             GitHubService.shared.startPolling()
             ClaudeHookService.shared.start()
+            ClaudeActivityService.shared.start()
             ReminderService.shared.start()
         }
 
@@ -245,12 +280,13 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         buddy.layoutSubtreeIfNeeded()
         positionBubble()
         positionPill()
+        if liveVisible { positionLive() }
     }
 
     func setBuddyEnabled(_ on: Bool) {
         UserDefaults.standard.set(on, forKey: Self.buddyDefaultsKey)
         setBuddy(visible: on, animated: true)
-        if !on { hideBubble(); hidePill(); if cardVisible { hideCard() } }
+        if !on { hideBubble(); hidePill(); hideLive(); if cardVisible { hideCard() } }
     }
 
     private func setBuddy(visible: Bool, animated: Bool) {
@@ -289,6 +325,80 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let x = left ? f.minX - 6 - size.width : f.maxX + 6
         bubblePanel.setFrame(NSRect(x: x, y: headPoint.y - size.height / 2, width: size.width, height: size.height), display: true)
         bubble.frame = NSRect(origin: .zero, size: size)
+    }
+
+    /// Hangs under her exactly where a card would — clear of the hover pill and her bubble,
+    /// which live beside her head. Cards replace it while they are open.
+    private func positionLive(animated: Bool = false) {
+        let size = live.size
+        let vf = geometry.screen.visibleFrame
+        let x = max(vf.minX + 8, min(vf.maxX - size.width - 8, figureRect.midX - size.width / 2))
+        let y = figureRect.minY - Theme.cardGap - size.height
+        let target = NSRect(x: x, y: y, width: size.width, height: size.height)
+        if animated, !Motion.reduced {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.22
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.1)
+                livePanel.animator().setFrame(target, display: true)
+            }
+        } else {
+            livePanel.setFrame(target, display: true)
+        }
+        live.frame = NSRect(origin: .zero, size: size)
+        live.needsLayout = true
+    }
+
+    /// Shows / updates / hides the live readout from the current Claude session.
+    private func updateLive() {
+        let (show, done): (Bool, Bool) = MainActor.assumeIsolated {
+            guard let s = ClaudeActivityService.shared.current else { return (false, false) }
+            // Idle sessions stay visible for a few minutes after their last activity.
+            if s.status == .ended || (s.status == .idle && Date().timeIntervalSince(s.lastEventAt) > 600) { return (false, false) }
+            let pending = ClaudeHookService.shared.pending.first { $0.sessionID == s.id }?.command
+                ?? (s.status == .waiting ? ClaudeHookService.shared.pending.first?.command : nil)
+            self.live.update(session: s, pendingCommand: pending)
+            return (true, s.status == .done)
+        }
+        liveHideWork?.cancel()
+        // Folded away while a card is open (the expanded card carries the same information),
+        // and after ✕ until Claude has something new to say.
+        guard buddyEnabled, show, !cardVisible, !dragging, !liveDismissed else { hideLive(); return }
+        showLive()
+        if done {
+            // Let the green bar be seen, then tidy away.
+            let w = DispatchWorkItem { [weak self] in self?.hideLive() }
+            liveHideWork = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: w)
+        }
+    }
+
+    private func showLive() {
+        positionLive()
+        guard !liveVisible else { return }
+        liveVisible = true
+        let target = livePanel.frame
+        livePanel.setFrame(target.offsetBy(dx: 0, dy: 8), display: false)
+        livePanel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.duration(0.22)
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.1)
+            livePanel.animator().alphaValue = 1
+            livePanel.animator().setFrame(target, display: true)
+        }
+        positionBubble()
+    }
+
+    private func hideLive() {
+        guard liveVisible else { return }
+        liveVisible = false
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = Motion.duration(0.18)
+            livePanel.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            guard let self = self, !self.liveVisible else { return }
+            self.livePanel.orderOut(nil)
+        })
+        positionBubble()
     }
 
     private func positionPill() {
@@ -398,7 +508,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         pill.badges = MainActor.assumeIsolated { () -> Set<CardKind> in
             var b: Set<CardKind> = []
             if !GitHubService.shared.unseen.isEmpty { b.formUnion([.home, .github]) }
-            if !ClaudeHookService.shared.pending.isEmpty { b.insert(.home) }
+            if !ClaudeHookService.shared.pending.isEmpty { b.formUnion([.home, .claude]) }
+            if ClaudeActivityService.shared.active.contains(where: { $0.status == .waiting }) { b.insert(.claude) }
             if !ReminderService.shared.pendingAlerts.isEmpty { b.formUnion([.home, .reminders]) }
             return b
         }
@@ -517,6 +628,32 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     private var approvalPending: Bool { MainActor.assumeIsolated { !ClaudeHookService.shared.pending.isEmpty } }
+
+    private var liveTicker: Timer?
+
+    @objc private func activityChanged() {
+        refreshBadges()
+        updateLive()
+        if liveTicker == nil {
+            let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.updateLive() }
+            RunLoop.main.add(t, forMode: .common)
+            liveTicker = t
+        }
+        if cardVisible, currentCard == .claude { (cards[.claude] as? ClaudeSessionsView)?.reload() }
+    }
+
+    /// Prompt sent / Claude waiting / task finished: a word from her, and her face follows.
+    @objc private func activityMilestone(_ note: Notification) {
+        guard let event = note.userInfo?["event"] as? String, let s = note.userInfo?["session"] as? ClaudeSession else { return }
+        let title = s.title.isEmpty ? "that" : "“\(ClaudeActivityService.oneLine(s.title, max: 40))”"
+        liveDismissed = false
+        switch event {
+        case "prompt": say("on it — Claude's working on \(title) 👩‍💻", mood: .focused, for: 3)
+        case "waiting": if !approvalPending { say("Claude needs you in \(s.folderName) 🙋", mood: .thinking, for: 6) }
+        case "done": say("Claude finished \(title) 🎉", mood: .celebrate, for: 5)
+        default: break
+        }
+    }
     private var reminderAlertPending: Bool { MainActor.assumeIsolated { !ReminderService.shared.pendingAlerts.isEmpty } }
 
     @objc private func reminderFired(_ note: Notification) {
@@ -592,7 +729,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             if n > 0, let item = ShelfStore.shared.items.first {
                 NSWorkspace.shared.open(item.url)
                 show(.shelf)
-                (cards[.shelf] as? ShelfView)?.select(filter: .notes)
+                (cards[.shelf] as? DropFilesView)?.select(filter: .notes)
                 say("new note on the shelf 📝", mood: .happy, for: 2)
             }
         case .takeBreak:
@@ -625,6 +762,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             (cards[.home] as? HomeCard)?.focusSearch()
         case .askZera(let q):
             MainActor.assumeIsolated { ZeraAssistant.shared.askGeneral(q) }
+            resultsInShelf = false
             userHidResult = false
             show(.result)
         }
@@ -642,6 +780,40 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             return nil
         }
         if let name = busyWith { say("still working on \(name) — one sec ⏳", mood: .focused, for: 2.5) }
+        resultsInShelf = false
+        userHidResult = false
+        show(.result)
+    }
+
+    /// From the Drop Files screen: the answer streams into its own result panel, so the card
+    /// stays put. If you close it meanwhile, the Drop Files screen comes back when it's done.
+    func shelfRunsInPlace(_ action: FileAction, on item: ShelfItem) {
+        let busyWith: String? = MainActor.assumeIsolated {
+            let a = ZeraAssistant.shared
+            if a.isBusy { return a.session?.fileName ?? "the last one" }
+            a.run(action, on: item.url)
+            return nil
+        }
+        if let name = busyWith { say("still working on \(name) — one sec ⏳", mood: .focused, for: 2.5); return }
+        resultsInShelf = true
+        userHidResult = false
+        say("sending \(item.name) to Claude via your Claude Code login… 🤔", mood: .thinking, for: 0)
+    }
+
+    /// Where a finished answer appears if no card is open: the Drop Files screen when the
+    /// request started there, otherwise the result card.
+    private var resultsInShelf = false
+
+    /// Same as the shelf, for files Zera made herself (a PR brief from the GitHub card).
+    func assist(_ action: FileAction, on url: URL) {
+        let busyWith: String? = MainActor.assumeIsolated {
+            let a = ZeraAssistant.shared
+            if a.isBusy { return a.session?.fileName ?? "the last one" }
+            a.run(action, on: url)
+            return nil
+        }
+        if let name = busyWith { say("still working on \(name) — one sec ⏳", mood: .focused, for: 2.5); return }
+        resultsInShelf = false
         userHidResult = false
         show(.result)
     }
@@ -664,11 +836,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         case .streaming: say("here's what I've got ✍️", mood: .focused, for: 0)
         case .done:
             say(userHidResult ? "done! tap me to see it 🎉" : "done! 🎉", mood: .celebrate, for: userHidResult ? 4 : 2)
-            if !cardVisible, !userHidResult { show(.result) }
+            if !cardVisible, !userHidResult { show(resultsInShelf ? .shelf : .result) }
         case .failed(let err):
             let needsSetup = err.action == .openClaudeSettings || err.action == .configureAPIKey || err.action == .updateAPIKey
             say(needsSetup ? "I need Claude connected first 👉" : "hmm, that didn't work 😬", mood: needsSetup ? .surprised : .worried, for: 4)
-            if !cardVisible, !userHidResult { show(.result) }
+            if !cardVisible, !userHidResult { show(resultsInShelf ? .shelf : .result) }
         case .cancelled: settle()
         }
     }
@@ -686,7 +858,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let c: any CardContent
         switch kind {
         case .shelf:
-            let s = ShelfView()
+            let s = DropFilesView()
             s.delegate = self
             c = s
         case .home:
@@ -703,6 +875,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             }
             g.onOpenURL = { [weak self] u in self?.open(u) }
             g.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 3) }
+            g.onSummarize = { [weak self] url, question in self?.assist(.ask(question), on: url) }
             c = g
         case .settings:
             let s = SettingsCard(defaultKind: defaultCard, showingZera: buddyEnabled,
@@ -739,6 +912,18 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             }
             t.onOpenURL = { [weak self] u in self?.open(u) }
             c = t
+        case .claude:
+            let a = ClaudeSessionsView()
+            a.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 2.5) }
+            a.onOpenSettings = { [weak self] in
+                self?.show(.settings)
+                (self?.cards[.settings] as? SettingsCard)?.select(.claude)
+            }
+            // The one external action here, and only when you press it.
+            a.onNewSession = { [weak self] in self?.openClaudeCode() }
+            a.onReviewApproval = { [weak self] in self?.show(.approval) }
+            a.onAsk = { [weak self] url, question in self?.assist(.ask(question), on: url) }
+            c = a
         case .result:
             let r = ResultCard()
             r.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 2.5) }
@@ -753,12 +938,15 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             }
             c = r
         }
-        (c as? CardBase)?.onEscape = { [weak self] in
+        let escape: () -> Void = { [weak self] in
             guard let self = self else { return }
             if self.currentCard == .approval, self.approvalPending { return }
             self.suppressUntil = Date().addingTimeInterval(0.8)
             self.hideCard(); self.settle()
         }
+        (c as? CardBase)?.onEscape = escape
+        (c as? ClaudeSessionsView)?.onEscape = escape
+        (c as? DropFilesView)?.onEscape = escape
         cards[kind] = c
         return c
     }
@@ -778,7 +966,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     func show(_ kind: CardKind, instant: Bool = false) {
-        if kind == .shelf { ShelfStore.shared.pruneMissing() }
+        // Missing files stay listed (marked "no longer available") so you can see what happened.
         outsideSince = nil
         autoHideWork?.cancel()
         // The pill stays while the pointer is on it, so you can hop between cards; it folds
@@ -794,7 +982,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             currentCard = kind
         }
         switch kind {
-        case .shelf: (cards[.shelf] as? ShelfView)?.reload()
+        case .shelf: (cards[.shelf] as? DropFilesView)?.willShow()
         case .github:
             (cards[.github] as? GitHubCard)?.reload()
             let (reviews, open, connected) = MainActor.assumeIsolated { () -> (Int, Int, Bool) in
@@ -813,12 +1001,14 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         case .reminderAlert: (cards[.reminderAlert] as? ReminderAlertCard)?.reload()
         case .toast: if let e = pendingToast { (cards[.toast] as? ToastCard)?.show(event: e) }
         case .result: (cards[.result] as? ResultCard)?.reload()
+        case .claude: (cards[.claude] as? ClaudeSessionsView)?.reload()
         case .settings: break
         }
 
         let alreadyUp = cardVisible && cardPanel.isVisible
         cardVisible = true
         pill.activeKind = kind
+        hideLive()   // the card takes the space; the readout comes back when it closes
         isPresenting = true
         currentContent?.needsLayout = true
         currentContent?.layoutSubtreeIfNeeded()
@@ -882,6 +1072,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             guard let self = self, !self.cardVisible else { return }
             self.cardPanel.orderOut(nil)
             self.cardPanel.setFrame(resting, display: false)
+            self.updateLive()
         })
     }
 
@@ -982,7 +1173,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     func pasteFromClipboard() {
         if !(cardVisible && currentCard == .shelf) { show(.shelf) }
-        (cards[.shelf] as? ShelfView)?.paste()
+        (cards[.shelf] as? DropFilesView)?.paste()
     }
 
     func add(urls: [URL]) {
