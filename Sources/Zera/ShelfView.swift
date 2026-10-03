@@ -58,6 +58,9 @@ final class ShelfView: CardBase, CardContent {
     private let list = FlippedView()
     private let empty = DropZone()
     private let dropRing = NSView()
+    /// Zera leaning over the top of the drop zone when the shelf is empty (mock #4).
+    private let peek = NSImageView()
+    private let peekH: CGFloat = 70
     private let actions = FlippedView()
     private var actionChips: [ActionChip] = []
     private let askField = ThemedField(placeholder: "Ask Zera about this file…")
@@ -84,13 +87,17 @@ final class ShelfView: CardBase, CardContent {
 
     private let searchHeight: CGFloat = Metrics.control + 4
     private let tabsHeight: CGFloat = Metrics.control + 2
-    private let emptyHeight: CGFloat = 188
+    private let emptyHeight: CGFloat = 196
     /// Two rows of action chips, plus the ask field when it is open.
     private var actionsHeight: CGFloat { ActionChip.height * 2 + Space.s + (asking ? Space.s + Metrics.control : 0) }
     private let footerHeight: CGFloat = 48
     private let listInset: CGFloat = 6
 
-    private var headerHeight: CGFloat { headerBottom + searchHeight + Space.m + tabsHeight + Space.m }
+    private var isEmptyShelf: Bool { ShelfStore.shared.items.isEmpty }
+    /// Empty: title → Zera peeking → zone. Otherwise: title → search → tabs → tiles.
+    private var headerHeight: CGFloat {
+        isEmptyShelf ? headerBottom + peekH - 6 : headerBottom + searchHeight + Space.m + tabsHeight + Space.m
+    }
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -132,6 +139,10 @@ final class ShelfView: CardBase, CardContent {
         addSubview(scroll)
 
         addSubview(empty)
+        peek.imageScaling = .scaleProportionallyUpOrDown
+        peek.imageAlignment = .alignBottom
+        peek.image = SpriteLibrary.shared.sprite("card_peek_down")?.image
+        addSubview(peek)
 
         dropRing.wantsLayer = true
         dropRing.layer?.borderWidth = 2
@@ -185,8 +196,8 @@ final class ShelfView: CardBase, CardContent {
             let visible = min(gridRows, Theme.maxVisibleGridRows)
             contentH = CGFloat(visible) * Theme.tileHeight + CGFloat(visible - 1) * Theme.tileGap + listInset * 2
         }
-        let actionsH: CGFloat = n == 0 ? 0 : actionsHeight + Space.s
-        return headerHeight + contentH + actionsH + footerHeight
+        // The action grid is always there (dimmed with nothing to act on), like the mock.
+        return headerHeight + contentH + actionsHeight + Space.s + footerHeight
     }
 
     override func layout() {
@@ -198,13 +209,21 @@ final class ShelfView: CardBase, CardContent {
         tabs.frame = NSRect(x: Theme.pad, y: search.frame.maxY + Space.m, width: inner, height: tabsHeight)
 
         let hasItems = !visibleItems.isEmpty
-        let actionsH: CGFloat = hasItems ? actionsHeight + Space.s : 0
+        let emptyShelf = isEmptyShelf
+        search.isHidden = emptyShelf
+        tabs.isHidden = emptyShelf
+        peek.isHidden = !emptyShelf
+        // She sits on the top edge of the zone, feet hidden behind it.
+        let peekW = peekH * 1.45
+        peek.frame = NSRect(x: (w - peekW) / 2, y: headerBottom - 10, width: peekW, height: peekH)
+        let actionsH: CGFloat = actionsHeight + Space.s
         let box = NSRect(x: Theme.pad, y: headerHeight, width: inner,
                          height: bounds.height - headerHeight - footerHeight - actionsH)
         scroll.frame = box
         empty.frame = box
         dropRing.frame = bounds
-        actions.isHidden = !hasItems
+        actions.isHidden = false
+        for (i, c) in actionChips.enumerated() { c.enabled = hasItems || i == actionChips.count - 1 }
         actions.frame = NSRect(x: Theme.pad, y: box.maxY + Space.s, width: inner, height: actionsHeight)
         let cw = (inner - Space.s) / 2
         for (i, c) in actionChips.enumerated() {
@@ -458,7 +477,13 @@ final class DropZone: NSView {
     var mode: Mode = .drop { didSet { needsDisplay = true } }
     var isTargeted = false { didSet { needsDisplay = true } }
 
-    private let chips = ["PDF", "Image", "Code", "Text", "Docs", "Any file"]
+    private let chips: [(String, String, NSColor)] = [
+        ("PDF", "doc.fill", NSColor(srgbRed: 0.95, green: 0.38, blue: 0.38, alpha: 1)),
+        ("Image", "photo.fill", NSColor(srgbRed: 0.35, green: 0.70, blue: 1.00, alpha: 1)),
+        ("Code", "chevron.left.forwardslash.chevron.right", NSColor(srgbRed: 0.56, green: 0.48, blue: 1.00, alpha: 1)),
+        ("Docs", "doc.text.fill", NSColor(srgbRed: 1.00, green: 0.72, blue: 0.30, alpha: 1)),
+        ("Any file", "doc", NSColor(srgbRed: 0.60, green: 0.58, blue: 0.72, alpha: 1)),
+    ]
     private let cloud = NSImage(systemSymbolName: "icloud.and.arrow.up", accessibilityDescription: "Drop")?
         .withSymbolConfiguration(.init(pointSize: 30, weight: .light))
 
@@ -475,8 +500,14 @@ final class DropZone: NSView {
         (isTargeted ? p.accent : p.accent.withAlphaComponent(0.55)).setStroke()
         path.stroke()
 
-        var y = inset.minY + 20
-        if let img = cloud?.withSymbolConfiguration(.init(hierarchicalColor: p.accent)) {
+        var y = inset.minY + 22
+        // While you drag something in, she reaches up to catch it.
+        if isTargeted, let zera = SpriteLibrary.shared.sprite("card_catch_pdf")?.image {
+            let h: CGFloat = 56, w = h * zera.size.width / max(1, zera.size.height)
+            zera.draw(in: NSRect(x: bounds.midX - w / 2, y: y - 10, width: w, height: h),
+                      from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            y += h - 4
+        } else if mode == .noMatch, let img = cloud?.withSymbolConfiguration(.init(hierarchicalColor: p.accent)) {
             let s = img.size
             img.draw(in: NSRect(x: bounds.midX - s.width / 2, y: y, width: s.width, height: s.height),
                      from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
@@ -492,21 +523,27 @@ final class DropZone: NSView {
         let style = NSMutableParagraphStyle(); style.alignment = .center
         let subAttrs: [NSAttributedString.Key: Any] = [.font: Typo.secondary, .paragraphStyle: style, .foregroundColor: p.textSecondary]
         (sub as NSString).draw(in: NSRect(x: inset.minX + 14, y: y, width: inset.width - 28, height: 18), withAttributes: subAttrs)
-        y += 30
+        y += 32
 
         guard mode == .drop else { return }
-        let chipAttrs: [NSAttributedString.Key: Any] = [.font: Typo.badge, .foregroundColor: p.text(0.8)]
-        let chipH: CGFloat = 22, chipPad: CGFloat = 9, gap: CGFloat = 6
-        let widths = chips.map { ceil(($0 as NSString).size(withAttributes: chipAttrs).width) + chipPad * 2 }
-        var x = bounds.midX - (widths.reduce(0, +) + gap * CGFloat(chips.count - 1)) / 2
-        for (chip, w) in zip(chips, widths) {
-            let r = NSRect(x: x, y: y, width: w, height: chipH)
-            let cp = NSBezierPath(roundedRect: r, xRadius: Radius.s, yRadius: Radius.s)
-            p.surface.setFill(); cp.fill()
-            cp.lineWidth = 1; p.border.setStroke(); cp.stroke()
-            let s = (chip as NSString).size(withAttributes: chipAttrs)
-            (chip as NSString).draw(at: NSPoint(x: r.midX - s.width / 2, y: r.midY - s.height / 2), withAttributes: chipAttrs)
-            x += w + gap
+        // File types as little icon tiles with a label under each, like the mock.
+        let labelAttrs: [NSAttributedString.Key: Any] = [.font: Typo.caption, .foregroundColor: p.textSecondary]
+        let tile: CGFloat = 30, col: CGFloat = 52
+        var x = bounds.midX - col * CGFloat(chips.count) / 2
+        for (label, symbol, color) in chips {
+            let r = NSRect(x: x + (col - tile) / 2, y: y, width: tile, height: tile)
+            let tp = NSBezierPath(roundedRect: r, xRadius: Radius.m, yRadius: Radius.m)
+            (p.isDark ? color.withAlphaComponent(0.22) : color.withAlphaComponent(0.16)).setFill(); tp.fill()
+            if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+                .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))?
+                .withSymbolConfiguration(.init(hierarchicalColor: color)) {
+                let s = img.size
+                img.draw(in: NSRect(x: r.midX - s.width / 2, y: r.midY - s.height / 2, width: s.width, height: s.height),
+                         from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+            let ls = (label as NSString).size(withAttributes: labelAttrs)
+            (label as NSString).draw(at: NSPoint(x: x + (col - ls.width) / 2, y: r.maxY + 4), withAttributes: labelAttrs)
+            x += col
         }
     }
 }
@@ -516,6 +553,8 @@ final class DropZone: NSView {
 final class ActionChip: NSView {
     var onTap: (() -> Void)?
     var selected = false { didSet { restyle() } }
+    /// Dimmed and inert when there is nothing to act on.
+    var enabled = true { didSet { alphaValue = enabled ? 1 : 0.45; restyle() } }
     static let height: CGFloat = 36
     private let tile: IconTile
     private let title = NSTextField(labelWithString: "")
@@ -557,10 +596,10 @@ final class ActionChip: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
-    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseEntered(with event: NSEvent) { hovered = enabled }
     override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) { onTap?() }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func mouseDown(with event: NSEvent) { if enabled { onTap?() } }
+    override func resetCursorRects() { if enabled { addCursorRect(bounds, cursor: .pointingHand) } }
 }
 
 /// Footer: her little face, "Zera · Online", and the paste / clear buttons.

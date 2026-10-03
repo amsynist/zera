@@ -344,6 +344,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
         if onHer != hovering {
             hovering = onHer
+            buddy.setRadar(active: onHer)
             if onHer, !asleep, !buddyDragActive, zera.mood != .excited, !cardVisible {
                 say(Self.helloLines.randomElement()!, mood: .hello, for: 2.2)
             }

@@ -260,6 +260,7 @@ final class ProcessingBlock: NSView {
     private var stepDots: [NSView] = []
     private var stage: ZeraAssistant.Stage = .reading
     private var progress: Double = 0
+    private let zera = NSImageView()
 
     static let steps = ["Reading file", "Analyzing content", "Generating", "Done"]
     static let height: CGFloat = Space.m + 34 + Space.m + 4 + Space.m + 4 * 22 + Space.s
@@ -280,6 +281,9 @@ final class ProcessingBlock: NSView {
             addSubview(dot); stepDots.append(dot)
             let l = NSTextField(labelWithString: name); l.font = Typo.secondary; addSubview(l); stepLabels.append(l)
         }
+        zera.imageScaling = .scaleProportionallyUpOrDown
+        zera.imageAlignment = .alignBottomRight
+        addSubview(zera)
         setAccessibilityRole(.progressIndicator)
     }
 
@@ -317,6 +321,15 @@ final class ProcessingBlock: NSView {
             dot.layer?.borderColor = (doneStep || active ? p.accent : p.muted).cgColor
         }
         setAccessibilityValue("\(Int(progress * 100)) percent")
+        // She works at her laptop while reading, writes while generating, cheers when done.
+        let pose: String
+        switch stage {
+        case .reading: pose = "card_read_q"
+        case .analyzing: pose = "card_laptop_side"
+        case .generating: pose = "card_writing"
+        case .done: pose = "card_cheer"
+        }
+        zera.image = SpriteLibrary.shared.sprite(pose)?.image ?? SpriteLibrary.shared.sprite("laptop")?.image
         needsLayout = true
     }
 
@@ -330,11 +343,13 @@ final class ProcessingBlock: NSView {
         track.frame = NSRect(x: x, y: ty, width: w, height: 4)
         fill.frame = NSRect(x: x, y: ty, width: max(6, w * CGFloat(progress)), height: 4)
         var y = ty + 4 + Space.m
+        let zw: CGFloat = 84
         for i in 0..<Self.steps.count {
             stepDots[i].frame = NSRect(x: x + 2, y: y + 5, width: 10, height: 10)
-            stepLabels[i].frame = NSRect(x: x + 22, y: y + 1, width: w - 22, height: 16)
+            stepLabels[i].frame = NSRect(x: x + 22, y: y + 1, width: w - 22 - zw, height: 16)
             y += 22
         }
+        zera.frame = NSRect(x: bounds.width - x - zw, y: ty + 4 + Space.s, width: zw, height: y - (ty + 4 + Space.s) - 2)
     }
 }
 

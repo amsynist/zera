@@ -413,6 +413,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     var onAction: ((QuickAction) -> Void)?
     var onOpenURL: ((URL) -> Void)?
 
+    private let zera = ZeraCompanion(pose: "card_greet", size: 76)
     private let search = SearchBox(placeholder: "Search files, notes, or ask Zera…")
     private let attentionHeader = SectionHeader("Needs attention")
     private var attentionRows: [ListRow] = []
@@ -427,6 +428,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     init() {
         super.init(width: 460, title: "")
         let p = Pal
+        titleLabel.isHidden = true   // she greets you herself
+        addSubview(zera)
         search.field.delegate = self
         addSubview(search)
         addSubview(attentionHeader)
@@ -458,8 +461,11 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 
     private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (Metrics.row + Space.xs) - Space.xs }
 
+    /// Zera + her bubble replace the text header.
+    private var greetingBottom: CGFloat { Space.l + zera.preferredHeight + Space.m }
+
     var desiredHeight: CGFloat {
-        var h = headerBottom + Metrics.control + 4 + Space.l
+        var h = greetingBottom + Metrics.control + 4 + Space.l
         h += 18 + Space.s + listHeight(attentionRows.count) + Space.l
         h += 18 + Space.s + listHeight(recentRows.count) + Space.l
         h += 18 + Space.s + CGFloat(tileRows) * (tileHeight + Space.s) - Space.s + Metrics.cardPad
@@ -469,8 +475,9 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     @objc func refresh() {
         let p = Pal
         let hour = Calendar.current.component(.hour, from: Date())
-        titleLabel.stringValue = (hour < 12 ? "Good morning" : (hour < 17 ? "Good afternoon" : "Good evening")) + " 👋"
-        setSubtitle("What shall we do today?")
+        let greeting = hour < 12 ? "Good morning! 👋" : (hour < 17 ? "Good afternoon! 👋" : "Good evening! 🌙")
+        zera.line = "\(greeting)\nWhat shall we do today?"
+        zera.set(pose: hour >= 22 || hour < 6 ? "card_sleepy_sit" : "card_greet")
 
         // Needs attention: Claude approvals, alerts, unseen GitHub, overdue reminders, a meeting soon.
         attentionRows.forEach { $0.removeFromSuperview() }
@@ -565,9 +572,9 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 
     override func layout() {
         super.layout()
-        layoutHeader()
         let x = Metrics.cardPad, w = bounds.width - x * 2
-        var y = headerBottom
+        zera.frame = NSRect(x: x, y: Space.l, width: w, height: zera.preferredHeight)
+        var y = greetingBottom
         search.frame = NSRect(x: x, y: y, width: w, height: Metrics.control + 4)
         y += Metrics.control + 4 + Space.l
 
@@ -617,7 +624,9 @@ final class GitHubCard: CardBase, CardContent {
     private let connect: CardButton
     private var rows: [ListRow] = []
     private var skeletons: [SkeletonRow] = []
+    private let zera = ZeraCompanion(pose: "card_point_sparkle", size: 56)
     private let maxRows = 5
+    private let footerH: CGFloat = 56
 
     init() {
         refreshButton = IconButton(symbol: "arrow.clockwise", label: "Check now", target: nil, action: #selector(GitHubCard.refreshTapped))
@@ -644,6 +653,7 @@ final class GitHubCard: CardBase, CardContent {
         addSubview(empty)
         addSubview(openBrowser)
         addSubview(connect)
+        addSubview(zera)
         NotificationCenter.default.addObserver(self, selector: #selector(reload), name: GitHubService.changed, object: nil)
         reload()
     }
@@ -666,7 +676,7 @@ final class GitHubCard: CardBase, CardContent {
         guard GitHubService.shared.isConnected else { return headerBottom + 20 + Space.m + Metrics.button + Metrics.cardPad }
         let n = max(rows.count, skeletons.count)
         let listH: CGFloat = (errorRow == nil ? 0 : Metrics.row + Space.xs) + (n == 0 ? 36 : CGFloat(min(n, maxRows)) * (Metrics.row + Space.xs) - Space.xs)
-        return listTop + listH + Space.m + Metrics.button + Metrics.cardPad
+        return listTop + listH + Space.m + footerH + Metrics.cardPad
     }
 
     @objc func reload() {
@@ -723,11 +733,24 @@ final class GitHubCard: CardBase, CardContent {
             empty.isHidden = !rows.isEmpty || !skeletons.isEmpty
             empty.stringValue = gh.events.isEmpty ? "No PRs need your attention." : "Nothing in this tab."
             scroll.isHidden = rows.isEmpty && skeletons.isEmpty
+            // Her take on the board, in her own words.
+            let reviews = gh.events.filter { $0.kind == .reviewRequested }.count
+            let failed = gh.events.filter { $0.kind == .ciFailed }.count
+            let approvals = gh.events.filter { $0.kind == .needsApproval }.count
+            let fresh = gh.events.filter { $0.isActivity && gh.unseen.contains($0.id) }.count
+            zera.isHidden = false
+            if gh.isRefreshing && gh.events.isEmpty { zera.set(pose: "card_read_q"); zera.line = "Checking GitHub…" }
+            else if failed > 0 { zera.set(pose: "worried"); zera.line = "\(failed) PR\(failed == 1 ? " has" : "s have") failing checks 😬" }
+            else if reviews > 0 { zera.set(pose: "card_point_sparkle"); zera.line = "\(reviews) PR\(reviews == 1 ? " needs" : "s need") your review! 👀" }
+            else if approvals > 0 { zera.set(pose: "card_bell"); zera.line = "\(approvals) run\(approvals == 1 ? "" : "s") waiting for your approval 🙋" }
+            else if fresh > 0 { zera.set(pose: "card_notify"); zera.line = "News on your PRs — \(fresh) new 💬" }
+            else { zera.set(pose: "card_thumbs_wink"); zera.line = "All quiet — nothing waiting on you ✨" }
         } else {
             setSubtitle(nil)
             tabs.isHidden = true
             scroll.isHidden = true
             openBrowser.isHidden = true
+            zera.isHidden = true
             empty.isHidden = false
             empty.stringValue = "Connect GitHub to watch your PRs, CI and approvals."
             connect.isHidden = false
@@ -770,11 +793,14 @@ final class GitHubCard: CardBase, CardContent {
             tabs.frame = NSRect(x: x, y: headerBottom, width: w, height: Metrics.control + 2)
             var y = listTop
             if let er = errorRow { er.frame = NSRect(x: x, y: y, width: w, height: Metrics.row); y += Metrics.row + Space.xs }
-            let bottom = bounds.height - Metrics.cardPad - Metrics.button
+            let bottom = bounds.height - Metrics.cardPad - footerH
             let box = NSRect(x: x, y: y, width: w, height: max(0, bottom - Space.m - y))
             scroll.frame = box
             empty.frame = NSRect(x: x, y: y + 8, width: w, height: 20)
-            openBrowser.frame = NSRect(x: x, y: bottom, width: w, height: Metrics.button)
+            // Footer: Zera + her line on the left, Open in Browser on the right.
+            let bw = openBrowser.fittedWidth
+            openBrowser.frame = NSRect(x: bounds.width - x - bw, y: bottom + (footerH - Metrics.button) / 2, width: bw, height: Metrics.button)
+            zera.frame = NSRect(x: x, y: bottom, width: w - bw - Space.m, height: footerH)
             var ry: CGFloat = 0
             for r in rows { r.frame = NSRect(x: 0, y: ry, width: box.width, height: Metrics.row); ry += Metrics.row + Space.xs }
             for sk in skeletons { sk.frame = NSRect(x: 0, y: ry, width: box.width, height: Metrics.row); ry += Metrics.row + Space.xs }
@@ -835,6 +861,7 @@ final class SettingsCard: CardBase, CardContent {
 
     private var navRows: [NavRow] = []
     private let paneTitle = NSTextField(labelWithString: "")
+    private let closeButton: IconButton
     private let backButton: CardButton
     private let pane = FlippedView()
     private(set) var current: Pane = .general
@@ -847,8 +874,11 @@ final class SettingsCard: CardBase, CardContent {
         self.defaultKind = defaultKind
         self.showingZera = showingZera
         backButton = CardButton("Integrations", style: .tertiary, symbol: "chevron.left", target: nil, action: #selector(SettingsCard.backTapped))
+        closeButton = IconButton(symbol: "xmark", label: "Close", target: nil, action: #selector(SettingsCard.closeTapped))
         super.init(width: 560, title: "Settings")
         backButton.target = self
+        closeButton.target = self
+        addSubview(closeButton)
         backButton.isHidden = true
         addSubview(backButton)
         for pn in Pane.nav {
@@ -883,6 +913,7 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     @objc private func backTapped() { select(current.parent) }
+    @objc private func closeTapped() { onEscape?() }
 
     // MARK: Pane builders
 
@@ -1034,19 +1065,35 @@ final class SettingsCard: CardBase, CardContent {
     private func integrationRow(symbol: String, color: NSColor, title: String, state: ConnectionState, detail: String,
                                 on: Bool, enabled: Bool, toggle: Bool = true, _ s: inout Stack, pane target: Pane?, onChange: @escaping (Bool) -> Void) {
         let row = ListRow(symbol: symbol, color: color, title: title, subtitle: detail.isEmpty ? state.label : "\(state.label) · \(detail)")
+        // Right side: the switch, then a gear that opens the detail pane (mock #3).
+        let box = FlippedView()
+        var bx: CGFloat = 0
         if toggle {
             let t = Toggle()
             t.isOn = on
             t.isEnabled = enabled
             t.onChange = onChange
-            row.accessory = t
+            t.frame = NSRect(x: 0, y: 3, width: 40, height: 22)
+            box.addSubview(t)
+            bx = 40 + Space.s
         }
         if let target = target {
-            row.showsChevron = true
+            let gear = IconButton(symbol: "gearshape.fill", label: "\(title) settings", target: nil, action: #selector(integrationGearTapped(_:)))
+            gear.target = self
+            gear.tag = target.rawValue
+            gear.frame = NSRect(x: bx, y: 0, width: Metrics.control, height: Metrics.control)
+            box.addSubview(gear)
+            bx += Metrics.control
             row.onTap = { [weak self] in self?.select(target) }
         }
+        box.frame = NSRect(x: 0, y: 0, width: bx, height: Metrics.control)
+        row.accessory = box
         pane.addSubview(row)
         s.place(row, height: 52, gap: Space.xs + 2)
+    }
+
+    @objc private func integrationGearTapped(_ sender: NSButton) {
+        if let p = Pane(rawValue: sender.tag) { select(p) }
     }
 
     private func buildIntegrations(_ s: inout Stack) {
@@ -1070,7 +1117,14 @@ final class SettingsCard: CardBase, CardContent {
         }
         integrationRow(symbol: "tray.full.fill", color: p.accent, title: "Shelf", state: .connected, detail: "drag files from anywhere",
                        on: true, enabled: false, &s, pane: .shelf) { _ in }
-        hint("Notion and Slack are coming later.", &s)
+        integrationRow(symbol: "n.square.fill", color: p.muted, title: "Notion", state: .disconnected, detail: "notes and pages · coming soon",
+                       on: false, enabled: false, &s, pane: nil) { _ in }
+        integrationRow(symbol: "number.square.fill", color: p.muted, title: "Slack", state: .disconnected, detail: "messages and mentions · coming soon",
+                       on: false, enabled: false, &s, pane: nil) { _ in }
+        let add = CardButton("Add Integration", style: .tertiary, symbol: "plus", target: nil, action: #selector(closeTapped))
+        add.isEnabled = false
+        pane.addSubview(add)
+        s.place(add, height: Metrics.button, gap: Space.m)
     }
 
     // MARK: Claude pane
@@ -1491,8 +1545,9 @@ final class SettingsCard: CardBase, CardContent {
 
     override func layout() {
         super.layout()
-        layoutHeader()
+        layoutHeader(trailingWidth: 40)
         let x = Metrics.cardPad
+        closeButton.frame = NSRect(x: bounds.width - x - Metrics.control, y: Space.l - 3, width: Metrics.control, height: Metrics.control)
         var y = headerBottom
         for row in navRows {
             row.frame = NSRect(x: x, y: y, width: sidebarW, height: Metrics.control)
@@ -1670,6 +1725,7 @@ final class ToastCard: CardBase, CardContent {
     private let when = NSTextField(labelWithString: "")
     private let primary: CardButton
     private let later: CardButton
+    private let zera = ZeraCompanion(pose: "card_notify", size: 60)
     private var url: URL?
 
     init() {
@@ -1680,29 +1736,34 @@ final class ToastCard: CardBase, CardContent {
         primary.target = self; later.target = self
         addSubview(tile)
         when.font = Typo.caption; when.textColor = Pal.textTertiary; when.alignment = .right; addSubview(when)
+        addSubview(zera)
         addSubview(primary); addSubview(later)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    var desiredHeight: CGFloat { Space.l + 40 + Space.m + Metrics.button + Metrics.cardPad }
+    var desiredHeight: CGFloat { Space.l + 40 + Space.m + zera.preferredHeight + Space.m + Metrics.button + Metrics.cardPad }
 
     func show(event e: GHEvent) {
         tile.removeFromSuperview()
         tile = IconTile(symbol: e.symbol, color: e.tint, size: 36, pointSize: 16)
         addSubview(tile)
-        let heading: String, button: String
+        let heading: String, button: String, pose: String, line: String
         switch e.kind {
-        case .prOpened: heading = "New PR opened"; button = "Review Now"
-        case .reviewRequested: heading = "Review requested"; button = "Review Now"
-        case .ciFailed: heading = "CI failed"; button = "See why"
-        case .ciPassed: heading = "CI passed"; button = "Open PR"
-        case .ciRunning: heading = "Checks running"; button = "Open PR"
-        case .needsApproval: heading = "Run waiting for approval"; button = "Open run"
-        case .prApproved: heading = "Your PR was approved"; button = "Open PR"
-        case .prChangesRequested: heading = "Changes requested"; button = "See review"
-        case .prCommented: heading = "New comment on your PR"; button = "Reply"
+        case .prOpened:
+            heading = e.mine ? "Your PR is up" : "New PR opened"; button = e.mine ? "Open PR" : "Review Now"
+            pose = e.mine ? "card_cheer" : "card_notify"; line = e.mine ? "Nice one! It's live 🚀" : "New PR! Want me to take a look? 👀"
+        case .reviewRequested: heading = "Review requested"; button = "Review Now"; pose = "card_point_sparkle"; line = "They'd like your eyes on this one 📝"
+        case .ciFailed: heading = "CI failed"; button = "See why"; pose = "worried"; line = "Something broke in the checks 😬"
+        case .ciPassed: heading = "CI passed"; button = "Open PR"; pose = "card_thumbs_wink"; line = "All green! ✅"
+        case .ciRunning: heading = "Checks running"; button = "Open PR"; pose = "card_laptop_side"; line = "Checks are running… ⏳"
+        case .needsApproval: heading = "Run waiting for approval"; button = "Open run"; pose = "card_bell"; line = "A workflow needs your OK 🙋"
+        case .prApproved: heading = "Your PR was approved"; button = "Open PR"; pose = "card_cheer"; line = "Approved! Ship it? 🎉"
+        case .prChangesRequested: heading = "Changes requested"; button = "See review"; pose = "card_read_q"; line = "A few changes asked for 📝"
+        case .prCommented: heading = "New comment on your PR"; button = "Reply"; pose = "card_notify"; line = "Someone left you a comment 💬"
         }
+        zera.set(pose: pose)
+        zera.line = line
         titleLabel.stringValue = heading
         setSubtitle("\(e.subtitle) · \(e.title)")
         when.stringValue = relativeTime(e.date)
@@ -1721,7 +1782,9 @@ final class ToastCard: CardBase, CardContent {
         when.frame = NSRect(x: bounds.width - x - 70, y: Space.l + 2, width: 70, height: 14)
         titleLabel.frame = NSRect(x: x + 46, y: Space.l - 1, width: w - 46 - 76, height: 20)
         subtitleLabel.frame = NSRect(x: x + 46, y: Space.l + 20, width: w - 46, height: 16)
-        let y = Space.l + 40 + Space.m
+        var y = Space.l + 40 + Space.m
+        zera.frame = NSRect(x: x, y: y, width: w, height: zera.preferredHeight)
+        y += zera.preferredHeight + Space.m
         let lw = later.fittedWidth, pw = primary.fittedWidth
         later.frame = NSRect(x: bounds.width - x - lw, y: y, width: lw, height: Metrics.button)
         primary.frame = NSRect(x: bounds.width - x - lw - Space.s - pw, y: y, width: pw, height: Metrics.button)

@@ -169,6 +169,8 @@ final class RemindersCard: CardBase, CardContent {
     private let list = FlippedView()
     private let empty = NSTextField(labelWithString: "")
     private var rows: [ReminderRow] = []
+    private let zera = ZeraCompanion(pose: "card_bell", size: 52)
+    private let zeraH: CGFloat = 52
 
     private let maxRows = 6
     private let composerFullHeight: CGFloat = Space.m + Metrics.control + Space.s + Metrics.control + Space.m
@@ -241,6 +243,7 @@ final class RemindersCard: CardBase, CardContent {
 
         empty.font = Typo.body; empty.textColor = p.textSecondary; empty.alignment = .center
         addSubview(empty)
+        addSubview(zera)
 
         modeChanged()
         NotificationCenter.default.addObserver(self, selector: #selector(reload), name: ReminderService.changed, object: nil)
@@ -339,7 +342,25 @@ final class RemindersCard: CardBase, CardContent {
     var desiredHeight: CGFloat {
         let n = rows.count
         let listH: CGFloat = n == 0 ? 36 : CGFloat(min(n, maxRows)) * (Metrics.row + Space.xs) - Space.xs
-        return listTop + listH + Metrics.cardPad
+        return listTop + listH + Space.m + zeraH + Metrics.cardPad
+    }
+
+    /// Her one-liner under the list: the next meeting or reminder, or a quiet day.
+    private func updateZera() {
+        let svc = ReminderService.shared, now = Date()
+        if let a = svc.pendingAlerts.first {
+            zera.set(pose: a.kind == .breakTime ? "cozy" : "card_bell"); zera.line = a.headline; return
+        }
+        if let e = svc.calendarItems.filter({ $0.start > now }).min(by: { $0.start < $1.start }), e.start.timeIntervalSince(now) < 12 * 3600 {
+            let mins = Int(e.start.timeIntervalSince(now) / 60)
+            zera.set(pose: mins <= 15 ? "card_bell" : "card_point_sparkle")
+            zera.line = mins <= 60 ? "\(e.title) in \(max(1, mins)) min ⏰" : "Next up: \(e.title) at \(ReminderService.timeFormatter.string(from: e.start)) 📅"
+            return
+        }
+        if let r = svc.todaysReminders.filter({ !$0.isDoneToday && !$0.isInterval && $0.fireTime(on: now) > now }).min(by: { $0.fireTime(on: now) < $1.fireTime(on: now) }) {
+            zera.set(pose: "card_point_sparkle"); zera.line = "Next: \(r.title) at \(r.timeString) 🔔"; return
+        }
+        zera.set(pose: svc.calendarAuthorized ? "card_thumbs_wink" : "card_read_q"); zera.line = svc.calendarAuthorized ? "Nothing else today — enjoy it ☕" : "Connect Calendar and I'll warn you before meetings 📅"
     }
 
     @objc func reload() {
@@ -360,6 +381,7 @@ final class RemindersCard: CardBase, CardContent {
         if rep > 0 { bits.append("\(rep) repeating") }
         if svc.calendarAuthorized, let t = svc.lastCalendarSync { bits.append("calendar synced \(relativeTime(t))") }
         setSubtitle(bits.isEmpty ? nil : bits.joined(separator: " · "))
+        updateZera()
         scroll.isHidden = rows.isEmpty
         needsLayout = true
         layoutSubtreeIfNeeded()
@@ -386,7 +408,8 @@ final class RemindersCard: CardBase, CardContent {
 
         tabs.frame = NSRect(x: x, y: headerBottom + composerHeight, width: w, height: Metrics.control + 2)
         let y = listTop
-        let box = NSRect(x: x, y: y, width: w, height: max(0, bounds.height - y - Metrics.cardPad))
+        zera.frame = NSRect(x: x, y: bounds.height - Metrics.cardPad - zeraH, width: w, height: zeraH)
+        let box = NSRect(x: x, y: y, width: w, height: max(0, zera.frame.minY - Space.m - y))
         scroll.frame = box
         empty.frame = NSRect(x: x, y: y + 8, width: w, height: 20)
         var ry: CGFloat = 0

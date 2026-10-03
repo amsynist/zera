@@ -23,8 +23,16 @@ final class BuddyView: NSView {
         didSet { zera.hangInset = hangInset }
     }
 
+    /// Soft rings that grow out from her like a radar ping — one per tap, repeating on hover.
+    private let radar = CALayer()
+    private var radarTimer: Timer?
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        radar.frame = bounds
+        layer?.addSublayer(radar)
         zera.style = .hanging
         zera.pose = .peek
         zera.framesPerSecond = 30
@@ -34,12 +42,52 @@ final class BuddyView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    deinit { radarTimer?.invalidate() }
+
+    /// One ring: starts just around her body, grows to ~2.6× and fades out.
+    func ping(strong: Bool = false) {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        let f = figureBounds
+        let center = CGPoint(x: f.midX, y: f.minY + f.height * 0.5)
+        let r0: CGFloat = 26
+        let ring = CAShapeLayer()
+        ring.path = CGPath(ellipseIn: CGRect(x: -r0, y: -r0, width: r0 * 2, height: r0 * 2), transform: nil)
+        ring.position = center
+        ring.fillColor = NSColor.clear.cgColor
+        ring.strokeColor = Theme.purple.cgColor
+        ring.lineWidth = strong ? 2.5 : 1.5
+        ring.opacity = 0
+        radar.addSublayer(ring)
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = 0.55; scale.toValue = strong ? 3.0 : 2.4
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [0.0, strong ? 0.9 : 0.6, 0.0]; fade.keyTimes = [0, 0.15, 1]
+        let group = CAAnimationGroup()
+        group.animations = [scale, fade]
+        group.duration = strong ? 0.9 : 1.3
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        group.isRemovedOnCompletion = true
+        ring.add(group, forKey: "ping")
+        DispatchQueue.main.asyncAfter(deadline: .now() + group.duration) { ring.removeFromSuperlayer() }
+    }
+
+    /// Hovering: a gentle repeating ping while the pointer stays on her.
+    func setRadar(active: Bool) {
+        radarTimer?.invalidate(); radarTimer = nil
+        guard active else { return }
+        ping()
+        radarTimer = Timer.scheduledTimer(withTimeInterval: 1.4, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.ping() }
+        }
+    }
+
     override var isFlipped: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func layout() {
         super.layout()
         zera.frame = bounds
+        radar.frame = bounds
     }
 
     /// Her body, in view coordinates: the strip below the notch, as wide as she is.
@@ -75,6 +123,7 @@ final class BuddyView: NSView {
             dragging = false
             onDragEnded?()
         } else {
+            ping(strong: true)
             onActivate?()
         }
     }
