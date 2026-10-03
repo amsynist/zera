@@ -29,9 +29,7 @@ your GitHub PRs, lets you approve Claude Code commands from the desktop, and kee
 reminders. **No API key and no account needed:** Claude runs through your existing Claude Code login,
 and GitHub uses a token you paste once.
 
-<p align="center">
-  <img src="docs/screen-overview.png" alt="Zera at the notch with Home, GitHub PRs, Drop Files, Claude session, approval and reminders screens" width="100%">
-</p>
+
 
 ## Download
 
