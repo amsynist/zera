@@ -102,25 +102,23 @@ final class FilePayloadAndMarkdownTests: XCTestCase {
         XCTAssertTrue(t.contains("launch is on Friday"))
     }
 
+    /// A one-page PDF whose text layer is exactly `text`, drawn with Core Text — the same way
+    /// real apps write PDFs, so PDFKit extracts it on every macOS version (a hand-written PDF
+    /// with a bare Type1 font has no ToUnicode map, and newer PDFKit returns no text for it).
     static func tinyPDF(text: String) -> Data {
-        let content = "BT /F1 12 Tf 40 740 Td (\(text)) Tj ET"
-        var objs: [String] = []
-        objs.append("<< /Type /Catalog /Pages 2 0 R >>")
-        objs.append("<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
-        objs.append("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>")
-        objs.append("<< /Length \(content.utf8.count) >>stream\n\(content)\nendstream")
-        objs.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-        var out = "%PDF-1.4\n"
-        var offsets: [Int] = []
-        for (i, o) in objs.enumerated() {
-            offsets.append(out.utf8.count)
-            out += "\(i + 1) 0 obj\n\(o)\nendobj\n"
-        }
-        let xref = out.utf8.count
-        out += "xref\n0 \(objs.count + 1)\n0000000000 65535 f \n"
-        for off in offsets { out += String(format: "%010d 00000 n \n", off) }
-        out += "trailer\n<< /Size \(objs.count + 1) /Root 1 0 R >>\nstartxref\n\(xref)\n%%EOF\n"
-        return Data(out.utf8)
+        let data = NSMutableData()
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        guard let consumer = CGDataConsumer(data: data as CFMutableData),
+              let ctx = CGContext(consumer: consumer, mediaBox: &box, nil) else { return Data() }
+        ctx.beginPDFPage(nil)
+        let attributed = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12)])
+        let setter = CTFramesetterCreateWithAttributedString(attributed)
+        let path = CGPath(rect: box.insetBy(dx: 40, dy: 40), transform: nil)
+        let frame = CTFramesetterCreateFrame(setter, CFRange(location: 0, length: 0), path, nil)
+        CTFrameDraw(frame, ctx)
+        ctx.endPDFPage()
+        ctx.closePDF()
+        return data as Data
     }
 
     // MARK: Markdown
