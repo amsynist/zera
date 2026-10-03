@@ -51,8 +51,8 @@ final class ClaudeCodeOutputParserTests: XCTestCase {
         events += p.feed(line(#"{"type":"system","subtype":"init","session_id":"s1"}"#))
         events += p.feed(line(#"{"type":"assistant","message":{"content":[{"type":"text","text":"Let me read it."},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/Users/me/Docs/spec.pdf"}}]},"parent_tool_use_id":null,"session_id":"s1"}"#))
         events += p.feed(line(#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"PDF file read"}]},"session_id":"s1"}"#))
-        events += p.feed(line(#"{"type":"assistant","message":{"content":[{"type":"text","text":"## Summary\nIt is a spec."}]},"parent_tool_use_id":null,"session_id":"s1"}"#))
-        events += p.feed(line(#"{"type":"result","subtype":"success","is_error":false,"result":"## Summary\nIt is a spec.","session_id":"s1","num_turns":2}"#))
+        events += p.feed(line(###"{"type":"assistant","message":{"content":[{"type":"text","text":"## Summary\nIt is a spec."}]},"parent_tool_use_id":null,"session_id":"s1"}"###))
+        events += p.feed(line(###"{"type":"result","subtype":"success","is_error":false,"result":"## Summary\nIt is a spec.","session_id":"s1","num_turns":2}"###))
 
         XCTAssertTrue(events.contains(.assistantMessage(text: "Let me read it.", usedTools: true)))
         XCTAssertTrue(events.contains(.toolUse(name: "Read", target: "spec.pdf")))
