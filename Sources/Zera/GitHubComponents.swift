@@ -410,6 +410,7 @@ final class PRActionButton: NSButton {
             glyph = NSImage(systemSymbolName: s, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
         }
         setAccessibilityLabel(title)
+        updateGlow()
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -430,7 +431,7 @@ final class PRActionButton: NSButton {
         layer?.shadowColor = Pal.accent.cgColor
         layer?.shadowOffset = .zero
         layer?.shadowRadius = 10
-        layer?.shadowOpacity = (emphasized || hovered) && isEnabled ? 0.45 : 0
+        layer?.shadowOpacity = !isEnabled ? 0 : ((emphasized || hovered) ? 0.6 : 0.28)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -443,8 +444,14 @@ final class PRActionButton: NSButton {
         case .primary:
             let a = pressed ? p.accentPressed : (hovered || emphasized ? p.accentHover : p.accent)
             let b = pressed ? p.accentDeep.blended(withFraction: 0.2, of: .black) ?? p.accentDeep : p.accentDeep
-            NSGradient(starting: a, ending: b)?.draw(in: path, angle: -90)
-            NSColor.white.withAlphaComponent(0.18).setStroke(); path.lineWidth = 1; path.stroke()
+            NSGradient(starting: a, ending: b)?.draw(in: path, angle: 0)
+            // A faint highlight along the top edge, like the mock's glossy buttons.
+            NSGraphicsContext.saveGraphicsState()
+            path.addClip()
+            NSGradient(colors: [NSColor.white.withAlphaComponent(0.16), NSColor.white.withAlphaComponent(0)])?
+                .draw(in: NSRect(x: 0, y: isFlipped ? 0 : bounds.height / 2, width: bounds.width, height: bounds.height / 2), angle: isFlipped ? 90 : -90)
+            NSGraphicsContext.restoreGraphicsState()
+            NSColor.white.withAlphaComponent(0.22).setStroke(); path.lineWidth = 1; path.stroke()
             text = p.onAccent
         case .secondary:
             (pressed ? p.surfacePressed : (hovered ? p.surfaceHover : p.surfaceRow)).setFill(); path.fill()
@@ -624,7 +631,7 @@ final class GitHubSegmentedControl: NSView {
                 NSGraphicsContext.saveGraphicsState()
                 let glow = NSShadow(); glow.shadowColor = p.accent.withAlphaComponent(0.45); glow.shadowBlurRadius = 10; glow.shadowOffset = .zero
                 glow.set()
-                NSGradient(starting: p.accent, ending: p.accentDeep)?.draw(in: path, angle: -90)
+                NSGradient(starting: p.accent, ending: p.accentDeep)?.draw(in: path, angle: 0)
                 NSGraphicsContext.restoreGraphicsState()
                 NSColor.white.withAlphaComponent(0.22).setStroke(); path.lineWidth = 1; path.stroke()
             } else if hoverIndex == i {
@@ -771,7 +778,7 @@ final class GHSplitButton: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.m + 1, yRadius: Radius.m + 1)
-        NSGradient(starting: p.accent, ending: p.accentDeep)?.draw(in: path, angle: -90)
+        NSGradient(starting: p.accent, ending: p.accentDeep)?.draw(in: path, angle: 0)
         let split = bounds.width - chevronW
         if let h = pressedPart ?? hoverPart {
             NSGraphicsContext.saveGraphicsState()

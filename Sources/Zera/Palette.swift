@@ -60,50 +60,51 @@ enum Appearance: Int, CaseIterable {
 struct Palette {
     let isDark: Bool
 
-    // Card chrome
-    var cardTop: NSColor { isDark ? rgb(0.145, 0.145, 0.255, 0.90) : rgb(0.955, 0.950, 0.990, 0.97) }
-    var cardBottom: NSColor { isDark ? rgb(0.105, 0.105, 0.200, 0.94) : rgb(0.925, 0.915, 0.980, 0.98) }
-    var border: NSColor { isDark ? rgb(1, 1, 1, 0.12) : rgb(0.30, 0.25, 0.55, 0.12) }
+    // Card chrome — deep navy glass in dark mode, soft lavender in light.
+    var cardTop: NSColor { isDark ? rgb(0.100, 0.098, 0.215, 0.94) : rgb(0.955, 0.950, 0.995, 0.97) }
+    var cardBottom: NSColor { isDark ? rgb(0.062, 0.060, 0.150, 0.96) : rgb(0.925, 0.915, 0.985, 0.98) }
+    /// Hairline edges carry a hint of violet so they read as glass, not grey.
+    var border: NSColor { isDark ? rgb(0.70, 0.66, 1.0, 0.16) : rgb(0.36, 0.26, 0.70, 0.14) }
     var blurMaterial: NSVisualEffectView.Material { isDark ? .hudWindow : .popover }
     var nsAppearance: NSAppearance? { NSAppearance(named: isDark ? .darkAqua : .aqua) }
 
-    // Text
-    var text: NSColor { isDark ? rgb(0.965, 0.955, 1.0) : rgb(0.16, 0.15, 0.30) }
+    // Text — white, then muted lavender-grey for metadata.
+    var text: NSColor { isDark ? rgb(0.975, 0.965, 1.0) : rgb(0.14, 0.12, 0.30) }
     func text(_ alpha: CGFloat) -> NSColor { text.withAlphaComponent(alpha) }
-    var textSecondary: NSColor { text(0.62) }
-    var textTertiary: NSColor { text(0.42) }
+    var textSecondary: NSColor { isDark ? rgb(0.73, 0.71, 0.89) : text(0.64) }
+    var textTertiary: NSColor { isDark ? rgb(0.54, 0.52, 0.71) : text(0.44) }
 
-    // Surfaces
-    var surface: NSColor { isDark ? rgb(0.19, 0.19, 0.32) : rgb(1, 1, 1, 0.80) }
-    var surfaceHover: NSColor { isDark ? rgb(0.23, 0.23, 0.37) : rgb(0.93, 0.92, 0.99) }
-    var surfaceStrong: NSColor { isDark ? rgb(0.25, 0.25, 0.40) : rgb(0.89, 0.88, 0.97) }
-    var surfacePressed: NSColor { isDark ? rgb(0.16, 0.16, 0.28) : rgb(0.86, 0.85, 0.95) }
-    var field: NSColor { isDark ? rgb(0.13, 0.13, 0.24) : rgb(1, 1, 1) }
-    var fieldBorder: NSColor { isDark ? rgb(1, 1, 1, 0.10) : rgb(0.30, 0.25, 0.55, 0.12) }
-    var divider: NSColor { isDark ? rgb(1, 1, 1, 0.08) : rgb(0.30, 0.25, 0.55, 0.10) }
-    var codeBox: NSColor { isDark ? rgb(0.08, 0.08, 0.16) : rgb(0.16, 0.15, 0.30) }
+    // Surfaces — indigo steps above the navy card.
+    var surface: NSColor { isDark ? rgb(0.150, 0.145, 0.300) : rgb(1, 1, 1, 0.82) }
+    var surfaceHover: NSColor { isDark ? rgb(0.190, 0.180, 0.365) : rgb(0.93, 0.91, 1.0) }
+    var surfaceStrong: NSColor { isDark ? rgb(0.215, 0.200, 0.405) : rgb(0.88, 0.86, 0.98) }
+    var surfacePressed: NSColor { isDark ? rgb(0.120, 0.115, 0.250) : rgb(0.85, 0.83, 0.96) }
+    var field: NSColor { isDark ? rgb(0.090, 0.088, 0.200) : rgb(1, 1, 1) }
+    var fieldBorder: NSColor { isDark ? rgb(0.70, 0.66, 1.0, 0.14) : rgb(0.36, 0.26, 0.70, 0.14) }
+    var divider: NSColor { isDark ? rgb(0.70, 0.66, 1.0, 0.10) : rgb(0.36, 0.26, 0.70, 0.10) }
+    var codeBox: NSColor { isDark ? rgb(0.050, 0.048, 0.120) : rgb(0.16, 0.14, 0.32) }
     var codeText: NSColor { rgb(0.85, 0.95, 0.85) }
 
-    // Accent (Zera violet) and the states
-    var accent: NSColor { isDark ? rgb(0.561, 0.482, 1.0) : rgb(0.49, 0.42, 0.96) }
-    var accentHover: NSColor { isDark ? rgb(0.62, 0.55, 1.0) : rgb(0.55, 0.48, 0.98) }
-    var accentPressed: NSColor { isDark ? rgb(0.48, 0.41, 0.90) : rgb(0.42, 0.36, 0.88) }
-    var accentSoft: NSColor { isDark ? rgb(0.36, 0.32, 0.62) : rgb(0.86, 0.84, 1.0) }
-    /// Deeper end of the violet gradient on primary buttons and the selected segment.
-    var accentDeep: NSColor { isDark ? rgb(0.43, 0.33, 0.96) : rgb(0.40, 0.31, 0.90) }
-    /// Low-opacity violet edge for selected / highlighted surfaces.
-    var accentBorder: NSColor { accent.withAlphaComponent(isDark ? 0.45 : 0.40) }
-    /// List rows sitting on the card: a touch darker than `surface`, so the card reads as depth.
-    var surfaceRow: NSColor { isDark ? rgb(0.15, 0.15, 0.27, 0.92) : rgb(1, 1, 1, 0.72) }
-    /// Raised panels (insight card, speech bubble): slightly brighter indigo.
-    var surfaceElevated: NSColor { isDark ? rgb(0.20, 0.19, 0.35) : rgb(1, 1, 1, 0.95) }
+    // Accent — bright electric violet flowing into purple (primary buttons, selected tab).
+    var accent: NSColor { isDark ? rgb(0.486, 0.361, 1.0) : rgb(0.447, 0.310, 0.980) }      // #7C5CFF
+    var accentHover: NSColor { isDark ? rgb(0.565, 0.447, 1.0) : rgb(0.520, 0.390, 1.0) }
+    var accentPressed: NSColor { isDark ? rgb(0.400, 0.280, 0.920) : rgb(0.380, 0.250, 0.880) }
+    var accentSoft: NSColor { isDark ? rgb(0.300, 0.235, 0.620) : rgb(0.88, 0.84, 1.0) }
+    /// The purple end of the violet gradient (#9B5BFF), drawn left → right from `accent`.
+    var accentDeep: NSColor { isDark ? rgb(0.608, 0.357, 1.0) : rgb(0.560, 0.300, 0.960) }
+    /// Violet edge for selected / highlighted surfaces.
+    var accentBorder: NSColor { accent.withAlphaComponent(isDark ? 0.55 : 0.45) }
+    /// List rows on the card: one indigo step up from the navy.
+    var surfaceRow: NSColor { isDark ? rgb(0.115, 0.112, 0.250, 0.95) : rgb(1, 1, 1, 0.74) }
+    /// Raised panels (insight card, speech bubble).
+    var surfaceElevated: NSColor { isDark ? rgb(0.160, 0.140, 0.330) : rgb(1, 1, 1, 0.96) }
     var onAccent: NSColor { .white }
-    var success: NSColor { rgb(0.30, 0.78, 0.50) }
-    var warning: NSColor { rgb(1.00, 0.72, 0.30) }
-    var danger: NSColor { rgb(1.00, 0.42, 0.46) }
-    var dangerPressed: NSColor { rgb(0.88, 0.34, 0.38) }
-    var info: NSColor { rgb(0.35, 0.70, 1.00) }
-    var muted: NSColor { isDark ? rgb(0.45, 0.45, 0.58) : rgb(0.60, 0.58, 0.72) }
+    var success: NSColor { rgb(0.25, 0.84, 0.52) }
+    var warning: NSColor { rgb(1.00, 0.74, 0.26) }
+    var danger: NSColor { rgb(1.00, 0.36, 0.42) }
+    var dangerPressed: NSColor { rgb(0.88, 0.30, 0.36) }
+    var info: NSColor { rgb(0.36, 0.68, 1.00) }
+    var muted: NSColor { isDark ? rgb(0.46, 0.45, 0.62) : rgb(0.60, 0.58, 0.74) }
 
     // Fixed identity colours for icon tiles (same in both modes so they stay recognisable)
     var tileGitHub: NSColor { rgb(0.20, 0.20, 0.27) }
