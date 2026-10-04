@@ -78,10 +78,14 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12"
 
       - name: Build Zera.app
-        run: ./build.sh
+        run: |
+          chmod +x build.sh
+          ./build.sh
 
       - name: Package (notarize when configured)
-        run: ./scripts/package.sh
+        run: |
+          chmod +x scripts/package.sh
+          ./scripts/package.sh
 
       - name: Publish release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
