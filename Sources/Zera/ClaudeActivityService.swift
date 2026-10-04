@@ -181,7 +181,6 @@ final class ClaudeActivityService {
     var current: ClaudeSession? { active.first ?? ordered.first }
 
     private var timer: Timer?
-    private var offset: UInt64 = 0
     private var carry = Data()
     private let fm = FileManager.default
 
@@ -190,11 +189,13 @@ final class ClaudeActivityService {
     }
     private var activityDir: URL { base.appendingPathComponent("hooks/activity", isDirectory: true) }
     private var logURL: URL { activityDir.appendingPathComponent("events.jsonl") }
+    /// The batch Zera is reading right now (renamed from `events.jsonl`, deleted once read).
+    private var claimedURL: URL { activityDir.appendingPathComponent("events.reading.jsonl") }
     var scriptURL: URL { base.appendingPathComponent("zera-activity.sh") }
     private var settingsURL: URL { URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/settings.json") }
 
     private init() {
-        try? fm.createDirectory(at: activityDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: activityDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     }
 
     // MARK: Tailing
@@ -203,8 +204,12 @@ final class ClaudeActivityService {
         refreshScriptIfNeeded()
         // Stop requests never outlive a launch.
         try? fm.removeItem(at: stopDir)
-        // Start at the end: history before launch is not "current" activity.
-        offset = (try? fm.attributesOfItem(atPath: logURL.path)[.size] as? UInt64) ?? 0
+        // History before launch is not "current" activity — and hook payloads can contain prompts,
+        // code and command output, so nothing is kept: drop whatever is left from earlier runs.
+        try? fm.removeItem(at: logURL)
+        try? fm.removeItem(at: claimedURL)
+        carry.removeAll()
+        pruneSessionBriefs(olderThan: 0)
         timer?.invalidate()
         let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.poll() }
@@ -213,14 +218,14 @@ final class ClaudeActivityService {
         timer = t
     }
 
+    /// Claims what the hook wrote (rename → read → delete), so events live on disk for at most
+    /// half a second while Zera is running. The hook starts a fresh file on its next event.
     private func poll() {
-        guard let attrs = try? fm.attributesOfItem(atPath: logURL.path), let size = attrs[.size] as? UInt64 else { return }
-        if size < offset { offset = 0; carry.removeAll() }       // log was trimmed
-        guard size > offset, let fh = try? FileHandle(forReadingFrom: logURL) else { return }
-        defer { try? fh.close() }
-        try? fh.seek(toOffset: offset)
-        let data = (try? fh.readToEnd()) ?? Data()
-        offset = size
+        guard fm.fileExists(atPath: logURL.path) else { return }
+        try? fm.removeItem(at: claimedURL)
+        guard (try? fm.moveItem(at: logURL, to: claimedURL)) != nil else { return }
+        let data = (try? Data(contentsOf: claimedURL)) ?? Data()
+        try? fm.removeItem(at: claimedURL)
         var buf = carry + data
         var changed = false
         while let nl = buf.firstIndex(of: UInt8(ascii: "\n")) {
@@ -231,7 +236,6 @@ final class ClaudeActivityService {
         carry = buf
         prune()
         if changed { NotificationCenter.default.post(name: Self.changed, object: nil) }
-        trimLogIfHuge(size)
     }
 
     private func prune() {
@@ -241,13 +245,10 @@ final class ClaudeActivityService {
         }
     }
 
-    private func trimLogIfHuge(_ size: UInt64) {
-        guard size > 8 * 1024 * 1024, let data = try? Data(contentsOf: logURL) else { return }
-        let tail = data.suffix(1024 * 1024)
-        if let nl = tail.firstIndex(of: UInt8(ascii: "\n")) {
-            try? tail[tail.index(after: nl)...].write(to: logURL, options: .atomic)
-            offset = 0; carry.removeAll()
-        }
+    /// Session briefs (task, timeline, git diff) are deleted after an hour and on every launch.
+    func pruneSessionBriefs(olderThan age: TimeInterval = 3600) {
+        BriefCleaner.prune(fm.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Zera/Sessions", isDirectory: true),
+                           olderThan: age)
     }
 
     // MARK: Events → steps
@@ -445,6 +446,7 @@ final class ClaudeActivityService {
         if !s.filesChanged.isEmpty { md += "\n## Files changed\n\n" + s.filesChanged.map { "- \($0)" }.joined(separator: "\n") + "\n" }
         if !s.filesTouched.isEmpty { md += "\n## Files read\n\n" + s.filesTouched.filter { !s.filesChanged.contains($0) }.prefix(40).map { "- \($0)" }.joined(separator: "\n") + "\n" }
         let cwd = s.cwd, name = s.folderName
+        pruneSessionBriefs()
         let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Zera/Sessions", isDirectory: true)
         DispatchQueue.global(qos: .userInitiated).async {
             var text = md
@@ -459,7 +461,7 @@ final class ClaudeActivityService {
             }
             var url: URL? = caches.appendingPathComponent("\(name.isEmpty ? "session" : name)-session.md")
             do {
-                try FileManager.default.createDirectory(at: caches, withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(at: caches, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
                 try text.write(to: url!, atomically: true, encoding: .utf8)
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url!.path)
             } catch { url = nil }
@@ -580,12 +582,15 @@ final class ClaudeActivityService {
 
     static let script = """
     #!/bin/bash
-    # Zera — Claude Code activity hook. Appends the event to a log and exits at once. It changes
-    # nothing Claude does — except when you press Stop in Zera for this session: then the next
-    # tool call is blocked with a short message, so Claude ends its turn.
+    # Zera — Claude Code activity hook. Hands the event to Zera (which reads and deletes it within
+    # a second) and exits at once. Nothing is written when Zera isn't running. It changes nothing
+    # Claude does — except when you press Stop in Zera for this session: then the next tool call
+    # is blocked with a short message, so Claude ends its turn.
     if [ -n "$ZERA_ASSISTANT" ]; then exit 0; fi
+    pgrep -x Zera >/dev/null 2>&1 || exit 0
+    umask 077
     BASE="$HOME/Library/Application Support/Zera/hooks/activity"
-    mkdir -p "$BASE"
+    mkdir -p -m 700 "$BASE"
     INPUT="$(cat)"
     printf '%s\\n' "$(printf '%s' "$INPUT" | tr -d '\\n')" >> "$BASE/events.jsonl"
     case "$INPUT" in

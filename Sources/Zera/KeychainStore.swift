@@ -1,12 +1,16 @@
 import Foundation
 import Security
 
-/// The only place Zera keeps a secret: a generic-password item in the login Keychain.
-/// Never UserDefaults, never a file, never logged.
+/// The only place Zera keeps secrets (the Anthropic API key, the GitHub token): generic-password
+/// items in the login Keychain. Never UserDefaults, never a file, never logged.
 enum KeychainStore {
     private static let service = "ai.zera.anthropic"
 
-    enum Account: String { case apiKey = "api-key" }
+    enum Account: String {
+        case apiKey = "api-key"
+        case githubToken = "github-token"
+        var label: String { self == .apiKey ? "Zera — Anthropic API key" : "Zera — GitHub token" }
+    }
 
     private static func query(_ account: Account) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
@@ -36,7 +40,7 @@ enum KeychainStore {
         let q = query(account)
         let attrs: [String: Any] = [kSecValueData as String: data,
                                     kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-                                    kSecAttrLabel as String: "Zera — Anthropic API key"]
+                                    kSecAttrLabel as String: account.label]
         var status = SecItemUpdate(q as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if status == errSecItemNotFound {
             status = SecItemAdd(q.merging(attrs) { a, _ in a } as CFDictionary, nil)

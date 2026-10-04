@@ -3,3 +3,5 @@ dist/
 .DS_Store
 .vscode/
 Claude outputs/
+# Private audit notes and backups — never publish
+audit/

@@ -30,17 +30,22 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
       - name: Version
         id: v
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}   # passed as data, never pasted into the script
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            V="${{ github.event.inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            V="$INPUT_VERSION"
           else
             V="${GITHUB_REF_NAME#v}"
+          fi
+          if ! printf '%s' "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::Version must look like 1.2.3 or 1.2.3-beta.1 (got: $V)"; exit 1
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "ZERA_VERSION=$V" >> "$GITHUB_ENV"
@@ -79,7 +84,7 @@ jobs:
         run: ./scripts/package.sh
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: v${{ steps.v.outputs.version }}
           name: Zera ${{ steps.v.outputs.version }}

@@ -132,8 +132,8 @@ final class ReminderService {
 
     /// Minutes between break nudges; 0 = off.
     var breakInterval: Int {
-        get { UserDefaults.standard.object(forKey: Self.breakKey) as? Int ?? 0 }
-        set { UserDefaults.standard.set(newValue, forKey: Self.breakKey); lastBreakAt = Date(); post() }
+        get { UserDefaults.standard.object(forKey: Self.breakPref) as? Int ?? 0 }
+        set { UserDefaults.standard.set(newValue, forKey: Self.breakPref); lastBreakAt = Date(); post() }
     }
     /// The controller sets this from pointer activity so breaks are not suggested to an empty chair.
     var userIsIdle = false
@@ -149,17 +149,17 @@ final class ReminderService {
     private var snoozes: [PendingSnooze] = []
     private var lastBreakAt = Date()
 
-    private static let breakKey = "zera.reminders.breakInterval"
-    private static let firedKey = "zera.reminders.fired.v2"
-    private static let snoozeKey = "zera.reminders.snoozes.v2"
-    private static let calendarWantedKey = "zera.reminders.calendarWanted"
+    private static let breakPref = "zera.reminders.breakInterval"
+    private static let firedPref = "zera.reminders.fired.v2"
+    private static let snoozePref = "zera.reminders.snoozes.v2"
+    private static let calendarWantedPref = "zera.reminders.calendarWanted"
 
     nonisolated static var timeFormatter: DateFormatter { ReminderFormat.time }
     nonisolated static func dayKey(_ d: Date) -> String { ReminderFormat.day.string(from: d) }
 
     private init() {
-        fired = Set(UserDefaults.standard.stringArray(forKey: Self.firedKey) ?? [])
-        if let data = UserDefaults.standard.data(forKey: Self.snoozeKey),
+        fired = Set(UserDefaults.standard.stringArray(forKey: Self.firedPref) ?? [])
+        if let data = UserDefaults.standard.data(forKey: Self.snoozePref),
            let list = try? JSONDecoder().decode([PendingSnooze].self, from: data) { snoozes = list }
         load()
     }
@@ -571,9 +571,9 @@ final class ReminderService {
         post()
     }
 
-    private func persistFired() { UserDefaults.standard.set(Array(fired), forKey: Self.firedKey) }
+    private func persistFired() { UserDefaults.standard.set(Array(fired), forKey: Self.firedPref) }
     private func persistSnoozes() {
-        if let data = try? JSONEncoder().encode(snoozes) { UserDefaults.standard.set(data, forKey: Self.snoozeKey) }
+        if let data = try? JSONEncoder().encode(snoozes) { UserDefaults.standard.set(data, forKey: Self.snoozePref) }
     }
 
     // MARK: - Clock
@@ -590,7 +590,7 @@ final class ReminderService {
         if Self.hasCalendarAccess {
             calendarAuthorized = true
             beginCalendarSync()
-        } else if UserDefaults.standard.bool(forKey: Self.calendarWantedKey) {
+        } else if UserDefaults.standard.bool(forKey: Self.calendarWantedPref) {
             Task { await self.connectCalendar() }
         }
         tick()
@@ -706,7 +706,7 @@ final class ReminderService {
     }
 
     func connectCalendar() async {
-        UserDefaults.standard.set(true, forKey: Self.calendarWantedKey)
+        UserDefaults.standard.set(true, forKey: Self.calendarWantedPref)
         var granted = false
         do {
             if #available(macOS 14.0, *) {
@@ -746,7 +746,7 @@ final class ReminderService {
     }
 
     func disconnectCalendar() {
-        UserDefaults.standard.set(false, forKey: Self.calendarWantedKey)
+        UserDefaults.standard.set(false, forKey: Self.calendarWantedPref)
         calendarTimer?.invalidate(); calendarTimer = nil
         if let o = storeObserver { NotificationCenter.default.removeObserver(o); storeObserver = nil }
         calendarAuthorized = false

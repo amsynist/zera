@@ -1130,7 +1130,7 @@ final class SettingsCard: CardBase, CardContent {
             if expired { tokenRow(&s) }
         } else {
             statusLine(.disconnected, detail: "", &s)
-            hint("Paste a personal access token. Classic: repo + workflow · fine-grained: Pull requests, Checks, Actions. Stored locally, only ever sent to api.github.com.", &s)
+            hint("Paste a fine-grained token with read access to Pull requests, Checks and Actions (Actions: write only if you want Approve). Kept in your Keychain, only ever sent to api.github.com.", &s)
             tokenRow(&s)
         }
     }

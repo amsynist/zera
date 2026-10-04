@@ -23,15 +23,15 @@ aesthetic. The character is "Zera" exactly as in the reference image: a fluffy r
 creature with a blue-to-violet swirl tuft, huge glossy black eyes with white highlights, pink
 cheeks, oversized black hoodie with a purple "Z". Same proportions and plush render every shot;
 never redesign her. The user interface is exactly as in the reference screen recording: dark
-indigo translucent cards with rounded corners hanging under the MacBook notch, violet accent,
+indigo translucent cards with rounded corners hanging under the notch of an unbranded laptop, violet accent,
 white text. Smooth camera moves, no cuts inside a scene, no text overlays unless specified,
-no logos other than Zera's purple Z. Subtle ambient music, light UI tick sounds.
+no logos or brand marks of any company (no Apple, GitHub, Anthropic or other logos) other than Zera's purple Z. Subtle ambient music, light UI tick sounds.
 ```
 
 ## Scene 1 — Entrance (0:00–0:08)
 
 ```
-A MacBook Pro screen fills the frame, dark gradient wallpaper, menu bar at the top with the
+A generic, unbranded laptop screen with a notch fills the frame, dark gradient wallpaper, menu bar at the top with the
 notch. A thin brown rope drops down out of the notch and Zera slides down it with a tiny
 bounce, swinging gently, then waves at the camera with a big open-mouth smile. A soft violet
 ring pulses outward from her like a radar ping. A rounded speech bubble pops in beside her:
@@ -65,12 +65,12 @@ gentle pull back as Zera jumps with confetti when "Done" lights up. No terminal 
 ## Scene 4 — Everything else, and the sign-off (0:24–0:30)
 
 ```
-Quick, smooth montage in one continuous camera drift across the desktop: a GitHub card with
+Quick, smooth montage in one continuous camera drift across the desktop: a pull-request card (generic glyph, no GitHub logo) with
 PR rows slides under the notch and a toast appears — "New PR opened · Review Now / Later" —
 with Zera pointing at it; then a Reminders card with a violet bubble "You have a meeting in
 15 minutes!"; then an approval card "Claude wants to run a command" with Approve / Reject.
 Zera waves goodbye from the notch. Final frame: clean dark background, Zera centered with her
-purple Z, and crisp white text fading in: "Zera — your desktop buddy for Claude" and underneath,
+purple Z, and crisp white text fading in: "Zera — your AI desktop buddy" and underneath,
 smaller: "Open source · more coming". Hold 1.5 seconds.
 ```
 

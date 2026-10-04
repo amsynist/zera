@@ -1,0 +1,38 @@
+# Zera — Privacy Data Map
+
+Built from the source code (`Sources/Zera`). Zera has **no telemetry, analytics,
+crash reporting, accounts or update service**. It talks only to the services the user turns on
+(see NETWORK_DATA_FLOW.md). "Local" means the user's own Mac. Paths are under `~/Library`.
+
+| Data | Source | Purpose | Stored? | Where stored | Transmitted? | Who receives it | Retention | User control | Permission required |
+|---|---|---|---|---|---|---|---|---|---|
+| **Dropped files** (references) | Drag and drop, paste, Finder | The Shelf / Drop Files list | Yes, path only | UserDefaults `zera.items.v1` | No | — | Until removed from the Shelf | Remove item / Clear shelf (files on disk are never deleted) | None (unsandboxed file access) |
+| **Pasted images / text** | Clipboard (⌘V, Screenshot) | Make them shelf items | Yes, full content | `Application Support/Zera/Staged/` | No | — | Until removed from the Shelf (`cleanStaged`) | Remove item; "Open staging folder" | None |
+| **Recent files** | Shelf actions | Recent list | Yes: path, name, last action | UserDefaults `zera.recent.v1` | No | — | Until cleared | Clear recent | None |
+| **File contents** (for Summarize / Explain / Extract / Ask) | The file the user picked | AI answer | Answer in memory only; contents not logged | Memory (`FileResultTurn`, threads not persisted) | **Yes, only on click** | Anthropic, through the user's Claude Code CLI login (or Bedrock / Vertex if the user's environment selects them); or `api.anthropic.com` in API-key mode | Provider's own retention under the user's terms | Choose provider in Settings; never automatic | None in Zera; the provider's own sign-in |
+| **AI prompts and responses** | User questions / Claude output | Display | Memory only (stderr kept only if "Keep Claude's error output" is on, still memory) | Memory | Prompt goes to the provider | As above | Until the app quits | Diagnostics toggle | — |
+| **Anthropic API key** | User paste (optional) | API-key mode | Yes | **macOS Keychain** (`KeychainStore`, generic password) | Only as `x-api-key` to `api.anthropic.com` | Anthropic | Until removed | Settings → remove key | Keychain |
+| **GitHub token** | User paste | GitHub API | Yes | **macOS Keychain** (`KeychainStore`, account `github-token`); a token left by older builds in `github.token` is moved there and the file deleted | Bearer header to `api.github.com` only | GitHub | Until Disconnect | Disconnect deletes it | Keychain |
+| **GitHub account info** | `GET /user` | Show login, "me" filters | Login only | UserDefaults `zera.github.login` | — | — | Until Disconnect | Disconnect | Token scopes |
+| **GitHub PR metadata** (titles, repo names incl. **private / org repos**, authors, reviewers, avatars, CI status, comments) | GitHub REST (polled every 120 s) | PR screen, notifications | Memory, plus seen / reviewed IDs | UserDefaults `zera.github.seen`, `zera.github.reviewed` (IDs only) | Requests go to GitHub; avatar images fetched from `*.githubusercontent.com` without the token | GitHub | IDs until cleared; data in memory | Disconnect; token scope | Token scopes |
+| **PR briefs** (title, body, failing checks, **diff excerpt**) | GitHub API, on Summarize | Context for an AI question | Yes | `Caches/Zera/PRs/*.md` (mode 600) | **Yes, on click** → AI provider | Anthropic (via CLI / API) | Deleted after 1 hour and on every launch | Only by clicking Summarize / Ask | — |
+| **Claude Code session activity** (session IDs, cwd, branch, **prompts, tool inputs incl. file contents written, command outputs**, transcript path) | Claude Code hooks Zera installs (`SessionStart`, `UserPromptSubmit`, Pre/PostToolUse, Notification, Stop, SessionEnd) | Live progress screen | Transient only | `Application Support/Zera/hooks/activity/` (folder readable only by you) | No | — | **Deleted as soon as Zera reads it (≤ 0.5 s); nothing written while Zera isn't running; leftovers deleted at launch** | Settings → turn live progress off (removes the hooks) | Writes `~/.claude/settings.json` (user-initiated) |
+| **Session briefs** (task, timeline, files, `git diff`) | Activity log + git, on a session question | AI question | Yes | `Caches/Zera/Sessions/` | **Yes, on click** → AI provider | Anthropic | Deleted after 1 hour and on every launch | Only by clicking | — |
+| **Model ID from transcript** | Tail of the Claude transcript `.jsonl` | Show model name | No | Memory | No | — | — | — | Reads `~/.claude/projects/...` |
+| **Approval requests** (pending Bash command, cwd, session) | Claude Code `PreToolUse` hook | Approve / Reject card | Transient | `Application Support/Zera/hooks/requests` / `responses` (deleted after the answer); `hook.log` keeps IDs + decision | No | — | Request files deleted; log trimmed to the last ~200 lines | Uninstall hook | Writes `~/.claude/settings.json` |
+| **Calendar events** (title, time, location, notes, URL, attendee presence, calendar / account name) | macOS EventKit, ~2 weeks ahead | Today / Upcoming, meeting alerts | **Memory only** | — | No (macOS syncs calendars itself) | — | Refreshed every 150 s | Settings → Disconnect | **Calendar Full Access** |
+| **Events created in macOS Calendar** | Create Event form → chosen calendar | Add the event | Yes, in the user's calendar | macOS Calendar (syncs to that account, e.g. Google / Exchange) | By macOS to the calendar's account | That calendar provider | Per that calendar | User deletes in Calendar | Calendar Full Access |
+| **Zera's own events, reminders, completions** | User | Reminders & Calendar | Yes | `Application Support/Zera/events.json`, `reminders-v2.json`, `completions.json` (mode 600) | **Never** (code: not sent to Claude) | — | Completions: 60 days / 500 entries; others until deleted | Delete in the UI | None |
+| **Reminder fired / snooze state** | Scheduler | Avoid duplicate alerts | Yes | UserDefaults `zera.reminders.fired.v2`, `.snoozes.v2` | No | — | Fired keys pruned after 2 days | — | — |
+| **Local paths, repo names, branch names** | Shelf, sessions, GitHub | Display | As above | As above | Paths included in AI prompts only when the user asks about that file or session | AI provider (on click) | As above | As above | — |
+| **Login-shell environment** (`ANTHROPIC_*`, `CLAUDE_CODE_*`, `AWS_*`, `GOOGLE_*`, `AZURE_*`, proxy, PATH…) | User's login shell | Run `claude` like a terminal would | Memory only | — | Passed to the `claude` child process | The user's CLI | App lifetime | — | — |
+| **Pointer position / idle state** | Polled `NSEvent.mouseLocation` | Hover, break nudges | No | — | No | — | — | — | None (no Accessibility / Input Monitoring) |
+| **Preferences** | Settings | UI | Yes | UserDefaults (`zera.*`) | No | — | Until reset | Settings | — |
+
+## Sensitive-data notes
+- **Company repositories / source code:** the PR screen polls repositories where the user is an
+  *organisation member*. PR titles and diffs from employer or private repos can be displayed, and — only
+  when the user clicks Summarize / Ask — sent to the AI provider. The README says so; briefs are deleted after an hour.
+- **Claude Code activity events:** can contain source code, secrets echoed by commands, and prompts.
+  They exist on disk only until Zera reads them (well under a second).
+- **Calendar contents:** never persisted by Zera and never sent to Claude.

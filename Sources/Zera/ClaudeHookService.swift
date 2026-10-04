@@ -58,7 +58,7 @@ final class ClaudeHookService {
 
     private init() {
         for d in [requestsDir, responsesDir] {
-            try? fm.createDirectory(at: d, withIntermediateDirectories: true)
+            try? fm.createDirectory(at: d, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
     }
 
@@ -66,6 +66,7 @@ final class ClaudeHookService {
 
     func start() {
         refreshScriptIfNeeded()
+        trimHookLog()
         timer?.invalidate()
         let t = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.scan() }
@@ -73,6 +74,16 @@ final class ClaudeHookService {
         RunLoop.main.add(t, forMode: .common)
         timer = t
         scan()
+    }
+
+    /// The hook's own log (request IDs and decisions) is kept short: the last ~200 lines.
+    private func trimHookLog() {
+        let log = hooksDir.appendingPathComponent("hook.log")
+        guard let data = try? Data(contentsOf: log), data.count > 32_000,
+              let text = String(data: data, encoding: .utf8) else { return }
+        let tail = text.split(separator: "\n", omittingEmptySubsequences: false).suffix(200).joined(separator: "\n")
+        try? tail.write(to: log, atomically: true, encoding: .utf8)
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: log.path)
     }
 
     private func scan() {
@@ -151,10 +162,11 @@ final class ClaudeHookService {
     # Zera — Claude Code PreToolUse hook.
     # Shows the pending tool call in Zera and waits for Approve / Reject. If Zera is not
     # running or nobody answers, exits silently so Claude Code asks in the terminal instead.
+    umask 077
     BASE="$HOME/Library/Application Support/Zera/hooks"
     REQ="$BASE/requests"; RES="$BASE/responses"
     LOG="$BASE/hook.log"
-    mkdir -p "$REQ" "$RES"
+    mkdir -p -m 700 "$BASE" "$REQ" "$RES"
     log() { printf '%s %s\\n' "$(date '+%H:%M:%S')" "$1" >> "$LOG"; }
     # Zera's own file-assistant requests (Summarize / Explain / …) set this; they never need approval here.
     if [ -n "$ZERA_ASSISTANT" ]; then exit 0; fi

@@ -1,15 +1,10 @@
-<p align="center">
-  <img src="docs/banner.png" alt="Zera — your AI desktop buddy" width="100%">
-</p>
-
 <h1 align="center">Zera</h1>
-<p align="center"><b>Your AI desktop buddy.</b> A cute, open-source macOS companion that lives in your notch and helps with Claude, GitHub, files and your day.</p>
+<p align="center"><b>Your AI desktop buddy.</b> A cute, open-source macOS app that lives in your notch and helps with your files, your Claude Code sessions, your pull requests and your day. Works with Claude Code and integrates with GitHub.</p>
 
 <p align="center">
   <a href="https://github.com/amsynist/zera/releases/latest"><img src="https://img.shields.io/github/v/release/amsynist/zera?label=download&color=7c5cff" alt="Latest release"></a>
   <a href="https://github.com/amsynist/zera/actions/workflows/ci.yml"><img src="https://github.com/amsynist/zera/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/macOS-13%2B-black" alt="macOS 13+">
-  <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT">
 </p>
 
 <p align="center">
@@ -29,7 +24,7 @@ your GitHub PRs, lets you approve Claude Code commands from the desktop, and kee
 reminders. **No API key and no account needed:** Claude runs through your existing Claude Code login,
 and GitHub uses a token you paste once.
 
-
+> Screenshots are coming soon — they will be real captures of the app.
 
 ## Download
 
@@ -65,10 +60,6 @@ Nothing goes to Claude until you ask.
 
 ### Claude Sessions: follow Claude Code live
 
-<p align="center">
-  <img src="docs/screen-claude-sessions.png" alt="Claude Sessions: session list with status and progress, and the live view of the selected session" width="100%">
-</p>
-
 Turn on live progress once, and every Claude Code session shows up as it works. This uses Claude
 Code's own hooks, with no API key.
 
@@ -85,16 +76,13 @@ Code's own hooks, with no API key.
 
 ### GitHub PRs
 
-<p align="center">
-  <img src="docs/screen-github.png" alt="GitHub PRs: tabs, filters, PR rows with CI status, reviewers, comments and Review buttons, and Zera's insight card" width="70%">
-</p>
-
-- Covers PRs opened in the **last 24 hours** across your repos. Checks every 2 minutes, in real time.
+- Covers PRs opened in the **last 24 hours** across your repos (including organisation repos you belong
+  to). Checks every 2 minutes.
 - **Open · Review (not approved yet) · CI · Approvals (ones you approved)** are filters over that one list.
 - Search, **Author / Label / Repo / Sort** filters. Each row shows CI status, reviewer avatars,
   comment count, **Review** (opens the Files tab) and a ••• menu.
 - **PR detail** inside the card, with **Summarize**: Zera hands Claude the description, failing checks
-  and a diff excerpt.
+  and a diff excerpt — only when you click it. Mind your organisation's rules before sending private code to an AI service.
 - Notifications when you open a PR, and when someone approves, requests changes or comments on one
   of yours. **Approve** workflow runs that are waiting for you, right from the PR.
 
@@ -139,18 +127,18 @@ in your login Keychain, only sent to `api.anthropic.com`, and Zera never falls b
 
 **Claude Sessions (live progress).** Click **Turn on live progress** on the Claude screen, or
 **Follow Claude's work** in Settings. This adds small non-blocking hooks to `~/.claude/settings.json`
-and leaves everything else in that file alone. Restart any open Claude Code session afterwards.
-**Remove** undoes it.
+and leaves the other settings in that file alone (the file is re-saved as formatted JSON). Restart any
+open Claude Code session afterwards. **Remove** undoes it. The hooks only pass events to Zera while it
+is running; Zera reads each event and deletes it within a second.
 
 **Claude Code approvals.** Settings → Claude → **Install hook** adds one `PreToolUse` entry (matcher
 `Bash`). If Zera isn't running or you don't answer within ten minutes, Claude Code asks in the terminal
 as usual. Zera's own requests are marked so they never show up as approvals.
 
-**GitHub.** Paste a personal access token. For a classic token, use `repo` + `workflow` scopes. For a
-fine-grained token, use Pull requests, Checks and Actions (Actions write if you want **Approve**).
-The token is stored in `~/Library/Application Support/Zera/github.token` (mode 600) and only sent to
-`api.github.com`. Want GitHub's mark on the tiles? Save it from
-[github.com/logos](https://github.com/logos) as `Resources/github-mark.png` before building.
+**GitHub.** Paste a **fine-grained** personal access token with read access to Pull requests, Checks
+and Actions, for the repositories you want Zera to watch. Give Actions *write* access only if you want
+**Approve** for waiting workflow runs. The token is kept in your login **Keychain** and only sent to
+`api.github.com`. Zera doesn't ship GitHub's logo; the PR screen uses a generic pull-request glyph.
 
 **Calendar.** Settings → Integrations → **Calendar**, or **Connect** on the Reminders screen. Zera reads
 (and, only when you ask, adds) events through macOS Calendar, so Google, Outlook and iCloud accounts
@@ -158,16 +146,28 @@ added there all show up.
 
 ## Privacy
 
-- Files are referenced, not copied. Dropping a file never sends it anywhere.
+Zera has no account, no analytics, no telemetry, no crash reporting and no update service.
+
+- Files are referenced, not copied. Dropping a file never sends it anywhere. Pasted images and text are
+  kept in `~/Library/Application Support/Zera/Staged` until you remove them from the Shelf.
 - File contents go to Claude only when you click Summarize, Explain, Extract or Ask, through your
   own Claude Code login (or your API key, if you chose that).
 - Claude's answers about your files are kept in memory only. Document text is never logged.
-- Briefs for PR / session questions are written to `~/Library/Caches/Zera` (mode 600).
-- Reminders, events and your calendar stay on your Mac (`~/Library/Application Support/Zera`, mode 600)
-  and are never sent to Claude.
+- Briefs for PR / session questions (which can include a diff of your code) are written to
+  `~/Library/Caches/Zera` (readable only by you), sent to Claude only when you ask, and deleted after an
+  hour and on every launch.
+- Live progress: Claude Code hook events (which can include your prompts and the tools' input and
+  output) are handed to Zera and deleted as soon as they're read. Nothing is written while Zera isn't running.
+- The Anthropic API key and the GitHub token are kept in your login Keychain.
+- Reminders, events and your calendar stay on your Mac (`~/Library/Application Support/Zera`, readable
+  only by you) and are never sent to Claude.
 - GitHub calls go to `api.github.com` with your token. Avatars load from GitHub's image CDN without it.
 - No Accessibility or Input Monitoring permission: the pointer position is polled, with no event tap.
-- The only things Zera opens outside itself are **Open Claude** / **New Session**, and only when you click them.
+- The only things Zera opens outside itself are **Open Claude** / **New Session**, links you click, and
+  "Open With → Zera" from Finder (which only adds the file to the Shelf).
+
+Zera isn't sandboxed: it runs with your user's permissions so it can read files you drop, run your
+`claude` CLI and edit `~/.claude/settings.json` when you turn hooks on. See [SECURITY.md](SECURITY.md).
 
 ## Build from source
 
@@ -201,7 +201,7 @@ and no dependencies.
 | `Sources/Zera/ReminderModels.swift`, `ReminderService.swift` | Events, reminders, the recurrence engine, scheduler, macOS Calendar |
 | `Sources/Zera/Cards.swift`, `ResultCard.swift` | Home, Settings, approvals, toasts, results |
 | `Sources/Zera/Palette.swift`, `Theme.swift` | Design tokens and shared controls |
-| `Resources/Sprites` | Her poses (60+ cut-outs) |
+| `Resources/Sprites` | Her poses (60+ cut-outs; AI-assisted artwork, see `Resources/CARD_SPRITE_PROMPT.md`) |
 | `Tests/ZeraTests` | XCTest suite |
 | `.github/workflows`, `scripts/package.sh` | CI and releases |
 
@@ -252,7 +252,16 @@ To build a release locally:
 ## Contributing
 
 Issues and PRs welcome. Keep her cute, keep it local, and never require an API key.
+Please report security issues privately — see [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+A license will be added before the first official release. Until then, no license is granted beyond
+viewing the source on GitHub.
+
+## Trademarks
+
+Zera is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by
+Anthropic, GitHub, or Apple. Claude and Claude Code are trademarks of Anthropic, PBC. GitHub is a
+trademark of GitHub, Inc. Apple, Mac, macOS and Finder are trademarks of Apple Inc. Other names may be
+trademarks of their respective owners.

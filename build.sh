@@ -65,9 +65,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
-  <key>NSCalendarsUsageDescription</key><string>Zera reads today's events so she can warn you 15 minutes before a meeting.</string>
+  <key>NSCalendarsUsageDescription</key><string>Zera shows your events for the next two weeks next to your reminders, warns you before meetings, and adds events to a calendar only when you choose one. Calendar data stays on your Mac.</string>
   <key>NSAppleEventsUsageDescription</key><string>Only for the explicit “Open Claude” action when the Claude app is not installed: Zera opens a Terminal window running claude. Summarize, Explain and Ask never use this.</string>
-  <key>NSCalendarsFullAccessUsageDescription</key><string>Zera reads today's events so she can warn you 15 minutes before a meeting.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>Zera shows your events for the next two weeks next to your reminders, warns you before meetings, and adds events to a calendar only when you choose one. Calendar data stays on your Mac.</string>
+  <!-- "Open With → Zera" puts any file on the Shelf. Alternate rank: Zera never becomes the default app. -->
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>

@@ -18,6 +18,8 @@ white round creature with a blue-to-violet swirl tuft on top, huge glossy black 
 white highlights, soft pink cheeks, a tiny mouth, wearing an oversized black hoodie with a
 purple "Z" on the chest and small white paws and feet. Same character, same proportions, same
 3D plush render style, same soft lighting and colours as the reference. Do not redesign her.
+No real-world logos, brand marks or trademarks anywhere (laptops, mugs, headphones and documents
+stay unbranded).
 
 OUTPUT FORMAT
 - One PNG, 4096 × 1365 px (or the largest 3:1 size available), fully TRANSPARENT background
@@ -42,7 +44,7 @@ ROW 1 — GREETING & FILES
    falling toward her, excited open-mouth smile, two small motion lines above the document
 4. holding a white document with grey text lines up in one paw, reading it with eyebrows raised,
    small purple "?" beside her head
-5. sitting sideways (profile, facing the viewer's right) at an open silver laptop, paws on the
+5. sitting sideways (profile, facing the viewer's right) at an open plain silver laptop with **no logo or brand mark on the lid**, paws on the
    keyboard, eyes on the screen, calm focused expression — laptop fully inside the cell
 6. standing, writing on a white sheet with an oversized purple pencil, tongue slightly out in
    concentration
@@ -64,3 +66,12 @@ ROW 2 — ALERTS & REACTIONS
 Slice names, in grid order: `card_greet`, `card_peek_down`, `card_catch_pdf`, `card_read_q`,
 `card_laptop_side`, `card_writing`, `card_point_sparkle`, `card_bell`, `card_cheer`,
 `card_notify`, `card_sleepy_sit`, `card_thumbs_wink`.
+
+---
+
+### Provenance
+
+The sprites in `Resources/Sprites` are AI-assisted artwork made from Zera's reference design with this
+prompt (and the main sprite-sheet prompt), then sliced and touched up. The laptop in `laptop.png`,
+`card_laptop_side.png` and `focused.png` was retouched so it carries no brand mark. Keep any new pose
+free of real-world logos before adding it.

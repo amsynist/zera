@@ -132,9 +132,9 @@ enum GHError: LocalizedError {
 /// Talks to the GitHub REST API with a personal access token, polls on a schedule, and
 /// keeps a feed of what matters: PRs involving you, CI on your PRs, runs awaiting approval.
 ///
-/// The token lives in `~/Library/Application Support/Zera/github.token` (mode 600) rather than
-/// the Keychain, because an ad-hoc-signed dev build would re-prompt for Keychain access on
-/// every rebuild. Move it to the Keychain once the app is signed with a real identity.
+/// The token lives in the login Keychain (`KeychainStore`, account `github-token`) and is only
+/// ever sent to api.github.com. A token left by older builds in a plain file is moved into the
+/// Keychain on launch and the file is deleted.
 @MainActor
 final class GitHubService {
     static let shared = GitHubService()
@@ -182,28 +182,44 @@ final class GitHubService {
         seen = Set(UserDefaults.standard.stringArray(forKey: Self.seenKey) ?? [])
         reviewed = Set(UserDefaults.standard.stringArray(forKey: Self.reviewedKey) ?? [])
         login = UserDefaults.standard.string(forKey: Self.loginKey)
+        pruneBriefs(olderThan: 0)
     }
 
     // MARK: - Token
 
-    private var tokenURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Zera", isDirectory: true)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base.appendingPathComponent("github.token")
+    /// Where builds before the Keychain move kept the token. Read once to migrate, then deleted.
+    private var legacyTokenURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Zera/github.token")
     }
 
+    /// Kept in memory after the first Keychain read so polling doesn't hit the Keychain each time.
+    private var cachedToken: String??
+
     var token: String? {
-        guard let s = try? String(contentsOf: tokenURL, encoding: .utf8) else { return nil }
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
+        if let c = cachedToken { return c }
+        migrateLegacyToken()
+        let t = KeychainStore.read(.githubToken)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = (t?.isEmpty ?? true) ? nil : t
+        cachedToken = .some(value)
+        return value
     }
 
     var isConnected: Bool { token != nil && login != nil }
 
     private func save(token: String) throws {
-        try token.write(to: tokenURL, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tokenURL.path)
+        guard KeychainStore.write(token, to: .githubToken) else { throw GHError.badResponse }
+        cachedToken = .some(token)
+    }
+
+    private func migrateLegacyToken() {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: legacyTokenURL.path) else { return }
+        if let s = try? String(contentsOf: legacyTokenURL, encoding: .utf8) {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty, !KeychainStore.has(.githubToken) { KeychainStore.write(t, to: .githubToken) }
+        }
+        try? fm.removeItem(at: legacyTokenURL)
     }
 
     /// Verifies the token, remembers who you are, and starts polling.
@@ -225,7 +241,9 @@ final class GitHubService {
 
     func disconnect() {
         timer?.invalidate(); timer = nil
-        try? FileManager.default.removeItem(at: tokenURL)
+        KeychainStore.delete(.githubToken)
+        cachedToken = .some(nil)
+        try? FileManager.default.removeItem(at: legacyTokenURL)
         login = nil
         events = []
         pulls = []
@@ -417,15 +435,23 @@ final class GitHubService {
     //
     // "Summarize" hands Claude a Markdown brief of the PR — description, checks, file list and
     // diff excerpts — written to Zera's caches folder (mode 600) and read like any dropped file.
+    // Briefs are deleted after an hour (and on every launch): they can contain private source.
 
     private var briefsFolder: URL {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Zera/PRs", isDirectory: true)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
         return base
     }
 
+    /// Removes briefs older than `age` seconds (0 = all).
+    func pruneBriefs(olderThan age: TimeInterval = 3600) {
+        BriefCleaner.prune(briefsFolder, olderThan: age)
+    }
+
     private func writeBrief(_ text: String, name: String) throws -> URL {
+        pruneBriefs()
         let safe = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
         let url = briefsFolder.appendingPathComponent(safe)
         try text.write(to: url, atomically: true, encoding: .utf8)
@@ -832,4 +858,17 @@ func longAgo(_ date: Date) -> String {
     if s < 172800 { return "yesterday" }
     if s < 86400 * 60 { return "\(s / 86400) days ago" }
     return "\(s / (86400 * 30)) months ago"
+}
+
+/// Deletes cached briefs (PR / session context written for Claude) older than a given age.
+enum BriefCleaner {
+    static func prune(_ folder: URL, olderThan age: TimeInterval) {
+        let fm = FileManager.default
+        guard let items = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+        let cutoff = Date().addingTimeInterval(-age)
+        for u in items {
+            let m = (try? u.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            if age <= 0 || m < cutoff { try? fm.removeItem(at: u) }
+        }
+    }
 }
