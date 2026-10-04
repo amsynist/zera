@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/banner.png" alt="Zera — your AI desktop buddy (illustration)" width="100%"></p>
+
 <h1 align="center">Zera</h1>
 <p align="center"><b>Your AI desktop buddy.</b> A cute, open-source macOS app that lives in your notch and helps with your files, your Claude Code sessions, your pull requests and your day. Works with Claude Code and integrates with GitHub.</p>
 
@@ -24,7 +26,7 @@ your GitHub PRs, lets you approve Claude Code commands from the desktop, and kee
 reminders. **No API key and no account needed:** Claude runs through your existing Claude Code login,
 and GitHub uses a token you paste once.
 
-> Screenshots are coming soon — they will be real captures of the app.
+> The pictures in this README are **illustrations** of Zera's screens. Real screenshots will replace them.
 
 ## Download
 
@@ -45,6 +47,8 @@ Each release also has a `.zip` of the app and a `SHA256SUMS.txt`. To check the d
 
 ### Drop Files: a Shelf that reads with Claude
 
+<p align="center"><img src="docs/screen-drop-files.png" alt="Drop Files workspace with Shelf and Drop Bin (illustration)" width="90%"><br><sub>Illustration</sub></p>
+
 Drop files on Zera or on the Drop Files card and they wait on your **Shelf**. From there you can drag
 them anywhere, into Teams, Slack, Mail or an upload field. Dropping only adds the file to the Shelf.
 Nothing goes to Claude until you ask.
@@ -59,6 +63,8 @@ Nothing goes to Claude until you ask.
 - **Recent files** keeps your history after a file leaves the Shelf, with a one-click suggested action.
 
 ### Claude Sessions: follow Claude Code live
+
+<p align="center"><img src="docs/screen-claude-sessions.png" alt="Claude Sessions list and live view (illustration)" width="90%"><br><sub>Illustration</sub></p>
 
 Turn on live progress once, and every Claude Code session shows up as it works. This uses Claude
 Code's own hooks, with no API key.
@@ -75,6 +81,8 @@ Code's own hooks, with no API key.
 - A compact **live bar** under Zera shows the current step at a glance. Click it to expand.
 
 ### GitHub PRs
+
+<p align="center"><img src="docs/screen-github.png" alt="GitHub PRs card (illustration)" width="60%"><br><sub>Illustration</sub></p>
 
 - Covers PRs opened in the **last 24 hours** across your repos (including organisation repos you belong
   to). Checks every 2 minutes.

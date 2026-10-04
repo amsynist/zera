@@ -57,6 +57,7 @@ or in any historical revision.
 | Asset group | Origin | Third-party marks | Notes |
 |---|---|---|---|
 | `Resources/Sprites/*.png` (shipped in the app) | AI-assisted artwork of the Zera character (see `Resources/CARD_SPRITE_PROMPT.md`); some files carry C2PA "Anthropic Files" provenance metadata | None — the laptop in `laptop.png`, `card_laptop_side.png`, `focused.png` was retouched to remove a brand mark | Original project artwork |
+| `docs/banner.png`, `docs/screen-*.png` (README only, not shipped) | AI-generated illustrations from `docs/SCREENSHOT_PROMPTS.md`; captioned "Illustration" in the README | None — all names are fictional (`demo-org`, `alex-dev`…), avatars are initials; the laptop in `screen-claude-sessions.png` was retouched to remove a brand mark | To be replaced by real screenshots |
 | App icon (rendered at build time by `Tools/MakeIcon.swift`) | Programmatic, from the sprites | None | — |
 | GitHub mark | **Not shipped.** The PR screen uses a generic glyph | — | — |
 | Fonts | None bundled (system fonts via API) | — | — |
