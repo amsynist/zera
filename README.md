@@ -78,10 +78,11 @@ Code's own hooks, with no API key.
 - **Ask Claude about this session**, plus **Summarize progress**, **Explain changes**, **Find issues** and
   **Open in editor**. These send a brief of the session (task, timeline, files, `git diff`) through your
   Claude Code login.
-- **Live wings** hang off Zera on both sides of her rope: the left wing shows what Claude is doing
-  (ready / running / done, the current step, the tool in use), the right wing what it means for you
-  (working on it, or a command waiting with **Reject / Approve** right there). Click a wing to open
-  the session; right-click to hide it until Claude has something new.
+- **Live wings** hang off Zera on both sides of her rope, in light or dark glass to match the app.
+  The left wing shows what Claude is doing (working / ready / done and the current step); the right
+  wing shows **Running · 62%** with a progress bar, or the command waiting on you with **Reject /
+  Approve** right there. Click a wing to open the session; right-click to hide it until Claude has
+  something new.
 
 ### GitHub PRs
 
