@@ -15,14 +15,13 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private let bubble = BubbleView()
     private let pillPanel: FloatingPanel
     private let pill = ActionPill()
-    /// Compact live readout of the current Claude Code step, beside her while a session runs.
+    /// Claude Code's live readout: two wings hanging off her on either side of the rope.
     private let livePanel: FloatingPanel
-    private let live = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.compactSize))
+    private let live = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
     private var liveVisible = false
     private var liveHideWork: DispatchWorkItem?
     /// ✕ on the readout hides it until Claude's next prompt / wait / finish.
     private var liveDismissed = false
-    private static let liveExpandedKey = "zera.live.expanded"
     private let cardPanel: FloatingPanel
 
     /// Cards are built on demand and thrown away when the palette changes.
@@ -92,7 +91,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         buddyPanel = FloatingPanel.make(size: NSSize(width: Theme.buddyWidth, height: 90), level: aboveMenuBar, keyable: false)
         bubblePanel = FloatingPanel.make(size: NSSize(width: 120, height: 30), level: aboveMenuBar, keyable: false)
         pillPanel = FloatingPanel.make(size: ActionPill.preferredSize, level: aboveMenuBar, keyable: false)
-        livePanel = FloatingPanel.make(size: LiveActivityView.compactSize, level: .floating, keyable: false)
+        livePanel = FloatingPanel.make(size: LiveActivityView.panelSize, level: .floating, keyable: false)
         cardPanel = FloatingPanel.make(size: NSSize(width: Theme.panelWidth, height: 240), level: .floating, keyable: true)
         super.init()
 
@@ -192,10 +191,9 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         }
 
         livePanel.contentView = live
-        livePanel.hasShadow = true
+        livePanel.hasShadow = false         // the wings draw their own glow
         livePanel.appearance = Pal.nsAppearance
         livePanel.alphaValue = 0
-        live.expanded = UserDefaults.standard.bool(forKey: Self.liveExpandedKey)
         live.onTap = { [weak self] in
             guard let self = self else { return }
             self.suppressUntil = .distantPast
@@ -203,11 +201,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             self.claudeOpenExpanded = true
             self.show(.claude)
         }
-        live.onToggle = { [weak self] in
+        live.onDecide = { [weak self] req, allow in
             guard let self = self else { return }
-            self.live.expanded.toggle()
-            UserDefaults.standard.set(self.live.expanded, forKey: Self.liveExpandedKey)
-            self.positionLive(animated: true)
+            MainActor.assumeIsolated { ClaudeHookService.shared.respond(req, allow: allow) }
+            self.say(allow ? "approved! ✅" : "rejected 🙅", mood: allow ? .happy : .thinking, for: 1.8)
+            self.updateLive()
         }
         live.onClose = { [weak self] in
             guard let self = self else { return }
@@ -338,6 +336,14 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let size = BubbleView.size(for: bubble.text.isEmpty ? " " : bubble.text)
         let f = figureRect
         let scr = geometry.screen.frame
+        if liveVisible {
+            // The wings fill the space beside her: the bubble perches above the right tendril.
+            bubble.tail = .left
+            let y = livePanel.frame.midY + 24
+            bubblePanel.setFrame(NSRect(x: f.maxX - 6, y: y, width: size.width, height: size.height), display: true)
+            bubble.frame = NSRect(origin: .zero, size: size)
+            return
+        }
         var left = pillOnRight
         if left, f.minX - 6 - size.width < scr.minX + 8 { left = false }
         if !left, f.maxX + 6 + size.width > scr.maxX - 8 { left = true }
@@ -347,42 +353,45 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         bubble.frame = NSRect(origin: .zero, size: size)
     }
 
-    /// Hangs under her exactly where a card would — clear of the hover pill and her bubble,
-    /// which live beside her head. Cards replace it while they are open.
-    private func positionLive(animated: Bool = false) {
-        let size = live.size
-        let vf = geometry.screen.visibleFrame
-        let x = max(vf.minX + 8, min(vf.maxX - size.width - 8, figureRect.midX - size.width / 2))
-        let y = figureRect.minY - Theme.cardGap - size.height
-        let target = NSRect(x: x, y: y, width: size.width, height: size.height)
-        if animated, !Motion.reduced {
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.22
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.1)
-                livePanel.animator().setFrame(target, display: true)
-            }
-        } else {
-            livePanel.setFrame(target, display: true)
-        }
+    /// Spans the screen around her at chest height: the left wing ends in a tendril just left
+    /// of her, the right wing just right. Near a screen edge the panel is clamped and the wing
+    /// on that side gets shorter (or folds away when there is no room).
+    private func positionLive() {
+        let size = LiveActivityView.panelSize
+        let scr = geometry.screen.frame
+        let cx = figureRect.midX
+        let x = max(scr.minX, min(scr.maxX - size.width, cx - size.width / 2))
+        let y = (figureRect.minY + Theme.figureHeight * 0.43 - size.height / 2).rounded()
+        livePanel.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
         live.frame = NSRect(origin: .zero, size: size)
-        live.needsLayout = true
+        live.centerX = cx - x
+        live.layoutSubtreeIfNeeded()
     }
 
-    /// Shows / updates / hides the live readout from the current Claude session.
+    /// The wing shows approvals itself when there is room and nothing covers it.
+    private var liveCanApprove: Bool {
+        guard buddyEnabled, !cardVisible, !dragging else { return false }
+        positionLive()
+        return live.canShowApproval
+    }
+
+    /// Shows / updates / hides the wings from the current Claude session and pending approvals.
     private func updateLive() {
         let (show, done): (Bool, Bool) = MainActor.assumeIsolated {
-            guard let s = ClaudeActivityService.shared.current else { return (false, false) }
+            let s = ClaudeActivityService.shared.current
+            let hooks = ClaudeHookService.shared.pending
+            let pending = s.flatMap { s in hooks.first { $0.sessionID == s.id } } ?? hooks.first
             // Idle sessions stay visible for a few minutes after their last activity.
-            if s.status == .ended || (s.status == .idle && Date().timeIntervalSince(s.lastEventAt) > 600) { return (false, false) }
-            let pending = ClaudeHookService.shared.pending.first { $0.sessionID == s.id }?.command
-                ?? (s.status == .waiting ? ClaudeHookService.shared.pending.first?.command : nil)
-            self.live.update(session: s, pendingCommand: pending)
-            return (true, s.status == .done)
+            let stale = s.map { $0.status == .ended || ($0.status == .idle && Date().timeIntervalSince($0.lastEventAt) > 600) } ?? true
+            if stale && pending == nil { return (false, false) }
+            self.live.update(session: stale ? nil : s, pending: pending)
+            return (true, pending == nil && s?.status == .done)
         }
         liveHideWork?.cancel()
-        // Folded away while a card is open (the expanded card carries the same information),
-        // and after ✕ until Claude has something new to say.
-        guard buddyEnabled, show, !cardVisible, !dragging, !liveDismissed else { hideLive(); return }
+        // Folded away while a card is open (the card carries the same information), while the
+        // hover pill is out (it sits where the wings do), and after right-click → hide until
+        // Claude has something new to say.
+        guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed else { hideLive(); return }
         showLive()
         if done {
             // Let the green bar be seen, then tidy away.
@@ -396,14 +405,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         positionLive()
         guard !liveVisible else { return }
         liveVisible = true
-        let target = livePanel.frame
-        livePanel.setFrame(target.offsetBy(dx: 0, dy: 8), display: false)
         livePanel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = Motion.duration(0.22)
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.1)
             livePanel.animator().alphaValue = 1
-            livePanel.animator().setFrame(target, display: true)
         }
         positionBubble()
     }
@@ -455,6 +460,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
         updateLook(mouse)
         updateHover(mouse, now)
+        // The wings' panel is mostly transparent: only the wings themselves catch the pointer.
+        if liveVisible {
+            let p = live.convert(livePanel.convertPoint(fromScreen: mouse), from: nil)
+            livePanel.ignoresMouseEvents = !live.wingContains(p)
+        }
         if cardVisible { evaluateHide(mouse) }
     }
 
@@ -511,6 +521,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     private func showPill() {
         pillVisible = true
+        hideLive()
         positionPill()
         refreshBadges()
         pill.activeKind = cardVisible ? currentCard : nil
@@ -528,6 +539,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private func hidePill() {
         pillVisible = false
         pillLeftAt = nil
+        updateLive()
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = Motion.duration(0.14)
             pillPanel.animator().alphaValue = 0
@@ -652,12 +664,19 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         guard let req = note.userInfo?["request"] as? HookRequest else { return }
         let what = req.toolName == "Bash" ? "a command" : req.toolName
         say("Claude needs your approval — shall I run \(what)? 🤔", mood: .thinking, for: 0)
-        if !(cardVisible && currentCard == .approval) { show(.approval) }
-        else { (cards[.approval] as? ApprovalCard)?.reload() }
+        if cardVisible && currentCard == .approval { (cards[.approval] as? ApprovalCard)?.reload(); return }
+        // Approve / Reject right on the wing when it can show it; otherwise the approval card.
+        if liveCanApprove {
+            liveDismissed = false
+            if pillVisible { hidePill() } else { updateLive() }
+        } else {
+            show(.approval)
+        }
     }
 
     @objc private func hookChanged() {
         refreshBadges()
+        updateLive()
         if cardVisible, currentCard == .approval { (cards[.approval] as? ApprovalCard)?.reload() }
     }
 

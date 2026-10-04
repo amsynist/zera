@@ -78,7 +78,10 @@ Code's own hooks, with no API key.
 - **Ask Claude about this session**, plus **Summarize progress**, **Explain changes**, **Find issues** and
   **Open in editor**. These send a brief of the session (task, timeline, files, `git diff`) through your
   Claude Code login.
-- A compact **live bar** under Zera shows the current step at a glance. Click it to expand.
+- **Live wings** hang off Zera on both sides of her rope: the left wing shows what Claude is doing
+  (ready / running / done, the current step, the tool in use), the right wing what it means for you
+  (working on it, or a command waiting with **Reject / Approve** right there). Click a wing to open
+  the session; right-click to hide it until Claude has something new.
 
 ### GitHub PRs
 
@@ -200,7 +203,7 @@ and no dependencies.
 | `Sources/Zera/ZeraController.swift` | The brain: her window, bubble, hover pill, cards, reactions |
 | `Sources/Zera/ZeraView.swift`, `Sprites.swift`, `Companion.swift` | Zera herself: sprites, rope, sway, moods, in-card poses |
 | `Sources/Zera/DropFilesView.swift`, `ShelfStore.swift` | Drop Files, the Shelf, Recent, Drop Bin, per-file results |
-| `Sources/Zera/ClaudeSessionsView.swift`, `ClaudeActivityService.swift`, `ActivityPill.swift` | Claude Sessions, the activity hook, the live bar |
+| `Sources/Zera/ClaudeSessionsView.swift`, `ClaudeActivityService.swift`, `ActivityPill.swift` | Claude Sessions, the activity hook, the live wings |
 | `Sources/Zera/GitHubCard.swift`, `GitHubComponents.swift`, `GitHubService.swift` | GitHub PRs screen, shared components, polling |
 | `Sources/Zera/ZeraAssistant.swift`, `ClaudeCLI.swift`, `ClaudeProcessManager.swift`, `ClaudeCodeOutputParser.swift` | The in-app Claude file assistant |
 | `Sources/Zera/AnthropicAPIClient.swift`, `KeychainStore.swift` | Optional API-key provider |
