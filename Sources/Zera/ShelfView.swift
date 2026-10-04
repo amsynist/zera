@@ -62,7 +62,7 @@ final class ShelfView: CardBase, CardContent {
     private let dropRing = NSView()
     /// Zera leaning over the top of the drop zone when the shelf is empty (mock #4).
     private let peek = NSImageView()
-    private let peekH: CGFloat = 70
+    private let peekH: CGFloat = 110
     private let actions = FlippedView()
     private var actionChips: [ActionChip] = []
     private let askField = ThemedField(placeholder: "Ask Zera about this file…")
@@ -98,7 +98,7 @@ final class ShelfView: CardBase, CardContent {
     private var isEmptyShelf: Bool { ShelfStore.shared.items.isEmpty }
     /// Empty: title → Zera peeking → zone. Otherwise: title → search → tabs → tiles.
     private var headerHeight: CGFloat {
-        isEmptyShelf ? headerBottom + peekH - 6 : headerBottom + searchHeight + Space.m + tabsHeight + Space.m
+        isEmptyShelf ? headerBottom + peekH - 30 : headerBottom + searchHeight + Space.m + tabsHeight + Space.m
     }
 
     override var acceptsFirstResponder: Bool { true }
@@ -217,7 +217,7 @@ final class ShelfView: CardBase, CardContent {
         peek.isHidden = !emptyShelf
         // She sits on the top edge of the zone, feet hidden behind it.
         let peekW = peekH * 1.45
-        peek.frame = NSRect(x: (w - peekW) / 2, y: headerBottom - 10, width: peekW, height: peekH)
+        peek.frame = NSRect(x: (w - peekW) / 2, y: headerBottom - 40, width: peekW, height: peekH)
         let actionsH: CGFloat = actionsHeight + Space.s
         let box = NSRect(x: Theme.pad, y: headerHeight, width: inner,
                          height: bounds.height - headerHeight - footerHeight - actionsH)
