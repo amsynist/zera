@@ -51,6 +51,9 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private var isPresenting = false
     private(set) var cardVisible = false
     private var suppressUntil = Date.distantPast
+    
+    private var annoyPokes = 0
+    private var lastAnnoyTime: TimeInterval = 0
 
     private var dragging = false
     private var dragGrabOffset: CGFloat = 0
@@ -97,6 +100,20 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         buddyPanel.alphaValue = 0
         buddy.onActivate = { [weak self] in
             guard let self = self else { return }
+            let now = CACurrentMediaTime()
+            if now - self.lastAnnoyTime < 1.0 {
+                self.annoyPokes += 1
+            } else {
+                self.annoyPokes = 1
+            }
+            self.lastAnnoyTime = now
+            if self.annoyPokes >= 4 {
+                self.say("stop poking me! 😠", mood: .error, for: 4.0)
+                self.annoyPokes = 0
+                return
+            }
+            if self.zera.mood == .error || self.zera.mood == .worried { return }
+            
             // Tap her: open the default card, or tuck away whatever is open so you can get back
             // to your work (the hover pill still lets you jump straight to another card).
             if self.cardVisible {
@@ -143,7 +160,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         }
         buddy.onDragMoved = { [weak self] x in
             guard let self = self else { return }
-            self.placeBuddy(centerX: self.geometry.clampedCenterX(x + self.dragGrabOffset))
+            let newX = self.geometry.clampedCenterX(x + self.dragGrabOffset)
+            self.placeBuddy(centerX: newX)
         }
         buddy.onDragEnded = { [weak self] in
             guard let self = self else { return }
@@ -457,7 +475,21 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         if onHer != hovering {
             hovering = onHer
             buddy.setRadar(active: onHer)
-            if onHer, !asleep, !buddyDragActive, zera.mood != .excited, !cardVisible {
+            let nowInterval = CACurrentMediaTime()
+            if onHer {
+                if nowInterval - lastAnnoyTime < 1.0 {
+                    annoyPokes += 1
+                } else {
+                    annoyPokes = 1
+                }
+                lastAnnoyTime = nowInterval
+                if annoyPokes >= 5 {
+                    say("dizzy! 😵‍💫", mood: .worried, for: 4.0)
+                    annoyPokes = 0
+                    return
+                }
+            }
+            if onHer, !asleep, !buddyDragActive, zera.mood != .error, zera.mood != .worried, zera.mood != .excited, !cardVisible {
                 say(Self.helloLines.randomElement()!, mood: .hello, for: 2.2)
             }
         }

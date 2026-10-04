@@ -32,17 +32,16 @@ struct NotchGeometry {
     /// menu bar on a Mac without one) so the rope can run into it, and down far enough for her
     /// to dangle.
     func buddyPanelFrame(centerX: CGFloat) -> NSRect {
-        // With a real notch the window reaches up into it so the rope disappears behind the
-        // hardware; without one it stops at the menu bar's bottom edge and she hangs from there.
-        let up: CGFloat = isReal ? notchRect.height : 0
+        // Reach all the way to the top of the screen (monitor edge) so the rope draws over the menubar
+        let up: CGFloat = notchRect.height
         return NSRect(x: centerX - Theme.buddyWidth / 2,
                       y: notchRect.minY - Theme.figureHeight,
                       width: Theme.buddyWidth,
                       height: up + Theme.figureHeight)
     }
 
-    /// Points of the window hidden behind the notch (0 without one).
-    var hangInset: CGFloat { isReal ? max(0, notchRect.height - Theme.topTuck) : 0 }
+    /// Points of the window hidden by the menubar/notch (applied universally so the character tucks properly)
+    var hangInset: CGFloat { max(0, notchRect.height - Theme.topTuck) }
 
     /// Where she actually is on screen (below the menu bar), for hover tests and layout.
     func figureRect(centerX: CGFloat) -> NSRect {

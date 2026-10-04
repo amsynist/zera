@@ -48,8 +48,8 @@ final class BuddyView: NSView {
     func ping(strong: Bool = false) {
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         let f = figureBounds
-        let center = CGPoint(x: f.midX, y: f.minY + f.height * 0.5)
-        let r0: CGFloat = 26
+        let center = CGPoint(x: f.midX, y: f.minY + f.height * 0.45)
+        let r0: CGFloat = 18
         let ring = CAShapeLayer()
         ring.path = CGPath(ellipseIn: CGRect(x: -r0, y: -r0, width: r0 * 2, height: r0 * 2), transform: nil)
         ring.position = center
@@ -59,7 +59,7 @@ final class BuddyView: NSView {
         ring.opacity = 0
         radar.addSublayer(ring)
         let scale = CABasicAnimation(keyPath: "transform.scale")
-        scale.fromValue = 0.55; scale.toValue = strong ? 3.0 : 2.4
+        scale.fromValue = 0.55; scale.toValue = strong ? 1.7 : 1.4
         let fade = CAKeyframeAnimation(keyPath: "opacity")
         fade.values = [0.0, strong ? 0.9 : 0.6, 0.0]; fade.keyTimes = [0, 0.15, 1]
         let group = CAAnimationGroup()

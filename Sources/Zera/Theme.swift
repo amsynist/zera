@@ -4,13 +4,13 @@ enum Theme {
     // MARK: Notch buddy
 
     /// How tall she is below the notch / menu bar.
-    static let figureHeight: CGFloat = 58
+    static let figureHeight: CGFloat = 84
     /// How far her picture reaches up into the notch / menu bar band, so the rope stays short.
-    static let topTuck: CGFloat = 6
+    static let topTuck: CGFloat = 18
     /// Within this distance of the notch centre she snaps back to it when dropped.
     static let snapDistance: CGFloat = 28
     /// Width of her window — wider than she is so the sway has room.
-    static let buddyWidth: CGFloat = 130
+    static let buddyWidth: CGFloat = 140
     /// Width of the pretend notch on Macs without one.
     static let virtualNotchWidth: CGFloat = 180
     /// Pointer stillness before she dozes off.
