@@ -98,6 +98,24 @@ Code's own hooks, with no API key.
 - Notifications when you open a PR, and when someone approves, requests changes or comments on one
   of yours. **Approve** workflow runs that are waiting for you, right from the PR.
 
+### Reminders & Calendar
+
+- **Today · Upcoming · Completed**, with filters for **All · Google · Outlook · Apple · Custom · Reminders**.
+  Today is one timeline: calendar events and reminders side by side, each marked with where it really
+  comes from (Google / Outlook / Apple through macOS Calendar, Zera's own events, reminders, water).
+- **+ Add Event ▾** keeps creating explicit and separate: **Create Event** (type, date, time, duration,
+  all-day, repeat incl. custom every N days / weeks on chosen weekdays / months, end date, calendar,
+  location, description, alert), **Create Reminder** (once, every day, every 2 / 3 / 4 hours, every week,
+  or every N minutes / hours / days / weeks, with **active hours**), and **Hydration Reminder** — a fast
+  "Drink water every 30m / 1h / 2h / 3h" preset with a live preview of today's times.
+- One recurrence engine drives the list, the detail panel and the scheduler: "every 2 hours, 9 AM → 9 PM"
+  fires at 9, 11, 1, 3, 5, 7 and 9, every day.
+- A compact notification with **Mark as done** and **Snooze** (15 min · 30 min · 1 hour · 2 hours ·
+  Tomorrow). States: upcoming, due, overdue, snoozed, done, off.
+- Completed items can be **restored** or deleted. Everything survives a restart.
+- Events you create are kept by Zera on this Mac, or — if you pick one of your calendars — added to it
+  through macOS Calendar. Zera never labels its own events as Google, Outlook or Apple.
+
 ### And the rest
 
 | | |
@@ -106,7 +124,7 @@ Code's own hooks, with no API key.
 | **Hover pill** | Shelf · Home · Claude · Reminders · GitHub · Settings. Tap Zera to open your default card, tap again to tuck it away. |
 | **Home** | Greeting, "Ask Zera…", **Needs attention** (approvals, reminders, PRs, meetings), Recent, Quick Actions. |
 | **Claude Code approvals** | When Claude Code wants to run a command, an approval card drops down with **Approve / Reject**. Claude Code gets the answer. |
-| **Reminders** | Today / Upcoming / Completed. One-offs, daily or weekdays, or "every 2 hours". Meeting warnings from Calendar, break nudges, Snooze / Done. |
+| **Break nudges** | Optional "time for a break?" every 30 min – 2 hours, only while you're at the keyboard. |
 | **Settings** | General · Appearance (Light / Dark / System) · Integrations · Shortcuts · About. Diagnostics for the Claude CLI. Honours Reduce Motion. |
 
 ## Setup
@@ -134,7 +152,9 @@ The token is stored in `~/Library/Application Support/Zera/github.token` (mode 6
 `api.github.com`. Want GitHub's mark on the tiles? Save it from
 [github.com/logos](https://github.com/logos) as `Resources/github-mark.png` before building.
 
-**Calendar.** Settings → Reminders → **Connect Calendar** for meeting warnings.
+**Calendar.** Settings → Integrations → **Calendar**, or **Connect** on the Reminders screen. Zera reads
+(and, only when you ask, adds) events through macOS Calendar, so Google, Outlook and iCloud accounts
+added there all show up.
 
 ## Privacy
 
@@ -143,6 +163,8 @@ The token is stored in `~/Library/Application Support/Zera/github.token` (mode 6
   own Claude Code login (or your API key, if you chose that).
 - Claude's answers about your files are kept in memory only. Document text is never logged.
 - Briefs for PR / session questions are written to `~/Library/Caches/Zera` (mode 600).
+- Reminders, events and your calendar stay on your Mac (`~/Library/Application Support/Zera`, mode 600)
+  and are never sent to Claude.
 - GitHub calls go to `api.github.com` with your token. Avatars load from GitHub's image CDN without it.
 - No Accessibility or Input Monitoring permission: the pointer position is polled, with no event tap.
 - The only things Zera opens outside itself are **Open Claude** / **New Session**, and only when you click them.
@@ -175,7 +197,9 @@ and no dependencies.
 | `Sources/Zera/ZeraAssistant.swift`, `ClaudeCLI.swift`, `ClaudeProcessManager.swift`, `ClaudeCodeOutputParser.swift` | The in-app Claude file assistant |
 | `Sources/Zera/AnthropicAPIClient.swift`, `KeychainStore.swift` | Optional API-key provider |
 | `Sources/Zera/ClaudeHookService.swift` | Claude Code approvals hook |
-| `Sources/Zera/Cards.swift`, `ResultCard.swift`, `ReminderCards.swift` | Home, Settings, approvals, toasts, results, reminders |
+| `Sources/Zera/RemindersView.swift`, `ReminderForms.swift`, `ReminderComponents.swift`, `ReminderCards.swift` | Reminders & Calendar screen, the three forms, the notification |
+| `Sources/Zera/ReminderModels.swift`, `ReminderService.swift` | Events, reminders, the recurrence engine, scheduler, macOS Calendar |
+| `Sources/Zera/Cards.swift`, `ResultCard.swift` | Home, Settings, approvals, toasts, results |
 | `Sources/Zera/Palette.swift`, `Theme.swift` | Design tokens and shared controls |
 | `Resources/Sprites` | Her poses (60+ cut-outs) |
 | `Tests/ZeraTests` | XCTest suite |

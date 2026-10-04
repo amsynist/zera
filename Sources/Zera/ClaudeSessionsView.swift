@@ -31,6 +31,8 @@ private enum S {
     static let maxHeight: CGFloat = 840
     static let minHeight: CGFloat = 600
     static let singlePaneBelow: CGFloat = 980
+    /// The sessions list on its own (what tapping Claude opens).
+    static let leftWidth: CGFloat = 560
 }
 
 private func shortPath(_ path: String) -> String {
@@ -932,6 +934,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     private var primary: PRActionButton!
     private var primaryKind = 0   // 0 stop · 1 review approval · 2 new session · -1 hidden
     private var sessionMore: GHSquareButton!
+    private var collapse: GHSquareButton!
     private let tabs = GitHubSegmentedControl(items: [])
     private var tab = 0
     private let progressCard = ClaudeSessionProgress()
@@ -961,9 +964,40 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     // MARK: Size
 
     private var screen: NSRect { (window?.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 875) }
-    var cardWidth: CGFloat { min(S.maxWidth, screen.width - 40) }
-    var desiredHeight: CGFloat { max(S.minHeight, min(S.maxHeight, screen.height - 110)) }
-    private var singlePane: Bool { cardWidth < S.singlePaneBelow }
+    /// Collapsed: just the sessions list. Expanded: the selected session's live view joins it —
+    /// when you tap a session, or open this screen from the live bar.
+    private(set) var expanded = false
+    private var fullWidth: CGFloat { min(S.maxWidth, screen.width - 40) }
+    var cardWidth: CGFloat {
+        guard expanded else { return min(S.leftWidth, fullWidth) }
+        return singlePane ? min(fullWidth, 680) : fullWidth
+    }
+    var desiredHeight: CGFloat {
+        let full = max(S.minHeight, min(S.maxHeight, screen.height - 110))
+        guard !expanded else { return full }
+        // Header + filters + up to five sessions + Zera's tip.
+        let rows = CGFloat(max(1, min(5, order.count)))
+        let list = order.isEmpty ? 220 : rows * (S.rowH + S.rowGap)
+        return min(full, max(420, 176 + list + (tip.isHidden ? 20 : S.tipH + 44)))
+    }
+    /// Not wide enough for both panels: the live view replaces the list (with a back button).
+    private var singlePane: Bool { fullWidth < S.singlePaneBelow }
+
+    func setExpanded(_ on: Bool) {
+        guard on != expanded else { return }
+        expanded = on
+        showingDetail = on && singlePane
+        reload()
+        layoutSubtreeIfNeeded()
+        onHeightChange?()
+    }
+
+    /// Each time the screen opens: just the list, unless it was opened from the live bar.
+    func willShow(expanded open: Bool) {
+        expanded = open && selected != nil
+        showingDetail = expanded && singlePane
+        reload()
+    }
 
     // MARK: Init
 
@@ -1030,6 +1064,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         right.addSubview(primary)
         sessionMore = GHSquareButton(symbol: "ellipsis", label: "More", target: self, action: #selector(sessionMoreTapped))
         right.addSubview(sessionMore)
+        collapse = GHSquareButton(symbol: "xmark", label: "Close session view", target: self, action: #selector(collapseTapped))
+        right.addSubview(collapse)
         tabs.onSelect = { [weak self] i in self?.tab = i; self?.infoSignature = ""; self?.reload() }
         right.addSubview(tabs)
         right.addSubview(progressCard)
@@ -1207,6 +1243,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
 
         reloadRight()
         needsLayout = true
+        // The list-only card grows and shrinks with the number of sessions.
+        if !expanded { onHeightChange?() }
     }
 
     private func reloadRight() {
@@ -1351,6 +1389,14 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         super.layout()
         let w = bounds.width, h = bounds.height
         let single = singlePane
+        collapse.isHidden = !expanded || single
+        if !expanded {
+            left.isHidden = false
+            right.isHidden = true
+            left.frame = NSRect(x: 0, y: 0, width: w, height: h)
+            layoutLeft(left.bounds.size)
+            return
+        }
         if single {
             left.isHidden = showingDetail
             right.isHidden = !showingDetail
@@ -1424,7 +1470,10 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         let tileX = single ? x + 42 : x
 
         // Header.
-        sessionMore.frame = NSRect(x: w - x - 34, y: 22, width: 34, height: 34)
+        // ✕ folds the live view away (two-panel mode); single-panel mode uses the back arrow.
+        let closeW: CGFloat = collapse.isHidden ? 0 : 34 + 8
+        collapse.frame = NSRect(x: w - x - 34, y: 22, width: 34, height: 34)
+        sessionMore.frame = NSRect(x: w - x - closeW - 34, y: 22, width: 34, height: 34)
         let pw = primary.isHidden ? 0 : max(84, primary.fittedWidth)
         primary.frame = NSRect(x: sessionMore.frame.minX - 8 - pw, y: 22, width: pw, height: 34)
         let headerRight = (primary.isHidden ? sessionMore.frame.minX : primary.frame.minX) - 12
@@ -1509,10 +1558,12 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         console.resetClear()
         infoSignature = ""
         if singlePane { showingDetail = true }
+        if !expanded { setExpanded(true); return }
         reload()
     }
 
-    @objc private func backTapped() { showingDetail = false; needsLayout = true }
+    @objc private func backTapped() { setExpanded(false) }
+    @objc private func collapseTapped() { setExpanded(false) }
 
     private func stop(_ id: String) {
         guard let s = svc.sessions[id] else { return }

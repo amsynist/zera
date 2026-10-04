@@ -181,6 +181,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         live.onTap = { [weak self] in
             guard let self = self else { return }
             self.suppressUntil = .distantPast
+            // From the live bar you want the session itself, so the live view opens too.
+            self.claudeOpenExpanded = true
             self.show(.claude)
         }
         live.onToggle = { [weak self] in
@@ -673,7 +675,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     @objc private func remindersChanged() {
         refreshBadges()
         if cardVisible, currentCard == .reminderAlert { (cards[.reminderAlert] as? ReminderAlertCard)?.reload() }
-        if cardVisible, currentCard == .reminders { (cards[.reminders] as? RemindersCard)?.reload() }
+        if cardVisible, currentCard == .reminders { (cards[.reminders] as? RemindersView)?.reload() }
     }
 
     /// Light ↔ dark: throw the cards away and rebuild the visible one in the new colours.
@@ -751,9 +753,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         case .startTimer:
             // A 25-minute focus timer: a one-off reminder Zera will announce.
             let due = Date().addingTimeInterval(25 * 60)
-            let c = Calendar.current.dateComponents([.hour, .minute], from: due)
             MainActor.assumeIsolated {
-                ReminderService.shared.add(title: "Timer's up — 25 min focus done", hour: c.hour ?? 0, minute: c.minute ?? 0, repeatRule: .once, leadMinutes: 0)
+                ReminderService.shared.addOneOff(title: "Timer's up — 25 min focus done", at: due)
             }
             say("timer set — I'll tell you at \(ReminderService.timeFormatter.string(from: due)) ⏱", mood: .focused, for: 3)
             hideCard()
@@ -803,6 +804,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     /// Where a finished answer appears if no card is open: the Drop Files screen when the
     /// request started there, otherwise the result card.
     private var resultsInShelf = false
+    /// The next Claude screen opens with the session's live view (set by the live bar).
+    private var claudeOpenExpanded = false
 
     /// Same as the shelf, for files Zera made herself (a PR brief from the GitHub card).
     func assist(_ action: FileAction, on url: URL) {
@@ -893,7 +896,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             }
             c = a
         case .reminders:
-            let r = RemindersCard()
+            let r = RemindersView()
             r.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 2.5) }
             c = r
         case .reminderAlert:
@@ -902,6 +905,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             r.onDrained = { [weak self] in
                 guard let self = self, self.cardVisible, self.currentCard == .reminderAlert else { return }
                 self.hideCard(); self.settle()
+            }
+            r.onView = { [weak self] a in
+                guard let self = self else { return }
+                // Open the screen straight on that reminder's details.
+                (self.content(for: .reminders) as? RemindersView)?.focusOnShow = a.reminderID
+                self.show(.reminders)
             }
             c = r
         case .toast:
@@ -947,6 +956,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         (c as? CardBase)?.onEscape = escape
         (c as? ClaudeSessionsView)?.onEscape = escape
         (c as? DropFilesView)?.onEscape = escape
+        (c as? RemindersView)?.onEscape = escape
         cards[kind] = c
         return c
     }
@@ -997,11 +1007,13 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             }
         case .home: (cards[.home] as? HomeCard)?.refresh()
         case .approval: (cards[.approval] as? ApprovalCard)?.reload()
-        case .reminders: (cards[.reminders] as? RemindersCard)?.reload()
+        case .reminders: (cards[.reminders] as? RemindersView)?.willShow()
         case .reminderAlert: (cards[.reminderAlert] as? ReminderAlertCard)?.reload()
         case .toast: if let e = pendingToast { (cards[.toast] as? ToastCard)?.show(event: e) }
         case .result: (cards[.result] as? ResultCard)?.reload()
-        case .claude: (cards[.claude] as? ClaudeSessionsView)?.reload()
+        case .claude:
+            (cards[.claude] as? ClaudeSessionsView)?.willShow(expanded: claudeOpenExpanded)
+            claudeOpenExpanded = false
         case .settings: break
         }
 
@@ -1057,6 +1069,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     func hideCard() {
         guard cardVisible else { return }
+        MainActor.assumeIsolated { ZeraDropdown.shared.dismiss() }
         cardVisible = false
         pill.activeKind = nil
         outsideSince = nil
@@ -1091,6 +1104,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             return
         }
         if cardPanel.isKeyWindow, cardPanel.firstResponder is NSTextView {
+            outsideSince = nil
+            return
+        }
+        // One of Zera's dropdowns is open (it can hang below the card): keep the card up.
+        if MainActor.assumeIsolated({ ZeraDropdown.shared.isOpen }) {
             outsideSince = nil
             return
         }

@@ -513,7 +513,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             r.onTap = { [weak self] in self?.onOpenURL?(e.url) }
             attentionRows.append(r)
         }
-        let overdue = rs.todaysReminders.filter { !$0.isDoneToday && !$0.isInterval && $0.fireTime(on: Date()) < Date() }
+        let overdue = rs.overdueReminders()
         if !overdue.isEmpty, alerts.isEmpty {
             let r = ListRow(symbol: "clock.badge.exclamationmark", color: p.warning,
                             title: overdue.count == 1 ? "\(overdue[0].title) is overdue" : "\(overdue.count) reminders overdue",
@@ -521,8 +521,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             r.onTap = { [weak self] in self?.onOpen?(.reminders) }
             attentionRows.append(r)
         }
-        if let next = rs.calendarItems.first(where: { $0.start > Date() && $0.start.timeIntervalSinceNow < 3600 }) {
-            let r = ListRow(symbol: "calendar", color: p.tileCalendar, title: next.title,
+        if let next = rs.nextEvent(within: 3600) {
+            let r = ListRow(symbol: "calendar", color: p.tileCalendar, title: next.event.title,
                             subtitle: "in \(max(1, Int(next.start.timeIntervalSinceNow / 60))) min · \(ReminderService.timeFormatter.string(from: next.start))")
             r.onTap = { [weak self] in self?.onOpen?(.reminders) }
             attentionRows.append(r)
@@ -1154,7 +1154,7 @@ final class SettingsCard: CardBase, CardContent {
         hint("Zera warns you 15 minutes before each meeting and again when it starts. Syncs every \(Int(rs.calendarSyncInterval / 60)) minutes and whenever Calendar changes.", &s)
         if rs.calendarDenied { hint("Allow Zera in System Settings → Privacy & Security → Calendars (Full Access).", &s) }
         buttonRow(rs.calendarAuthorized ? "Disconnect" : "Connect Calendar", style: rs.calendarAuthorized ? .secondary : .primary,
-                  status: rs.calendarAuthorized ? "Today and tomorrow are loaded" : "macOS will ask once", &s, action: #selector(calendarTapped))
+                  status: rs.calendarAuthorized ? "The next two weeks are loaded" : "macOS will ask once", &s, action: #selector(calendarTapped))
         if rs.calendarAuthorized {
             buttonRow("Sync now", style: .secondary, status: rs.lastCalendarSync.map { "Last sync \(relativeTime($0))" } ?? "", &s, action: #selector(calendarSyncTapped))
         }
@@ -1171,7 +1171,7 @@ final class SettingsCard: CardBase, CardContent {
     private func buildShortcuts(_ s: inout Stack) {
         let items: [(String, String)] = [
             ("Open the default card", "Tap Zera"), ("Show the pill", "Hover Zera"), ("Move Zera along the top", "Drag her"),
-            ("Close any card", "Esc"), ("Approve / reject a Claude command", "⏎ / Esc"), ("Add a reminder", "⏎ in the composer"),
+            ("Close any card", "Esc"), ("Approve / reject a Claude command", "⏎ / Esc"), ("Add an event or reminder", "+ Add Event ▾"),
             ("Paste clipboard onto the shelf", "⌘V"), ("Select all tiles", "⌘A"), ("Remove selected tiles", "⌫"),
         ]
         for (what, key) in items {

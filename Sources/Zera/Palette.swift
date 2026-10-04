@@ -378,14 +378,27 @@ final class PillTabs: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
+/// Centres a single line of text (and its placeholder, and the caret while typing) vertically,
+/// and pads it away from the rounded edge. Drawing and the field editor (editing / selecting) use
+/// the same rect, so the placeholder and caret never jump to the top-left corner on focus.
+private func centeredTextRect(_ rect: NSRect, font: NSFont?, padding: CGFloat) -> NSRect {
+    let f = font ?? Typo.body
+    let lineH = ceil(f.ascender - f.descender + f.leading) + 2
+    let h = min(rect.height, lineH)
+    return NSRect(x: rect.minX + padding, y: rect.minY + floor((rect.height - h) / 2),
+                  width: max(0, rect.width - padding * 2), height: h)
+}
+
 /// Cell that pads text away from the rounded edge and keeps the field editor transparent.
 final class PaddedTextCell: NSTextFieldCell {
     var padding: CGFloat = 10
-    override func drawingRect(forBounds rect: NSRect) -> NSRect {
-        let r = super.drawingRect(forBounds: rect)
-        let h = cellSize(forBounds: rect).height
-        let dy = max(0, (r.height - h) / 2)
-        return NSRect(x: r.minX + padding, y: r.minY + dy, width: r.width - padding * 2, height: r.height - dy * 2)
+    override func drawingRect(forBounds rect: NSRect) -> NSRect { centeredTextRect(rect, font: font, padding: padding) }
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: centeredTextRect(rect, font: font, padding: padding), in: controlView, editor: textObj, delegate: delegate, event: event)
+    }
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
+        super.select(withFrame: centeredTextRect(rect, font: font, padding: padding), in: controlView, editor: textObj, delegate: delegate,
+                     start: selStart, length: selLength)
     }
     override func setUpFieldEditorAttributes(_ textObj: NSText) -> NSText {
         let t = super.setUpFieldEditorAttributes(textObj)
@@ -397,11 +410,13 @@ final class PaddedTextCell: NSTextFieldCell {
 
 final class PaddedSecureCell: NSSecureTextFieldCell {
     var padding: CGFloat = 10
-    override func drawingRect(forBounds rect: NSRect) -> NSRect {
-        let r = super.drawingRect(forBounds: rect)
-        let h = cellSize(forBounds: rect).height
-        let dy = max(0, (r.height - h) / 2)
-        return NSRect(x: r.minX + padding, y: r.minY + dy, width: r.width - padding * 2, height: r.height - dy * 2)
+    override func drawingRect(forBounds rect: NSRect) -> NSRect { centeredTextRect(rect, font: font, padding: padding) }
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: centeredTextRect(rect, font: font, padding: padding), in: controlView, editor: textObj, delegate: delegate, event: event)
+    }
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
+        super.select(withFrame: centeredTextRect(rect, font: font, padding: padding), in: controlView, editor: textObj, delegate: delegate,
+                     start: selStart, length: selLength)
     }
     override func setUpFieldEditorAttributes(_ textObj: NSText) -> NSText {
         let t = super.setUpFieldEditorAttributes(textObj)

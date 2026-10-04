@@ -381,7 +381,7 @@ final class GHSquareButton: NSButton {
 
 /// The PR screen's button: violet gradient (primary) or hairline surface (secondary), 13 pt
 /// semibold, icon + title centred, hover / pressed / disabled / keyboard-focus states.
-final class PRActionButton: NSButton {
+class PRActionButton: NSButton {
     /// primary: violet gradient · secondary: hairline surface · destructive: red-tinted (Stop) ·
     /// warning: amber-tinted (Review approval).
     enum Style { case primary, secondary, destructive, warning }
