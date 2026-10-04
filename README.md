@@ -82,7 +82,8 @@ Code's own hooks, with no API key.
   The left wing shows what Claude is doing (working / ready / done and the current step); the right
   wing shows **Running · 62%** with a progress bar, or the command waiting on you with **Reject /
   Approve** right there. Click a wing to open the session; right-click to hide it until Claude has
-  something new.
+  something new. While Claude works, Zera sits on her rope at her laptop; when a
+  command needs you, she holds up a "?" clipboard.
 
 ### GitHub PRs
 

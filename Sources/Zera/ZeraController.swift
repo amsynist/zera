@@ -387,6 +387,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             self.live.update(session: stale ? nil : s, pending: pending)
             return (true, pending == nil && s?.status == .done)
         }
+        // At the laptop while Claude works; holding up a "?" while a command waits on you.
+        switch show ? live.mode : .idle {
+        case .running: zera.activityPose = "claude_working"
+        case .approval: zera.activityPose = "claude_approval"
+        default: zera.activityPose = nil
+        }
         liveHideWork?.cancel()
         // Folded away while a card is open (the card carries the same information), while the
         // hover pill is out (it sits where the wings do), and after right-click → hide until

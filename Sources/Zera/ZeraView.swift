@@ -29,6 +29,12 @@ final class ZeraView: NSView {
     var framesPerSecond: Double = 30
     /// Points at the top of the view hidden behind the notch. The rope runs through them.
     var hangInset: CGFloat = 0
+    /// While Claude Code works or waits on you she switches to one of its poses (at the laptop,
+    /// holding a "?" clipboard), whatever her mood. nil = back to her moods.
+    var activityPose: String? { didSet { if activityPose != oldValue { needsDisplay = true } } }
+
+    /// Poses cut without a rope: she sits on it, so it runs behind her at this fraction of the width.
+    private static let ropeBehind: [String: CGFloat] = ["claude_working": 0.53, "claude_approval": 0.49]
 
     /// Where she should look, -1…1 on both axes relative to herself. Smoothed in `tick`.
     var lookTarget: CGPoint = .zero
@@ -131,6 +137,7 @@ final class ZeraView: NSView {
     private static let hangingFidgets = ["hang_upsidedown", "hang_upsidedown2", "hang_back", "hang_swing", "hang_think", "hang_climb"]
 
     private func resolvedSpriteName(now: Double) -> String {
+        if style == .hanging, let p = activityPose { return p }
         if style == .hanging, mood == .idle, !Self.reduceMotion {
             if now < fidgetUntil, let f = fidgetName { return f }
             if now > nextFidgetAt {
@@ -176,7 +183,7 @@ final class ZeraView: NSView {
     private func drawSprite(_ sprite: Sprite, alpha: CGFloat, lift: CGFloat) {
         let ctx = NSGraphicsContext.current!.cgContext
         ctx.saveGState()
-        if style == .hanging, let ropeX = sprite.ropeX {
+        if style == .hanging, let ropeX = sprite.ropeX ?? Self.ropeBehind[sprite.name] {
             // Pendulum about the point where the rope leaves the top of the view.
             let pivot = NSPoint(x: bounds.midX, y: bounds.maxY)
             let k: CGFloat = Self.reduceMotion ? 0.25 : 1   // "Reduce motion": barely a sway
@@ -194,9 +201,10 @@ final class ZeraView: NSView {
             let top = bounds.maxY - hangInset + lift * 0.4
             let rect = NSRect(x: pivot.x - ropeX * w, y: top - h, width: w, height: h)
 
-            // Rope from her picture up to the top edge of the window (into the notch, if any).
+            // Rope from her picture up to the top edge of the window (into the notch, if any);
+            // for the poses where she sits on it, down behind her body too.
             let rope = NSBezierPath()
-            rope.move(to: NSPoint(x: pivot.x, y: top - 1))
+            rope.move(to: NSPoint(x: pivot.x, y: sprite.ropeX == nil ? rect.minY + h * 0.08 : top - 1))
             rope.line(to: NSPoint(x: pivot.x, y: bounds.maxY))
             rope.lineWidth = max(1.5, w * 0.035)
             rope.lineCapStyle = .butt
