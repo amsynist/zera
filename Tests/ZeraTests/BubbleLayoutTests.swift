@@ -3,49 +3,59 @@ import XCTest
 @testable import Zera
 
 final class BubbleLayoutTests: XCTestCase {
-    private let safeFrame = NSRect(x: 12, y: 12, width: 1488, height: 926)
+    /// The screen minus the menu bar band, as the controller passes it.
+    private let safeFrame = NSRect(x: 8, y: 8, width: 1496, height: 934)
     private let figure = NSRect(x: 724, y: 866, width: 64, height: 84)
 
-    func testApprovalCaptionClearsWingsAndMenuBar() {
-        let wings = NSRect(x: 0, y: 856, width: 1512, height: 92)
-        let size = BubbleView.size(for: "Allow Claude to run a command? 🤔")
-        let frame = BubbleView.frame(for: size, figure: figure, safeFrame: safeFrame,
-                                     obstacle: wings, below: true)
+    func testCaptionHangsUnderHerFeet() {
+        let size = BubbleView.size(for: "Hi! 👋")
+        let frame = BubbleView.frame(for: size, figure: figure, safeFrame: safeFrame)
         XCTAssertTrue(safeFrame.contains(frame))
-        XCTAssertFalse(frame.intersects(wings))
         XCTAssertFalse(frame.intersects(figure))
-        XCTAssertGreaterThanOrEqual(wings.minY - frame.maxY, BubbleView.gap)
+        XCTAssertEqual(figure.minY - frame.maxY, BubbleView.gap, accuracy: 1)
         XCTAssertEqual(frame.midX, figure.midX, accuracy: 1)
     }
 
-    func testIslandAtScreenEdgeUsesClearSide() {
-        let island = NSRect(x: 830, y: 470, width: 660, height: 480)
-        let edgeFigure = NSRect(x: 1200, y: 866, width: 64, height: 84)
-        let frame = BubbleView.frame(for: NSSize(width: 320, height: 54), figure: edgeFigure,
-                                     safeFrame: safeFrame, obstacle: island)
+    func testCaptionClearsWingsAndMenuBar() {
+        let wings = NSRect(x: 0, y: 856, width: 1512, height: 92)
+        let size = BubbleView.size(for: "got it! ✨")
+        let frame = BubbleView.frame(for: size, figure: figure, bodyX: 740, safeFrame: safeFrame, obstacles: [wings])
         XCTAssertTrue(safeFrame.contains(frame))
-        XCTAssertFalse(frame.intersects(island))
-        XCTAssertLessThanOrEqual(frame.maxX, island.minX - BubbleView.gap)
+        XCTAssertFalse(frame.intersects(wings))
+        XCTAssertGreaterThanOrEqual(wings.minY - frame.maxY, BubbleView.gap - 0.5)
+        XCTAssertEqual(frame.midX, 740, accuracy: 1)
     }
 
-    func testNarrowDisplayPlacesCaptionBelowIsland() {
-        let safe = NSRect(x: -788, y: 12, width: 776, height: 926)
-        let island = NSRect(x: -730, y: 470, width: 660, height: 480)
-        let buddy = NSRect(x: -432, y: 866, width: 64, height: 84)
-        let frame = BubbleView.frame(for: NSSize(width: 320, height: 54), figure: buddy,
-                                     safeFrame: safe, obstacle: island)
-        XCTAssertTrue(safe.contains(frame))
+    func testCaptionClearsPeekingIsland() {
+        let island = NSRect(x: 536, y: 904, width: 440, height: 46)
+        let tall = NSRect(x: 724, y: 916, width: 64, height: 34)
+        let frame = BubbleView.frame(for: BubbleView.size(for: "toss it here! 🙌"), figure: tall,
+                                     safeFrame: safeFrame, obstacles: [island])
         XCTAssertFalse(frame.intersects(island))
-        XCTAssertLessThanOrEqual(frame.maxY, island.minY - BubbleView.gap)
+        XCTAssertLessThanOrEqual(frame.maxY, island.minY - BubbleView.gap + 0.5)
     }
 
-    func testLongCaptionsWrapWithinBoundedPanel() {
+    func testCaptionStaysOnScreenAtTheEdge() {
+        let edgeFigure = NSRect(x: 1470, y: 866, width: 64, height: 84)
+        let frame = BubbleView.frame(for: NSSize(width: 280, height: 46), figure: edgeFigure, safeFrame: safeFrame)
+        XCTAssertTrue(safeFrame.contains(frame))
+        XCTAssertEqual(frame.maxX, safeFrame.maxX, accuracy: 1)
+        XCTAssertLessThanOrEqual(frame.maxY, edgeFigure.minY - BubbleView.gap + 0.5)
+    }
+
+    func testLongCaptionsWrapToTwoLinesAtMost() {
         let short = BubbleView.size(for: "Hi! 👋")
-        let long = BubbleView.size(for: "Claude finished “Review the pull requests and summarize all the changes across repositories” 🎉")
+        let long = BubbleView.size(for: "timer set — I'll tell you at 4:15, and here is a much longer line that keeps going ⏱")
         XCTAssertLessThan(short.width, long.width)
         XCTAssertLessThanOrEqual(long.width, BubbleView.maxWidth)
         XCTAssertGreaterThan(long.height, short.height)
-        XCTAssertLessThanOrEqual(long.height, ceil(BubbleView.font.ascender - BubbleView.font.descender + BubbleView.font.leading) * 3 + BubbleView.vPad * 2)
+        let line = ceil(BubbleView.font.ascender - BubbleView.font.descender + BubbleView.font.leading)
+        XCTAssertLessThanOrEqual(long.height, line * CGFloat(BubbleView.maxLines) + BubbleView.vPad * 2)
         XCTAssertLessThanOrEqual(BubbleView.size(for: String(repeating: "long-repository-name", count: 100), maxWidth: 240).width, 240)
+    }
+
+    func testPanelLeavesRoomForTheGlow() {
+        let tag = NSRect(x: 100, y: 100, width: 120, height: 30)
+        XCTAssertEqual(BubbleView.panelFrame(for: tag), tag.insetBy(dx: -BubbleView.halo, dy: -BubbleView.halo))
     }
 }

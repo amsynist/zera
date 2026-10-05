@@ -18,12 +18,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private let live = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
     private var liveVisible = false
     private var liveHideWork: DispatchWorkItem?
-    /// Minimize keeps the readout hidden until Zera is tapped again.
+    /// Minimize keeps the readout hidden until you open the Claude tab (its count shows the sessions).
     private var liveDismissed = false
     /// A finished session has already had its ten seconds on screen.
     private var finishedLiveHidden = false
-    /// Restoring the wings with a tap keeps them open while that pointer is still on Zera.
-    private var keepLiveOnHover = false
     /// The notch island: every screen opens out of the notch inside this window. It is a fixed
     /// transparent canvas; only the island's shape is drawn and takes the pointer.
     private let cardPanel: FloatingPanel
@@ -62,6 +60,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private var suppressUntil = Date.distantPast
     
     private var hoverPokes = 0
+    private var lastHelloSound: CFTimeInterval = 0
     private var lastHoverPokeTime: TimeInterval = 0
 
     private var dragging = false
@@ -118,21 +117,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             guard let self = self else { return }
             guard !self.zera.isReactingToPokes else { return }
             if self.zera.poke() {
+                self.sound(.huff)
                 self.say("Hey! Gentle taps, please 😠", mood: .error, for: ZeraPokeReaction.duration)
                 return
             }
-            if !self.cardVisible, self.liveDismissed || self.finishedLiveHidden {
-                self.liveDismissed = false
-                self.finishedLiveHidden = false
-                self.keepLiveOnHover = true
-                self.suppressUntil = .distantPast
-                self.hidePill() // Refresh the current session and bring its wings back.
-                if self.liveVisible {
-                    self.settle()
-                    return
-                }
-                self.keepLiveOnHover = false
-            }
+            self.sound(.tap)
+            // Minimized wings stay minimized: only the Claude tab brings them back.
             if self.zera.mood == .error || self.zera.mood == .worried { return }
             
             // Tap her: open the default card, or tuck away whatever is open so you can get back
@@ -152,11 +142,13 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             let n = ShelfStore.shared.ingest(pasteboard: pb)
             let ok = n > 0 || ShelfStore.shared.alreadyHas(pasteboard: pb)
             if ok {
+                self.sound(.fileCatch)
                 self.suppressUntil = .distantPast
                 self.show(.shelf, instant: true)
                 self.say(n == 1 ? "got it! ✨" : (n > 1 ? "got all \(n)! ✨" : "already have that one 😊"), mood: .happy, for: 1.6)
                 self.shelfDidAcceptDrop()
             } else {
+                self.sound(.fileReject)
                 self.say("hmm, can't hold that", mood: .thinking, for: 1.6)
             }
             return ok
@@ -165,6 +157,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             guard let self = self else { return }
             self.buddyDragActive = active
             if active {
+                self.sound(.fileHover)
                 self.suppressUntil = .distantPast
                 self.say("toss it here! 🙌", mood: .excited, for: 0)
                 self.show(.shelf, instant: true)
@@ -175,6 +168,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         buddy.onDragBegan = { [weak self] in
             guard let self = self else { return }
             self.dragging = true
+            self.sound(.lift)
             self.dragGrabOffset = self.buddyPanel.frame.midX - NSEvent.mouseLocation.x
             if self.cardVisible { self.hideCard() }
             self.hidePill()
@@ -188,6 +182,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         buddy.onDragEnded = { [weak self] in
             guard let self = self else { return }
             self.dragging = false
+            self.sound(.land)
             let mid = self.buddyPanel.frame.midX
             if abs(mid - self.geometry.notchRect.midX) < Theme.snapDistance {
                 self.anchorX = nil
@@ -223,8 +218,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         }
         live.onDecide = { [weak self] req, allow in
             guard let self = self else { return }
+            self.sound(allow ? .claudeApproved : .claudeRejected)
             MainActor.assumeIsolated { ClaudeHookService.shared.respond(req, allow: allow) }
-            self.say(allow ? "approved! ✅" : "rejected 🙅", mood: allow ? .happy : .thinking, for: 1.8)
+            // The wing folds with the answer; she just looks pleased (or thoughtful).
+            self.react(allow ? .happy : .thinking, for: 1.8)
             self.updateLive()
         }
         live.onMinimize = { [weak self] in
@@ -232,7 +229,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             self.liveDismissed = true
             self.liveHideWork?.cancel()
             self.liveHideWork = nil
-            self.keepLiveOnHover = false
             self.hideLive()
             self.settle()
         }
@@ -354,17 +350,24 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private var figureRect: NSRect { geometry.figureRect(centerX: buddyPanel.frame.midX) }
     private var headPoint: NSPoint { NSPoint(x: figureRect.midX, y: figureRect.minY + figureRect.height * 0.55) }
 
+    /// Her caption hangs under her feet: below the wings or the peeking island when they're up,
+    /// never in the menu bar, never beside her.
     private func positionBubble() {
         let screen = geometry.screen.frame
         // Reserve the menu bar even when macOS has it hidden.
-        let safeFrame = NSRect(x: screen.minX + 12, y: screen.minY + 12,
-                               width: screen.width - 24, height: geometry.notchRect.minY - screen.minY - 24)
+        let safeFrame = NSRect(x: screen.minX + 8, y: screen.minY + 8,
+                               width: screen.width - 16, height: geometry.notchRect.minY - screen.minY - 8)
         let size = BubbleView.size(for: bubble.text.isEmpty ? " " : bubble.text, maxWidth: safeFrame.width)
-        let obstacle: NSRect? = cardVisible || pillVisible ? islandScreenRect : (liveVisible ? livePanel.frame : nil)
-        let target = BubbleView.frame(for: size, figure: figureRect, safeFrame: safeFrame,
-                                      obstacle: obstacle, below: liveVisible)
-        bubblePanel.setFrame(target, display: true)
-        bubble.frame = NSRect(origin: .zero, size: size)
+        var obstacles: [NSRect] = []
+        if cardVisible || pillVisible { obstacles.append(islandScreenRect) }
+        if liveVisible { obstacles.append(livePanel.frame) }
+        // Holding the rope with both hands, her body sits off the rope's line.
+        let bodyX = figureRect.midX + (zera.activity != .none ? zera.claudeBodyOffset : 0)
+        let tag = BubbleView.frame(for: size, figure: figureRect, bodyX: bodyX, safeFrame: safeFrame, obstacles: obstacles)
+        let panel = BubbleView.panelFrame(for: tag)
+        bubblePanel.setFrame(panel, display: true)
+        bubble.frame = NSRect(origin: .zero, size: panel.size)
+        bubble.tailX = bodyX - panel.minX
     }
 
     /// Spans the screen around her at chest height: the left wing ends in a tendril just left
@@ -561,12 +564,9 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                 }
             }
             if onHer, !asleep, !buddyDragActive, zera.mood != .error, zera.mood != .worried, zera.mood != .excited, !cardVisible {
+                if CACurrentMediaTime() - lastHelloSound > 20 { sound(.hello); lastHelloSound = CACurrentMediaTime() }
                 say(Self.helloLines.randomElement()!, mood: .hello, for: 2.2)
             }
-        }
-        if keepLiveOnHover {
-            if onHer { return }
-            keepLiveOnHover = false
         }
         if onHer || onPill || bridge {
             pillLeftAt = nil
@@ -622,6 +622,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             if !ReminderService.shared.pendingAlerts.isEmpty { b.formUnion([.home, .reminders]) }
             return b
         }
+        // How many Claude sessions are running: with the wings minimized, this is where you see them.
+        island.counts[.claude] = MainActor.assumeIsolated { ClaudeActivityService.shared.active.count }
     }
 
     // MARK: - Talking
@@ -640,6 +642,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     func greet(firstTime: Bool = false) {
         guard buddyEnabled else { return }
+        sound(.wake)
         if firstTime && !UserDefaults.standard.bool(forKey: Self.greetedKey) {
             UserDefaults.standard.set(true, forKey: Self.greetedKey)
             say("Hi! 👋 I'm Zera!", mood: .hello, for: 3.5)
@@ -648,12 +651,42 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         }
     }
 
+    /// The line she's saying right now, wherever it shows.
+    private var captionLine: String?
+    private var captionTone: NSColor = Neon.cyan
+
+    /// A line from her: under her feet, or in the open island's header. Lines that would repeat
+    /// what the wings, a banner or the approval screen already show go through `react` instead.
     func say(_ line: String, mood: ZeraMood? = nil, for seconds: TimeInterval = 2.5) {
         sayResetWork?.cancel()
         if let m = mood { zera.mood = m }
-        bubble.text = line
-        positionBubble()
-        showBubble()
+        let changed = line != captionLine
+        captionLine = line
+        captionTone = Self.tone(for: mood ?? zera.mood)
+        routeCaption()
+        if changed {
+            zera.nudge()
+            if buddyEnabled { SoundService.shared.playIfQuiet(.caption) }
+        }
+        guard seconds > 0 else { return }
+        // Long lines get time to be read: about 40 ms a character, up to six seconds.
+        let hold = max(seconds, min(6, 1.4 + Double(line.count) * 0.04))
+        let work = DispatchWorkItem { [weak self] in self?.settle() }
+        sayResetWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + hold, execute: work)
+    }
+
+    private func sound(_ s: ZeraSound) {
+        guard buddyEnabled else { return }
+        SoundService.shared.play(s)
+    }
+
+    /// Her face and pose only, for news the screen already shows.
+    func react(_ mood: ZeraMood, for seconds: TimeInterval = 2.5) {
+        sayResetWork?.cancel()
+        captionLine = nil
+        routeCaption()
+        zera.mood = mood
         guard seconds > 0 else { return }
         let work = DispatchWorkItem { [weak self] in self?.settle() }
         sayResetWork = work
@@ -663,18 +696,55 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     func settle() {
         sayResetWork?.cancel()
         zera.mood = asleep ? .sleepy : .idle
-        hideBubble()
+        captionLine = nil
+        routeCaption()
+    }
+
+    static func tone(for mood: ZeraMood) -> NSColor {
+        switch mood {
+        case .happy, .celebrate, .excited, .love, .approved, .giving: return Neon.green
+        case .thinking, .focused: return Neon.warning
+        case .error, .worried, .sad: return Neon.red
+        default: return Neon.cyan
+        }
+    }
+
+    /// Banners and the approval screen are about one thing; she keeps quiet over them.
+    private var islandTakesCaption: Bool {
+        cardVisible && !isNotificationBanner && currentCard != .approval
+    }
+
+    /// Puts the current line where it belongs: the island header while a screen is open,
+    /// otherwise the tag under her feet.
+    private func routeCaption() {
+        guard let line = captionLine, buddyEnabled else {
+            hideBubble()
+            island.whisper(nil)
+            return
+        }
+        if cardVisible {
+            hideBubble()
+            island.whisper(islandTakesCaption ? line : nil, tone: captionTone)
+        } else {
+            island.whisper(nil)
+            bubble.text = line
+            bubble.tone = captionTone
+            positionBubble()
+            showBubble()
+        }
     }
 
     private func showBubble() {
         guard buddyEnabled else { return }
-        if bubblePanel.alphaValue < 0.05 {
+        if bubblePanel.alphaValue < 0.05 || !bubblePanel.isVisible {
+            // Drops into place from just under her feet.
             let target = bubblePanel.frame
-            bubblePanel.setFrame(target.offsetBy(dx: 6, dy: 0), display: false)
+            bubblePanel.setFrame(target.offsetBy(dx: 0, dy: 8), display: false)
+            bubblePanel.alphaValue = 0
             bubblePanel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = Motion.duration(0.18)
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.1)
+                ctx.duration = Motion.duration(0.34)
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.25, 1.5, 0.45, 1)
                 bubblePanel.animator().alphaValue = 1
                 bubblePanel.animator().setFrame(target, display: true)
             }
@@ -684,9 +754,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     private func hideBubble() {
+        guard bubblePanel.isVisible, bubblePanel.alphaValue > 0.01 else { return }
+        let target = bubblePanel.frame
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = Motion.duration(0.16)
             bubblePanel.animator().alphaValue = 0
+            bubblePanel.animator().setFrame(target.offsetBy(dx: 0, dy: 4), display: true)
         }, completionHandler: { [weak self] in
             guard let self = self, self.bubblePanel.alphaValue < 0.05 else { return }
             self.bubblePanel.orderOut(nil)
@@ -694,7 +767,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     private func fallAsleep() { asleep = true; settle() }
-    private func wake() { asleep = false; say("oh! hi again 👋", mood: .hello, for: 2.0) }
+    private func wake() { asleep = false; sound(.wake); say("oh! hi again 👋", mood: .hello, for: 2.0) }
 
     // MARK: - Events from services
 
@@ -702,19 +775,22 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     @objc private func githubNews(_ note: Notification) {
         guard let fresh = note.userInfo?["events"] as? [GHEvent], let top = fresh.first else { return }
-        let more = fresh.count > 1 ? " (+\(fresh.count - 1) more)" : ""
+        // A sound only when the toast will show it (not over approvals or reminder alerts).
+        if !(cardVisible && (currentCard == .approval || currentCard == .reminderAlert)) {
+            switch top.kind {
+            case .ciFailed: sound(.ciFailed)
+            case .ciPassed, .prApproved: sound(.ciPassed)
+            default: sound(.githubPing)
+            }
+        }
+        // The toast (or the pull request screen) shows the news; she only reacts to it.
         switch top.kind {
-        case .prOpened:
-            if top.mine { say("Your PR is up! 🚀 \(top.subtitle)\(more)", mood: .celebrate, for: 6) }
-            else { say("New PR! 👀 Want me to take a look?\(more)", mood: .surprised, for: 8) }
-        case .prApproved: say("\(top.title) ✅ \(top.subtitle)\(more)", mood: .celebrate, for: 8)
-        case .prChangesRequested: say("Changes requested on \(top.subtitle) 📝\(more)", mood: .thinking, for: 8)
-        case .prCommented: say("New comment on \(top.subtitle) 💬\(more)", mood: .hello, for: 8)
-        case .reviewRequested: say("Review requested on \(top.subtitle) 📝\(more)", mood: .thinking, for: 8)
-        case .ciFailed: say("CI failed on \(top.subtitle) 😬\(more)", mood: .worried, for: 8)
-        case .ciPassed: say("CI is green on \(top.subtitle) ✅\(more)", mood: .celebrate, for: 6)
-        case .ciRunning: say("Checks running on \(top.subtitle) ⏳\(more)", mood: .focused, for: 5)
-        case .needsApproval: say("A run on \(top.subtitle) needs your approval 🙋\(more)", mood: .thinking, for: 8)
+        case .prOpened: react(top.mine ? .celebrate : .surprised, for: 6)
+        case .prApproved, .ciPassed: react(.celebrate, for: 6)
+        case .prChangesRequested, .reviewRequested, .needsApproval: react(.thinking, for: 6)
+        case .prCommented: react(.hello, for: 4)
+        case .ciFailed: react(.worried, for: 6)
+        case .ciRunning: react(.focused, for: 4)
         }
         if cardVisible, currentCard == .github { (cards[.github] as? GitHubCard)?.reload(); return }
         // A toast, unless something more important is on screen.
@@ -726,10 +802,16 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     @objc private func hookRequest(_ note: Notification) {
         guard let req = note.userInfo?["request"] as? HookRequest else { return }
         let what = req.toolName == "Bash" ? "a command" : req.toolName
-        say("Allow Claude to run \(what)? 🤔", mood: .thinking, for: 0)
-        if cardVisible && currentCard == .approval { (cards[.approval] as? ApprovalCard)?.reload(); return }
-        // Keep a minimized readout tucked away; the caption and tab badge still announce it.
-        if liveDismissed { return }
+        sound(.claudeApproval)
+        if cardVisible && currentCard == .approval {
+            react(.thinking, for: 0)
+            (cards[.approval] as? ApprovalCard)?.reload()
+            return
+        }
+        // Keep a minimized readout tucked away; her caption and the tab badge announce it.
+        if liveDismissed { say("Claude wants to run \(what) 🤔", mood: .thinking, for: 0); return }
+        // The wing (or the approval screen) shows the command; she just perks up.
+        react(.thinking, for: 0)
         // Approve / Reject right on the wing when it can show it; otherwise the approval card.
         if liveCanApprove {
             if pillVisible { hidePill() } else { updateLive() }
@@ -764,6 +846,22 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         guard let event = note.userInfo?["event"] as? String, let s = note.userInfo?["session"] as? ClaudeSession else { return }
         let title = s.title.isEmpty ? "that" : "“\(ClaudeActivityService.oneLine(s.title, max: 40))”"
         switch event {
+        case "prompt": sound(.claudeStart)
+        case "waiting": if !approvalPending { sound(.claudeApproval) }
+        case "done": sound(.claudeDone)
+        default: break
+        }
+        // The wings already show each of these, as does the Claude screen.
+        if liveVisible || (cardVisible && currentCard == .claude) {
+            switch event {
+            case "prompt": react(.focused, for: 3)
+            case "waiting": if !approvalPending { react(.thinking, for: 6) }
+            case "done": react(.celebrate, for: 5)
+            default: break
+            }
+            return
+        }
+        switch event {
         case "prompt": say("on it — Claude's working on \(title) 👩‍💻", mood: .focused, for: 3)
         case "waiting": if !approvalPending { say("Claude needs you in \(s.folderName) 🙋", mood: .thinking, for: 6) }
         case "done": say("Claude finished \(title) 🎉", mood: .celebrate, for: 5)
@@ -778,7 +876,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         case .calendarHeadsUp, .headsUp: mood = .hello
         case .calendarNow, .now, .snoozed: mood = .excited
         }
-        say(a.headline, mood: mood, for: 0)
+        if a.hydration { sound(.water) }
+        else if a.kind == .breakTime { sound(.breakTime) }
+        else if a.isEvent { sound(.calendar) }
+        else { sound(.reminder) }
+        react(mood, for: 6)   // the reminder banner shows the headline
         if cardVisible, currentCard == .approval, approvalPending { return }
         if !(cardVisible && currentCard == .reminderAlert) { show(.reminderAlert) }
         else { (cards[.reminderAlert] as? ReminderAlertCard)?.reload() }
@@ -859,7 +961,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                 p.waitUntilExit()
                 DispatchQueue.main.async {
                     let n = ShelfStore.shared.ingest(pasteboard: .general)
-                    if n > 0 { self?.show(.shelf); self?.say("screenshot's on the shelf 📸", mood: .happy, for: 2) }
+                    if n > 0 {
+                        self?.sound(.screenshot)
+                        self?.show(.shelf)
+                        self?.say("screenshot's on the shelf 📸", mood: .happy, for: 2)
+                    }
                 }
             }
         case .startTimer:
@@ -868,6 +974,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             MainActor.assumeIsolated {
                 ReminderService.shared.addOneOff(title: "Timer's up — 25 min focus done", at: due)
             }
+            sound(.timerSet)
             say("timer set — I'll tell you at \(ReminderService.timeFormatter.string(from: due)) ⏱", mood: .focused, for: 3)
             hideCard()
         case .searchFiles:
@@ -1098,6 +1205,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
         let swapping = currentCard != kind
         let previous = cardVisible ? currentCard : nil
+        if !cardVisible { sound(.islandOpen) } else if swapping { sound(.tab) }
+        if kind == .claude {
+            // Going through the Claude tab is how minimized wings come back (once the island closes).
+            liveDismissed = false
+            finishedLiveHidden = false
+        }
         if swapping {
             let c = content(for: kind)
             c.onHeightChange = { [weak self] in self?.cardHeightChanged() }
@@ -1113,11 +1226,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                 gh.markAllSeen()
                 return (gh.events.filter { $0.kind == .reviewRequested }.count, gh.events.filter { $0.kind == .prOpened }.count, gh.isConnected)
             }
-            if swapping, connected {
-                if reviews > 0 { say("\(reviews) PR\(reviews == 1 ? " needs" : "s need") your review! 👀", mood: .thinking, for: 3) }
-                else if open > 0 { say("\(open) open PR\(open == 1 ? "" : "s") — want a look? 👀", mood: .hello, for: 2.5) }
-                else { say("all quiet on GitHub ✨", mood: .happy, for: 2) }
-            }
+            // The screen shows the counts; her face follows them.
+            if swapping, connected { react(reviews > 0 ? .thinking : (open > 0 ? .hello : .happy), for: 2.5) }
         case .home: (cards[.home] as? HomeCard)?.refresh()
         case .approval: (cards[.approval] as? ApprovalCard)?.reload()
         case .reminders: (cards[.reminders] as? RemindersView)?.willShow()
@@ -1145,13 +1255,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         presentCurrent(direction: direction, animated: !instant)
         island.activeTab = Isle.tab(for: kind)
         zera.islandPose = Isle.pose(for: kind)
-        positionBubble()
+        routeCaption()
         if isNotificationBanner { startBannerCountdown() }
         else { bannerCountdown = nil }
         if kind == .approval { cardPanel.makeKey() }
-        if kind == .shelf, ShelfStore.shared.items.isEmpty, bubblePanel.alphaValue < 0.5 {
-            say("drop files here — I'll help you work with them 💜", mood: .idle, for: 2.6)
-        }
     }
 
     /// Sizes the current screen for the island (compact: capped width and height) and shows it.
@@ -1169,6 +1276,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     func hideCard() {
         guard cardVisible else { return }
+        sound(.islandClose)
         MainActor.assumeIsolated { ZeraDropdown.shared.dismiss() }
         cardVisible = false
         bannerCountdown = nil
@@ -1183,7 +1291,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         } else {
             closeIsland()
         }
-        positionBubble()
+        routeCaption()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self = self, !self.cardVisible else { return }
             self.updateLive()
@@ -1285,7 +1393,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         if over { autoHideWork?.cancel(); outsideSince = nil }
     }
 
-    func shelfDragOutBegan() { isDraggingOut = true }
+    func shelfDragOutBegan() { isDraggingOut = true; sound(.fileDragOut) }
     func shelfDragOutEnded() { isDraggingOut = false; outsideSince = Date() }
     func shelfRequestsHide() { suppressUntil = Date().addingTimeInterval(0.8); hideCard() }
     func shelfHeightChanged() { cardHeightChanged() }

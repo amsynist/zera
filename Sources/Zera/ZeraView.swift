@@ -86,8 +86,18 @@ final class ZeraView: NSView {
     /// The pointer is on her; while Claude is active she wiggles.
     var hovered = false
 
-    /// A tap: a little jump with a burst of sparkles.
-    func bump() { bumpAt = CACurrentMediaTime() }
+    /// A tap: a little jump with a burst of sparkles, and a swing on the rope that settles.
+    /// Each tap kicks her the other way, so a few taps rock her back and forth.
+    func bump() {
+        bumpAt = CACurrentMediaTime()
+        swingSide = -swingSide
+    }
+
+    /// A new caption: a small hop, no sparkles.
+    func nudge() {
+        guard !isReactingToPokes else { return }
+        nudgeAt = CACurrentMediaTime()
+    }
 
     private var pokeReaction = ZeraPokeReaction()
     var isReactingToPokes: Bool { pokeReaction.isActive(at: CACurrentMediaTime()) }
@@ -134,6 +144,8 @@ final class ZeraView: NSView {
     private var droop: CGFloat = 0
     private var activityChangedAt: Double = -10
     private var bumpAt: Double = -10
+    private var nudgeAt: Double = -10
+    private var swingSide: CGFloat = 1
     // Eased 0…1 amounts so effects fade in and out instead of popping.
     private var wiggleAmt: CGFloat = 0
     private var askAmt: CGFloat = 0
@@ -300,6 +312,11 @@ final class ZeraView: NSView {
             angle += askAmt * (CGFloat(sin(phase * 2.4)) * 1.2 + CGFloat(sin(phase * 2 * .pi / 1.1)) * 2.5) * k
             angle += wiggleAmt * CGFloat(sin(phase * 2 * .pi / 0.9)) * 4 * k
             angle += pokeReaction.motion(at: CACurrentMediaTime(), reduceMotion: Self.reduceMotion).angle
+            // A tap swings her on the rope: a quick push that dies away.
+            let sinceTap = CACurrentMediaTime() - bumpAt
+            if sinceTap < 1.8, !Self.reduceMotion {
+                angle += swingSide * 7 * CGFloat(sin(sinceTap * 2 * .pi / 0.85) * exp(-sinceTap * 2.4))
+            }
             ctx.translateBy(x: pivot.x, y: pivot.y)
             ctx.rotate(by: angle * .pi / 180)
             ctx.translateBy(x: -pivot.x, y: -pivot.y)
@@ -382,6 +399,11 @@ final class ZeraView: NSView {
         let sinceBump = CGFloat(now - bumpAt)
         if sinceBump < 0.7 {
             let p = Self.keyframes(sinceBump / 0.7, [(0, 0, 1, 1), (0.25, 12, 0.96, 1.05), (0.55, -2, 1.05, 0.95), (1, 0, 1, 1)])
+            dy += p.0; sx *= p.1; sy *= p.2
+        }
+        let sinceNudge = CGFloat(now - nudgeAt)
+        if sinceNudge < 0.45 {
+            let p = Self.keyframes(sinceNudge / 0.45, [(0, 0, 1, 1), (0.35, 4, 0.98, 1.03), (0.7, -1, 1.02, 0.98), (1, 0, 1, 1)])
             dy += p.0; sx *= p.1; sy *= p.2
         }
         return (dy, sx, sy)
