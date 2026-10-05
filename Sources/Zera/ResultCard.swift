@@ -359,7 +359,7 @@ final class ProcessingBlock: NSView {
 /// her answers on the left, streaming in as Claude writes. Copy, save as a note, ask a follow-up
 /// — all in here. Nothing in this card ever opens a terminal.
 final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
-    var cardWidth: CGFloat { 440 }
+    var cardWidth: CGFloat { 580 }
     var say: ((String, ZeraMood) -> Void)?
     var onClose: (() -> Void)?
     var onOpenClaudeSettings: (() -> Void)?
@@ -383,7 +383,8 @@ final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
     private var caretOn = false
     private var caretTimer: Timer?
     private var wasBusy = false
-    private let maxThreadHeight: CGFloat = 400
+    /// The answer scrolls inside the island rather than growing it.
+    private let maxThreadHeight: CGFloat = Isle.maxContentHeight - 190
 
     init() {
         tile = IconTile(symbol: "sparkles", color: Pal.tileClaude, size: 28, pointSize: 13)
@@ -392,7 +393,7 @@ final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
         copyButton = CardButton("Copy", style: .secondary, symbol: "doc.on.doc", target: nil, action: #selector(ResultCard.copyTapped))
         saveNote = CardButton("Save Note", style: .secondary, symbol: "note.text", target: nil, action: #selector(ResultCard.saveNoteTapped))
         stop = CardButton("Stop", style: .secondary, symbol: "stop.fill", target: nil, action: #selector(ResultCard.stopTapped))
-        super.init(width: 440, title: "Zera")
+        super.init(width: 580, title: "Zera")
         let p = Pal
         for b in [close, send] { b.target = self }
         for b in [copyButton, saveNote, stop] { b.target = self }
@@ -671,11 +672,13 @@ final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
 
     override func layout() {
         super.layout()
+        // Island header: the file and what Zera did with it, left of her; close on the right.
         let x = Metrics.cardPad, w = bounds.width - x * 2
-        tile.frame = NSRect(x: x, y: Space.l - 3, width: 28, height: 28)
-        titleLabel.frame = NSRect(x: x + 36, y: Space.l, width: w - 36 - 36, height: 22)
-        subtitleLabel.frame = NSRect(x: x + 36, y: Space.l + 22, width: w - 36 - 36, height: 16)
-        close.frame = NSRect(x: bounds.width - x - Metrics.control, y: Space.l - 3, width: Metrics.control, height: Metrics.control)
+        let half = bounds.width / 2 - Isle.zeraGap / 2
+        tile.frame = NSRect(x: x, y: 30, width: 28, height: 28)
+        titleLabel.frame = NSRect(x: x + 36, y: 24, width: max(0, half - x - 36), height: 22)
+        subtitleLabel.frame = NSRect(x: x + 36, y: 46, width: max(0, half - x - 36), height: 16)
+        close.frame = NSRect(x: bounds.width - x - Metrics.control, y: 30, width: Metrics.control, height: Metrics.control)
         var y = headerBottom
         topRule.frame = NSRect(x: x, y: y, width: w, height: 1); y += 1
         scroll.frame = NSRect(x: x, y: y, width: w, height: threadHeight); y += threadHeight

@@ -1,0 +1,381 @@
+import AppKit
+
+/// Sizes shared by every screen in the notch island.
+enum Isle {
+    /// The header row under the notch band. Zera hangs in its middle; titles sit left, actions right.
+    static let headerHeight: CGFloat = 88
+    /// Width the header keeps free in its centre for her.
+    static let zeraGap: CGFloat = 124
+    /// The tallest a screen gets below the notch band; anything taller scrolls inside.
+    static let maxContentHeight: CGFloat = 470
+    static let minWidth: CGFloat = 520
+    static let maxWidth: CGFloat = 660
+    /// Hovering her: the notch widens to this to show the tabs.
+    static let peekWidth: CGFloat = 440
+    static let corner: CGFloat = 30
+    static let ear: CGFloat = 12
+    /// Room around the island inside its window for the glow.
+    static let margin: CGFloat = 44
+
+    /// The tabs at notch level: three on each side of the notch.
+    static let leftTabs: [CardKind] = [.home, .claude, .shelf]
+    static let rightTabs: [CardKind] = [.github, .reminders, .settings]
+
+    /// Which tab lights up for a screen that has none of its own.
+    static func tab(for kind: CardKind) -> CardKind {
+        switch kind {
+        case .result: return .shelf
+        case .approval: return .claude
+        case .reminderAlert: return .reminders
+        case .toast: return .github
+        default: return kind
+        }
+    }
+
+    static func symbol(for tab: CardKind) -> String {
+        switch tab {
+        case .home: return "house"
+        case .claude: return "terminal"
+        case .shelf: return "tray.full"
+        case .github: return "arrow.triangle.pull"
+        case .reminders: return "calendar"
+        case .settings: return "gearshape"
+        default: return tab.symbol
+        }
+    }
+
+    /// Zera's pose while a screen is open.
+    static func pose(for kind: CardKind) -> String {
+        switch kind {
+        case .home: return "hang_wave"
+        case .claude, .approval: return "hang_climb"
+        case .shelf: return "hang_peek"
+        case .github, .result: return "hang_think"
+        case .reminders, .reminderAlert: return "hang_smile"
+        case .settings: return "hang_swing"
+        case .toast: return "hang_wave"
+        }
+    }
+}
+
+/// The notch island: every screen opens out of the notch as compact navy glass with a blue neon
+/// edge — the live wings' look. The notch band carries the tabs on either side of the notch;
+/// Zera hangs in the middle (her own window sits above this one).
+///
+/// The window is a fixed transparent canvas; only the island's shape is drawn and clickable, and
+/// it springs between sizes (closed → peek → a screen → another screen) with Core Animation.
+final class IslandView: NSView {
+    enum Mode { case closed, peek, open }
+
+    var onTab: ((CardKind) -> Void)?
+    private(set) var mode: Mode = .closed
+
+    /// Notch height (the black band) and width.
+    var band: CGFloat = 34 { didSet { needsLayout = true } }
+    var notchWidth: CGFloat = 190 { didSet { needsLayout = true } }
+    /// Where the island is centred, in view coordinates (under Zera's rope).
+    var centerX: CGFloat = 0 { didSet { needsLayout = true } }
+
+    var activeTab: CardKind? { didSet { tabs.forEach { $0.isOn = $0.kind == activeTab } } }
+    var badges: Set<CardKind> = [] { didSet { tabs.forEach { $0.hasBadge = badges.contains($0.kind) } } }
+
+    /// The island's current shape, in view coordinates.
+    private(set) var islandRect = NSRect.zero
+    private(set) var content: NSView?
+
+    private let glow = CAShapeLayer()
+    private let fill = CAGradientLayer()
+    private let fillMask = CAShapeLayer()
+    private let edge = CAShapeLayer()
+    private let edgeFade = CAGradientLayer()
+    private let hostMask = CAShapeLayer()
+    private let host = IslandHost()
+    private var tabs: [IslandTab] = []
+
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.masksToBounds = false
+
+        glow.fillColor = Neon.fillBottom.cgColor
+        glow.shadowColor = Neon.halo.cgColor
+        glow.shadowOpacity = 0
+        glow.shadowRadius = 16
+        glow.shadowOffset = .zero
+        layer?.addSublayer(glow)
+
+        fill.mask = fillMask
+        layer?.addSublayer(fill)
+
+        edge.fillColor = nil
+        edge.strokeColor = Neon.edge.withAlphaComponent(0.6).cgColor
+        edge.lineWidth = 1.2
+        edge.shadowColor = Neon.edge.cgColor
+        edge.shadowRadius = 4
+        edge.shadowOpacity = 0.6
+        edge.shadowOffset = .zero
+        edge.opacity = 0
+        edgeFade.colors = [NSColor.clear.cgColor, NSColor.black.cgColor]
+        edge.mask = edgeFade
+        layer?.addSublayer(edge)
+
+        host.wantsLayer = true
+        host.layer?.mask = hostMask
+        addSubview(host)
+
+        for kind in Isle.leftTabs + Isle.rightTabs {
+            let t = IslandTab(kind: kind)
+            t.onTap = { [weak self] in self?.onTab?(kind) }
+            t.alphaValue = 0
+            addSubview(t)
+            tabs.append(t)
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: - Shape
+
+    private func shapeRect(width: CGFloat, height: CGFloat) -> NSRect {
+        NSRect(x: (centerX - width / 2).rounded(), y: 0, width: width.rounded(), height: height.rounded())
+    }
+
+    /// Flat top flush with the screen edge, concave ears where it meets it, round bottom corners.
+    /// Always the same elements, so one shape morphs smoothly into another.
+    private static func path(_ r: NSRect, corner c: CGFloat, closed: Bool) -> CGPath {
+        let p = CGMutablePath()
+        let e = Isle.ear, x0 = r.minX, x1 = r.maxX, h = r.maxY
+        let k: CGFloat = 0.45
+        p.move(to: CGPoint(x: x0 - e, y: 0))
+        p.addQuadCurve(to: CGPoint(x: x0, y: e), control: CGPoint(x: x0, y: 0))
+        p.addLine(to: CGPoint(x: x0, y: h - c))
+        p.addCurve(to: CGPoint(x: x0 + c, y: h), control1: CGPoint(x: x0, y: h - c * k), control2: CGPoint(x: x0 + c * k, y: h))
+        p.addLine(to: CGPoint(x: x1 - c, y: h))
+        p.addCurve(to: CGPoint(x: x1, y: h - c), control1: CGPoint(x: x1 - c * k, y: h), control2: CGPoint(x: x1, y: h - c * k))
+        p.addLine(to: CGPoint(x: x1, y: e))
+        p.addQuadCurve(to: CGPoint(x: x1 + e, y: 0), control: CGPoint(x: x1, y: 0))
+        if closed { p.closeSubpath() }
+        return p
+    }
+
+    private func applyShape(_ r: NSRect, corner: CGFloat, animated: Bool) {
+        islandRect = r
+        let closedPath = Self.path(r, corner: corner, closed: true)
+        let openPath = Self.path(r, corner: corner, closed: false)
+        let pairs: [(CAShapeLayer, CGPath)] = [(glow, closedPath), (fillMask, closedPath), (hostMask, closedPath), (edge, openPath)]
+        for (layer, p) in pairs {
+            if animated, !Motion.reduced {
+                let from = layer.presentation()?.path ?? layer.path
+                let a = CASpringAnimation(keyPath: "path")
+                a.fromValue = from; a.toValue = p
+                a.mass = 1; a.stiffness = 210; a.damping = 22; a.initialVelocity = 0
+                a.duration = a.settlingDuration
+                layer.add(a, forKey: "morph")
+            }
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            layer.path = p
+            CATransaction.commit()
+        }
+        window?.invalidateCursorRects(for: self)
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        let b = bounds
+        fill.frame = b
+        let h = max(1, b.height)
+        fill.colors = [NSColor.black.cgColor, NSColor.black.cgColor, Neon.fillTop.cgColor, Neon.fillBottom.cgColor]
+        fill.locations = [0, NSNumber(value: Double(band / h)), NSNumber(value: Double((band + 44) / h)), 1]
+        edge.frame = b
+        edgeFade.frame = b
+        edgeFade.locations = [NSNumber(value: Double((band - 14) / h)), NSNumber(value: Double((band + 30) / h))]
+        CATransaction.commit()
+        host.frame = b
+        layoutTabs()
+    }
+
+    private func layoutTabs() {
+        let w: CGFloat = 30, h: CGFloat = 26, gap: CGFloat = 4
+        let y = ((band - h) / 2).rounded()
+        var x = centerX - notchWidth / 2 - 10 - CGFloat(Isle.leftTabs.count) * (w + gap) + gap
+        for t in tabs.prefix(Isle.leftTabs.count) { t.frame = NSRect(x: x, y: y, width: w, height: h); x += w + gap }
+        x = centerX + notchWidth / 2 + 10
+        for t in tabs.suffix(Isle.rightTabs.count) { t.frame = NSRect(x: x, y: y, width: w, height: h); x += w + gap }
+    }
+
+    private func setTabs(visible: Bool) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.duration(visible ? 0.22 : 0.12)
+            tabs.forEach { $0.animator().alphaValue = visible ? 1 : 0 }
+        }
+    }
+
+    private func setChrome(open: Bool) {
+        let a = CABasicAnimation(keyPath: "opacity")
+        a.duration = Motion.duration(0.3)
+        CATransaction.begin()
+        edge.opacity = open ? 1 : 0
+        glow.shadowOpacity = open ? 0.55 : 0
+        edge.add(a, forKey: "fade")
+        CATransaction.commit()
+    }
+
+    // MARK: - Modes
+
+    /// Just the notch: nothing to see, nothing to click.
+    func close(animated: Bool = true, completion: (() -> Void)? = nil) {
+        mode = .closed
+        activeTab = nil
+        dismissContent(direction: 0)
+        setTabs(visible: false)
+        setChrome(open: false)
+        applyShape(shapeRect(width: notchWidth, height: band), corner: 12, animated: animated)
+        let wait = animated && !Motion.reduced ? 0.42 : 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            guard let self = self, self.mode == .closed else { return }
+            completion?()
+        }
+    }
+
+    /// Hovering her: the notch widens to show the tabs.
+    func peek() {
+        guard mode != .open else { return }
+        mode = .peek
+        activeTab = nil
+        setTabs(visible: true)
+        setChrome(open: false)
+        applyShape(shapeRect(width: Isle.peekWidth, height: band), corner: 18, animated: true)
+    }
+
+    /// Opens (or switches to, or resizes for) a screen. `direction` is the side the new screen
+    /// comes from when switching: −1 left, +1 right, 0 open in place.
+    func present(_ view: NSView, size: NSSize, direction: CGFloat, animated: Bool) {
+        let wasOpen = mode == .open
+        mode = .open
+        setTabs(visible: true)
+        setChrome(open: true)
+        let w = size.width, h = size.height
+        let target = NSRect(x: (centerX - w / 2).rounded(), y: band, width: w, height: h)
+        if view !== content {
+            dismissContent(direction: direction)
+            view.frame = target
+            host.addSubview(view)
+            content = view
+            if animated, !Motion.reduced {
+                view.wantsLayer = true
+                let fade = CABasicAnimation(keyPath: "opacity")
+                fade.fromValue = 0; fade.toValue = 1
+                let move = CASpringAnimation(keyPath: "transform.translation.\(direction == 0 ? "y" : "x")")
+                move.fromValue = direction == 0 ? -8 : direction * 18; move.toValue = 0
+                move.stiffness = 220; move.damping = 24
+                let group = CAAnimationGroup()
+                group.animations = [fade, move]
+                group.beginTime = CACurrentMediaTime() + (wasOpen ? 0.06 : 0.12)
+                group.duration = 0.42
+                group.fillMode = .backwards
+                fade.duration = 0.24
+                move.duration = move.settlingDuration
+                view.layer?.add(group, forKey: "enter")
+            }
+        } else {
+            view.frame = target
+        }
+        applyShape(shapeRect(width: w, height: band + h), corner: Isle.corner, animated: animated)
+    }
+
+    private func dismissContent(direction: CGFloat) {
+        guard let old = content else { return }
+        content = nil
+        guard !Motion.reduced, old.window != nil else { old.removeFromSuperview(); return }
+        old.wantsLayer = true
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak old, weak self] in
+            guard let old = old, old !== self?.content else { return }
+            old.removeFromSuperview()
+            old.layer?.removeAllAnimations()
+            old.layer?.opacity = 1
+        }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1; fade.toValue = 0; fade.duration = 0.14
+        fade.fillMode = .forwards; fade.isRemovedOnCompletion = false
+        old.layer?.add(fade, forKey: "leave")
+        if direction != 0 {
+            let move = CABasicAnimation(keyPath: "transform.translation.x")
+            move.fromValue = 0; move.toValue = -direction * 16; move.duration = 0.18
+            move.fillMode = .forwards; move.isRemovedOnCompletion = false
+            old.layer?.add(move, forKey: "slide")
+        }
+        CATransaction.commit()
+    }
+
+    /// The island, with a little slack, in view coordinates; tabs count in peek.
+    func islandContains(_ p: NSPoint) -> Bool {
+        mode != .closed && islandRect.insetBy(dx: -2, dy: -2).contains(p)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let p = superview.map { convert(point, from: $0) } ?? point
+        guard islandContains(p) else { return nil }
+        return super.hitTest(point) ?? self
+    }
+}
+
+/// Holds the current screen, clipped to the island's shape.
+final class IslandHost: NSView {
+    override var isFlipped: Bool { true }
+}
+
+/// One tab at notch level: an SF Symbol that lights up cyan with a glowing underline when its
+/// screen is open, and wears an amber dot when something there needs you.
+final class IslandTab: NSView {
+    let kind: CardKind
+    var onTap: (() -> Void)?
+    var isOn = false { didSet { if isOn != oldValue { needsDisplay = true } } }
+    var hasBadge = false { didSet { if hasBadge != oldValue { needsDisplay = true } } }
+    private var hovered = false { didSet { needsDisplay = true } }
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    init(kind: CardKind) {
+        self.kind = kind
+        super.init(frame: .zero)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(kind.title)
+        toolTip = kind == .github ? "Pull requests" : kind.title
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let b = bounds
+        if hovered && !isOn {
+            Neon.cyan.withAlphaComponent(0.12).setFill()
+            NSBezierPath(roundedRect: b, xRadius: 9, yRadius: 9).fill()
+        }
+        let color = isOn ? Neon.cyan : (hovered ? Neon.text : Neon.textDim)
+        Neon.symbol(Isle.symbol(for: kind), in: b.insetBy(dx: 0, dy: -1), size: 13.5, weight: .semibold, color: color)
+        if isOn {
+            let u = NSRect(x: b.midX - 7, y: b.maxY - 3, width: 14, height: 2)
+            Neon.glowing(Neon.cyan, blur: 6) { Neon.cyan.setFill(); NSBezierPath(roundedRect: u, xRadius: 1, yRadius: 1).fill() }
+        }
+        if hasBadge {
+            let d = NSRect(x: b.maxX - 8, y: 3, width: 6, height: 6)
+            Neon.glowing(Neon.warning, blur: 5) { Neon.warning.setFill(); NSBezierPath(ovalIn: d).fill() }
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) { onTap?() }
+    override func accessibilityPerformPress() -> Bool { onTap?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+}

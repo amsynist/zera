@@ -1,304 +1,683 @@
 import AppKit
 
-/// The compact Claude readout beside Zera, laid out like the mock: her avatar at the laptop,
-/// "Zera" + status chip, elapsed time and a round chevron; the command in a terminal box; a
-/// thick gradient progress bar with a glowing head and a percentage; and a step track — done
-/// (green check) → active (violet sparkle) → pending (grey) — with labels and durations.
+/// Claude Code's live readout as two dark glass wings hanging off Zera on either side of her rope:
+///
+///   ( ◯ Claude is working…       (📄) )~~ Zera ~~( Running · 62%           4:12   ●  (⌄) )
+///   ( ◯ Claude is ready          (📄) )~~ Zera ~~( (>_) git commit -m "Update…  [✕ Reject] [✓ Approve]  ●  (⌄) )
+///
+/// Left wing — what Claude is doing: a gradient ring (spinning while it works), the headline,
+/// the current step and a files button. Right wing — what it means for you: progress, session
+/// time and the status orb while it runs, or the command waiting on you (up to two lines of it)
+/// with Reject / Approve right there. The right wing springs wider to fit the command.
+///
+/// One transparent panel spans both wings. The gap in the middle is where she hangs (her window
+/// sits above this one) and each wing tapers into a tendril that reaches into her. The wings
+/// keep their navy-black look in light and dark mode.
 final class LiveActivityView: NSView {
+    enum Mode: Equatable { case idle, running, approval, attention, done }
+
+    /// Tap a wing, the files button or the chevron: open the session.
     var onTap: (() -> Void)?
-    /// Chevron: collapse ↔ expand. ✕: hide until Claude has something new.
-    var onToggle: (() -> Void)?
+    /// Right-click: hide until Claude has something new.
     var onClose: (() -> Void)?
+    /// Approve (true) / Reject (false) on the right wing.
+    var onDecide: ((HookRequest, Bool) -> Void)?
 
-    static let compactSize = NSSize(width: 640, height: 60)
-    static let expandedSize = NSSize(width: 640, height: 200)
+    /// The widest the panel gets; the controller narrows it to the screen.
+    static let panelSize = NSSize(width: 1520, height: 92)
 
-    /// Compact row, left→right. Every slot is a fixed width except the command box, which takes
-    /// whatever is left; the row is built so the sum always equals the panel width.
-    private enum Compact {
-        static let edge: CGFloat = 12       // left/right inset
-        static let avatar: CGFloat = 44
-        static let title: CGFloat = 40      // "Zera" at 15pt bold
-        static let chipMax: CGFloat = 170
-        static let elapsed: CGFloat = 50    // "12m 34s" at 12pt
-        static let bar: CGFloat = 100
-        static let percent: CGFloat = 38    // "100%"
-        static let button: CGFloat = 28     // chevron / ✕
-        static let gap: CGFloat = 8
-        static let group: CGFloat = 12      // between the three groups
-        static let commandMin: CGFloat = 110
+    /// Where she hangs, in this view's coordinates. The controller sets it after placing the panel.
+    var centerX: CGFloat = LiveActivityView.panelSize.width / 2 { didSet { needsLayout = true; needsDisplay = true } }
+    private(set) var mode: Mode = .idle
+    private(set) var request: HookRequest?
+
+    /// Wide enough for the command and both buttons; otherwise the approval card takes over.
+    var canShowApproval: Bool { room(for: M.rightAsk) >= M.approvalMin }
+
+    private enum M {
+        static let wingH: CGFloat = 60
+        static let tail: CGFloat = 70          // body end → her centre
+        static let tip: CGFloat = 14           // the tendril ends this far from her centre (behind her)
+        static let droop: CGFloat = 6          // tendrils meet her a little below the wings' centre line
+        static let edge: CGFloat = 18          // outer margin, room for the glow
+        static let leftMax: CGFloat = 390
+        static let rightRun: CGFloat = 430     // right wing while Claude works
+        static let rightAsk: CGFloat = 760     // right wing with a command, Reject and Approve
+        static let minWing: CGFloat = 220
+        static let approvalMin: CGFloat = 520
+        static let button: CGFloat = 44        // round buttons, glow included
+        static let orb: CGFloat = 34
     }
-    var expanded = false { didSet { chevron.pointsUp = expanded; needsLayout = true; needsDisplay = true } }
-    var size: NSSize { expanded ? Self.expandedSize : Self.compactSize }
 
-    private let avatar = NSImageView()
-    private let title = NSTextField(labelWithString: "Zera")
-    private let chip = StatusChip()
-    private let elapsed = NSTextField(labelWithString: "")
-    private let chevron = RoundChevron()
-    private let closeButton = IconButton(symbol: "xmark", label: "Hide", target: nil, action: #selector(LiveActivityView.closeTapped))
-    private let commandBox = FlippedView()
-    private let promptGlyph = NSTextField(labelWithString: ">_")
-    private let command = NSTextField(labelWithString: "")
-    private let track = ProgressTrack()
-    private let percent = NSTextField(labelWithString: "")
-    private var stepViews: [StepNode] = []
-    private var rail: [NSView] = []
-    private var hovered = false { didSet { needsDisplay = true } }
-    private var lastCommand = ""
+    // Left wing.
+    private let ring = RingGlyph()
+    private let leftTitle = LiveActivityView.label()
+    private let leftSub = LiveActivityView.label()
+    private let files = GlowIconButton(symbol: "doc.text")
+
+    // Right wing.
+    private let status = LiveActivityView.label()
+    private let clock = LiveActivityView.label()
+    private let bar = GlowProgressBar()
+    private let orb = OrbView()
+    private let prompt = BoxGlyph()
+    private let command = LiveActivityView.label()
+    private let reject = GlowPillButton(title: "Reject", symbol: "xmark", tint: .red)
+    private let approve = GlowPillButton(title: "Approve", symbol: "checkmark", tint: .green)
+    private let chevron = GlowIconButton(symbol: "chevron.down")
+
+    /// A soft glow behind her in the state's colour. It lives here rather than in her window so
+    /// her window's shadow never traces it.
+    private let glow = CAGradientLayer()
+
+    private var leftBody = NSRect.zero
+    private var rightBody = NSRect.zero
+    private var leftPath = NSBezierPath()
+    private var rightPath = NSBezierPath()
+    private var leftTail = NSBezierPath()
+    private var rightTail = NSBezierPath()
+
+    /// The right wing's width springs between `rightRun` and `rightAsk`.
+    private var rightW: CGFloat = M.rightRun
+    private var rightV: CGFloat = 0
+    private var rightTarget: CGFloat = M.rightRun
+    private var springTimer: Timer?
+    private var lastSpringAt: CFTimeInterval = 0
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    private let left: CGFloat = 136
-    private let pad: CGFloat = 22
-
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = 28
-        layer?.cornerCurve = .continuous
-        layer?.masksToBounds = true
-        avatar.imageScaling = .scaleProportionallyUpOrDown
-        avatar.imageAlignment = .alignBottom
-        addSubview(avatar)
-        title.font = NSFont.systemFont(ofSize: 22, weight: .bold)
-        addSubview(title)
-        addSubview(chip)
-        elapsed.font = NSFont.systemFont(ofSize: 14, weight: .medium)
-        elapsed.alignment = .right
-        addSubview(elapsed)
-        chevron.onTap = { [weak self] in self?.onToggle?() }
-        addSubview(chevron)
-        closeButton.target = self
-        addSubview(closeButton)
-        commandBox.wantsLayer = true
-        commandBox.layer?.cornerRadius = Radius.m
-        commandBox.layer?.cornerCurve = .continuous
-        promptGlyph.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .bold)
-        commandBox.addSubview(promptGlyph)
-        command.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        command.lineBreakMode = .byTruncatingTail
-        command.wantsLayer = true
-        commandBox.addSubview(command)
-        addSubview(commandBox)
-        addSubview(track)
-        percent.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
-        percent.alignment = .right
-        addSubview(percent)
-        setAccessibilityRole(.button)
+        layer?.masksToBounds = false
+        [ring, leftTitle, leftSub, files, status, clock, bar, orb, prompt, command, reject, approve, chevron].forEach { addSubview($0) }
+        files.onTap = { [weak self] in self?.onTap?() }
+        files.setAccessibilityLabel("Open the session's files")
+        chevron.onTap = { [weak self] in self?.onTap?() }
+        chevron.setAccessibilityLabel("Open the session")
+        reject.onTap = { [weak self] in self?.decide(false) }
+        approve.onTap = { [weak self] in self?.decide(true) }
+        clock.alignment = .right
+        // The command gets two lines, broken anywhere, so long shell lines stay readable.
+        command.maximumNumberOfLines = 2
+        command.lineBreakMode = .byCharWrapping
+        command.cell?.truncatesLastVisibleLine = true
+        glow.type = .radial
+        glow.startPoint = CGPoint(x: 0.5, y: 0.5)
+        glow.endPoint = CGPoint(x: 1, y: 1)
+        layer?.addSublayer(glow)
+        if !Motion.reduced {
+            let a = CABasicAnimation(keyPath: "opacity")
+            a.fromValue = 0.55; a.toValue = 1; a.duration = 1.3
+            a.autoreverses = true; a.repeatCount = .infinity
+            a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            glow.add(a, forKey: "pulse")
+        }
+        setAccessibilityRole(.group)
         restyle()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    @objc private func closeTapped() { onClose?() }
+    deinit { springTimer?.invalidate() }
+
+    private static func label() -> NSTextField {
+        let l = NSTextField(labelWithString: "")
+        l.lineBreakMode = .byTruncatingTail
+        l.maximumNumberOfLines = 1
+        l.wantsLayer = true
+        return l
+    }
+
+    private func decide(_ allow: Bool) {
+        guard let r = request else { return }
+        onDecide?(r, allow)
+    }
+
+    /// Light ↔ dark: the wings keep their own look, but redraw so system colours settle.
+    func themeChanged() {
+        restyle()
+        [ring, files, bar, orb, prompt, reject, approve, chevron].forEach { $0.needsDisplay = true }
+        ring.refresh(); bar.refresh()
+        needsDisplay = true
+    }
 
     private func restyle() {
-        let p = Pal
-        layer?.backgroundColor = p.cardBottom.withAlphaComponent(1).cgColor
-        layer?.borderWidth = 1
-        layer?.borderColor = p.border.cgColor
-        title.textColor = p.text
-        elapsed.textColor = p.textSecondary
-        commandBox.layer?.backgroundColor = p.surface.cgColor
-        promptGlyph.textColor = p.accent
-        command.textColor = p.text
-        percent.textColor = p.text
+        leftTitle.font = NSFont.systemFont(ofSize: 15.5, weight: .semibold)
+        leftTitle.textColor = Neon.text
+        leftSub.font = NSFont.systemFont(ofSize: 12.5, weight: .regular)
+        leftSub.textColor = Neon.textDim
+        command.font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .medium)
+        command.textColor = Neon.text
+        clock.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        clock.textColor = Neon.textDim
     }
 
-    /// Everything from the session; safe to call every second.
-    func update(session s: ClaudeSession, pendingCommand: String?) {
-        restyle()
-        let p = Pal
-        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let pose: String, chipText: String, chipColor: NSColor
-        switch s.status {
-        case .running: (pose, chipText, chipColor) = ("card_laptop_side", "Running", p.success)
-        case .waiting: (pose, chipText, chipColor) = ("card_bell", "Needs your approval", p.warning)
-        case .done: (pose, chipText, chipColor) = ("card_cheer", "Completed", p.success)
-        case .idle, .ended: (pose, chipText, chipColor) = ("card_sleepy_sit", "Idle", p.muted)
-        }
-        avatar.image = SpriteLibrary.shared.sprite(pose)?.image
-        chip.set(text: chipText, color: chipColor)
-        elapsed.stringValue = s.promptAt == nil ? "" : ClaudeActivityCard.clock(s.elapsed)
+    // MARK: - Content
 
-        let cmd: String
-        if s.status == .waiting, let c = pendingCommand { cmd = "Run: \(ClaudeActivityService.oneLine(c, max: 48))" }
-        else if s.title.isEmpty { cmd = s.status == .idle ? "Ready for your next command" : "Thinking…" }
-        else { cmd = "claude \"\(ClaudeActivityService.oneLine(s.title, max: 44))\"" }
-        if cmd != lastCommand {
-            lastCommand = cmd
-            if !reduce {
-                let t = CATransition(); t.type = .fade; t.duration = 0.25
-                command.layer?.add(t, forKey: "text")
+    /// Everything from the session and the first pending approval; safe to call every second.
+    func update(session s: ClaudeSession?, pending: HookRequest?) {
+        request = pending
+        let newMode: Mode
+        if pending != nil { newMode = .approval }
+        else if let s = s {
+            switch s.status {
+            case .running: newMode = .running
+            case .waiting: newMode = .attention
+            case .done: newMode = .done
+            case .idle, .ended: newMode = .idle
             }
-            command.stringValue = cmd
+        } else { newMode = .idle }
+        let wasAsking = mode == .approval
+        let modeChanged = newMode != mode
+        mode = newMode
+
+        let elapsed: String? = s?.promptAt == nil ? nil : s.map { ClaudeActivityCard.clock($0.elapsed) }
+        let current = s?.steps.last(where: { !$0.finished }) ?? s?.steps.last
+        let task = s.map { ClaudeActivityService.oneLine($0.title, max: 60) } ?? ""
+
+        // Left wing.
+        switch mode {
+        case .idle:
+            ring.set(.idle)
+            set(leftTitle, "Claude is ready")
+            set(leftSub, "Ask me anything…")
+        case .running:
+            ring.set(.spinning)
+            set(leftTitle, "Claude is working…")
+            let step: String? = current.map { $0.finished || $0.progressLine.isEmpty ? $0.text : "\($0.text)…" }
+            set(leftSub, step ?? (task.isEmpty ? "Thinking…" : task))
+        case .approval:
+            ring.set(.breathing)
+            set(leftTitle, "Claude is ready")
+            set(leftSub, pending?.detail.map { ClaudeActivityService.oneLine($0, max: 60) }
+                ?? (task.isEmpty ? "Waiting on your OK to continue" : task))
+        case .attention:
+            ring.set(.waiting)
+            set(leftTitle, "Claude needs you")
+            set(leftSub, task.isEmpty ? "Waiting for your reply" : task)
+        case .done:
+            ring.set(.done)
+            set(leftTitle, "Claude is done")
+            set(leftSub, task.isEmpty ? "All finished" : task)
         }
 
-        let prog = s.progress
-        track.set(progress: prog, status: s.status, animated: !reduce)
-        percent.stringValue = s.status == .idle ? "" : "\(Int((prog * 100).rounded()))%"
+        // Right wing: status line, time and bar — or the command with its two buttons.
+        // The orb and chevron stay in both.
+        let asking = mode == .approval
+        let runGroup: [NSView] = [status, clock, bar]
+        let askGroup: [NSView] = [prompt, command, reject, approve]
+        runGroup.forEach { $0.isHidden = asking }
+        askGroup.forEach { $0.isHidden = !asking }
+        if asking != wasAsking { fadeIn(asking ? askGroup : runGroup) }
 
-        rebuildTrack(for: s)
-        setAccessibilityLabel("Zera — \(chipText): \(cmd), \(percent.stringValue)")
+        let p = s?.progress ?? 0
+        let real = s?.hasRealProgress ?? false
+        set(clock, mode == .idle ? "" : (elapsed ?? ""))
+        switch mode {
+        case .idle:
+            status.attributedStringValue = Self.statusLine("Ready", detail: "waiting for your next request")
+            bar.set(progress: 0, tint: .accent)
+            orb.set(.working)
+        case .running:
+            // The percentage is only real when Claude keeps a plan; otherwise the bar sweeps.
+            status.attributedStringValue = Self.statusLine("Running", detail: real ? "\(Int((p * 100).rounded(.down)))%" : nil, strong: true)
+            bar.set(progress: real ? p : 0, tint: .accent, indeterminate: !real)
+            orb.set(.working)
+        case .approval:
+            set(command, ClaudeActivityService.oneLine(pending?.command ?? "", max: 240))
+            command.toolTip = pending?.command
+            orb.set(.waiting)
+        case .attention:
+            status.attributedStringValue = Self.statusLine("Waiting", detail: "reply in \(s?.folderName ?? "the terminal")", warn: true)
+            bar.set(progress: p, tint: .warning)
+            orb.set(.waiting)
+        case .done:
+            status.attributedStringValue = Self.statusLine("Done", detail: "100%", strong: true, good: true)
+            bar.set(progress: 1, tint: .success)
+            orb.set(.done)
+        }
+
+        setAccessibilityLabel(asking
+            ? "Claude needs your approval: \(command.stringValue)"
+            : "\(leftTitle.stringValue), \(leftSub.stringValue). \(status.stringValue) \(clock.stringValue)")
+        let tint: NSColor
+        switch mode {
+        case .approval: tint = Neon.cyan.withAlphaComponent(0.5)
+        case .attention: tint = Neon.warning.withAlphaComponent(0.4)
+        case .done: tint = Neon.green.withAlphaComponent(0.42)
+        case .idle, .running: tint = NSColor(srgbRed: 0.43, green: 0.43, blue: 1, alpha: 0.42)
+        }
+        glow.colors = [tint.cgColor, tint.withAlphaComponent(0).cgColor]
+        springRight(to: asking ? M.rightAsk : M.rightRun)
         needsLayout = true
+        if modeChanged { needsDisplay = true }
     }
 
-    /// Up to five nodes: Claude's plan when it keeps one, otherwise the last tool steps.
-    private func rebuildTrack(for s: ClaudeSession) {
-        stepViews.forEach { $0.removeFromSuperview() }; stepViews = []
-        rail.forEach { $0.removeFromSuperview() }; rail = []
-        var nodes: [(String, String, StepNode.State)] = []
-        if !s.plan.isEmpty {
-            // Window the plan around the active item so five fit.
-            let items = s.plan
-            let activeIdx = items.firstIndex { $0.state == .active } ?? items.lastIndex { $0.state == .done } ?? 0
-            let start = max(0, min(activeIdx - 2, items.count - 5))
-            for it in items[start..<min(items.count, start + 5)] {
-                let state: StepNode.State = it.state == .done ? .done : (it.state == .active ? .active : .pending)
-                nodes.append((it.title, it.state == .done ? "Done" : (it.state == .active ? "Now" : "Pending"), state))
-            }
-        } else {
-            for st in s.steps.suffix(5) {
-                let d = st.duration.map { ClaudeActivityCard.clock($0) } ?? ClaudeActivityCard.clock(Date().timeIntervalSince(st.at))
-                nodes.append((st.verb == "Running" ? "Run" : st.verb, st.finished ? d : d, st.finished ? .done : .active))
-            }
-            if nodes.isEmpty { nodes.append((s.status == .done ? "Done" : "Starting", s.status == .done ? "" : "…", s.status == .done ? .done : .active)) }
+    /// "Running · 62%" — the word in the main colour, the detail in the accent.
+    private static func statusLine(_ word: String, detail: String?, strong: Bool = false, warn: Bool = false, good: Bool = false) -> NSAttributedString {
+        let tint = warn ? Neon.warning : (good ? Neon.green : Neon.accent)
+        let s = NSMutableAttributedString(string: word, attributes: [
+            .font: NSFont.systemFont(ofSize: 15.5, weight: .medium), .foregroundColor: Neon.text.withAlphaComponent(0.86)])
+        guard let detail = detail else { return s }
+        s.append(NSAttributedString(string: "  ·  ", attributes: [
+            .font: NSFont.systemFont(ofSize: 15.5, weight: .bold), .foregroundColor: Neon.textDim]))
+        s.append(NSAttributedString(string: detail, attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 15.5, weight: strong ? .semibold : .regular),
+            .foregroundColor: strong ? tint : Neon.textDim]))
+        return s
+    }
+
+    /// Cross-fades a label only when its text actually changes.
+    private func set(_ label: NSTextField, _ text: String) {
+        guard label.stringValue != text else { return }
+        if !Motion.reduced {
+            let t = CATransition(); t.type = .fade; t.duration = 0.25
+            label.layer?.add(t, forKey: "text")
         }
-        for (i, n) in nodes.enumerated() {
-            if i > 0 { let r = NSView(); r.wantsLayer = true; r.layer?.backgroundColor = Pal.divider.cgColor; addSubview(r); rail.append(r) }
-            let v = StepNode(title: n.0, sub: n.1, state: n.2)
-            addSubview(v); stepViews.append(v)
+        label.stringValue = text
+    }
+
+    /// The incoming half of the right wing fades in once the wing has started to resize.
+    private func fadeIn(_ views: [NSView]) {
+        guard !Motion.reduced else { return }
+        for v in views {
+            v.wantsLayer = true
+            let a = CABasicAnimation(keyPath: "opacity")
+            a.fromValue = 0; a.toValue = 1
+            a.beginTime = CACurrentMediaTime() + 0.16
+            a.duration = 0.22
+            a.fillMode = .backwards
+            v.layer?.add(a, forKey: "fadeIn")
+        }
+    }
+
+    // MARK: - Right wing spring
+
+    private func springRight(to target: CGFloat) {
+        guard target != rightTarget else { return }
+        rightTarget = target
+        if Motion.reduced || window == nil { rightW = target; rightV = 0; needsLayout = true; needsDisplay = true; return }
+        guard springTimer == nil else { return }
+        lastSpringAt = CACurrentMediaTime()
+        let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.stepSpring() }
+        RunLoop.main.add(t, forMode: .common)
+        springTimer = t
+    }
+
+    private func stepSpring() {
+        let now = CACurrentMediaTime()
+        let dt = CGFloat(min(0.05, now - lastSpringAt))
+        lastSpringAt = now
+        let force = (rightTarget - rightW) * 170 - rightV * 20
+        rightV += force * dt
+        rightW += rightV * dt
+        if abs(rightTarget - rightW) < 0.3, abs(rightV) < 0.3 {
+            rightW = rightTarget; rightV = 0
+            springTimer?.invalidate(); springTimer = nil
+        }
+        needsLayout = true
+        needsDisplay = true
+    }
+
+    /// How wide the right wing can be at `width`, after clamping to the panel edge.
+    private func room(for width: CGFloat) -> CGFloat {
+        let rx0 = centerX + M.tail
+        return max(0, min(bounds.width - M.edge, rx0 + width) - rx0)
+    }
+
+    // MARK: - Layout
+
+    override func layout() {
+        super.layout()
+        let y = ((bounds.height - M.wingH) / 2).rounded()
+        let mid = y + M.wingH / 2
+        let tipY = mid + M.droop
+
+        let lx1 = centerX - M.tail
+        let lx0 = max(M.edge, lx1 - M.leftMax)
+        leftBody = NSRect(x: lx0, y: y, width: max(0, lx1 - lx0), height: M.wingH)
+        rightBody = NSRect(x: centerX + M.tail, y: y, width: room(for: rightW), height: M.wingH)
+
+        (leftPath, leftTail) = Self.wing(body: leftBody, inward: 1, tip: NSPoint(x: centerX - M.tip, y: tipY))
+        (rightPath, rightTail) = Self.wing(body: rightBody, inward: -1, tip: NSPoint(x: centerX + M.tip, y: tipY))
+
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        glow.frame = CGRect(x: centerX - 60, y: mid - 56, width: 120, height: 120)
+        CATransaction.commit()
+
+        layoutLeft(mid: mid)
+        layoutRight(mid: mid)
+        window?.invalidateCursorRects(for: self)
+    }
+
+    private func layoutLeft(mid: CGFloat) {
+        let b = leftBody
+        let show = b.width >= M.minWing
+        [ring, leftTitle, leftSub, files].forEach { $0.isHidden = !show }
+        guard show else { return }
+        ring.frame = NSRect(x: b.minX + 10, y: mid - 22, width: 44, height: 44)
+        files.frame = NSRect(x: b.maxX - 4 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
+        let textX = ring.frame.maxX + 12
+        let textW = max(0, files.frame.minX - 10 - textX)
+        leftTitle.frame = NSRect(x: textX, y: mid - 21, width: textW, height: 21)
+        leftSub.frame = NSRect(x: textX, y: mid + 2, width: textW, height: 18)
+    }
+
+    private func layoutRight(mid: CGFloat) {
+        let b = rightBody
+        let show = b.width >= M.minWing
+        let all: [NSView] = [status, clock, bar, orb, prompt, command, reject, approve, chevron]
+        if !show { all.forEach { $0.isHidden = true }; return }
+        chevron.isHidden = false
+        orb.isHidden = false
+        chevron.frame = NSRect(x: b.maxX - 8 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
+        orb.frame = NSRect(x: chevron.frame.minX - 4 - M.orb, y: mid - M.orb / 2, width: M.orb, height: M.orb)
+        if mode == .approval {
+            let aw = approve.fittedWidth, rw = reject.fittedWidth
+            approve.frame = NSRect(x: orb.frame.minX - 6 - aw, y: mid - 22, width: aw, height: 44)
+            reject.frame = NSRect(x: approve.frame.minX - 2 - rw, y: mid - 22, width: rw, height: 44)
+            prompt.frame = NSRect(x: b.minX + 26, y: mid - 22, width: 44, height: 44)
+            let cx = prompt.frame.maxX + 8
+            let cw = max(0, reject.frame.minX - 8 - cx)
+            // One line when it fits, two when it is long; centred on the wing either way.
+            let lines = command.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: cw, height: 100)).height ?? 17
+            let ch = min(36, max(17, ceil(lines)))
+            command.frame = NSRect(x: cx, y: (mid - ch / 2).rounded(), width: cw, height: ch)
+        } else {
+            let sx = b.minX + 36
+            let sw = max(0, orb.frame.minX - 14 - sx)
+            clock.frame = NSRect(x: sx + sw - 56, y: mid - 19, width: 56, height: 17)
+            status.frame = NSRect(x: sx, y: mid - 22, width: max(0, sw - 60), height: 21)
+            bar.frame = NSRect(x: sx, y: mid + 8, width: sw, height: 6)
+        }
+    }
+
+    /// A pill whose inner end swells into a tail and tapers to a point at `tip`.
+    /// `inward` is +1 when the tail points right (the left wing), −1 for the right wing.
+    private static func wing(body b: NSRect, inward d: CGFloat, tip: NSPoint) -> (NSBezierPath, NSBezierPath) {
+        let path = NSBezierPath(), tail = NSBezierPath()
+        guard b.width > 0 else { return (path, tail) }
+        let r = b.height / 2
+        let outer = d > 0 ? b.minX : b.maxX
+        let inner = d > 0 ? b.maxX : b.minX
+        let cap = outer + d * r
+        let top = b.minY, bottom = b.maxY
+        let cpOut: CGFloat = 30, cpIn: CGFloat = 26
+
+        path.move(to: NSPoint(x: cap, y: top))
+        path.line(to: NSPoint(x: inner, y: top))
+        path.curve(to: NSPoint(x: tip.x, y: tip.y - 1.2), controlPoint1: NSPoint(x: inner + d * cpOut, y: top),
+                   controlPoint2: NSPoint(x: tip.x - d * cpIn, y: tip.y - 4))
+        path.line(to: NSPoint(x: tip.x, y: tip.y + 1.2))
+        path.curve(to: NSPoint(x: inner, y: bottom), controlPoint1: NSPoint(x: tip.x - d * cpIn, y: tip.y + 4),
+                   controlPoint2: NSPoint(x: inner + d * cpOut, y: bottom))
+        path.line(to: NSPoint(x: cap, y: bottom))
+        // Round outer end: bottom (90°) → top (270°) through the outer side.
+        path.appendArc(withCenter: NSPoint(x: cap, y: b.midY), radius: r, startAngle: 90, endAngle: 270, clockwise: d < 0)
+        path.close()
+
+        // The tendril: the two curves that sweep into her.
+        tail.move(to: NSPoint(x: inner - d * 24, y: top))
+        tail.line(to: NSPoint(x: inner, y: top))
+        tail.curve(to: NSPoint(x: tip.x, y: tip.y - 1.2), controlPoint1: NSPoint(x: inner + d * cpOut, y: top),
+                   controlPoint2: NSPoint(x: tip.x - d * cpIn, y: tip.y - 4))
+        tail.line(to: NSPoint(x: tip.x, y: tip.y + 1.2))
+        tail.curve(to: NSPoint(x: inner, y: bottom), controlPoint1: NSPoint(x: tip.x - d * cpIn, y: tip.y + 4),
+                   controlPoint2: NSPoint(x: inner + d * cpOut, y: bottom))
+        tail.line(to: NSPoint(x: inner - d * 24, y: bottom))
+        return (path, tail)
+    }
+
+    // MARK: - Drawing
+
+    override func draw(_ dirtyRect: NSRect) {
+        if leftBody.width >= M.minWing { drawWing(leftPath, tail: leftTail, body: leftBody, inward: 1) }
+        if rightBody.width >= M.minWing { drawWing(rightPath, tail: rightTail, body: rightBody, inward: -1) }
+    }
+
+    private func drawWing(_ path: NSBezierPath, tail: NSBezierPath, body: NSRect, inward d: CGFloat) {
+        // Navy-black glass with a wide blue halo.
+        Neon.glowing(Neon.halo, blur: 18) { Neon.fillBottom.setFill(); path.fill() }
+        NSGradient(starting: Neon.fillTop, ending: Neon.fillBottom)?.draw(in: path, angle: -90)
+
+        // Hairline edge with a soft glow of its own.
+        Neon.glowing(Neon.edge.withAlphaComponent(0.6), blur: 5) {
+            Neon.edge.setStroke()
+            path.lineWidth = 1.3
+            path.stroke()
+        }
+
+        // The tendril glows cyan → violet as it reaches her.
+        guard let ctx = NSGraphicsContext.current?.cgContext,
+              let gradient = NSGradient(colors: [Neon.edge, Neon.cyan, Neon.violet]) else { return }
+        let from = d > 0 ? body.maxX - 28 : body.minX + 28
+        let to = centerX - d * M.tip
+        let cg = tail.cgPathCompat
+        let passes: [(width: CGFloat, alpha: CGFloat)] = [(6, 0.35), (3, 0.5), (1.5, 1)]
+        for pass in passes {
+            ctx.saveGState()
+            ctx.addPath(cg)
+            ctx.setLineWidth(pass.width)
+            ctx.setLineCap(.round)
+            ctx.replacePathWithStrokedPath()
+            ctx.clip()
+            ctx.setAlpha(pass.alpha)
+            gradient.draw(from: NSPoint(x: from, y: 0), to: NSPoint(x: to, y: 0), options: [])
+            ctx.restoreGState()
+        }
+    }
+
+    // MARK: - Mouse
+
+    /// Whether `p` (view coordinates) is on a wing, with a little slack for the glow.
+    func wingContains(_ p: NSPoint) -> Bool {
+        onWing(p) || onWing(NSPoint(x: p.x, y: p.y - 4)) || onWing(NSPoint(x: p.x, y: p.y + 4))
+    }
+
+    private func onWing(_ p: NSPoint) -> Bool {
+        (leftBody.width >= M.minWing && leftPath.contains(p)) || (rightBody.width >= M.minWing && rightPath.contains(p))
+    }
+
+    /// Only the wings take clicks; the transparent rest of the panel lets them through.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let p = superview.map { convert(point, from: $0) } ?? point
+        guard onWing(p) else { return nil }
+        // Buttons take their own clicks; labels and glyphs hand them to the wing.
+        let v = super.hitTest(point)
+        return (v is GlowIconButton || v is GlowPillButton) ? v : self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if onWing(convert(event.locationInWindow, from: nil)) { onTap?() }
+    }
+    override func rightMouseDown(with event: NSEvent) { onClose?() }
+    override func resetCursorRects() {
+        if leftBody.width >= M.minWing { addCursorRect(leftBody, cursor: .pointingHand) }
+        if rightBody.width >= M.minWing { addCursorRect(rightBody, cursor: .pointingHand) }
+    }
+}
+
+private extension NSBezierPath {
+    /// `cgPath` only arrived in macOS 14; build it by hand for 13.
+    var cgPathCompat: CGPath {
+        let path = CGMutablePath()
+        var pts = [NSPoint](repeating: .zero, count: 3)
+        for i in 0..<elementCount {
+            switch element(at: i, associatedPoints: &pts) {
+            case .moveTo: path.move(to: pts[0])
+            case .lineTo: path.addLine(to: pts[0])
+            case .curveTo: path.addCurve(to: pts[2], control1: pts[0], control2: pts[1])
+            case .closePath: path.closeSubpath()
+            default: break
+            }
+        }
+        return path
+    }
+}
+
+// MARK: - Look
+
+/// The wings' colours: deep navy-black glass with blue neon. They keep this look in light and
+/// dark mode — they sit on the desktop under the notch, where a dark wing reads best.
+enum Neon {
+    private static func c(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> NSColor {
+        NSColor(srgbRed: r, green: g, blue: b, alpha: a)
+    }
+
+    static let fillTop = c(0.039, 0.071, 0.173, 0.97)
+    static let fillBottom = c(0.016, 0.031, 0.071, 0.97)
+    static let edge = c(0.33, 0.50, 1.0, 0.75)
+    static let halo = c(0.19, 0.34, 1.0, 0.60)
+    static let cyan = c(0.30, 0.74, 1.0)
+    static let violet = c(0.58, 0.40, 1.0)
+    static let accent = c(0.38, 0.72, 1.0)
+    static let text = c(0.953, 0.961, 1.0)
+    static let textDim = c(0.545, 0.588, 0.776)
+    static let glyph = c(0.62, 0.71, 1.0)
+    static let chip = c(0.035, 0.067, 0.157)
+    static let chipHover = c(0.063, 0.106, 0.271)
+    static let chipEdge = c(0.33, 0.50, 1.0, 0.42)
+    static let track = c(0.071, 0.102, 0.212)
+    static let red = c(1.0, 0.33, 0.41)
+    static let green = c(0.21, 0.89, 0.67)
+    static let warning = c(1.0, 0.70, 0.25)
+
+    /// Draws an SF Symbol centred in `rect`.
+    static func symbol(_ name: String, in rect: NSRect, size: CGFloat, weight: NSFont.Weight = .semibold, color: NSColor) {
+        guard let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size, weight: weight)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [color]))) else { return }
+        let s = img.size
+        img.draw(in: NSRect(x: rect.midX - s.width / 2, y: rect.midY - s.height / 2, width: s.width, height: s.height),
+                 from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+    }
+
+    /// Runs `body` with a coloured glow behind whatever it draws.
+    static func glowing(_ color: NSColor, blur: CGFloat, _ body: () -> Void) {
+        NSGraphicsContext.saveGraphicsState()
+        let s = NSShadow()
+        s.shadowColor = color
+        s.shadowBlurRadius = blur
+        s.shadowOffset = .zero
+        s.set()
+        body()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// The round chips' look: soft fill, hairline edge, faint glow.
+    static func drawChip(_ shape: NSBezierPath, hovered: Bool) {
+        glowing(halo.withAlphaComponent(hovered ? 0.8 : 0.4), blur: hovered ? 8 : 5) {
+            (hovered ? chipHover : chip).setFill(); shape.fill()
+        }
+        chipEdge.setStroke()
+        shape.lineWidth = 1
+        shape.stroke()
+    }
+}
+
+// MARK: - Pieces
+
+/// The ring at the start of the left wing: a thick cyan → violet arc, spinning while Claude
+/// works, still and breathing its glow while a command waits on you, pulsing amber while Claude
+/// waits for a reply, a full green ring when done.
+final class RingGlyph: NSView {
+    enum Style { case idle, spinning, breathing, waiting, done }
+    private let track = CAShapeLayer()
+    private let spinner = CALayer()           // rotates; holds the gradient masked to the arc
+    private let gradient = CAGradientLayer()
+    private let arc = CAShapeLayer()
+    private var style: Style = .idle
+    override var isFlipped: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.masksToBounds = false
+        track.fillColor = NSColor.clear.cgColor
+        track.lineWidth = 6
+        layer?.addSublayer(track)
+        arc.fillColor = NSColor.clear.cgColor
+        arc.strokeColor = NSColor.black.cgColor
+        arc.lineWidth = 6
+        arc.lineCap = .round
+        gradient.type = .conic
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
+        gradient.endPoint = CGPoint(x: 0.5, y: 0)
+        gradient.mask = arc
+        spinner.addSublayer(gradient)
+        spinner.shadowOpacity = 0.8
+        spinner.shadowRadius = 4
+        spinner.shadowOffset = .zero
+        layer?.addSublayer(spinner)
+        refresh()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func set(_ st: Style) {
+        guard st != style else { return }
+        style = st
+        refresh()
+    }
+
+    /// Colours and motion for the current style.
+    func refresh() {
+        let colors: [NSColor]
+        switch style {
+        case .idle, .spinning, .breathing: colors = [Neon.violet, Neon.cyan, Neon.accent, Neon.violet]
+        case .waiting: colors = [Neon.warning, Neon.warning.withAlphaComponent(0.6), Neon.warning]
+        case .done: colors = [Neon.green, Neon.green]
+        }
+        track.strokeColor = Neon.track.cgColor
+        gradient.colors = colors.map { $0.cgColor }
+        spinner.shadowColor = (style == .done ? Neon.green : (style == .waiting ? Neon.warning : Neon.cyan)).cgColor
+        arc.strokeEnd = style == .done ? 1 : 0.78
+        spinner.removeAllAnimations()
+        guard !Motion.reduced else { return }
+        switch style {
+        case .spinning:
+            let a = CABasicAnimation(keyPath: "transform.rotation.z")
+            a.fromValue = 0; a.toValue = -2 * Double.pi
+            a.duration = 1.2; a.repeatCount = .infinity
+            spinner.add(a, forKey: "spin")
+        case .breathing:
+            let a = CABasicAnimation(keyPath: "shadowRadius")
+            a.fromValue = 3; a.toValue = 10; a.duration = 1.0
+            a.autoreverses = true; a.repeatCount = .infinity
+            a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            spinner.add(a, forKey: "breathe")
+        case .waiting:
+            let a = CABasicAnimation(keyPath: "opacity")
+            a.fromValue = 1; a.toValue = 0.45; a.duration = 0.8; a.autoreverses = true; a.repeatCount = .infinity
+            spinner.add(a, forKey: "pulse")
+        case .idle, .done: break
         }
     }
 
     override func layout() {
         super.layout()
-        let w = bounds.width, h = bounds.height
-        layer?.cornerRadius = expanded ? 28 : h / 2
-        if !expanded { layoutCompact(w: w, h: h); return }
-        chip.compact = false
-        track.isHidden = false; percent.isHidden = false; elapsed.isHidden = false; commandBox.isHidden = false
-        stepViews.forEach { $0.isHidden = false }; rail.forEach { $0.isHidden = false }
-        avatar.frame = NSRect(x: 14, y: 22, width: 108, height: 110)
-        title.font = NSFont.systemFont(ofSize: 22, weight: .bold)
-        title.frame = NSRect(x: left, y: 22, width: 64, height: 28)
-        let cw = min(200, chip.fittedWidth)
-        chip.frame = NSRect(x: left + 70, y: 24, width: cw, height: 26)
-        closeButton.frame = NSRect(x: w - pad - 28, y: 22, width: 28, height: 28)
-        chevron.frame = NSRect(x: closeButton.frame.minX - 8 - 36, y: 18, width: 36, height: 36)
-        elapsed.font = NSFont.systemFont(ofSize: 14, weight: .medium)
-        elapsed.frame = NSRect(x: chevron.frame.minX - 8 - 60, y: 27, width: 60, height: 18)
-        commandBox.frame = NSRect(x: left, y: 60, width: w - left - pad, height: 34)
-        promptGlyph.frame = NSRect(x: 12, y: 8, width: 26, height: 18)
-        command.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        command.frame = NSRect(x: 48, y: 8, width: commandBox.frame.width - 60, height: 18)
-        let pw: CGFloat = 52
-        percent.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
-        track.frame = NSRect(x: left, y: 108, width: w - left - pad - pw - 10, height: 14)
-        percent.frame = NSRect(x: w - pad - pw, y: 105, width: pw, height: 20)
-        // Step track: nodes spread across the full width under everything.
-        let n = CGFloat(max(1, stepViews.count))
-        let x0: CGFloat = 20, x1 = w - 20
-        let slot = n > 1 ? (x1 - x0 - 56) / (n - 1) : 0
-        for (i, v) in stepViews.enumerated() {
-            let cx = n > 1 ? x0 + 28 + CGFloat(i) * slot : w / 2
-            v.frame = NSRect(x: cx - 48, y: 136, width: 96, height: 60)
-            if i > 0 {
-                let prev = x0 + 28 + CGFloat(i - 1) * slot
-                rail[i - 1].frame = NSRect(x: prev + 15, y: 148, width: cx - prev - 30, height: 2)
-            }
-        }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        let b = bounds
+        let ring = CGPath(ellipseIn: b.insetBy(dx: 6, dy: 6), transform: nil)
+        track.frame = b; track.path = ring
+        spinner.frame = b
+        gradient.frame = b
+        arc.frame = b; arc.path = ring
+        CATransaction.commit()
     }
-
-    /// One row — three groups whose widths are summed explicitly so nothing can overlap:
-    ///   [edge] avatar ·gap· Zera ·gap· chip  [group]  command (flex)  [group]  elapsed ·gap· bar ·gap· % [group] ⌄ ·gap· ✕ [edge]
-    /// When the chip is long (e.g. "Needs your approval") the progress bar and % step aside so
-    /// the command keeps a readable width; the elapsed time always stays.
-    private func layoutCompact(w: CGFloat, h: CGFloat) {
-        typealias C = Compact
-        chip.compact = true
-        stepViews.forEach { $0.isHidden = true }; rail.forEach { $0.isHidden = true }
-        func mid(_ height: CGFloat) -> CGFloat { ((h - height) / 2).rounded() }
-
-        // Left group.
-        var x = C.edge
-        avatar.frame = NSRect(x: x, y: 6, width: C.avatar, height: h - 10)
-        x += C.avatar + C.gap
-        title.font = NSFont.systemFont(ofSize: 15, weight: .bold)
-        title.frame = NSRect(x: x, y: mid(20), width: C.title, height: 20)
-        x += C.title + C.gap
-        let cw = min(C.chipMax, chip.fittedWidth)
-        chip.frame = NSRect(x: x, y: mid(24), width: cw, height: 24)
-        let leftEnd = x + cw
-
-        // Right group, packed from the right edge.
-        var r = w - C.edge
-        r -= C.button
-        closeButton.frame = NSRect(x: r, y: mid(C.button), width: C.button, height: C.button)
-        r -= C.gap + C.button
-        chevron.frame = NSRect(x: r, y: mid(C.button), width: C.button, height: C.button)
-        r -= C.group                                   // right edge of the status cluster
-
-        let progressW = C.percent + C.gap + C.bar + C.gap   // % · bar, in front of the elapsed time
-        var clusterW = C.elapsed + progressW
-        var commandW = r - clusterW - C.group - leftEnd - C.group
-        let showProgress = commandW >= C.commandMin
-        if !showProgress { clusterW = C.elapsed; commandW = r - clusterW - C.group - leftEnd - C.group }
-        track.isHidden = !showProgress
-        percent.isHidden = !showProgress
-
-        var cx = r
-        if showProgress {
-            cx -= C.percent
-            percent.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
-            percent.frame = NSRect(x: cx, y: mid(16), width: C.percent, height: 16)
-            cx -= C.gap + C.bar
-            track.frame = NSRect(x: cx, y: mid(10), width: C.bar, height: 10)
-            cx -= C.gap
-        }
-        cx -= C.elapsed
-        elapsed.font = NSFont.systemFont(ofSize: 12, weight: .medium)
-        elapsed.frame = NSRect(x: cx, y: mid(16), width: C.elapsed, height: 16)
-
-        // Middle: the command box takes exactly what is left between the two groups.
-        let showCommand = commandW >= 60
-        commandBox.isHidden = !showCommand
-        if showCommand {
-            commandBox.frame = NSRect(x: leftEnd + C.group, y: mid(32), width: commandW, height: 32)
-            promptGlyph.frame = NSRect(x: 10, y: 8, width: 20, height: 16)
-            command.font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
-            command.frame = NSRect(x: 32, y: 8, width: commandW - 42, height: 16)
-        }
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        if hovered { Pal.surfaceHover.withAlphaComponent(0.3).setFill(); bounds.fill() }
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
-    }
-    override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) { onTap?() }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
-// MARK: - Pieces
-
-/// Thick rounded bar: hatched empty track, blue→violet gradient fill with a soft sweep while
-/// running, a glowing head dot; amber when waiting, green when done.
-final class ProgressTrack: NSView {
+/// Thin rounded progress bar: cyan → violet fill with a soft glow and a light sweeping across it.
+/// Without a real percentage it runs indeterminate: a short segment gliding along the track.
+final class GlowProgressBar: NSView {
+    enum Tint { case accent, warning, success }
     private let fill = CAGradientLayer()
-    private let sweep = CAGradientLayer()
-    private let head = CALayer()
-    private let glow = CALayer()
-    private var progress: Double = 0
-    private var status: ClaudeSession.Status = .running
+    private let sheenClip = CALayer()         // the fill's shape, clipping the sheen
+    private let sheen = CAGradientLayer()
+    private var progress: CGFloat = 0
+    private var tint: Tint = .accent
+    private var indeterminate = false
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
@@ -306,184 +685,304 @@ final class ProgressTrack: NSView {
         wantsLayer = true
         layer?.masksToBounds = false
         fill.startPoint = CGPoint(x: 0, y: 0.5); fill.endPoint = CGPoint(x: 1, y: 0.5)
-        fill.masksToBounds = true
+        fill.shadowOpacity = 0.7
+        fill.shadowRadius = 5
+        fill.shadowOffset = .zero
         layer?.addSublayer(fill)
-        sweep.startPoint = CGPoint(x: 0, y: 0.5); sweep.endPoint = CGPoint(x: 1, y: 0.5)
-        sweep.colors = [NSColor.clear.cgColor, NSColor.white.withAlphaComponent(0.45).cgColor, NSColor.clear.cgColor]
-        sweep.locations = [0, 0.5, 1]
-        fill.addSublayer(sweep)
-        glow.cornerRadius = 11
-        layer?.addSublayer(glow)
-        head.cornerRadius = 7
-        head.borderWidth = 2.5
-        layer?.addSublayer(head)
+        sheenClip.masksToBounds = true
+        sheen.startPoint = CGPoint(x: 0, y: 0.5); sheen.endPoint = CGPoint(x: 1, y: 0.5)
+        sheen.colors = [NSColor.white.withAlphaComponent(0).cgColor, NSColor.white.withAlphaComponent(0.55).cgColor,
+                        NSColor.white.withAlphaComponent(0).cgColor]
+        sheenClip.addSublayer(sheen)
+        layer?.addSublayer(sheenClip)
+        refresh()
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func set(progress p: Double, status st: ClaudeSession.Status, animated: Bool) {
-        let p = max(0.03, min(1, p))
-        let statusChanged = st != status
-        progress = p; status = st
-        let pal = Pal
-        let colors: [CGColor]
-        switch st {
-        case .waiting: colors = [pal.warning.cgColor, pal.warning.cgColor]
-        case .done: colors = [pal.success.cgColor, pal.success.cgColor]
-        default: colors = [NSColor(srgbRed: 0.36, green: 0.52, blue: 0.98, alpha: 1).cgColor, pal.accent.cgColor, NSColor(srgbRed: 0.72, green: 0.45, blue: 0.98, alpha: 1).cgColor]
-        }
-        fill.colors = colors
-        head.backgroundColor = (colors.last ?? pal.accent.cgColor)
-        head.borderColor = NSColor.white.cgColor
-        glow.backgroundColor = (st == .waiting ? pal.warning : (st == .done ? pal.success : pal.accent)).withAlphaComponent(0.35).cgColor
-        head.isHidden = st == .done || st == .idle
-        glow.isHidden = head.isHidden
-        if statusChanged || sweep.animation(forKey: "sweep") == nil {
-            sweep.removeAllAnimations()
-            if st == .running, animated {
-                let a = CABasicAnimation(keyPath: "locations")
-                a.fromValue = [-1.0, -0.5, 0.0]; a.toValue = [1.0, 1.5, 2.0]
-                a.duration = 1.8; a.repeatCount = .infinity
-                sweep.add(a, forKey: "sweep")
-            }
-            glow.removeAllAnimations()
-            if st != .done, animated {
-                let b = CABasicAnimation(keyPath: "transform.scale")
-                b.fromValue = 0.8; b.toValue = 1.25; b.duration = 0.9; b.autoreverses = true; b.repeatCount = .infinity
-                glow.add(b, forKey: "pulse")
-            }
-        }
+    func set(progress p: Double, tint t: Tint, indeterminate ind: Bool = false) {
+        let np = CGFloat(max(0, min(1, p)))
+        guard np != progress || t != tint || ind != indeterminate else { return }
+        progress = np
+        let restart = ind != indeterminate
+        indeterminate = ind
+        if t != tint { tint = t; refresh() }
         CATransaction.begin()
-        CATransaction.setAnimationDuration(animated ? 0.45 : 0)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
+        CATransaction.setAnimationDuration(Motion.duration(0.45))
         place()
         CATransaction.commit()
+        if restart { animate() }
+    }
+
+    func refresh() {
+        let colors: [NSColor]
+        switch tint {
+        case .accent: colors = [Neon.cyan, Neon.accent, Neon.violet]
+        case .warning: colors = [Neon.warning, Neon.warning]
+        case .success: colors = [Neon.green.blended(withFraction: 0.3, of: Neon.cyan) ?? Neon.green, Neon.green]
+        }
+        fill.colors = colors.map { $0.cgColor }
+        fill.shadowColor = colors[colors.count / 2].cgColor
+        layer?.backgroundColor = Neon.track.cgColor
+        sheenClip.isHidden = tint != .accent
     }
 
     private func place() {
         let h = bounds.height, w = bounds.width
-        let fw = max(h, w * CGFloat(progress))
+        layer?.cornerRadius = h / 2
         fill.cornerRadius = h / 2
+        let fw = indeterminate ? w * 0.3 : (progress == 0 ? 0 : max(h, w * progress))
         fill.frame = CGRect(x: 0, y: 0, width: fw, height: h)
-        sweep.frame = CGRect(x: 0, y: 0, width: fw, height: h)
-        let hx = min(w - 8, fw - 2)
-        head.frame = CGRect(x: hx - 7, y: h / 2 - 7, width: 14, height: 14)
-        glow.frame = CGRect(x: hx - 11, y: h / 2 - 11, width: 22, height: 22)
+        sheenClip.frame = fill.frame
+        sheenClip.cornerRadius = h / 2
+        sheen.frame = CGRect(x: 0, y: 0, width: max(h, fw * 0.4), height: h)
     }
+
+    /// The sweep of light across the fill, or the gliding segment when indeterminate.
+    private func animate() {
+        fill.removeAnimation(forKey: "glide"); sheenClip.removeAnimation(forKey: "glide"); sheen.removeAnimation(forKey: "sheen")
+        guard !Motion.reduced, window != nil, bounds.width > 0 else { return }
+        let w = bounds.width
+        if indeterminate {
+            let a = CABasicAnimation(keyPath: "transform.translation.x")
+            a.fromValue = -w * 0.3; a.toValue = w
+            a.duration = 1.4; a.repeatCount = .infinity
+            a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            fill.add(a, forKey: "glide"); sheenClip.add(a, forKey: "glide")
+            layer?.masksToBounds = true
+        } else {
+            layer?.masksToBounds = false
+            let a = CABasicAnimation(keyPath: "transform.translation.x")
+            a.fromValue = -sheen.bounds.width; a.toValue = fill.bounds.width + sheen.bounds.width
+            a.duration = 2.0; a.repeatCount = .infinity
+            a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            sheen.add(a, forKey: "sheen")
+        }
+    }
+
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); animate() }
 
     override func layout() {
         super.layout()
         CATransaction.begin(); CATransaction.setDisableActions(true); place(); CATransaction.commit()
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let p = Pal
-        let path = NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2)
-        p.surfaceStrong.setFill(); path.fill()
-        // Faint hatching on the empty part.
-        NSGraphicsContext.saveGraphicsState()
-        path.addClip()
-        p.border.withAlphaComponent(0.5).setStroke()
-        var x: CGFloat = -bounds.height
-        while x < bounds.width {
-            let l = NSBezierPath(); l.move(to: NSPoint(x: x, y: bounds.height)); l.line(to: NSPoint(x: x + bounds.height, y: 0)); l.lineWidth = 1; l.stroke()
-            x += 8
-        }
-        NSGraphicsContext.restoreGraphicsState()
+        animate()
     }
 }
 
-/// A step on the track: circle (check / sparkle / dots), label, duration or "Pending".
-final class StepNode: NSView {
-    enum State { case done, active, pending }
-    private let state: State
-    private let label = NSTextField(labelWithString: "")
-    private let sub = NSTextField(labelWithString: "")
-    private let ring = CAShapeLayer()
+/// The status orb on the right wing: a small glass sphere with colour swirling inside.
+/// Blue-violet while Claude works, amber while it waits on you, green when done. It eases
+/// between colours, pulses its glow and spins faster under the pointer.
+final class OrbView: NSView {
+    enum Style { case working, waiting, done }
+
+    private struct Colors {
+        var a: [CGFloat], b: [CGFloat], c: [CGFloat], core: [CGFloat], glow: [CGFloat]
+        var pulse: CGFloat
+    }
+    private static func colors(_ s: Style) -> Colors {
+        switch s {
+        case .working: return Colors(a: [77, 189, 255], b: [148, 102, 255], c: [96, 130, 255], core: [18, 14, 64], glow: [100, 120, 255], pulse: 1)
+        case .waiting: return Colors(a: [255, 179, 64], b: [255, 110, 60], c: [255, 214, 110], core: [58, 24, 4], glow: [255, 165, 60], pulse: 2.2)
+        case .done: return Colors(a: [70, 214, 140], b: [40, 190, 170], c: [160, 240, 190], core: [4, 38, 24], glow: [54, 227, 170], pulse: 0.5)
+        }
+    }
+
+    private var cur = OrbView.colors(.working)
+    private var target = OrbView.colors(.working)
+    private var phase: CGFloat = CGFloat.random(in: 0...10)
+    private var speed: CGFloat = 1
+    private var wantSpeed: CGFloat = 1
+    private var timer: Timer?
+    private var lastTick: CFTimeInterval = 0
     override var isFlipped: Bool { true }
 
-    init(title: String, sub s: String, state: State) {
-        self.state = state
-        super.init(frame: .zero)
-        wantsLayer = true
-        let p = Pal
-        label.stringValue = title
-        label.font = NSFont.systemFont(ofSize: 12, weight: state == .active ? .bold : .semibold)
-        label.textColor = state == .pending ? p.textSecondary : p.text
-        label.alignment = .center
-        label.lineBreakMode = .byTruncatingTail
-        addSubview(label)
-        sub.stringValue = s
-        sub.font = Typo.caption
-        sub.textColor = state == .active ? p.accent : p.textTertiary
-        sub.alignment = .center
-        addSubview(sub)
-        if state == .active, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            ring.path = CGPath(ellipseIn: CGRect(x: 0, y: 0, width: 30, height: 30), transform: nil)
-            ring.fillColor = NSColor.clear.cgColor
-            ring.strokeColor = p.accent.cgColor
-            ring.lineWidth = 2
-            layer?.addSublayer(ring)
-            let grow = CABasicAnimation(keyPath: "transform.scale"); grow.fromValue = 1; grow.toValue = 1.5
-            let fade = CABasicAnimation(keyPath: "opacity"); fade.fromValue = 0.8; fade.toValue = 0
-            let g = CAAnimationGroup(); g.animations = [grow, fade]; g.duration = 1.5; g.repeatCount = .infinity
-            ring.add(g, forKey: "pulse")
+    func set(_ s: Style) { target = Self.colors(s) }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        timer?.invalidate(); timer = nil
+        guard window != nil else { return }
+        lastTick = CACurrentMediaTime()
+        let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tick() }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    deinit { timer?.invalidate() }
+
+    private func tick() {
+        let now = CACurrentMediaTime()
+        let dt = CGFloat(min(0.1, now - lastTick))
+        lastTick = now
+        guard let w = window, w.isVisible, w.alphaValue > 0.02, !isHiddenOrHasHiddenAncestor else { return }
+        let k: CGFloat = 0.08
+        func ease(_ v: inout [CGFloat], _ t: [CGFloat]) { for i in 0..<3 { v[i] += (t[i] - v[i]) * k } }
+        ease(&cur.a, target.a); ease(&cur.b, target.b); ease(&cur.c, target.c)
+        ease(&cur.core, target.core); ease(&cur.glow, target.glow)
+        cur.pulse += (target.pulse - cur.pulse) * k
+        speed += (wantSpeed - speed) * 0.06
+        if !Motion.reduced { phase += dt * speed }
+        needsDisplay = true
+    }
+
+    private static func rgba(_ c: [CGFloat], _ a: CGFloat) -> CGColor {
+        CGColor(srgbRed: c[0] / 255, green: c[1] / 255, blue: c[2] / 255, alpha: a)
+    }
+
+    private static func radial(_ ctx: CGContext, _ colors: [CGColor], _ locs: [CGFloat],
+                               from c0: CGPoint, _ r0: CGFloat, to c1: CGPoint, _ r1: CGFloat) {
+        guard let g = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors as CFArray, locations: locs) else { return }
+        ctx.drawRadialGradient(g, startCenter: c0, startRadius: r0, endCenter: c1, endRadius: r1, options: [])
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let s = min(bounds.width, bounds.height)
+        let c = CGPoint(x: bounds.midX, y: bounds.midY)
+        let r = s * 0.31
+        let p = cur, t = phase
+        let pulse = 0.5 + 0.5 * sin(t * 2.6 * p.pulse)
+
+        // Glow around it.
+        Self.radial(ctx, [Self.rgba(p.glow, 0.34 + 0.3 * pulse), Self.rgba(p.glow, 0)], [0, 1], from: c, r * 0.6, to: c, s / 2)
+
+        ctx.saveGState()
+        ctx.addEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
+        ctx.clip()
+        ctx.setFillColor(Self.rgba(p.core, 1))
+        ctx.fill(bounds)
+        // Three coloured blobs orbiting inside, added together.
+        ctx.setBlendMode(.plusLighter)
+        for (col, sp, off) in [(p.a, CGFloat(1), CGFloat(0)), (p.b, -1.35, 2.1), (p.c, 0.8, 4.2)] {
+            let ang = t * 1.2 * sp + off
+            let bc = CGPoint(x: c.x + cos(ang) * r * 0.5, y: c.y + sin(ang * 1.3) * r * 0.5)
+            Self.radial(ctx, [Self.rgba(col, 0.95), Self.rgba(col, 0)], [0, 1], from: bc, 0, to: bc, r * 1.05)
         }
+        ctx.setBlendMode(.normal)
+        // Shading toward the rim, then a highlight up and to the left.
+        let black = [CGFloat(0), 0, 0]
+        Self.radial(ctx, [Self.rgba(black, 0), Self.rgba(black, 0.05), Self.rgba(black, 0.5)], [0, 0.72, 1],
+                    from: CGPoint(x: c.x - r * 0.25, y: c.y - r * 0.3), r * 0.2, to: c, r)
+        let hl = CGPoint(x: c.x - r * 0.38, y: c.y - r * 0.45)
+        let white = [CGFloat(255), 255, 255]
+        Self.radial(ctx, [Self.rgba(white, 0.85), Self.rgba(white, 0)], [0, 1], from: hl, 0, to: hl, r * 0.55)
+        ctx.restoreGState()
+
+        ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.16))
+        ctx.setLineWidth(0.7)
+        ctx.strokeEllipse(in: CGRect(x: c.x - r + 0.3, y: c.y - r + 0.3, width: r * 2 - 0.6, height: r * 2 - 0.6))
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { wantSpeed = 3.4 }
+    override func mouseExited(with event: NSEvent) { wantSpeed = 1 }
+}
+
+/// The rounded square with a `>_` prompt in front of the command waiting on you.
+final class BoxGlyph: NSView {
+    override var isFlipped: Bool { true }
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds.insetBy(dx: 4, dy: 4)
+        Neon.drawChip(NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10), hovered: false)
+        Neon.symbol("chevron.right", in: NSRect(x: r.minX + 6, y: r.minY, width: r.width / 2 - 2, height: r.height),
+                    size: 13, weight: .bold, color: Neon.accent)
+        let line = NSBezierPath()
+        line.move(to: NSPoint(x: r.midX + 1, y: r.midY + 6)); line.line(to: NSPoint(x: r.maxX - 9, y: r.midY + 6))
+        line.lineWidth = 2; line.lineCapStyle = .round
+        Neon.accent.setStroke(); line.stroke()
+    }
+}
+
+/// Round glyph button (📄 / ⌄) on the wings.
+final class GlowIconButton: NSView {
+    var onTap: (() -> Void)?
+    private let symbol: String
+    private var hovered = false { didSet { needsDisplay = true } }
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    init(symbol: String) {
+        self.symbol = symbol
+        super.init(frame: .zero)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    override func layout() {
-        super.layout()
-        let w = bounds.width
-        label.frame = NSRect(x: 0, y: 36, width: w, height: 16)
-        sub.frame = NSRect(x: 0, y: 52, width: w, height: 14)
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        ring.frame = CGRect(x: w / 2 - 15, y: 0, width: 30, height: 30)
-        CATransaction.commit()
+    override func draw(_ dirtyRect: NSRect) {
+        let c = bounds.insetBy(dx: 4, dy: 4)
+        Neon.drawChip(NSBezierPath(ovalIn: c), hovered: hovered)
+        Neon.symbol(symbol, in: c, size: 14, weight: .semibold, color: Neon.glyph)
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        let p = Pal
-        let c = NSRect(x: bounds.midX - 15, y: 0, width: 30, height: 30)
-        let symbol: String, bg: NSColor, fg: NSColor
-        switch state {
-        case .done: (symbol, bg, fg) = ("checkmark", p.success.withAlphaComponent(0.2), p.success)
-        case .active: (symbol, bg, fg) = ("sparkle", p.accent, .white)
-        case .pending: (symbol, bg, fg) = ("ellipsis", p.surfaceStrong, p.textTertiary)
-        }
-        bg.setFill(); NSBezierPath(ovalIn: c).fill()
-        if state == .done { p.success.setFill(); NSBezierPath(ovalIn: c.insetBy(dx: 4, dy: 4)).fill() }
-        if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: state == .done ? 10 : 12, weight: .bold))?
-            .withSymbolConfiguration(.init(paletteColors: [state == .done ? .white : fg])) {
-            let s = img.size
-            img.draw(in: NSRect(x: c.midX - s.width / 2, y: c.midY - s.height / 2, width: s.width, height: s.height),
-                     from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-        }
+    override func mouseDown(with event: NSEvent) { onTap?() }
+    override func accessibilityPerformPress() -> Bool { onTap?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
 }
 
-/// The round "expand / collapse" button in the corner.
-final class RoundChevron: NSView {
+/// Outlined, softly glowing "✕ Reject" / "✓ Approve".
+final class GlowPillButton: NSView {
+    enum Tint { case red, green }
     var onTap: (() -> Void)?
-    var pointsUp = false { didSet { needsDisplay = true } }
+    private let title: String
+    private let symbol: String
+    private let tint: Tint
+    private var hovered = false { didSet { needsDisplay = true } }
+    private static let font = NSFont.systemFont(ofSize: 14.5, weight: .semibold)
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseDown(with event: NSEvent) { onTap?() }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func draw(_ dirtyRect: NSRect) {
-        let p = Pal
-        p.surface.setFill()
-        NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1)).fill()
-        p.border.setStroke()
-        NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1)).stroke()
-        if let img = NSImage(systemSymbolName: pointsUp ? "chevron.up" : "chevron.down", accessibilityDescription: pointsUp ? "Collapse" : "Expand")?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))?
-            .withSymbolConfiguration(.init(paletteColors: [p.accent])) {
-            let s = img.size
-            img.draw(in: NSRect(x: bounds.midX - s.width / 2, y: bounds.midY - s.height / 2, width: s.width, height: s.height),
-                     from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-        }
+
+    init(title: String, symbol: String, tint: Tint) {
+        self.title = title; self.symbol = symbol; self.tint = tint
+        super.init(frame: .zero)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(title)
     }
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Glow inset + padding + icon + gap + text + padding.
+    var fittedWidth: CGFloat {
+        ceil((title as NSString).size(withAttributes: [.font: Self.font]).width) + 4 * 2 + 14 + 15 + 7 + 17
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let color = tint == .red ? Neon.red : Neon.green
+        let r = bounds.insetBy(dx: 4, dy: 4)
+        let shape = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        Neon.glowing(color.withAlphaComponent(hovered ? 0.5 : 0.25), blur: hovered ? 12 : 7) {
+            color.withAlphaComponent(hovered ? 0.16 : 0.08).setFill()
+            shape.fill()
+        }
+        shape.lineWidth = 1.2
+        color.withAlphaComponent(0.65).setStroke(); shape.stroke()
+        let icon = NSRect(x: r.minX + 14, y: r.midY - 7.5, width: 15, height: 15)
+        Neon.symbol(symbol, in: icon, size: 13, weight: .bold, color: color)
+        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color]
+        let s = (title as NSString).size(withAttributes: attrs)
+        (title as NSString).draw(at: NSPoint(x: icon.maxX + 7, y: r.midY - s.height / 2), withAttributes: attrs)
+    }
+
+    override func mouseDown(with event: NSEvent) { onTap?() }
+    override func accessibilityPerformPress() -> Bool { onTap?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
 }
 
 /// "● Running" — dot + label in a soft tinted pill.

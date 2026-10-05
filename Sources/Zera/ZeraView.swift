@@ -12,6 +12,10 @@ enum ZeraPose { case peek, fullBody }
 /// Dangling from a rope out of the notch, or standing on a surface.
 enum ZeraStyle { case hanging, standing }
 
+/// What Claude Code is doing while the live wings are out. She hugs her rope and acts it out:
+/// breathing and swinging while it works, perking up when a command needs you, hopping when done.
+enum ZeraActivity { case none, running, approval, done }
+
 /// Zera, rendered from the PNG cut-outs in `Resources/Sprites`: a pendulum sway on the rope,
 /// a lean toward whatever she is looking at, cross-fades between expressions and idle fidgets.
 /// If the sprites are missing she draws a tiny placeholder so the app still runs.
@@ -29,6 +33,43 @@ final class ZeraView: NSView {
     var framesPerSecond: Double = 30
     /// Points at the top of the view hidden behind the notch. The rope runs through them.
     var hangInset: CGFloat = 0
+    /// Empty room under her feet, so bounces and sparkles never reach the window's edge.
+    var bottomPad: CGFloat = 0
+    /// While Claude Code works, waits on you or has just finished, she hugs her rope whatever
+    /// her mood, with the motion and effects for that state. `.none` = back to her moods.
+    var activity: ZeraActivity = .none {
+        didSet {
+            guard activity != oldValue else { return }
+            activityChangedAt = CACurrentMediaTime()
+            needsDisplay = true
+        }
+    }
+    /// The pointer is on her; while Claude is active she wiggles.
+    var hovered = false
+
+    /// A tap: a little jump with a burst of sparkles.
+    func bump() { bumpAt = CACurrentMediaTime() }
+
+    /// The pose for every Claude state: holding on to the rope with both hands.
+    static let claudePose = "hang_climb"
+
+    /// While a screen is open in the notch island she takes that screen's pose (waving on Home,
+    /// peeking at Files…). It wins over her moods and the Claude poses. nil = island closed.
+    var islandPose: String? {
+        didSet {
+            guard islandPose != oldValue else { return }
+            activityChangedAt = CACurrentMediaTime()   // a little pop as she changes pose
+            needsDisplay = true
+        }
+    }
+
+    /// In the Claude pose her body hangs beside the rope, not under it: how far its centre sits
+    /// from the rope (negative = left), so the wings can reach into her rather than the rope.
+    var claudeBodyOffset: CGFloat {
+        guard style == .hanging, let s = SpriteLibrary.shared.sprite(Self.claudePose), let rope = s.ropeX else { return 0 }
+        let w = max(1, bounds.height - hangInset - bottomPad - 2) * s.aspect
+        return (0.44 - rope) * w
+    }
 
     /// Where she should look, -1…1 on both axes relative to herself. Smoothed in `tick`.
     var lookTarget: CGPoint = .zero
@@ -40,6 +81,14 @@ final class ZeraView: NSView {
     private var raise: CGFloat = 0
     private var wave: CGFloat = 0
     private var droop: CGFloat = 0
+    private var activityChangedAt: Double = -10
+    private var bumpAt: Double = -10
+    // Eased 0…1 amounts so effects fade in and out instead of popping.
+    private var wiggleAmt: CGFloat = 0
+    private var askAmt: CGFloat = 0
+    private var arcsAmt: CGFloat = 0
+    private var burstAmt: CGFloat = 0
+    private var starsAmt: CGFloat = 0
 
     private var currentSprite: Sprite?
     private var previousSprite: Sprite?
@@ -79,6 +128,12 @@ final class ZeraView: NSView {
         blend(&raise, [.excited, .happy, .celebrate, .surprised].contains(mood) ? 1 : 0, 0.22)
         blend(&wave, mood == .hello ? 1 : 0, 0.20)
         blend(&droop, mood == .sleepy ? 1 : 0, 0.06)
+        blend(&wiggleAmt, hovered && activity != .none ? 1 : 0, 0.2)
+        blend(&askAmt, activity == .approval ? 1 : 0, 0.1)
+        blend(&arcsAmt, activity == .running ? 1 : 0, 0.12)
+        blend(&burstAmt, activity == .approval ? 1 : 0, 0.15)
+        let sparkling = activity == .done || CACurrentMediaTime() - bumpAt < 1.4
+        blend(&starsAmt, sparkling ? 1 : 0, 0.15)
         look.x += (lookTarget.x - look.x) * 0.18
         look.y += (lookTarget.y - look.y) * 0.18
         needsDisplay = true
@@ -131,6 +186,8 @@ final class ZeraView: NSView {
     private static let hangingFidgets = ["hang_upsidedown", "hang_upsidedown2", "hang_back", "hang_swing", "hang_think", "hang_climb"]
 
     private func resolvedSpriteName(now: Double) -> String {
+        if style == .hanging, let p = islandPose { return p }
+        if style == .hanging, activity != .none { return Self.claudePose }
         if style == .hanging, mood == .idle, !Self.reduceMotion {
             if now < fidgetUntil, let f = fidgetName { return f }
             if now > nextFidgetAt {
@@ -167,13 +224,13 @@ final class ZeraView: NSView {
         let t = Self.reduceMotion ? 1 : CGFloat(min(1, (now - fadeStart) / 0.22))
         ctx.saveGState()
         ctx.interpolationQuality = .high
-        if let prev = previousSprite, t < 1 { drawSprite(prev, alpha: 1 - t, lift: lift) }
-        drawSprite(sprite, alpha: t, lift: lift)
+        if let prev = previousSprite, t < 1 { drawSprite(prev, alpha: 1 - t, lift: lift, effects: false) }
+        drawSprite(sprite, alpha: t, lift: lift, effects: true)
         ctx.restoreGState()
         if t >= 1 { previousSprite = nil }
     }
 
-    private func drawSprite(_ sprite: Sprite, alpha: CGFloat, lift: CGFloat) {
+    private func drawSprite(_ sprite: Sprite, alpha: CGFloat, lift: CGFloat, effects: Bool) {
         let ctx = NSGraphicsContext.current!.cgContext
         ctx.saveGState()
         if style == .hanging, let ropeX = sprite.ropeX {
@@ -185,11 +242,15 @@ final class ZeraView: NSView {
             angle += wave * CGFloat(sin(phase * 5)) * 1.5 * k
             angle -= look.x * 3.5 * k
             angle += droop * CGFloat(sin(phase * 0.5)) * 1.2 * k
+            // Claude states: a quicker swing and a perky side-to-side while a command waits on
+            // you; a wiggle when you point at her.
+            angle += askAmt * (CGFloat(sin(phase * 2.4)) * 1.2 + CGFloat(sin(phase * 2 * .pi / 1.1)) * 2.5) * k
+            angle += wiggleAmt * CGFloat(sin(phase * 2 * .pi / 0.9)) * 4 * k
             ctx.translateBy(x: pivot.x, y: pivot.y)
             ctx.rotate(by: angle * .pi / 180)
             ctx.translateBy(x: -pivot.x, y: -pivot.y)
 
-            let h = max(1, bounds.height - hangInset - 2 - lift * 0.4)
+            let h = max(1, bounds.height - hangInset - bottomPad - 2 - lift * 0.4)
             let w = h * sprite.aspect
             let top = bounds.maxY - hangInset + lift * 0.4
             let rect = NSRect(x: pivot.x - ropeX * w, y: top - h, width: w, height: h)
@@ -202,7 +263,20 @@ final class ZeraView: NSView {
             rope.lineCapStyle = .butt
             sprite.ropeColor.withAlphaComponent(alpha).setStroke()
             rope.stroke()
+
+            // Her body moves on the rope: breathing, hops, the pop on a new state, a tap's bump.
+            // Scaled about the point where she holds the rope, so her hands stay on it.
+            let m = bodyMotion()
+            ctx.saveGState()
+            ctx.translateBy(x: pivot.x, y: top + m.dy)
+            ctx.scaleBy(x: m.sx, y: m.sy)
+            ctx.translateBy(x: -pivot.x, y: -top)
+            ctx.saveGState()
+            ctx.setShadow(offset: CGSize(width: 0, height: -3), blur: 7, color: NSColor.black.withAlphaComponent(0.45 * alpha).cgColor)
             sprite.image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: alpha, respectFlipped: false, hints: nil)
+            ctx.restoreGState()
+            if effects { drawEffects(around: rect) }
+            ctx.restoreGState()
         } else {
             let h = max(1, bounds.height - 2)
             let w = min(h * sprite.aspect, bounds.width)
@@ -215,6 +289,129 @@ final class ZeraView: NSView {
                               from: .zero, operation: .sourceOver, fraction: alpha, respectFlipped: false, hints: nil)
         }
         ctx.restoreGState()
+    }
+
+    // MARK: - Claude-state motion and effects
+
+    /// Vertical offset (up is +) and squash for her body this frame.
+    private func bodyMotion() -> (dy: CGFloat, sx: CGFloat, sy: CGFloat) {
+        guard !Self.reduceMotion else { return (0, 1, 1) }
+        let now = CACurrentMediaTime()
+        var dy: CGFloat = 0, sx: CGFloat = 1, sy: CGFloat = 1
+        if activity != .none {
+            // Breathing: a slow, slight sink and squash.
+            let b = CGFloat((1 - cos(phase * 2 * .pi / 2.6)) / 2)
+            dy -= 1.6 * b; sx += 0.015 * b; sy -= 0.015 * b
+        }
+        // Perking up: two small lifts per side-to-side.
+        dy += askAmt * 2 * CGFloat(abs(cos(phase * 2 * .pi / 1.1)))
+        if activity == .done {
+            let t = CGFloat(fmod(now - activityChangedAt, 2.2) / 2.2)
+            let h = Self.keyframes(t, [(0, 0, 1, 1), (0.62, 0, 1, 1), (0.72, 6, 0.98, 1.03), (0.82, 0, 1.03, 0.97),
+                                       (0.9, 2, 1, 1), (1, 0, 1, 1)])
+            dy += h.0; sx *= h.1; sy *= h.2
+        }
+        let sincePop = CGFloat(now - activityChangedAt)
+        if sincePop < 0.55 {
+            let p = Self.keyframes(sincePop / 0.55, [(0, 0, 0.9, 0.94), (0.55, 0, 1.05, 1.03), (1, 0, 1, 1)])
+            sx *= p.1; sy *= p.2
+        }
+        let sinceBump = CGFloat(now - bumpAt)
+        if sinceBump < 0.7 {
+            let p = Self.keyframes(sinceBump / 0.7, [(0, 0, 1, 1), (0.25, 12, 0.96, 1.05), (0.55, -2, 1.05, 0.95), (1, 0, 1, 1)])
+            dy += p.0; sx *= p.1; sy *= p.2
+        }
+        return (dy, sx, sy)
+    }
+
+    /// Smoothly interpolates (time, dy, sx, sy) keyframes at `t` (0…1).
+    private static func keyframes(_ t: CGFloat, _ k: [(CGFloat, CGFloat, CGFloat, CGFloat)]) -> (CGFloat, CGFloat, CGFloat) {
+        guard let last = k.last else { return (0, 1, 1) }
+        for i in 1..<k.count where t <= k[i].0 {
+            let a = k[i - 1], b = k[i]
+            var u = (t - a.0) / max(0.0001, b.0 - a.0)
+            u = u * u * (3 - 2 * u)
+            return (a.1 + (b.1 - a.1) * u, a.2 + (b.2 - a.2) * u, a.3 + (b.3 - a.3) * u)
+        }
+        return (last.1, last.2, last.3)
+    }
+
+    private static let violet = NSColor(srgbRed: 0.58, green: 0.40, blue: 1.0, alpha: 1)
+    private static let cyan = NSColor(srgbRed: 0.30, green: 0.74, blue: 1.0, alpha: 1)
+    private static let green = NSColor(srgbRed: 0.21, green: 0.89, blue: 0.67, alpha: 1)
+
+    /// Motion arcs by her feet while Claude works, burst lines by her head while a command waits
+    /// on you, and twinkling sparkles when it is done (or when you tap her).
+    private func drawEffects(around rect: NSRect) {
+        let w = rect.width, h = rect.height
+        let still = Self.reduceMotion
+        let line = max(1.4, w * 0.032)
+
+        if arcsAmt > 0.01 {
+            // Two brackets on each side, pulsing in turn.
+            let box = NSRect(x: rect.minX - w * 0.14, y: rect.minY + h * 0.04, width: w * 1.28, height: h * 0.3)
+            func pt(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: box.minX + x / 128 * box.width, y: box.maxY - y / 34 * box.height) }
+            let arcs: [(NSPoint, NSPoint, NSPoint, Int)] = [
+                (pt(12, 5), pt(5, 17), pt(13, 29), 0), (pt(21, 9), pt(16, 17), pt(22, 25), 1),
+                (pt(116, 5), pt(123, 17), pt(115, 29), 0), (pt(107, 9), pt(112, 17), pt(106, 25), 1)]
+            for (a, c, b, pair) in arcs {
+                let pulse = still ? 0.6 : 0.2 + 0.75 * CGFloat((1 - cos(phase * 2 * .pi / 1.4 + Double(pair) * .pi)) / 2)
+                let p = NSBezierPath()
+                p.move(to: a)
+                p.curve(to: b, controlPoint1: NSPoint(x: a.x + (c.x - a.x) * 2 / 3, y: a.y + (c.y - a.y) * 2 / 3),
+                        controlPoint2: NSPoint(x: b.x + (c.x - b.x) * 2 / 3, y: b.y + (c.y - b.y) * 2 / 3))
+                p.lineWidth = line * 0.8
+                p.lineCapStyle = .round
+                Self.violet.withAlphaComponent(pulse * arcsAmt).setStroke()
+                p.stroke()
+            }
+        }
+
+        if burstAmt > 0.01 {
+            // Three cyan dashes off the top right of her head, pulsing out.
+            let box = NSRect(x: rect.maxX - w * 0.2, y: rect.maxY - h * 0.34, width: w * 0.42, height: h * 0.34)
+            let s: CGFloat = still ? 1 : 0.88 + 0.18 * CGFloat((1 - cos(phase * 2 * .pi)) / 2)
+            func pt(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+                NSPoint(x: box.minX + x / 40 * box.width * s, y: box.minY + (40 - y) / 40 * box.height * s)
+            }
+            NSGraphicsContext.saveGraphicsState()
+            let shadow = NSShadow(); shadow.shadowColor = Self.cyan.withAlphaComponent(0.8 * burstAmt); shadow.shadowBlurRadius = 3; shadow.set()
+            for (a, b) in [(pt(6, 22), pt(3, 9)), (pt(15, 25), pt(22, 10)), (pt(22, 33), pt(36, 26))] {
+                let p = NSBezierPath(); p.move(to: a); p.line(to: b)
+                p.lineWidth = line; p.lineCapStyle = .round
+                Self.cyan.withAlphaComponent(burstAmt * (0.55 + 0.45 * (s - 0.88) / 0.18)).setStroke()
+                p.stroke()
+            }
+            NSGraphicsContext.restoreGraphicsState()
+        }
+
+        if starsAmt > 0.01 {
+            let box = rect.insetBy(dx: -w * 0.24, dy: -h * 0.1)
+            let stars: [(CGFloat, CGFloat, Double, NSColor)] = [(0.06, 0.12, 0, Self.green), (0.86, 0.04, 0.5, Self.cyan),
+                (0.96, 0.46, 0.9, Self.green), (0.02, 0.58, 1.2, Self.cyan), (0.5, -0.06, 0.3, Self.violet)]
+            let size = max(4, w * 0.1)
+            for (fx, fy, delay, color) in stars {
+                let u = still ? 0.5 : fmod(max(0, phase - delay), 1.6) / 1.6
+                let v = CGFloat(sin(u * .pi))
+                guard v > 0.02 else { continue }
+                let c = NSPoint(x: box.minX + fx * box.width + size / 2, y: box.maxY - fy * box.height - size / 2)
+                color.withAlphaComponent(v * starsAmt).setFill()
+                Self.star(at: c, radius: size / 2 * (0.3 + 0.7 * v), turn: v * .pi / 4).fill()
+            }
+        }
+    }
+
+    /// A four-pointed sparkle.
+    private static func star(at c: NSPoint, radius r: CGFloat, turn: CGFloat) -> NSBezierPath {
+        let p = NSBezierPath()
+        for i in 0..<8 {
+            let a = turn + CGFloat(i) * .pi / 4
+            let d = i % 2 == 0 ? r : r * 0.32
+            let pt = NSPoint(x: c.x + cos(a) * d, y: c.y + sin(a) * d)
+            i == 0 ? p.move(to: pt) : p.line(to: pt)
+        }
+        p.close()
+        return p
     }
 
     /// A white puff with a violet tuft — only ever seen if the sprite folder is missing.

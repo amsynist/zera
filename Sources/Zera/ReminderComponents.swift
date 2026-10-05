@@ -93,18 +93,18 @@ final class AgendaTile: NSView {
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let radius = bounds.width * 0.3
         let path = NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius)
+        // Tinted like every icon tile in the island: soft fill, hairline edge, glyph in the colour.
         let c = look.tint
-        let top = c.blended(withFraction: 0.18, of: .white) ?? c
-        let bottom = c.blended(withFraction: 0.18, of: .black) ?? c
-        NSGradient(starting: top, ending: bottom)?.draw(in: path, angle: isFlipped ? 90 : -90)
-        NSColor.white.withAlphaComponent(0.22).setStroke(); path.lineWidth = 1; path.stroke()
+        let glyph = c.blended(withFraction: 0.25, of: .white) ?? c
+        c.withAlphaComponent(0.14).setFill(); path.fill()
+        c.withAlphaComponent(0.45).setStroke(); path.lineWidth = 1; path.stroke()
         if let l = look.letter {
-            let f = NSFont.systemFont(ofSize: bounds.width * 0.46, weight: .heavy)
-            let attrs: [NSAttributedString.Key: Any] = [.font: f, .foregroundColor: NSColor.white]
+            let f = NSFont.systemFont(ofSize: bounds.width * 0.42, weight: .heavy)
+            let attrs: [NSAttributedString.Key: Any] = [.font: f, .foregroundColor: glyph]
             let s = (l as NSString).size(withAttributes: attrs)
             (l as NSString).draw(at: NSPoint(x: bounds.midX - s.width / 2, y: bounds.midY - s.height / 2), withAttributes: attrs)
         } else {
-            drawCentered(symbolImage(look.symbol, bounds.width * 0.42, .semibold, .white), in: bounds)
+            drawCentered(symbolImage(look.symbol, bounds.width * 0.4, .semibold, glyph), in: bounds)
         }
         if dimmed {
             Pal.cardBottom.withAlphaComponent(0.45).setFill(); path.fill()
@@ -311,8 +311,10 @@ final class AgendaRow: NSView {
         let p = Pal
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let path = NSBezierPath(roundedRect: r, xRadius: Radius.l + 2, yRadius: Radius.l + 2)
-        (hovered || selected ? p.surfaceHover : p.surfaceRow).setFill(); path.fill()
-        (selected ? p.accentBorder : p.border).setStroke(); path.lineWidth = selected ? 1.5 : 1; path.stroke()
+        if selected { p.drawSelected(path) } else {
+            (hovered ? p.surfaceHover : p.surfaceRow).setFill(); path.fill()
+            p.border.setStroke(); path.lineWidth = 1; path.stroke()
+        }
         // Coloured accent bar on the left, in the item's colour.
         tint.setFill()
         NSBezierPath(roundedRect: NSRect(x: 6, y: 14, width: 3.5, height: bounds.height - 28), xRadius: 1.75, yRadius: 1.75).fill()
@@ -408,20 +410,18 @@ final class ChoiceChips: NSView {
             let on = selection.contains(i)
             let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
             if on {
-                NSGradient(starting: p.accent, ending: p.accentDeep)?.draw(in: path, angle: 0)
-                NSColor.white.withAlphaComponent(0.22).setStroke()
+                p.drawSelected(path)
             } else {
                 (hoverIndex == i ? p.surfaceHover : p.surfaceRow).setFill(); path.fill()
-                p.border.setStroke()
+                p.border.setStroke(); path.lineWidth = 1; path.stroke()
             }
-            path.lineWidth = 1; path.stroke()
-            let color: NSColor = on ? .white : p.text(0.85)
+            let color: NSColor = on ? p.text : p.text(0.8)
             let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color]
             let tw = ceil((it.title as NSString).size(withAttributes: attrs).width)
             let extra: CGFloat = (it.dot != nil ? 14 : 0) + (it.symbol != nil ? 18 : 0)
             var x = r.midX - (tw + extra) / 2
             if let d = it.dot {
-                (on ? NSColor.white : d).setFill()
+                d.setFill()
                 NSBezierPath(ovalIn: NSRect(x: x, y: r.midY - 4, width: 8, height: 8)).fill()
                 x += 14
             }

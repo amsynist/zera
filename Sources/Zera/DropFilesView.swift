@@ -223,6 +223,20 @@ final class FileDropZone: NSView {
         path.stroke()
 
         let symbol = isTargeted ? "arrow.down.circle.fill" : "icloud.and.arrow.up"
+        // Slim (the notch island): one line — icon, title, a short line of help.
+        if bounds.height < 100 {
+            ddraw(dsymbol(symbol, 18, p.accent, .medium), centeredIn: NSRect(x: 14, y: 0, width: 26, height: bounds.height))
+            let ta: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13.5, weight: .semibold), .foregroundColor: p.text]
+            let title = isTargeted ? "Drop it here! ✨" : "Drop files here"
+            let ts = (title as NSString).size(withAttributes: ta)
+            (title as NSString).draw(at: NSPoint(x: 50, y: bounds.midY - ts.height / 2), withAttributes: ta)
+            let sub = isTargeted ? "Let go and it goes on your Shelf." : "They wait on the Shelf. I only read one when you ask."
+            let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
+            let sx = 50 + ts.width + 10
+            (sub as NSString).draw(in: NSRect(x: sx, y: bounds.midY - 8, width: max(0, bounds.width - sx - 14), height: 16),
+                                   withAttributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: p.textSecondary, .paragraphStyle: para])
+            return
+        }
         ddraw(dsymbol(symbol, isTargeted ? 28 : 24, p.accent, .medium), centeredIn: NSRect(x: 0, y: 24, width: bounds.width, height: 30))
         let title = isTargeted ? "Drop it here! ✨" : "Drop files here"
         let ta: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 16, weight: .semibold), .foregroundColor: p.text]
@@ -274,18 +288,23 @@ final class FileActionTile: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l, yRadius: Radius.l)
+        // Compact pill (the notch island): a tinted icon chip and the action's name.
+        let r = bounds.height / 2
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: r, yRadius: r)
         (pressed ? p.surfacePressed : (hovered && enabled ? p.surfaceHover : p.surfaceRow)).setFill(); path.fill()
         (hovered && enabled ? p.accentBorder : p.border).setStroke(); path.lineWidth = 1; path.stroke()
         let alpha: CGFloat = enabled ? 1 : 0.45
-        let tile = NSRect(x: 10, y: (bounds.height - 34) / 2, width: 34, height: 34)
-        NSGradient(starting: color.withAlphaComponent(alpha), ending: (color.blended(withFraction: 0.25, of: .black) ?? color).withAlphaComponent(alpha))?
-            .draw(in: NSBezierPath(roundedRect: tile, xRadius: 10, yRadius: 10), angle: -90)
-        ddraw(dsymbol(symbol, 14, NSColor.white.withAlphaComponent(alpha)), centeredIn: tile)
-        let font = NSFont.systemFont(ofSize: 13.5, weight: .semibold)
+        let s = min(26, bounds.height - 12)
+        let tile = NSRect(x: 7, y: (bounds.height - s) / 2, width: s, height: s)
+        let chip = NSBezierPath(ovalIn: tile)
+        color.withAlphaComponent(0.18 * alpha).setFill(); chip.fill()
+        color.withAlphaComponent(0.5 * alpha).setStroke(); chip.lineWidth = 1; chip.stroke()
+        ddraw(dsymbol(symbol, 11.5, (color.blended(withFraction: 0.25, of: .white) ?? color).withAlphaComponent(alpha)), centeredIn: tile)
+        let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
         let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
         let th = ceil(font.ascender - font.descender) + 1
-        (title as NSString).draw(in: NSRect(x: 54, y: (bounds.height - th) / 2, width: bounds.width - 54 - 10, height: th),
+        let tx = tile.maxX + 8
+        (title as NSString).draw(in: NSRect(x: tx, y: (bounds.height - th) / 2, width: bounds.width - tx - 10, height: th),
                                  withAttributes: [.font: font, .foregroundColor: p.text.withAlphaComponent(alpha), .paragraphStyle: para])
     }
 
@@ -421,8 +440,8 @@ final class ShelfFileRow: NSView, NSDraggingSource {
             if selected { p.accent.withAlphaComponent(0.14).setFill(); path.fill(); p.accentBorder.setStroke(); path.lineWidth = 1; path.stroke() }
             else if hovered { p.surfaceHover.withAlphaComponent(0.6).setFill(); path.fill() }
         case .dropped:
-            (selected ? p.surfaceElevated : (hovered ? p.surfaceHover : p.surfaceRow)).setFill(); path.fill()
-            (selected ? p.accent.withAlphaComponent(0.8) : (hovered ? p.accentBorder : p.border)).setStroke()
+            (selected ? p.selectedFill : (hovered ? p.surfaceHover : p.surfaceRow)).setFill(); path.fill()
+            (selected ? p.selectedEdge : (hovered ? p.accentBorder : p.border)).setStroke()
             path.lineWidth = selected ? 1.5 : 1
             path.stroke()
         }
@@ -752,8 +771,8 @@ final class DropFilesView: NSView, CardContent {
 
     // Left
     private let docTile = ScreenIconTile.dropFiles()
-    private let leftTitle = dlabel(NSFont.systemFont(ofSize: 21, weight: .bold), Pal.text)
-    private let leftSub = dlabel(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary, lines: 2)
+    private let leftTitle = dlabel(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
+    private let leftSub = dlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
     private let peek = NSImageView()
     private let bubble = ZeraGitHubBubble()
     private let zone = FileDropZone()
@@ -768,7 +787,7 @@ final class DropFilesView: NSView, CardContent {
 
     // Centre
     private let fileTile = FileTypeTile()
-    private let fileName = dlabel(NSFont.systemFont(ofSize: 18, weight: .semibold), Pal.text)
+    private let fileName = dlabel(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
     private let fileMeta = dlabel(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary)
     private var finder: PRActionButton!
     private var removeButton: PRActionButton!
@@ -822,17 +841,17 @@ final class DropFilesView: NSView, CardContent {
     /// A drop or a finished answer while the card was closed: open expanded next time.
     private var pendingExpand = false
     private var fullWidth: CGFloat { min(D.maxWidth, screen.width - 40) }
-    var cardWidth: CGFloat { expanded ? fullWidth : D.leftW }
+    /// One compact island width for the Shelf and the file view.
+    var cardWidth: CGFloat { min(600, fullWidth) }
     var desiredHeight: CGFloat {
-        let full = max(D.minHeight, min(D.maxHeight, screen.height - 110))
-        guard !expanded else { return full }
-        // Drop zone + actions + up to four dropped files.
-        let rows = min(4, recentOrder.count)
-        let list: CGFloat = rows == 0 ? 50 : CGFloat(rows) * (ShelfFileRow.height(.dropped) + 8)
-        return min(full, 494 + list + 16)
+        guard !expanded else { return Isle.maxContentHeight }
+        // Header, slim drop zone, one row of actions, up to three dropped files (more scroll).
+        let rows = min(3, recentOrder.count)
+        let list: CGFloat = rows == 0 ? 40 : CGFloat(rows) * (ShelfFileRow.height(.dropped) + 8) - 8
+        return Isle.headerHeight + 60 + 12 + 40 + 16 + 26 + list + 16
     }
-    /// Three panels when expanded on a wide enough screen; two (no Shelf panel) otherwise.
-    private var threePane: Bool { expanded && fullWidth >= D.threePaneMin }
+    /// The island shows one panel at a time: the Shelf, or the file you picked.
+    private var threePane: Bool { false }
     /// The left list is the Shelf (dropped files you can pick up and drag anywhere). Only in the
     /// three-panel workspace, where the Shelf has its own panel, does it show Recent instead.
     private var leftShowsRecent: Bool { threePane }
@@ -865,9 +884,8 @@ final class DropFilesView: NSView, CardContent {
 
         // Left.
         left.addSubview(docTile)
-        leftTitle.stringValue = "Drop Files"
+        leftTitle.stringValue = "Shelf"
         left.addSubview(leftTitle)
-        leftSub.stringValue = "Summarize, explain or extract text from any file"
         left.addSubview(leftSub)
         left.addSubview(zone)
         peek.imageScaling = .scaleProportionallyUpOrDown
@@ -875,8 +893,8 @@ final class DropFilesView: NSView, CardContent {
         left.addSubview(peek)                    // over the zone: she leans on its top edge
         left.addSubview(bubble)
         let specs: [(String, String, NSColor, Selector)] = [
-            ("Summarize file", "sparkles", p.accent, #selector(summarizeTapped)),
-            ("Explain file", "text.magnifyingglass", p.info, #selector(explainTapped)),
+            ("Summarize", "sparkles", p.accent, #selector(summarizeTapped)),
+            ("Explain", "text.magnifyingglass", p.info, #selector(explainTapped)),
             ("Extract text", "doc.text", p.tileNote, #selector(extractTapped)),
             ("Ask Zera", "bubble.left.fill", NSColor(srgbRed: 0.55, green: 0.40, blue: 0.98, alpha: 1), #selector(askTapped))
         ]
@@ -1124,6 +1142,9 @@ final class DropFilesView: NSView, CardContent {
         peek.image = SpriteLibrary.shared.sprite(zone.isTargeted ? "card_catch_pdf" : "card_peek_down")?.image
             ?? SpriteLibrary.shared.sprite("peek")?.image
         bubble.text = zone.isTargeted ? "Drop it here! ✨" : (store.items.isEmpty ? "Drop a file here\nand I'll take a look! ✨" : "Drag a file out,\nor tap it for more 👇")
+        let n = store.items.count
+        leftSub.stringValue = n == 0 ? "Drop files on Zera or below" : "\(n) file\(n == 1 ? "" : "s") · drag one out to use it"
+        recentTitle.stringValue = "Dropped files"
     }
 
     private func reloadRight() {
@@ -1418,63 +1439,49 @@ final class DropFilesView: NSView, CardContent {
         super.layout()
         let w = bounds.width, h = bounds.height
         center.isHidden = !expanded
+        right.isHidden = true
+        // The island shows one panel at a time.
+        left.isHidden = expanded
         if !expanded {
             left.frame = NSRect(x: 0, y: 0, width: w, height: h)
-            right.isHidden = true
             layoutLeft(left.bounds.size)
             return
         }
-        if threePane {
-            let cw = w - D.leftW - D.rightW - D.gap * 2
-            left.frame = NSRect(x: 0, y: 0, width: D.leftW, height: h)
-            center.frame = NSRect(x: D.leftW + D.gap, y: 0, width: cw, height: h)
-            right.frame = NSRect(x: w - D.rightW, y: 0, width: D.rightW, height: h)
-            right.isHidden = false
-        } else {
-            let lw = min(D.leftW, (w - D.gap) * 0.42)
-            left.frame = NSRect(x: 0, y: 0, width: lw, height: h)
-            center.frame = NSRect(x: lw + D.gap, y: 0, width: w - lw - D.gap, height: h)
-            right.isHidden = true
-        }
-        layoutLeft(left.bounds.size)
+        center.frame = NSRect(x: 0, y: 0, width: w, height: h)
         layoutCenter(center.bounds.size)
-        if threePane { layoutRight(right.bounds.size) }
     }
 
     private func layoutLeft(_ size: NSSize) {
         let w = size.width, h = size.height, x = D.pad, iw = w - D.pad * 2
-        docTile.frame = NSRect(x: x, y: 20, width: 48, height: 48)
-        leftTitle.frame = NSRect(x: x + 60, y: 20, width: iw - 60, height: 27)
-        leftSub.frame = NSRect(x: x + 60, y: 48, width: iw - 60, height: 34)
+        // Island header: title and count left of Zera; Clear all on the right. Her own pictures
+        // stay hidden — she hangs in the middle of the header.
+        [docTile, peek, bubble].forEach { $0.isHidden = true }
+        let half = w / 2 - Isle.zeraGap / 2
+        leftTitle.frame = NSRect(x: x + 4, y: 24, width: half - x - 4, height: 22)
+        leftSub.frame = NSRect(x: x + 4, y: 46, width: half - x - 4, height: 16)
+        let cw = clearRecent.isHidden ? 0 : max(80, clearRecent.fittedWidth)
+        clearRecent.frame = NSRect(x: w - x - cw, y: 30, width: cw, height: 28)
 
-        // Zone with Zera leaning on its top edge and her bubble beside her.
-        let zoneY: CGFloat = 132, zoneH: CGFloat = 184
-        zone.frame = NSRect(x: x, y: zoneY, width: iw, height: zoneH)
-        let ph: CGFloat = 62, pw = ph * 1.45
-        peek.frame = NSRect(x: x + iw * 0.30 - pw / 2, y: zoneY - ph + 14, width: pw, height: ph)
-        let bs = bubble.fittedSize
-        bubble.frame = NSRect(x: min(w - x - bs.width, peek.frame.maxX - 4), y: zoneY - bs.height - 4, width: bs.width, height: bs.height)
-
-        // 2 × 2 actions.
-        let ay = zone.frame.maxY + 14, ah: CGFloat = 50, aw = (iw - 12) / 2
+        // Slim drop zone, then the four actions in one row.
+        let zoneY = Isle.headerHeight
+        zone.frame = NSRect(x: x, y: zoneY, width: iw, height: 60)
+        let ay = zone.frame.maxY + 12, ah: CGFloat = 40
+        let aw = (iw - 8 * 3) / 4
         for (i, t) in actionTiles.enumerated() {
-            t.frame = NSRect(x: x + CGFloat(i % 2) * (aw + 12), y: ay + CGFloat(i / 2) * (ah + 10), width: aw, height: ah)
+            t.frame = NSRect(x: x + CGFloat(i) * (aw + 8), y: ay, width: aw, height: ah)
         }
 
-        // Recent (or the Shelf in two-pane mode).
-        let ry = ay + ah * 2 + 10 + 18
-        let cw = clearRecent.isHidden ? 0 : max(80, clearRecent.fittedWidth)
-        clearRecent.frame = NSRect(x: w - x - cw, y: ry, width: cw, height: 28)
-        recentTitle.frame = NSRect(x: x, y: ry + 4, width: iw - cw - 8, height: 20)
-        var ly = ry + 28 + 8
-        // Undo for a removal shows over this list when the Shelf has no panel of its own.
+        // The dropped files.
+        let ry = ay + ah + 16
+        recentTitle.frame = NSRect(x: x, y: ry, width: iw, height: 18)
+        var ly = ry + 26
         if !leftShowsRecent, !undo.isHidden {
             if undo.superview !== left { left.addSubview(undo) }
             undo.frame = NSRect(x: x, y: ly, width: iw, height: 38)
             ly += 38 + 8
         }
-        recentScroll.frame = NSRect(x: x - 4, y: ly, width: iw + 8, height: max(0, h - 14 - ly))
-        recentEmpty.frame = NSRect(x: x, y: ly + 16, width: iw, height: 18)
+        recentScroll.frame = NSRect(x: x - 4, y: ly, width: iw + 8, height: max(0, h - 12 - ly))
+        recentEmpty.frame = NSRect(x: x, y: ly + 10, width: iw, height: 18)
         var y: CGFloat = 0
         for path in recentOrder {
             guard let r = recentRows[path] else { continue }
@@ -1487,48 +1494,43 @@ final class DropFilesView: NSView, CardContent {
 
     private func layoutCenter(_ size: NSSize) {
         let w = size.width, h = size.height, x = D.pad, iw = w - D.pad * 2
-        centerState.frame = NSRect(x: x, y: 60, width: iw, height: max(0, h - 120))
+        let half = w / 2 - Isle.zeraGap / 2
+        centerState.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: max(0, h - Isle.headerHeight - 20))
 
-        // Header: tile · name / meta · Open in Finder · remove · •••
-        // ✕ closes the file view and the Shelf panel, back to Drop Files alone.
-        collapseButton.frame = NSRect(x: w - x - 34, y: 27, width: 34, height: 34)
-        fileMore.frame = NSRect(x: collapseButton.frame.minX - 8 - 34, y: 27, width: 34, height: 34)
+        // Island header: back · name / meta on the left of Zera; Finder, remove, ••• on the right.
+        collapseButton.frame = NSRect(x: x, y: 27, width: 34, height: 34)
+        collapseButton.setAccessibilityLabel("Back to the Shelf")
+        fileTile.isHidden = true
+        fileMore.frame = NSRect(x: w - x - 34, y: 27, width: 34, height: 34)
         var right = fileMore.frame.minX - 8
         if !removeButton.isHidden {
             removeButton.frame = NSRect(x: right - 34, y: 27, width: 34, height: 34)
             right = removeButton.frame.minX - 8
         }
-        finder.setTitleText("Open in Finder")
-        let fw = finder.fittedWidth
-        let showFinderText = right - fw - 12 - (x + 62) >= 160
-        finder.setTitleText(showFinderText ? "Open in Finder" : "")
-        let fbw = showFinderText ? fw : 34
-        finder.frame = NSRect(x: right - fbw, y: 27, width: fbw, height: 34)
-        right = finder.frame.minX - 12
-        fileTile.frame = NSRect(x: x, y: 20, width: 48, height: 48)
-        fileName.frame = NSRect(x: x + 62, y: 21, width: max(60, right - x - 62), height: 24)
-        fileMeta.frame = NSRect(x: x + 62, y: 48, width: max(60, right - x - 62), height: 17)
+        finder.setTitleText("")
+        finder.frame = NSRect(x: right - 34, y: 27, width: 34, height: 34)
+        let tx = x + 44
+        fileName.frame = NSRect(x: tx, y: 24, width: max(40, half - tx), height: 22)
+        fileMeta.frame = NSRect(x: tx, y: 46, width: max(40, half - tx), height: 16)
 
-        tabs.frame = NSRect(x: x, y: 86, width: iw, height: 44)
+        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: 36)
 
         // Bottom: suggestions, then the input.
-        let sy = h - D.pad - 34
+        let sy = h - 16 - 30
         var sx = x
         for b in suggestionButtons {
             let bw = b.fittedWidth
             b.isHidden = !wantsSuggestions || sx + bw > x + iw
-            if !b.isHidden { b.frame = NSRect(x: sx, y: sy, width: bw, height: 34); sx += bw + 10 }
+            if !b.isHidden { b.frame = NSRect(x: sx, y: sy, width: bw, height: 30); sx += bw + 8 }
         }
-        let inputY = sy - 12 - 48
-        input.frame = NSRect(x: x, y: inputY, width: iw, height: 48)
+        let anySuggestion = suggestionButtons.contains { !$0.isHidden }
+        let inputY = (anySuggestion ? sy - 10 : h - 16) - 40
+        input.frame = NSRect(x: x, y: inputY, width: iw, height: 40)
 
-        // Zera, then the result card filling the rest.
-        let ry: CGFloat = 142
-        let roomForZera = inputY - 12 - ry >= 84 + 10 + 160
-        reaction.isHidden = !wantsReaction || !roomForZera
-        if roomForZera { reaction.frame = NSRect(x: x, y: ry, width: iw, height: 84) }
-        let cy = roomForZera ? ry + 84 + 10 : ry
-        content.frame = NSRect(x: x, y: cy, width: iw, height: max(80, inputY - 12 - cy))
+        // The answer fills the rest; Zera's reaction lives in the header now (she hangs there).
+        reaction.isHidden = true
+        let cy = Isle.headerHeight + 36 + 10
+        content.frame = NSRect(x: x, y: cy, width: iw, height: max(80, inputY - 10 - cy))
     }
 
     private func layoutRight(_ size: NSSize) {
