@@ -46,8 +46,8 @@ final class ClaudeActivityCard: CardBase, CardContent {
     init() {
         close = IconButton(symbol: "xmark", label: "Close", target: nil, action: #selector(ClaudeActivityCard.closeTapped))
         copyButton = IconButton(symbol: "doc.on.doc", label: "Copy command", target: nil, action: #selector(ClaudeActivityCard.copyTapped))
-        reject = CardButton("Reject", style: .secondary, target: nil, action: #selector(ClaudeActivityCard.rejectTapped))
-        approve = CardButton("Approve & Run", style: .primary, symbol: "checkmark", target: nil, action: #selector(ClaudeActivityCard.approveTapped))
+        reject = CardButton("Reject", style: .destructive, target: nil, action: #selector(ClaudeActivityCard.rejectTapped))
+        approve = CardButton("Approve & Run", style: .success, symbol: "checkmark", target: nil, action: #selector(ClaudeActivityCard.approveTapped))
         install = CardButton("Follow Claude's work", style: .primary, symbol: "sparkles", target: nil, action: #selector(ClaudeActivityCard.installTapped))
         super.init(width: 480, title: "Zera")
         let p = Pal

@@ -24,7 +24,7 @@ private enum S {
     static let gap: CGFloat = 14
     static let pad: CGFloat = 20
     static let radius: CGFloat = 22
-    static let rowH: CGFloat = 80
+    static let rowH: CGFloat = 76
     static let rowGap: CGFloat = 8
     static let tipH: CGFloat = 72
     static let maxWidth: CGFloat = 1240
@@ -98,31 +98,11 @@ private func label(_ font: NSFont, _ color: NSColor, lines: Int = 1) -> NSTextFi
 // MARK: - Glass panel
 
 /// One of the two big rounded panels: blur, the card wash, a hairline edge.
+/// A pane inside a screen. The notch island draws the glass, so a pane is just a see-through
+/// container that keeps its contents inside it.
 final class GlassPanel: NSView {
-    private let blur = NSVisualEffectView()
-    private let wash = CardWash()
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        roundLayer(S.radius)
-        let p = Pal
-        blur.material = p.blurMaterial
-        blur.blendingMode = .behindWindow
-        blur.state = .active
-        addSubview(blur)
-        addSubview(wash)
-        layer?.borderWidth = 1
-        layer?.borderColor = p.border.cgColor
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func layout() {
-        super.layout()
-        blur.frame = bounds
-        wash.frame = bounds
-    }
 }
 
 // MARK: - Progress bar
@@ -364,8 +344,9 @@ final class ClaudeSessionRow: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: Radius.l, yRadius: Radius.l)
-        (selected ? p.surfaceElevated : (hovered ? p.surfaceHover : p.surfaceRow)).setFill(); path.fill()
-        (selected ? p.accent.withAlphaComponent(0.85) : (hovered ? p.accentBorder : p.border)).setStroke()
+        if selected { p.selectedFill.setFill() } else { (hovered ? p.surfaceHover : p.surfaceRow).setFill() }
+        path.fill()
+        (selected ? p.selectedEdge : (hovered ? p.accentBorder : p.border)).setStroke()
         path.lineWidth = selected ? 1.5 : 1
         path.stroke()
     }
@@ -909,8 +890,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
 
     // Left
     private let claudeTile = ScreenIconTile.claude()
-    private let leftTitle = label(NSFont.systemFont(ofSize: 21, weight: .bold), Pal.text)
-    private let leftSub = label(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary, lines: 2)
+    private let leftTitle = label(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
+    private let leftSub = label(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
     private let peek = NSImageView()
     private let bubble = ZeraGitHubBubble()
     private var newSession: PRActionButton!
@@ -927,7 +908,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     // Right
     private var back: GHSquareButton!
     private let sessionTile = SessionIconTile()
-    private let sessionTitleLabel = label(NSFont.systemFont(ofSize: 18, weight: .semibold), Pal.text)
+    private let sessionTitleLabel = label(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
     private let sessionChipView = PRStatusChip()
     private let sessionElapsed = label(NSFont.systemFont(ofSize: 13, weight: .medium), Pal.textSecondary)
     private let sessionMetaLabel = label(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary)
@@ -968,20 +949,18 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     /// when you tap a session, or open this screen from the live bar.
     private(set) var expanded = false
     private var fullWidth: CGFloat { min(S.maxWidth, screen.width - 40) }
-    var cardWidth: CGFloat {
-        guard expanded else { return min(S.leftWidth, fullWidth) }
-        return singlePane ? min(fullWidth, 680) : fullWidth
-    }
+    /// One compact island width for the list and the session.
+    var cardWidth: CGFloat { min(620, fullWidth) }
     var desiredHeight: CGFloat {
-        let full = max(S.minHeight, min(S.maxHeight, screen.height - 110))
-        guard !expanded else { return full }
-        // Header + filters + up to five sessions + Zera's tip.
-        let rows = CGFloat(max(1, min(5, order.count)))
-        let list = order.isEmpty ? 220 : rows * (S.rowH + S.rowGap)
-        return min(full, max(420, 176 + list + (tip.isHidden ? 20 : S.tipH + 44)))
+        // Session: header, tabs, progress, console, ask, quick asks.
+        guard !expanded else { return Isle.maxContentHeight }
+        // List: header, filters, up to four sessions (more scroll).
+        let rows = CGFloat(max(1, min(4, order.count)))
+        let list = order.isEmpty ? 190 : rows * (S.rowH + S.rowGap) - S.rowGap
+        return Isle.headerHeight + 40 + 12 + list + 18
     }
-    /// Not wide enough for both panels: the live view replaces the list (with a back button).
-    private var singlePane: Bool { fullWidth < S.singlePaneBelow }
+    /// In the island the session always replaces the list (with a back button).
+    private var singlePane: Bool { true }
 
     func setExpanded(_ on: Bool) {
         guard on != expanded else { return }
@@ -1009,9 +988,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
 
         // Left header.
         left.addSubview(claudeTile)
-        leftTitle.stringValue = "Claude Sessions"
+        leftTitle.stringValue = "Claude sessions"
         left.addSubview(leftTitle)
-        leftSub.stringValue = "Manage and monitor your Claude Code sessions"
         left.addSubview(leftSub)
         peek.imageScaling = .scaleProportionallyUpOrDown
         peek.imageAlignment = .alignBottom
@@ -1019,7 +997,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         left.addSubview(peek)                // behind the button: she peeks over it
         bubble.tailRight = true
         left.addSubview(bubble)
-        newSession = PRActionButton("New Session", style: .primary, symbol: "plus", target: self, action: #selector(newSessionTapped))
+        newSession = PRActionButton("New", style: .primary, symbol: "plus", target: self, action: #selector(newSessionTapped))
         left.addSubview(newSession)
 
         filters.fitToContent = true
@@ -1195,6 +1173,11 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
             .init(symbol: "", title: "Completed", count: completed, tint: nil, badgeTint: nil, showsZero: true)
         ]
         filters.selected = Self.filter
+        var parts: [String] = []
+        if running > 0 { parts.append("\(running) running") }
+        if waiting > 0 { parts.append("\(waiting) waiting on you") }
+        if parts.isEmpty { parts.append(all.isEmpty ? "No sessions yet" : "\(completed) done") }
+        leftSub.stringValue = parts.joined(separator: " · ")
 
         // Rows, reused by session id so hover and animation survive the 1-second tick.
         let shown = visible
@@ -1236,7 +1219,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
 
         // Tip.
         let t = tipText()
-        let tipHidden = UserDefaults.standard.string(forKey: Self.tipKey) == t.body
+        // The island has no room for the tip; the subtitle carries the counts instead.
+        let tipHidden = true || UserDefaults.standard.string(forKey: Self.tipKey) == t.body
         tip.isHidden = tipHidden
         tipZera.isHidden = tipHidden
         tip.set(title: t.title, body: t.body)
@@ -1416,40 +1400,26 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     private func layoutLeft(_ size: NSSize) {
         let w = size.width, h = size.height, x = S.pad, iw = w - S.pad * 2
 
-        // Header: tile · title / subtitle · bubble · Zera peeking over New Session.
+        // Island header: title and counts left of Zera, New on the right. Her own pictures stay
+        // hidden — she hangs in the middle of the header.
+        [claudeTile, peek, bubble, tipZera].forEach { $0.isHidden = true }
+        let half = w / 2 - Isle.zeraGap / 2
+        leftTitle.frame = NSRect(x: x + 4, y: 24, width: half - x - 4, height: 22)
+        leftSub.frame = NSRect(x: x + 4, y: 46, width: half - x - 4, height: 16)
         let bw = newSession.fittedWidth + 8
-        newSession.frame = NSRect(x: w - x - bw, y: 60, width: bw, height: 38)
-        let zs: CGFloat = 78
-        peek.frame = NSRect(x: newSession.frame.maxX - zs - 4, y: 0, width: zs, height: zs)
-        let bs = bubble.fittedSize
-        bubble.frame = NSRect(x: peek.frame.minX + 10 - bs.width, y: 6, width: bs.width, height: bs.height)
-        claudeTile.frame = NSRect(x: x, y: 32, width: 48, height: 48)
-        let tx = x + 48 + 12
-        leftTitle.frame = NSRect(x: tx, y: 32, width: max(80, bubble.frame.minX - 8 - tx), height: 27)
-        leftSub.frame = NSRect(x: tx, y: 62, width: max(80, newSession.frame.minX - 12 - tx), height: 34)
+        newSession.frame = NSRect(x: w - x - bw, y: 28, width: bw, height: 32)
 
-        // Filters: segments at their natural width; search beside them, or under them if cramped.
-        var y: CGFloat = 112
+        // Filters and search on one line.
+        var y = Isle.headerHeight
         let segW = min(iw, filters.preferredWidth)
         filters.frame = NSRect(x: x, y: y, width: segW, height: 40)
         let besideW = iw - segW - 10
-        if besideW >= 140 {
-            search.frame = NSRect(x: x + segW + 10, y: y, width: besideW, height: 40)
-            y += 40 + 14
-        } else {
-            filters.frame.size.width = iw
-            search.frame = NSRect(x: x, y: y + 40 + 10, width: iw, height: 38)
-            y += 40 + 10 + 38 + 14
-        }
+        search.isHidden = besideW < 120
+        search.frame = NSRect(x: x + segW + 10, y: y + 2, width: max(0, besideW), height: 36)
+        y += 40 + 12
 
-        // Tip at the bottom, Zera standing at its left with her head over the top.
-        let tipY = h - S.pad - S.tipH
-        tip.frame = NSRect(x: x, y: tipY, width: iw, height: S.tipH)
-        let tz: CGFloat = 96
-        tipZera.frame = NSRect(x: x + 4, y: tipY + S.tipH - 4 - tz, width: tz, height: tz)
-        let listBottom = tip.isHidden ? h - S.pad : tipY - 24
-
-        // List (4 pt inset so the selected row's glow isn't clipped).
+        tip.isHidden = true
+        let listBottom = h - 14
         scroll.frame = NSRect(x: x - 4, y: y - 4, width: iw + 8, height: max(0, listBottom - y + 4))
         leftState.frame = NSRect(x: x, y: y, width: iw, height: max(0, listBottom - y))
         var ry: CGFloat = 4
@@ -1463,67 +1433,51 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
 
     private func layoutRight(_ size: NSSize, single: Bool) {
         let w = size.width, h = size.height, x = S.pad, iw = w - S.pad * 2
+        let half = w / 2 - Isle.zeraGap / 2
 
-        rightState.frame = NSRect(x: x, y: 80, width: iw, height: max(0, h - 160))
-        back.isHidden = !single
+        rightState.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: max(0, h - Isle.headerHeight - 20))
+        // Island header: back · title / time and folder on the left; status, Stop, more on the right.
+        back.isHidden = false
         back.frame = NSRect(x: x, y: 27, width: 34, height: 34)
-        let tileX = single ? x + 42 : x
-
-        // Header.
-        // ✕ folds the live view away (two-panel mode); single-panel mode uses the back arrow.
-        let closeW: CGFloat = collapse.isHidden ? 0 : 34 + 8
-        collapse.frame = NSRect(x: w - x - 34, y: 22, width: 34, height: 34)
-        sessionMore.frame = NSRect(x: w - x - closeW - 34, y: 22, width: 34, height: 34)
-        let pw = primary.isHidden ? 0 : max(84, primary.fittedWidth)
-        primary.frame = NSRect(x: sessionMore.frame.minX - 8 - pw, y: 22, width: pw, height: 34)
-        let headerRight = (primary.isHidden ? sessionMore.frame.minX : primary.frame.minX) - 12
-        sessionTile.frame = NSRect(x: tileX, y: 20, width: 48, height: 48)
-        let tx = tileX + 48 + 14
-        let chipW = min(170, sessionChipView.fittedWidth)
-        let elapsedW: CGFloat = sessionElapsed.stringValue.isEmpty ? 0 : ceil((sessionElapsed.stringValue as NSString).size(withAttributes: [.font: sessionElapsed.font!]).width) + 4
-        let titleNeed = ceil((sessionTitleLabel.stringValue as NSString).size(withAttributes: [.font: sessionTitleLabel.font!]).width) + 4
-        let titleW = max(60, min(titleNeed, headerRight - tx - 10 - chipW - (elapsedW > 0 ? 10 + elapsedW : 0)))
-        sessionTitleLabel.frame = NSRect(x: tx, y: 20, width: titleW, height: 24)
-        sessionChipView.frame = NSRect(x: sessionTitleLabel.frame.maxX + 10, y: 20, width: chipW, height: 24)
-        sessionElapsed.frame = NSRect(x: sessionChipView.frame.maxX + 10, y: 24, width: elapsedW, height: 17)
-        sessionMetaLabel.frame = NSRect(x: tx, y: 49, width: headerRight - tx, height: 17)
+        sessionTile.isHidden = true
+        collapse.isHidden = true
+        let tx = x + 44
+        sessionTitleLabel.frame = NSRect(x: tx, y: 24, width: max(40, half - tx), height: 22)
+        let elapsed = sessionElapsed.stringValue
+        sessionElapsed.isHidden = true
+        if !elapsed.isEmpty, !sessionMetaLabel.stringValue.hasPrefix(elapsed) {
+            sessionMetaLabel.stringValue = elapsed + " · " + sessionMetaLabel.stringValue
+        }
+        sessionMetaLabel.frame = NSRect(x: tx, y: 46, width: max(40, half - tx), height: 16)
+        sessionMore.frame = NSRect(x: w - x - 34, y: 27, width: 34, height: 34)
+        let pw = primary.isHidden ? 0 : max(76, primary.fittedWidth)
+        primary.frame = NSRect(x: sessionMore.frame.minX - 8 - pw, y: 28, width: pw, height: 32)
+        let chipRight = (primary.isHidden ? sessionMore.frame.minX : primary.frame.minX) - 8
+        let chipW = min(chipRight - (w / 2 + Isle.zeraGap / 2), sessionChipView.fittedWidth)
+        sessionChipView.isHidden = chipW < 60
+        sessionChipView.frame = NSRect(x: chipRight - chipW, y: 32, width: chipW, height: 24)
 
         // Tabs.
-        tabs.frame = NSRect(x: x, y: 86, width: iw, height: 44)
+        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: 36)
 
-        // Bottom stack, from the bottom up: quick actions, input, details.
-        let qh: CGFloat = 36
-        var qy = h - S.pad - qh
-        let qw = quick.reduce(0) { $0 + max($1.fittedWidth, 0) } + CGFloat(quick.count - 1) * 10
-        if qw <= iw {
-            // One row, equal widths.
-            let each = (iw - CGFloat(quick.count - 1) * 10) / CGFloat(quick.count)
-            let fits = quick.allSatisfy { $0.fittedWidth <= each }
-            var bx = x
-            for b in quick {
-                let bw = fits ? each : b.fittedWidth + (iw - qw) / CGFloat(quick.count)
-                b.frame = NSRect(x: bx, y: qy, width: bw, height: qh)
-                bx += bw + 10
-            }
-        } else {
-            // Two rows of two.
-            qy -= qh + 8
-            let each = (iw - 10) / 2
-            for (i, b) in quick.enumerated() {
-                b.frame = NSRect(x: x + CGFloat(i % 2) * (each + 10), y: qy + CGFloat(i / 2) * (qh + 8), width: each, height: qh)
-            }
+        // Bottom: quick asks, then the ask field above them.
+        let qh: CGFloat = 30
+        let qy = h - 16 - qh
+        let gaps = CGFloat(quick.count - 1) * 8
+        let each = (iw - gaps) / CGFloat(quick.count)
+        var bx = x
+        for b in quick {
+            b.frame = NSRect(x: bx, y: qy, width: each, height: qh)
+            bx += each + 8
         }
-        let inputY = qy - 12 - 48
-        input.frame = NSRect(x: x, y: inputY, width: iw, height: 48)
-        let showDetails = !consoleExpanded || tab != 0
-        details.isHidden = selected == nil || !svc.isInstalled || !showDetails
-        let detailsH = showDetails ? ClaudeTaskDetails.height : 0
-        let detailsY = inputY - 12 - detailsH
-        details.frame = NSRect(x: x, y: detailsY, width: iw, height: detailsH)
+        let inputY = qy - 10 - 40
+        input.frame = NSRect(x: x, y: inputY, width: iw, height: 40)
+        details.isHidden = true
+        reaction.isHidden = true
 
-        // Body between the tabs and the details.
-        let bodyTop: CGFloat = 86 + 44 + 14
-        let bodyBottom = (showDetails ? detailsY : inputY) - 12
+        // Body between the tabs and the ask field.
+        let bodyTop = Isle.headerHeight + 36 + 10
+        let bodyBottom = inputY - 10
         let bodyH = max(0, bodyBottom - bodyTop)
         infoScroll.frame = NSRect(x: x, y: bodyTop, width: iw, height: bodyH)
         var iy: CGFloat = 0
@@ -1537,18 +1491,11 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         }
         infoList.frame = NSRect(x: 0, y: 0, width: iw, height: max(iy, bodyH))
 
-        // Live: progress card, Zera (if there's room and the console isn't expanded), console.
-        let progH: CGFloat = 76
+        // Live: progress card, then the console filling the rest.
+        let progH: CGFloat = 70
         progressCard.frame = NSRect(x: x, y: bodyTop, width: iw, height: progH)
-        let reactH: CGFloat = 80
-        let roomForZera = !consoleExpanded && bodyH >= progH + 10 + reactH + 10 + 110
-        if tab == 0 { reaction.isHidden = !roomForZera || selected == nil || !svc.isInstalled }
-        var cy = bodyTop + progH + 10
-        if roomForZera {
-            reaction.frame = NSRect(x: x, y: cy, width: iw, height: reactH)
-            cy += reactH + 10
-        }
-        console.frame = NSRect(x: x, y: cy, width: iw, height: max(60, bodyBottom - cy))
+        let cy = bodyTop + progH + 8
+        console.frame = NSRect(x: x, y: cy, width: iw, height: max(50, bodyBottom - cy))
     }
 
     // MARK: Actions

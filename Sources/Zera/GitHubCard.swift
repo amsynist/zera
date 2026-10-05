@@ -21,9 +21,10 @@ private enum L {
     static let width: CGFloat = 620
     static let pad: CGFloat = 20
     static let headerTop: CGFloat = 20
-    static let segY: CGFloat = 92
-    static let segH: CGFloat = 46
-    static let filterH: CGFloat = 36
+    /// Under the island header Zera hangs in.
+    static let segY: CGFloat = 88
+    static let segH: CGFloat = 40
+    static let filterH: CGFloat = 34
     static let rowH: CGFloat = 76
     static let rowGap: CGFloat = 8
     static let bannerH: CGFloat = 44
@@ -90,7 +91,7 @@ final class PullRequestRow: NSView {
         self.isNew = isNew
         super.init(frame: .zero)
         let p = Pal
-        primary = PRActionButton(kind == .approve ? "Approve" : "Review", style: .primary, target: self, action: #selector(primaryTapped))
+        primary = PRActionButton(kind == .approve ? "Approve" : "Review", style: kind == .approve ? .success : .secondary, target: self, action: #selector(primaryTapped))
         more = GHSquareButton(symbol: "ellipsis", label: "More actions", target: self, action: #selector(moreTapped))
         tile.set(owner: pr.owner, mine: pr.mine)
         addSubview(tile)
@@ -354,9 +355,9 @@ final class PRDetailView: NSView {
         checksCaption.isHidden = checkLines.isEmpty
 
         if pr.approvalsWaiting > 0 {
-            actions.append(PRActionButton("Approve runs", style: .primary, symbol: "hand.thumbsup.fill", target: self, action: #selector(approveTapped(_:))))
+            actions.append(PRActionButton("Approve runs", style: .success, symbol: "hand.thumbsup.fill", target: self, action: #selector(approveTapped(_:))))
         }
-        actions.append(PRActionButton("Review", style: pr.approvalsWaiting > 0 ? .secondary : .primary, symbol: "eye", target: self, action: #selector(reviewTapped)))
+        actions.append(PRActionButton("Review", style: .secondary, symbol: "eye", target: self, action: #selector(reviewTapped)))
         actions.append(PRActionButton("Summarize", style: .secondary, symbol: "sparkles", target: self, action: #selector(summarizeTapped)))
         actions.append(PRActionButton("Open in GitHub", style: .secondary, symbol: "arrow.up.right.square", target: self, action: #selector(openTapped)))
         actions.forEach { panel.addSubview($0) }
@@ -622,15 +623,13 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
     private var headerLine = ""
 
     init() {
-        super.init(width: L.width, title: "GitHub PRs")
-        layer?.cornerRadius = 22
+        super.init(width: L.width, title: "Pull requests")
         let p = Pal
         refreshButton = GHSquareButton(symbol: "arrow.clockwise", label: "Check now", target: self, action: #selector(refreshTapped))
         moreButton = GHSquareButton(symbol: "ellipsis", label: "More", target: self, action: #selector(moreTapped))
 
         addSubview(headerTile)
-        titleLabel.font = NSFont.systemFont(ofSize: 21, weight: .bold)
-        subtitleLabel.font = NSFont.systemFont(ofSize: 12.5)
+        subtitleLabel.font = NSFont.systemFont(ofSize: 12)
         subtitleLabel.textColor = p.textSecondary
         subtitleLabel.isHidden = false
         addSubview(refreshButton)
@@ -787,8 +786,8 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
 
         let connected = mode != .disconnected
         segmented.isHidden = !connected
-        insight.isHidden = !connected
-        insightZera.isHidden = !connected
+        insight.isHidden = true
+        insightZera.isHidden = true
         let showFilters = connected && mode != .detail
         ([search, authorButton, labelButton, repoButton, sortButton] as [NSView]).forEach { $0.isHidden = !showFilters }
 
@@ -944,11 +943,8 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
     // MARK: Sizing
 
     /// How many rows fit on this screen under the notch (2…5).
-    private var rowsFit: Int {
-        let screenH = (window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
-        let chrome = L.listY + L.insightGap + L.insightH + L.pad + 110   // 110 ≈ menu bar + Zera + gap above the card
-        return max(2, min(5, Int((screenH - chrome) / (L.rowH + L.rowGap))))
-    }
+    /// Rows the island shows before the list scrolls.
+    private var rowsFit: Int { max(2, Int((Isle.maxContentHeight - L.listY - L.pad) / (L.rowH + L.rowGap))) }
 
     private var listHeight: CGFloat {
         switch mode {
@@ -969,7 +965,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
             if !banner.isHidden { y += L.bannerH + L.rowGap }
             y += listHeight
         }
-        return y + L.insightGap + L.insightH + L.pad
+        return y + L.pad
     }
 
     // MARK: Layout
@@ -978,24 +974,12 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         super.layout()
         let w = bounds.width, x = L.pad, iw = w - L.pad * 2
 
-        // Header: tile · title/subtitle · (Zera + bubble) · refresh · more.
-        headerTile.frame = NSRect(x: x, y: L.headerTop, width: 48, height: 48)
-        moreButton.frame = NSRect(x: w - x - 34, y: L.headerTop + 2, width: 34, height: 34)
-        refreshButton.frame = NSRect(x: moreButton.frame.minX - 8 - 34, y: L.headerTop + 2, width: 34, height: 34)
-        let buttonsLeft = gh.isConnected ? refreshButton.frame.minX : w - x
-        let bs = bubble.fittedSize
-        bubble.frame = NSRect(x: buttonsLeft - 12 - bs.width, y: 12, width: bs.width, height: bs.height)
-        let zh: CGFloat = 84
-        zeraHead.frame = NSRect(x: bubble.frame.minX - 60, y: L.segY + 4 - zh, width: zh, height: zh)
-        let tx = x + 48 + 12
-        let textMax = zeraHead.frame.minX + 6 - tx
-        // Too narrow for her: the title wins.
-        let roomForZera = textMax >= 150
-        zeraHead.isHidden = !roomForZera
-        bubble.isHidden = !roomForZera
-        let textW = roomForZera ? textMax : buttonsLeft - 12 - tx
-        titleLabel.frame = NSRect(x: tx, y: L.headerTop + 1, width: textW, height: 27)
-        subtitleLabel.frame = NSRect(x: tx, y: L.headerTop + 30, width: textW, height: 17)
+        // Island header: title and summary left of Zera (she hangs in the middle); refresh and
+        // more on the right. Her own pictures and the insight box stay hidden in the island.
+        [headerTile, zeraHead, bubble, insight, insightZera].forEach { $0.isHidden = true }
+        layoutHeader()
+        moreButton.frame = NSRect(x: w - x - 34, y: 27, width: 34, height: 34)
+        refreshButton.frame = NSRect(x: moreButton.frame.minX - 8 - 34, y: 27, width: 34, height: 34)
 
         if mode == .disconnected {
             state.frame = NSRect(x: x, y: L.segY, width: iw, height: GHStateView.height)
@@ -1042,11 +1026,6 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
             y += lh
         }
 
-        // Insight, with Zera standing at its left edge and her head over the top.
-        let iy = bounds.height - L.pad - L.insightH
-        insight.frame = NSRect(x: x, y: iy, width: iw, height: L.insightH)
-        let zs: CGFloat = 92
-        insightZera.frame = NSRect(x: x + 4, y: iy + L.insightH - 6 - zs, width: zs, height: zs)
     }
 
     // MARK: Actions

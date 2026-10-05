@@ -55,56 +55,57 @@ enum Appearance: Int, CaseIterable {
     }
 }
 
-/// Semantic colours. Light is a soft lavender; dark is deep indigo. Surfaces are opaque so
-/// stacking never washes out.
+/// Semantic colours. The notch island is always dark: navy-black glass with blue neon, the live
+/// wings' look. (The light values remain for the icon tool and older renders.) Surfaces are
+/// opaque so stacking never washes out.
 struct Palette {
     let isDark: Bool
 
     // Card chrome — deep navy glass in dark mode, soft lavender in light.
-    var cardTop: NSColor { isDark ? rgb(0.100, 0.098, 0.215, 0.94) : rgb(0.955, 0.950, 0.995, 0.97) }
-    var cardBottom: NSColor { isDark ? rgb(0.062, 0.060, 0.150, 0.96) : rgb(0.925, 0.915, 0.985, 0.98) }
+    var cardTop: NSColor { isDark ? rgb(0.039, 0.071, 0.173, 0.97) : rgb(0.955, 0.950, 0.995, 0.97) }
+    var cardBottom: NSColor { isDark ? rgb(0.016, 0.031, 0.071, 0.97) : rgb(0.925, 0.915, 0.985, 0.98) }
     /// Hairline edges carry a hint of violet so they read as glass, not grey.
-    var border: NSColor { isDark ? rgb(0.70, 0.66, 1.0, 0.16) : rgb(0.36, 0.26, 0.70, 0.14) }
+    var border: NSColor { isDark ? rgb(0.33, 0.50, 1.0, 0.30) : rgb(0.36, 0.26, 0.70, 0.14) }
     var blurMaterial: NSVisualEffectView.Material { isDark ? .hudWindow : .popover }
     var nsAppearance: NSAppearance? { NSAppearance(named: isDark ? .darkAqua : .aqua) }
 
     // Text — white, then muted lavender-grey for metadata.
-    var text: NSColor { isDark ? rgb(0.975, 0.965, 1.0) : rgb(0.14, 0.12, 0.30) }
+    var text: NSColor { isDark ? rgb(0.953, 0.961, 1.0) : rgb(0.14, 0.12, 0.30) }
     func text(_ alpha: CGFloat) -> NSColor { text.withAlphaComponent(alpha) }
-    var textSecondary: NSColor { isDark ? rgb(0.73, 0.71, 0.89) : text(0.64) }
-    var textTertiary: NSColor { isDark ? rgb(0.54, 0.52, 0.71) : text(0.44) }
+    var textSecondary: NSColor { isDark ? rgb(0.545, 0.588, 0.776) : text(0.64) }
+    var textTertiary: NSColor { isDark ? rgb(0.40, 0.44, 0.62) : text(0.44) }
 
     // Surfaces — indigo steps above the navy card.
-    var surface: NSColor { isDark ? rgb(0.150, 0.145, 0.300) : rgb(1, 1, 1, 0.82) }
-    var surfaceHover: NSColor { isDark ? rgb(0.190, 0.180, 0.365) : rgb(0.93, 0.91, 1.0) }
-    var surfaceStrong: NSColor { isDark ? rgb(0.215, 0.200, 0.405) : rgb(0.88, 0.86, 0.98) }
-    var surfacePressed: NSColor { isDark ? rgb(0.120, 0.115, 0.250) : rgb(0.85, 0.83, 0.96) }
-    var field: NSColor { isDark ? rgb(0.090, 0.088, 0.200) : rgb(1, 1, 1) }
-    var fieldBorder: NSColor { isDark ? rgb(0.70, 0.66, 1.0, 0.14) : rgb(0.36, 0.26, 0.70, 0.14) }
-    var divider: NSColor { isDark ? rgb(0.70, 0.66, 1.0, 0.10) : rgb(0.36, 0.26, 0.70, 0.10) }
-    var codeBox: NSColor { isDark ? rgb(0.050, 0.048, 0.120) : rgb(0.16, 0.14, 0.32) }
+    var surface: NSColor { isDark ? rgb(0.043, 0.071, 0.165) : rgb(1, 1, 1, 0.82) }
+    var surfaceHover: NSColor { isDark ? rgb(0.063, 0.106, 0.271) : rgb(0.93, 0.91, 1.0) }
+    var surfaceStrong: NSColor { isDark ? rgb(0.090, 0.133, 0.294) : rgb(0.88, 0.86, 0.98) }
+    var surfacePressed: NSColor { isDark ? rgb(0.035, 0.055, 0.130) : rgb(0.85, 0.83, 0.96) }
+    var field: NSColor { isDark ? rgb(0.030, 0.050, 0.120) : rgb(1, 1, 1) }
+    var fieldBorder: NSColor { isDark ? rgb(0.33, 0.50, 1.0, 0.32) : rgb(0.36, 0.26, 0.70, 0.14) }
+    var divider: NSColor { isDark ? rgb(0.33, 0.50, 1.0, 0.14) : rgb(0.36, 0.26, 0.70, 0.10) }
+    var codeBox: NSColor { isDark ? rgb(0.008, 0.016, 0.043) : rgb(0.16, 0.14, 0.32) }
     var codeText: NSColor { rgb(0.85, 0.95, 0.85) }
 
-    // Accent — bright electric violet flowing into purple (primary buttons, selected tab).
-    var accent: NSColor { isDark ? rgb(0.486, 0.361, 1.0) : rgb(0.447, 0.310, 0.980) }      // #7C5CFF
-    var accentHover: NSColor { isDark ? rgb(0.565, 0.447, 1.0) : rgb(0.520, 0.390, 1.0) }
-    var accentPressed: NSColor { isDark ? rgb(0.400, 0.280, 0.920) : rgb(0.380, 0.250, 0.880) }
-    var accentSoft: NSColor { isDark ? rgb(0.300, 0.235, 0.620) : rgb(0.88, 0.84, 1.0) }
-    /// The purple end of the violet gradient (#9B5BFF), drawn left → right from `accent`.
-    var accentDeep: NSColor { isDark ? rgb(0.608, 0.357, 1.0) : rgb(0.560, 0.300, 0.960) }
+    // Accent — neon blue flowing into violet (primary buttons, selected tab), as on the wings.
+    var accent: NSColor { isDark ? rgb(0.38, 0.72, 1.0) : rgb(0.447, 0.310, 0.980) }
+    var accentHover: NSColor { isDark ? rgb(0.50, 0.79, 1.0) : rgb(0.520, 0.390, 1.0) }
+    var accentPressed: NSColor { isDark ? rgb(0.28, 0.60, 0.93) : rgb(0.380, 0.250, 0.880) }
+    var accentSoft: NSColor { isDark ? rgb(0.090, 0.133, 0.294) : rgb(0.88, 0.84, 1.0) }
+    /// The violet end of the gradient, drawn left → right from `accent`.
+    var accentDeep: NSColor { isDark ? rgb(0.58, 0.40, 1.0) : rgb(0.560, 0.300, 0.960) }
     /// Violet edge for selected / highlighted surfaces.
     var accentBorder: NSColor { accent.withAlphaComponent(isDark ? 0.55 : 0.45) }
-    /// List rows on the card: one indigo step up from the navy.
-    var surfaceRow: NSColor { isDark ? rgb(0.115, 0.112, 0.250, 0.95) : rgb(1, 1, 1, 0.74) }
+    /// List rows on the island: one navy step up from the glass.
+    var surfaceRow: NSColor { isDark ? rgb(0.047, 0.078, 0.180, 0.95) : rgb(1, 1, 1, 0.74) }
     /// Raised panels (insight card, speech bubble).
-    var surfaceElevated: NSColor { isDark ? rgb(0.160, 0.140, 0.330) : rgb(1, 1, 1, 0.96) }
+    var surfaceElevated: NSColor { isDark ? rgb(0.063, 0.098, 0.230) : rgb(1, 1, 1, 0.96) }
     var onAccent: NSColor { .white }
-    var success: NSColor { rgb(0.25, 0.84, 0.52) }
+    var success: NSColor { rgb(0.21, 0.89, 0.67) }
     var warning: NSColor { rgb(1.00, 0.74, 0.26) }
-    var danger: NSColor { rgb(1.00, 0.36, 0.42) }
+    var danger: NSColor { rgb(1.00, 0.33, 0.41) }
     var dangerPressed: NSColor { rgb(0.88, 0.30, 0.36) }
-    var info: NSColor { rgb(0.36, 0.68, 1.00) }
-    var muted: NSColor { isDark ? rgb(0.46, 0.45, 0.62) : rgb(0.60, 0.58, 0.74) }
+    var info: NSColor { rgb(0.30, 0.74, 1.00) }
+    var muted: NSColor { isDark ? rgb(0.40, 0.44, 0.62) : rgb(0.60, 0.58, 0.74) }
 
     // Fixed identity colours for icon tiles (same in both modes so they stay recognisable)
     var tileGitHub: NSColor { rgb(0.20, 0.20, 0.27) }
@@ -136,13 +137,8 @@ struct Palette {
         NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
 
-    static var current: Palette {
-        switch appearance {
-        case .light: return Palette(isDark: false)
-        case .dark: return Palette(isDark: true)
-        case .system: return Palette(isDark: systemIsDark)
-        }
-    }
+    /// Always the dark navy look: every screen lives in the notch island, beside the dark wings.
+    static var current: Palette { Palette(isDark: true) }
 
     /// Call once at launch so "System" follows the macOS switch live.
     static func observeSystem() {
@@ -155,6 +151,71 @@ struct Palette {
 
 var Pal: Palette { Palette.current }
 
+// MARK: - Buttons
+
+/// The island's one button family: rounded pills. A quiet navy chip by default; colour only as an
+/// outline with a soft tint — blue for the main action, green for done / approve, red for stop /
+/// reject / delete, amber for a warning. No bright fills, so buttons never shout over the content.
+enum ButtonTone { case neutral, accent, success, danger, warning }
+
+extension Palette {
+    func tone(_ t: ButtonTone) -> NSColor? {
+        switch t {
+        case .neutral: return nil
+        case .accent: return accent
+        case .success: return success
+        case .danger: return danger
+        case .warning: return warning
+        }
+    }
+
+    /// Draws a button pill and returns the colour its title should use.
+    @discardableResult
+    func drawButton(_ path: NSBezierPath, tone t: ButtonTone, hovered: Bool, pressed: Bool, enabled: Bool = true) -> NSColor {
+        let dim: CGFloat = enabled ? 1 : 0.45
+        guard let c = tone(t) else {
+            (pressed ? surfacePressed : (hovered ? surfaceHover : surface)).withAlphaComponent(dim).setFill(); path.fill()
+            fieldBorder.withAlphaComponent((hovered ? 1 : 0.8) * dim).setStroke(); path.lineWidth = 1; path.stroke()
+            return text.withAlphaComponent(enabled ? 1 : 0.55)
+        }
+        if hovered && enabled {
+            NSGraphicsContext.saveGraphicsState()
+            let glow = NSShadow(); glow.shadowColor = c.withAlphaComponent(0.35); glow.shadowBlurRadius = 10; glow.shadowOffset = .zero; glow.set()
+            c.withAlphaComponent(pressed ? 0.26 : 0.18).setFill(); path.fill()
+            NSGraphicsContext.restoreGraphicsState()
+        } else {
+            c.withAlphaComponent((pressed ? 0.24 : 0.09) * dim).setFill(); path.fill()
+        }
+        c.withAlphaComponent((hovered ? 0.8 : 0.58) * dim).setStroke(); path.lineWidth = 1; path.stroke()
+        let label = c.blended(withFraction: 0.18, of: .white) ?? c
+        return label.withAlphaComponent(enabled ? 1 : 0.55)
+    }
+}
+
+// MARK: - The selected look
+
+extension Palette {
+    /// One "selected" look everywhere — segments, chips, settings nav, list rows: dark navy with a
+    /// thin blue edge and a faint glow. Primary actions keep the blue → violet gradient; a
+    /// selection never does, so "what's chosen" and "what to do" never look alike.
+    var selectedFill: NSColor { accentSoft }
+    var selectedEdge: NSColor { accent.withAlphaComponent(0.5) }
+    /// Counts and icons inside a selected segment.
+    var selectedAccent: NSColor { info }
+
+    func drawSelected(_ path: NSBezierPath) {
+        NSGraphicsContext.saveGraphicsState()
+        let glow = NSShadow()
+        glow.shadowColor = accent.withAlphaComponent(0.28)
+        glow.shadowBlurRadius = 8
+        glow.shadowOffset = .zero
+        glow.set()
+        selectedFill.setFill(); path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        selectedEdge.setStroke(); path.lineWidth = 1; path.stroke()
+    }
+}
+
 /// Honour the system "Reduce motion" switch: no sway, no cross-fades, instant panels.
 enum Motion {
     static var reduced: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
@@ -165,7 +226,7 @@ enum Motion {
 
 /// The one button. Four styles, hover / pressed / disabled, title always fits (`fittedWidth`).
 final class CardButton: NSButton {
-    enum Style { case primary, secondary, tertiary, destructive }
+    enum Style { case primary, secondary, tertiary, destructive, success }
     var style: Style { didSet { needsDisplay = true } }
     private var titleText: String
     private var hovered = false { didSet { needsDisplay = true } }
@@ -205,7 +266,9 @@ final class CardButton: NSButton {
     private var textColor: NSColor {
         let p = Pal
         switch style {
-        case .primary, .destructive: return p.onAccent
+        case .primary: return p.accent
+        case .destructive: return p.danger
+        case .success: return p.success
         case .secondary: return p.text
         case .tertiary: return p.textSecondary
         }
@@ -225,19 +288,19 @@ final class CardButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let pressed = isHighlighted
-        var fill: NSColor
+        let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
+        var titleColor: NSColor? = nil
         switch style {
-        case .primary: fill = pressed ? p.accentPressed : (hovered ? p.accentHover : p.accent)
-        case .destructive: fill = pressed ? p.dangerPressed : p.danger
-        case .secondary: fill = pressed ? p.surfacePressed : (hovered ? p.surfaceHover : p.surfaceStrong)
-        case .tertiary: fill = pressed ? p.surfacePressed : (hovered ? p.surfaceHover : .clear)
+        case .primary: titleColor = p.drawButton(shape, tone: .accent, hovered: hovered, pressed: pressed, enabled: isEnabled)
+        case .destructive: titleColor = p.drawButton(shape, tone: .danger, hovered: hovered, pressed: pressed, enabled: isEnabled)
+        case .success: titleColor = p.drawButton(shape, tone: .success, hovered: hovered, pressed: pressed, enabled: isEnabled)
+        case .secondary: titleColor = p.drawButton(shape, tone: .neutral, hovered: hovered, pressed: pressed, enabled: isEnabled)
+        case .tertiary:
+            if hovered || pressed { (pressed ? p.surfacePressed : p.surfaceHover).setFill(); shape.fill() }
         }
-        if !isEnabled { fill = fill.withAlphaComponent(0.45) }
-        fill.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: Radius.m, yRadius: Radius.m).fill()
 
         // Icon + title, centred together, title truncating before it can touch the edges.
-        let color = isEnabled ? textColor : textColor.withAlphaComponent(0.6)
+        let color = titleColor ?? (isEnabled ? textColor : textColor.withAlphaComponent(0.6))
         let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [.font: Typo.button, .foregroundColor: color, .paragraphStyle: para]
         let inset = Space.m
@@ -338,17 +401,14 @@ final class PillTabs: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        p.surface.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: Radius.m, yRadius: Radius.m).fill()
+        let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.m, yRadius: Radius.m)
+        p.surface.setFill(); box.fill()
+        p.divider.setStroke(); box.lineWidth = 1; box.stroke()
         for (i, t) in titles.enumerated() {
-            let r = slot(i).insetBy(dx: 2, dy: 0)
+            let r = slot(i).insetBy(dx: 1, dy: 0)
             let on = i == selected
-            if on || hoverIndex == i {
-                (on ? (p.isDark ? p.surfaceStrong : NSColor.white) : p.surfaceHover).setFill()
-                let path = NSBezierPath(roundedRect: r, xRadius: Radius.m - 2, yRadius: Radius.m - 2)
-                path.fill()
-                if on { p.border.setStroke(); path.lineWidth = 1; path.stroke() }
-            }
+            let path = NSBezierPath(roundedRect: r, xRadius: Radius.m - 2, yRadius: Radius.m - 2)
+            if on { p.drawSelected(path) } else if hoverIndex == i { p.surfaceHover.setFill(); path.fill() }
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: on ? Typo.bodyStrong : Typo.bodyMedium,
                 .foregroundColor: on ? p.text : p.textSecondary
@@ -501,7 +561,7 @@ final class SearchBox: NSView {
         super.init(frame: .zero)
         let p = Pal
         wantsLayer = true
-        layer?.cornerRadius = Radius.m
+        layer?.cornerRadius = 15
         layer?.cornerCurve = .continuous
         layer?.backgroundColor = p.field.cgColor
         layer?.borderWidth = 1
@@ -530,23 +590,27 @@ final class SearchBox: NSView {
 
     override func layout() {
         super.layout()
-        icon.frame = NSRect(x: 11, y: (bounds.height - 16) / 2, width: 16, height: 16)
-        field.frame = NSRect(x: 34, y: (bounds.height - 18) / 2, width: bounds.width - 44, height: 18)
+        layer?.cornerRadius = bounds.height / 2
+        icon.frame = NSRect(x: 13, y: (bounds.height - 16) / 2, width: 16, height: 16)
+        field.frame = NSRect(x: 36, y: (bounds.height - 18) / 2, width: bounds.width - 48, height: 18)
     }
 }
 
-/// Rounded coloured square with a white symbol.
+/// Rounded square tinted with a colour: soft fill, hairline edge, the symbol in that colour.
 final class IconTile: NSView {
     private let icon = NSImageView()
     init(symbol: String, color: NSColor, size: CGFloat = Metrics.icon, pointSize: CGFloat = 13) {
         super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
         wantsLayer = true
-        layer?.cornerRadius = size * 0.3
+        layer?.cornerRadius = size * 0.32
         layer?.cornerCurve = .continuous
-        layer?.backgroundColor = color.cgColor
+        let tint = color.blended(withFraction: 0.25, of: .white) ?? color
+        layer?.backgroundColor = color.withAlphaComponent(0.14).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = color.withAlphaComponent(0.45).cgColor
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .semibold))
-        icon.contentTintColor = .white
+        icon.contentTintColor = tint
         icon.frame = bounds.insetBy(dx: size * 0.2, dy: size * 0.2)
         icon.autoresizingMask = [.width, .height]
         addSubview(icon)
@@ -572,8 +636,12 @@ final class Toggle: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let track = NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2)
-        (isOn ? p.accent : p.surfaceStrong).withAlphaComponent(isEnabled ? 1 : 0.45).setFill()
-        track.fill()
+        if isOn {
+            NSGradient(starting: p.accent.withAlphaComponent(isEnabled ? 1 : 0.45), ending: p.accentDeep.withAlphaComponent(isEnabled ? 1 : 0.45))?.draw(in: track, angle: 0)
+        } else {
+            p.surfaceStrong.withAlphaComponent(isEnabled ? 1 : 0.45).setFill(); track.fill()
+            p.divider.setStroke(); track.lineWidth = 1; track.stroke()
+        }
         let d = bounds.height - 4
         NSColor.white.setFill()
         NSBezierPath(ovalIn: NSRect(x: isOn ? bounds.maxX - d - 2 : 2, y: 2, width: d, height: d)).fill()

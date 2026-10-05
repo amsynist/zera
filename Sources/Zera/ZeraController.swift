@@ -1,8 +1,8 @@
 import AppKit
 import ServiceManagement
 
-/// Owns everything on screen: Zera dangling from the notch, her speech bubble, the hover
-/// pill, and whichever card is hanging under her. Polls the pointer so she can watch it,
+/// Owns everything on screen: Zera dangling from the notch, her speech bubble, the live wings,
+/// and the notch island every screen opens in. Polls the pointer so she can watch it,
 /// greet you when you come close, and doze off when you have been away for a while.
 final class ZeraController: NSObject, ShelfViewDelegate {
 
@@ -13,8 +13,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private let buddy = BuddyView()
     private let bubblePanel: FloatingPanel
     private let bubble = BubbleView()
-    private let pillPanel: FloatingPanel
-    private let pill = ActionPill()
     /// Claude Code's live readout: two wings hanging off her on either side of the rope.
     private let livePanel: FloatingPanel
     private let live = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
@@ -22,7 +20,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private var liveHideWork: DispatchWorkItem?
     /// ✕ on the readout hides it until Claude's next prompt / wait / finish.
     private var liveDismissed = false
+    /// The notch island: every screen opens out of the notch inside this window. It is a fixed
+    /// transparent canvas; only the island's shape is drawn and takes the pointer.
     private let cardPanel: FloatingPanel
+    private let island = IslandView()
 
     /// Cards are built on demand and thrown away when the palette changes.
     private var cards: [CardKind: any CardContent] = [:]
@@ -43,6 +44,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private var sayResetWork: DispatchWorkItem?
 
     private var outsideSince: Date?
+    /// Whether the pointer has been on the open island yet. Until it has, the island stays put:
+    /// you opened it from somewhere else (a wing's chevron, a tab, a notification) and haven't
+    /// reached it yet. A click elsewhere or esc still closes it.
+    private var islandVisited = false
     private var isDraggingOut = false
     private var externalDragOver = false
     private var buddyDragActive = false
@@ -81,21 +86,25 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     /// What a tap on her opens.
     var defaultCard: CardKind {
         get { CardKind(rawValue: UserDefaults.standard.integer(forKey: Self.defaultCardKey)) ?? .shelf }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: Self.defaultCardKey); pill.defaultKind = newValue }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Self.defaultCardKey) }
     }
 
     // MARK: - Setup
 
     override init() {
-        let aboveMenuBar = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
-        buddyPanel = FloatingPanel.make(size: NSSize(width: Theme.buddyWidth, height: 90), level: aboveMenuBar, keyable: false)
-        bubblePanel = FloatingPanel.make(size: NSSize(width: 120, height: 30), level: aboveMenuBar, keyable: false)
-        pillPanel = FloatingPanel.make(size: ActionPill.preferredSize, level: aboveMenuBar, keyable: false)
+        // Island over the menu bar, Zera above the island, her speech bubble above her.
+        let level = { (n: Int) in NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + n) }
+        buddyPanel = FloatingPanel.make(size: NSSize(width: Theme.buddyWidth, height: 90), level: level(2), keyable: false)
+        bubblePanel = FloatingPanel.make(size: NSSize(width: 120, height: 30), level: level(3), keyable: false)
         livePanel = FloatingPanel.make(size: LiveActivityView.panelSize, level: .floating, keyable: false)
-        cardPanel = FloatingPanel.make(size: NSSize(width: Theme.panelWidth, height: 240), level: .floating, keyable: true)
+        cardPanel = FloatingPanel.make(size: NSSize(width: Theme.panelWidth, height: 240), level: level(1), keyable: true)
         super.init()
 
         buddyPanel.contentView = buddy
+        // Her window is much bigger than she is; a window shadow would trace its see-through
+        // parts as she moves. She draws her own soft shadow instead.
+        buddyPanel.hasShadow = false
+        buddy.bottomPad = Theme.figurePad
         buddyPanel.alphaValue = 0
         buddy.onActivate = { [weak self] in
             guard let self = self else { return }
@@ -106,6 +115,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                 self.annoyPokes = 1
             }
             self.lastAnnoyTime = now
+            self.zera.bump()
             if self.annoyPokes >= 4 {
                 self.say("stop poking me! 😠", mood: .error, for: 4.0)
                 self.annoyPokes = 0
@@ -114,7 +124,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             if self.zera.mood == .error || self.zera.mood == .worried { return }
             
             // Tap her: open the default card, or tuck away whatever is open so you can get back
-            // to your work (the hover pill still lets you jump straight to another card).
+            // to your work (the tabs beside the notch still let you jump straight to another screen).
             if self.cardVisible {
                 self.dismissCardByUser()
             } else {
@@ -181,18 +191,16 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         bubblePanel.alphaValue = 0
         bubble.tail = .right
 
-        pillPanel.contentView = pill
-        pillPanel.alphaValue = 0
-        pill.defaultKind = defaultCard
-        pill.onPick = { [weak self] kind in
+        island.onTab = { [weak self] kind in
             guard let self = self else { return }
             self.suppressUntil = .distantPast
-            self.show(kind)
+            // The open screen's tab puts the island away; any other tab switches to it.
+            if self.cardVisible, let c = self.currentCard, Isle.tab(for: c) == kind { self.dismissCardByUser() } else { self.show(kind) }
         }
 
         livePanel.contentView = live
         livePanel.hasShadow = false         // the wings draw their own glow
-        livePanel.appearance = Pal.nsAppearance
+        livePanel.appearance = NSAppearance(named: .darkAqua)   // the wings are always dark glass
         livePanel.alphaValue = 0
         live.onTap = { [weak self] in
             guard let self = self else { return }
@@ -213,9 +221,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             self.hideLive()
         }
 
-        cardPanel.hasShadow = true
-        cardPanel.appearance = Pal.nsAppearance
-        cardPanel.alphaValue = 0
+        cardPanel.contentView = island
+        cardPanel.hasShadow = false          // the island draws its own glow
+        cardPanel.appearance = NSAppearance(named: .darkAqua)
+        cardPanel.ignoresMouseEvents = true
 
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
@@ -240,8 +249,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             guard let self = self, self.cardVisible, !self.dragging, !self.buddyDragActive, !self.isDraggingOut else { return }
             if self.currentCard == .approval, self.approvalPending { return }
             let m = NSEvent.mouseLocation
-            if NSPointInRect(m, self.cardPanel.frame) || NSPointInRect(m, self.figureRect.insetBy(dx: -8, dy: -6))
-                || (self.pillVisible && NSPointInRect(m, self.pillPanel.frame))
+            if NSPointInRect(m, self.islandScreenRect) || NSPointInRect(m, self.figureRect.insetBy(dx: -8, dy: -6))
                 || (self.liveVisible && NSPointInRect(m, self.livePanel.frame)) { return }
             self.dismissCardByUser()
         }
@@ -297,7 +305,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         buddy.needsLayout = true
         buddy.layoutSubtreeIfNeeded()
         positionBubble()
-        positionPill()
+        if cardVisible || pillVisible { positionIsland() }
         if liveVisible { positionLive() }
     }
 
@@ -328,14 +336,19 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private var figureRect: NSRect { geometry.figureRect(centerX: buddyPanel.frame.midX) }
     private var headPoint: NSPoint { NSPoint(x: figureRect.midX, y: figureRect.minY + figureRect.height * 0.55) }
 
-    private var pillOnRight: Bool {
-        figureRect.maxX + 6 + ActionPill.preferredSize.width < geometry.screen.frame.maxX - 8
-    }
-
     private func positionBubble() {
         let size = BubbleView.size(for: bubble.text.isEmpty ? " " : bubble.text)
         let f = figureRect
         let scr = geometry.screen.frame
+        if cardVisible || pillVisible {
+            // The island fills the space around her: the bubble sits just outside its right edge.
+            let r = islandScreenRect
+            let x = min(r.maxX + 8, scr.maxX - 8 - size.width)
+            bubble.tail = .left
+            bubblePanel.setFrame(NSRect(x: x, y: r.maxY - geometry.notchRect.height - 22 - size.height, width: size.width, height: size.height), display: true)
+            bubble.frame = NSRect(origin: .zero, size: size)
+            return
+        }
         if liveVisible {
             // The wings fill the space beside her: the bubble perches above the right tendril.
             bubble.tail = .left
@@ -344,9 +357,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             bubble.frame = NSRect(origin: .zero, size: size)
             return
         }
-        var left = pillOnRight
-        if left, f.minX - 6 - size.width < scr.minX + 8 { left = false }
-        if !left, f.maxX + 6 + size.width > scr.maxX - 8 { left = true }
+        // To her right, unless that runs off the screen.
+        let left = f.maxX + 6 + size.width > scr.maxX - 8
         bubble.tail = left ? .right : .left
         let x = left ? f.minX - 6 - size.width : f.maxX + 6
         bubblePanel.setFrame(NSRect(x: x, y: headPoint.y - size.height / 2, width: size.width, height: size.height), display: true)
@@ -357,9 +369,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     /// of her, the right wing just right. Near a screen edge the panel is clamped and the wing
     /// on that side gets shorter (or folds away when there is no room).
     private func positionLive() {
-        let size = LiveActivityView.panelSize
         let scr = geometry.screen.frame
-        let cx = figureRect.midX
+        let size = NSSize(width: min(LiveActivityView.panelSize.width, scr.width), height: LiveActivityView.panelSize.height)
+        // The tendrils reach into her body, which hangs beside the rope in the Claude pose.
+        let cx = figureRect.midX + (zera.activity == .none ? 0 : zera.claudeBodyOffset)
         let x = max(scr.minX, min(scr.maxX - size.width, cx - size.width / 2))
         let y = (figureRect.minY + Theme.figureHeight * 0.43 - size.height / 2).rounded()
         livePanel.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
@@ -387,15 +400,16 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             self.live.update(session: stale ? nil : s, pending: pending)
             return (true, pending == nil && s?.status == .done)
         }
-        // At the laptop while Claude works; holding up a "?" while a command waits on you.
+        // She hugs her rope and acts out what Claude is doing: working, waiting on you, done.
         switch show ? live.mode : .idle {
-        case .running: zera.activityPose = "claude_working"
-        case .approval: zera.activityPose = "claude_approval"
-        default: zera.activityPose = nil
+        case .running: zera.activity = .running
+        case .approval: zera.activity = .approval
+        case .done: zera.activity = .done
+        default: zera.activity = .none
         }
         liveHideWork?.cancel()
         // Folded away while a card is open (the card carries the same information), while the
-        // hover pill is out (it sits where the wings do), and after right-click → hide until
+        // notch has widened to show the tabs, and after right-click → hide until
         // Claude has something new to say.
         guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed else { hideLive(); return }
         showLive()
@@ -432,12 +446,35 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         positionBubble()
     }
 
-    private func positionPill() {
-        let size = ActionPill.preferredSize
-        let f = figureRect
-        let x = pillOnRight ? f.maxX + 6 : f.minX - 6 - size.width
-        pillPanel.setFrame(NSRect(x: x, y: headPoint.y - size.height / 2, width: size.width, height: size.height), display: true)
-        pill.frame = NSRect(origin: .zero, size: size)
+    /// The island's window: a fixed transparent canvas hanging from the top of the screen,
+    /// centred on her (clamped to the screen). The island itself is centred under her rope.
+    private func positionIsland() {
+        let scr = geometry.screen.frame
+        let w = min(scr.width, Isle.maxWidth + Isle.margin * 2)
+        let h = geometry.notchRect.height + Isle.maxContentHeight + Isle.margin
+        let rope = buddyPanel.frame.midX
+        let x = max(scr.minX, min(scr.maxX - w, rope - w / 2))
+        let frame = NSRect(x: x, y: scr.maxY - h, width: w, height: h)
+        if cardPanel.frame != frame { cardPanel.setFrame(frame, display: false) }
+        island.frame = NSRect(origin: .zero, size: frame.size)
+        island.band = geometry.notchRect.height
+        island.notchWidth = geometry.notchRect.width
+        island.centerX = rope - x
+        island.layoutSubtreeIfNeeded()
+    }
+
+    /// The island's shape on screen (empty when it is closed).
+    private var islandScreenRect: NSRect {
+        guard island.mode != .closed, cardPanel.isVisible else { return .zero }
+        let r = island.islandRect, f = cardPanel.frame
+        return NSRect(x: f.minX + r.minX, y: f.maxY - r.maxY, width: r.width, height: r.height)
+    }
+
+    /// Brings the island's window up with Zera kept above it.
+    private func orderIslandFront() {
+        if !cardPanel.isVisible { cardPanel.orderFrontRegardless() }
+        if buddyPanel.alphaValue > 0.05 { buddyPanel.orderFrontRegardless() }
+        if bubblePanel.alphaValue > 0.05 { bubblePanel.orderFrontRegardless() }
     }
 
     // MARK: - Pointer polling
@@ -471,6 +508,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             let p = live.convert(livePanel.convertPoint(fromScreen: mouse), from: nil)
             livePanel.ignoresMouseEvents = !live.wingContains(p)
         }
+        // The island's window is a big transparent canvas: only the island takes the pointer.
+        if cardPanel.isVisible {
+            let p = island.convert(cardPanel.convertPoint(fromScreen: mouse), from: nil)
+            cardPanel.ignoresMouseEvents = !island.islandContains(p)
+        }
         if cardVisible { evaluateHide(mouse) }
     }
 
@@ -485,11 +527,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private func updateHover(_ mouse: NSPoint, _ now: Date) {
         guard buddyEnabled, buddyPanel.alphaValue > 0.5, !dragging else { return }
         let onHer = NSPointInRect(mouse, figureRect.insetBy(dx: -8, dy: -6))
-        let onPill = pillVisible && NSPointInRect(mouse, pillPanel.frame.insetBy(dx: -6, dy: -8))
-        let bridge = pillVisible && NSPointInRect(mouse, figureRect.union(pillPanel.frame).insetBy(dx: 0, dy: -6))
+        let onPill = pillVisible && NSPointInRect(mouse, islandScreenRect.insetBy(dx: -6, dy: -8))
+        let bridge = pillVisible && NSPointInRect(mouse, figureRect.union(islandScreenRect).insetBy(dx: 0, dy: -6))
 
         if onHer != hovering {
             hovering = onHer
+            zera.hovered = onHer
             buddy.setRadar(active: onHer)
             let nowInterval = CACurrentMediaTime()
             if onHer {
@@ -525,39 +568,37 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     // MARK: - Pill
 
+    /// Hovering her: the notch widens to show the tabs (an open island already shows them).
     private func showPill() {
         pillVisible = true
         hideLive()
-        positionPill()
         refreshBadges()
-        pill.activeKind = cardVisible ? currentCard : nil
-        let target = pillPanel.frame
-        pillPanel.setFrame(target.offsetBy(dx: -8, dy: 0), display: false)
-        pillPanel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = Motion.duration(0.18)
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.1)
-            pillPanel.animator().alphaValue = 1
-            pillPanel.animator().setFrame(target, display: true)
-        }
+        guard !cardVisible else { return }
+        positionIsland()
+        orderIslandFront()
+        island.peek()
+        positionBubble()
     }
 
     private func hidePill() {
         pillVisible = false
         pillLeftAt = nil
+        if !cardVisible { closeIsland() }
         updateLive()
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = Motion.duration(0.14)
-            pillPanel.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            guard let self = self, !self.pillVisible else { return }
-            self.pillPanel.orderOut(nil)
-        })
+        positionBubble()
     }
 
-    /// Red dots on the pill: unseen GitHub activity, Claude Code requests, reminder alerts.
+    /// Folds the island back into the notch, then takes its window away.
+    private func closeIsland() {
+        island.close { [weak self] in
+            guard let self = self, !self.cardVisible, !self.pillVisible else { return }
+            self.cardPanel.orderOut(nil)
+        }
+    }
+
+    /// Amber dots on the tabs: unseen GitHub activity, Claude Code requests, reminder alerts.
     private func refreshBadges() {
-        pill.badges = MainActor.assumeIsolated { () -> Set<CardKind> in
+        island.badges = MainActor.assumeIsolated { () -> Set<CardKind> in
             var b: Set<CardKind> = []
             if !GitHubService.shared.unseen.isEmpty { b.formUnion([.home, .github]) }
             if !ClaudeHookService.shared.pending.isEmpty { b.formUnion([.home, .claude]) }
@@ -743,8 +784,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         currentContent?.removeFromSuperview()
         currentContent = nil
         currentCard = nil
-        cardPanel.appearance = Pal.nsAppearance
-        livePanel.appearance = Pal.nsAppearance
         live.themeChanged()
         if let k = showing {
             show(k, instant: true)
@@ -1038,15 +1077,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         // Missing files stay listed (marked "no longer available") so you can see what happened.
         outsideSince = nil
         autoHideWork?.cancel()
-        // The pill stays while the pointer is on it, so you can hop between cards; it folds
-        // away on its own once the pointer leaves.
 
         let swapping = currentCard != kind
+        let previous = cardVisible ? currentCard : nil
         if swapping {
-            currentContent?.removeFromSuperview()
             let c = content(for: kind)
             c.onHeightChange = { [weak self] in self?.cardHeightChanged() }
-            cardPanel.contentView = c
             currentContent = c
             currentCard = kind
         }
@@ -1076,85 +1112,61 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         case .settings: break
         }
 
-        let alreadyUp = cardVisible && cardPanel.isVisible
+        if !cardVisible { islandVisited = false }
         cardVisible = true
-        pill.activeKind = kind
-        hideLive()   // the card takes the space; the readout comes back when it closes
-        isPresenting = true
-        currentContent?.needsLayout = true
-        currentContent?.layoutSubtreeIfNeeded()
-        isPresenting = false
-
-        let frame = cardFrame()
-        if instant || (alreadyUp && !swapping) {
-            cardPanel.setFrame(frame, display: true)
-            setCardAlpha(1, duration: 0)
-            cardPanel.orderFrontRegardless()
-            cardPanel.display()
-            if kind == .approval { cardPanel.makeKey() }
-            return
+        hideLive()   // the island takes the space; the readout comes back when it closes
+        positionIsland()
+        orderIslandFront()
+        // Screens to the right of the open one slide in from the right, and the other way round.
+        let order = Isle.leftTabs + Isle.rightTabs
+        var direction: CGFloat = 0
+        if let prev = previous, swapping,
+           let i = order.firstIndex(of: Isle.tab(for: prev)), let j = order.firstIndex(of: Isle.tab(for: kind)) {
+            direction = j == i ? 1 : (j > i ? 1 : -1)
         }
-        if alreadyUp {
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = Motion.duration(0.18)
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                cardPanel.animator().setFrame(frame, display: true)
-            }
-            if kind == .approval { cardPanel.makeKey() }
-            return
-        }
-        cardPanel.setFrame(frame.offsetBy(dx: 0, dy: 10), display: false)
-        setCardAlpha(0, duration: 0)
-        cardPanel.orderFrontRegardless()
+        presentCurrent(direction: direction, animated: !instant)
+        island.activeTab = Isle.tab(for: kind)
+        zera.islandPose = Isle.pose(for: kind)
+        positionBubble()
         if kind == .approval { cardPanel.makeKey() }
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = Motion.duration(0.2)
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.1)
-            cardPanel.animator().alphaValue = 1
-            cardPanel.animator().setFrame(frame, display: true)
-        }
         if kind == .shelf, ShelfStore.shared.items.isEmpty, bubblePanel.alphaValue < 0.5 {
             say("drop files here — I'll help you work with them 💜", mood: .idle, for: 2.6)
         }
     }
 
-    private func setCardAlpha(_ value: CGFloat, duration: TimeInterval) {
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = duration
-            cardPanel.animator().alphaValue = value
-        }
-        if duration == 0 { cardPanel.alphaValue = value }
+    /// Sizes the current screen for the island (compact: capped width and height) and shows it.
+    private func presentCurrent(direction: CGFloat, animated: Bool) {
+        guard let c = currentContent else { return }
+        let w = min(c.cardWidth, Isle.maxWidth, geometry.screen.frame.width - 24)
+        c.setFrameSize(NSSize(width: w, height: max(c.frame.height, 100)))
+        isPresenting = true
+        c.needsLayout = true
+        c.layoutSubtreeIfNeeded()
+        isPresenting = false
+        let h = min(c.desiredHeight, Isle.maxContentHeight, geometry.screen.visibleFrame.height - 40)
+        island.present(c, size: NSSize(width: w, height: h), direction: direction, animated: animated)
     }
 
     func hideCard() {
         guard cardVisible else { return }
         MainActor.assumeIsolated { ZeraDropdown.shared.dismiss() }
         cardVisible = false
-        pill.activeKind = nil
         outsideSince = nil
         externalDragOver = false
         autoHideWork?.cancel()
-        let resting = cardPanel.frame
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = Motion.duration(0.16)
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            cardPanel.animator().alphaValue = 0
-            cardPanel.animator().setFrame(resting.offsetBy(dx: 0, dy: 8), display: true)
-        }, completionHandler: { [weak self] in
+        zera.islandPose = nil
+        cardPanel.ignoresMouseEvents = true
+        if pillVisible {
+            island.close(animated: false)
+            island.peek()
+        } else {
+            closeIsland()
+        }
+        positionBubble()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self = self, !self.cardVisible else { return }
-            self.cardPanel.orderOut(nil)
-            self.cardPanel.setFrame(resting, display: false)
             self.updateLive()
-        })
-    }
-
-    private func cardFrame() -> NSRect {
-        guard let c = currentContent else { return cardPanel.frame }
-        let vf = geometry.screen.visibleFrame
-        let h = min(c.desiredHeight, vf.height - 40)
-        let top = figureRect.minY - Theme.cardGap
-        let x = max(vf.minX + 8, min(vf.maxX - c.cardWidth - 8, figureRect.midX - c.cardWidth / 2))
-        return NSRect(x: x, y: top - h, width: c.cardWidth, height: h)
+        }
     }
 
     private func evaluateHide(_ mouse: NSPoint) {
@@ -1184,9 +1196,13 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             return
         }
         let grace: TimeInterval = currentCard == .toast ? 6 : (currentCard == .result ? 4 : leaveGrace)
-        let zone = cardPanel.frame.insetBy(dx: -hoverPadding, dy: -hoverPadding)
+        let zone = islandScreenRect.insetBy(dx: -hoverPadding, dy: -hoverPadding)
             .union(figureRect.insetBy(dx: -10, dy: -10))
         if NSPointInRect(mouse, zone) {
+            islandVisited = true
+            outsideSince = nil
+        } else if !islandVisited, currentCard != .toast {
+            // Not reached yet (banners still fold away on their own).
             outsideSince = nil
         } else if let since = outsideSince {
             if Date().timeIntervalSince(since) >= grace { hideCard() }
@@ -1201,14 +1217,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     private func cardHeightChanged() {
         guard cardVisible, !isPresenting else { return }
-        let frame = cardFrame()
-        guard abs(frame.height - cardPanel.frame.height) > 0.5 || abs(frame.minX - cardPanel.frame.minX) > 0.5
-                || abs(frame.width - cardPanel.frame.width) > 0.5 else { return }
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = Motion.duration(0.16)
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            cardPanel.animator().setFrame(frame, display: true)
-        }
+        presentCurrent(direction: 0, animated: true)
     }
 
     // MARK: - ShelfViewDelegate
@@ -1226,7 +1235,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                 self.scheduleAutoHide(after: 0.5)
                 return
             }
-            let zone = self.cardPanel.frame.insetBy(dx: -14, dy: -14).union(self.figureRect)
+            let zone = self.islandScreenRect.insetBy(dx: -14, dy: -14).union(self.figureRect)
             guard !NSPointInRect(NSEvent.mouseLocation, zone) else { return }
             self.hideCard()
         }
