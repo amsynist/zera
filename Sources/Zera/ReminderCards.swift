@@ -8,10 +8,14 @@ import AppKit
 ///
 /// Snooze offers 15 min · 30 min · 1 hour · 2 hours · Tomorrow. Meetings get Join (when there
 /// is a call link) or Got it; break nudges get Taking it.
-final class ReminderAlertCard: CardBase, CardContent {
-    var cardWidth: CGFloat { 540 }
+final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
+    var cardWidth: CGFloat {
+        max(540, ceil((max(80, primary.fittedWidth) + snooze.fittedWidth + 8 + 20 + Isle.zeraGap / 2) * 2))
+    }
+    let countdownLine = BannerCountdownLine()
     var say: ((String, ZeraMood) -> Void)?
     var onDrained: (() -> Void)?
+    var onAlertChange: (() -> Void)?
     /// Tapping the title: open the reminder in Reminders & Calendar.
     var onView: ((ReminderAlert) -> Void)?
 
@@ -45,6 +49,7 @@ final class ReminderAlertCard: CardBase, CardContent {
         primary = PRActionButton("Done", style: .success, symbol: "checkmark", target: self, action: #selector(primaryTapped))
         addSubview(snooze)
         addSubview(primary)
+        addSubview(countdownLine)
         NotificationCenter.default.addObserver(self, selector: #selector(reload), name: ReminderService.changed, object: nil)
         reload()
     }
@@ -66,6 +71,7 @@ final class ReminderAlertCard: CardBase, CardContent {
 
     @objc func reload() {
         let svc = ReminderService.shared
+        let previousID = current?.id
         current = svc.pendingAlerts.first
         guard let a = current else { onDrained?(); return }
 
@@ -105,6 +111,7 @@ final class ReminderAlertCard: CardBase, CardContent {
         needsLayout = true
         layoutSubtreeIfNeeded()
         onHeightChange?()
+        if previousID != a.id { onAlertChange?() }
     }
 
     @objc private func snoozeTapped() {
@@ -139,6 +146,12 @@ final class ReminderAlertCard: CardBase, CardContent {
     override func mouseUp(with event: NSEvent) {
         let pt = convert(event.locationInWindow, from: nil)
         if let a = current, NSPointInRect(pt, headline.frame.union(tile.frame)) { onView?(a) }
+        else { dismissTapped() }
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        return hit is NSButton ? hit : self
     }
 
     override func layout() {
@@ -146,7 +159,8 @@ final class ReminderAlertCard: CardBase, CardContent {
         // Banner: tile · headline / detail left of Zera; Snooze and Done on the right.
         let w = bounds.width
         figure.isHidden = true
-        dismissButton.isHidden = true
+        dismissButton.isHidden = false
+        dismissButton.frame = NSRect(x: w - 20 - 22, y: 4, width: 22, height: 22)
         counter.isHidden = true
         let x: CGFloat = 20
         tile.frame = NSRect(x: x, y: 27, width: 34, height: 34)
@@ -158,5 +172,6 @@ final class ReminderAlertCard: CardBase, CardContent {
         primary.frame = NSRect(x: w - x - max(80, primary.fittedWidth), y: 29, width: max(80, primary.fittedWidth), height: 30)
         let sw = snooze.fittedWidth
         snooze.frame = NSRect(x: primary.frame.minX - 8 - sw, y: 29, width: sw, height: 30)
+        countdownLine.frame = NSRect(x: 18, y: bounds.height - 8, width: max(0, w - 36), height: 2)
     }
 }
