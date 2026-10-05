@@ -953,7 +953,8 @@ final class GlowPillButton: NSView {
 
     /// Glow inset + padding + icon + gap + text + padding.
     var fittedWidth: CGFloat {
-        ceil((title as NSString).size(withAttributes: [.font: Self.font]).width) + 4 * 2 + 14 + 15 + 7 + 17
+        let textWidth = ceil((title as NSString).size(withAttributes: [.font: Self.font]).width)
+        return textWidth + 4 * 2 + 14 + 15 + 7 + 17
     }
 
     override func draw(_ dirtyRect: NSRect) {
