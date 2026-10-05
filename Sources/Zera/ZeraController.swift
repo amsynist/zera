@@ -18,8 +18,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private let live = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
     private var liveVisible = false
     private var liveHideWork: DispatchWorkItem?
-    /// ✕ on the readout hides it until Claude's next prompt / wait / finish.
+    /// Minimize keeps the readout hidden until Zera is tapped again.
     private var liveDismissed = false
+    /// A finished session has already had its ten seconds on screen.
+    private var finishedLiveHidden = false
+    /// Restoring the wings with a tap keeps them open while that pointer is still on Zera.
+    private var keepLiveOnHover = false
     /// The notch island: every screen opens out of the notch inside this window. It is a fixed
     /// transparent canvas; only the island's shape is drawn and takes the pointer.
     private let cardPanel: FloatingPanel
@@ -52,12 +56,13 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private var externalDragOver = false
     private var buddyDragActive = false
     private var autoHideWork: DispatchWorkItem?
+    private var bannerCountdown: BannerCountdown?
     private var isPresenting = false
     private(set) var cardVisible = false
     private var suppressUntil = Date.distantPast
     
-    private var annoyPokes = 0
-    private var lastAnnoyTime: TimeInterval = 0
+    private var hoverPokes = 0
+    private var lastHoverPokeTime: TimeInterval = 0
 
     private var dragging = false
     private var dragGrabOffset: CGFloat = 0
@@ -83,10 +88,13 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         UserDefaults.standard.object(forKey: Self.buddyDefaultsKey) as? Bool ?? true
     }
 
-    /// What a tap on her opens.
-    var defaultCard: CardKind {
-        get { CardKind(rawValue: UserDefaults.standard.integer(forKey: Self.defaultCardKey)) ?? .shelf }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: Self.defaultCardKey) }
+    /// What a tap on her opens. A saved value of -1 means Nothing.
+    var defaultCard: CardKind? {
+        get {
+            let rawValue = UserDefaults.standard.integer(forKey: Self.defaultCardKey)
+            return rawValue == -1 ? nil : (CardKind(rawValue: rawValue) ?? .shelf)
+        }
+        set { UserDefaults.standard.set(newValue?.rawValue ?? -1, forKey: Self.defaultCardKey) }
     }
 
     // MARK: - Setup
@@ -108,18 +116,22 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         buddyPanel.alphaValue = 0
         buddy.onActivate = { [weak self] in
             guard let self = self else { return }
-            let now = CACurrentMediaTime()
-            if now - self.lastAnnoyTime < 1.0 {
-                self.annoyPokes += 1
-            } else {
-                self.annoyPokes = 1
-            }
-            self.lastAnnoyTime = now
-            self.zera.bump()
-            if self.annoyPokes >= 4 {
-                self.say("stop poking me! 😠", mood: .error, for: 4.0)
-                self.annoyPokes = 0
+            guard !self.zera.isReactingToPokes else { return }
+            if self.zera.poke() {
+                self.say("Hey! Gentle taps, please 😠", mood: .error, for: ZeraPokeReaction.duration)
                 return
+            }
+            if !self.cardVisible, self.liveDismissed || self.finishedLiveHidden {
+                self.liveDismissed = false
+                self.finishedLiveHidden = false
+                self.keepLiveOnHover = true
+                self.suppressUntil = .distantPast
+                self.hidePill() // Refresh the current session and bring its wings back.
+                if self.liveVisible {
+                    self.settle()
+                    return
+                }
+                self.keepLiveOnHover = false
             }
             if self.zera.mood == .error || self.zera.mood == .worried { return }
             
@@ -128,10 +140,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             if self.cardVisible {
                 self.dismissCardByUser()
             } else {
+                guard let defaultCard = self.defaultCard else { return }
                 self.suppressUntil = .distantPast
                 let answerWaiting = self.userHidResult && MainActor.assumeIsolated { !ZeraAssistant.shared.isBusy && ZeraAssistant.shared.session != nil }
                 self.userHidResult = false
-                self.show(answerWaiting ? (self.resultsInShelf ? .shelf : .result) : self.defaultCard)
+                self.show(answerWaiting ? (self.resultsInShelf ? .shelf : .result) : defaultCard)
             }
         }
         buddy.onDrop = { [weak self] pb in
@@ -189,7 +202,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         bubblePanel.contentView = bubble
         bubblePanel.ignoresMouseEvents = true
         bubblePanel.alphaValue = 0
-        bubble.tail = .right
 
         island.onTab = { [weak self] kind in
             guard let self = self else { return }
@@ -215,10 +227,14 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             self.say(allow ? "approved! ✅" : "rejected 🙅", mood: allow ? .happy : .thinking, for: 1.8)
             self.updateLive()
         }
-        live.onClose = { [weak self] in
+        live.onMinimize = { [weak self] in
             guard let self = self else { return }
             self.liveDismissed = true
+            self.liveHideWork?.cancel()
+            self.liveHideWork = nil
+            self.keepLiveOnHover = false
             self.hideLive()
+            self.settle()
         }
 
         cardPanel.contentView = island
@@ -248,6 +264,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             guard let self = self, self.cardVisible, !self.dragging, !self.buddyDragActive, !self.isDraggingOut else { return }
             if self.currentCard == .approval, self.approvalPending { return }
+            // Notification banners keep their reading time while you work in other apps.
+            if self.isNotificationBanner { return }
             let m = NSEvent.mouseLocation
             if NSPointInRect(m, self.islandScreenRect) || NSPointInRect(m, self.figureRect.insetBy(dx: -8, dy: -6))
                 || (self.liveVisible && NSPointInRect(m, self.livePanel.frame)) { return }
@@ -304,9 +322,9 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         buddy.frame = NSRect(origin: .zero, size: frame.size)
         buddy.needsLayout = true
         buddy.layoutSubtreeIfNeeded()
-        positionBubble()
         if cardVisible || pillVisible { positionIsland() }
         if liveVisible { positionLive() }
+        positionBubble()
     }
 
     func setBuddyEnabled(_ on: Bool) {
@@ -337,31 +355,15 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private var headPoint: NSPoint { NSPoint(x: figureRect.midX, y: figureRect.minY + figureRect.height * 0.55) }
 
     private func positionBubble() {
-        let size = BubbleView.size(for: bubble.text.isEmpty ? " " : bubble.text)
-        let f = figureRect
-        let scr = geometry.screen.frame
-        if cardVisible || pillVisible {
-            // The island fills the space around her: the bubble sits just outside its right edge.
-            let r = islandScreenRect
-            let x = min(r.maxX + 8, scr.maxX - 8 - size.width)
-            bubble.tail = .left
-            bubblePanel.setFrame(NSRect(x: x, y: r.maxY - geometry.notchRect.height - 22 - size.height, width: size.width, height: size.height), display: true)
-            bubble.frame = NSRect(origin: .zero, size: size)
-            return
-        }
-        if liveVisible {
-            // The wings fill the space beside her: the bubble perches above the right tendril.
-            bubble.tail = .left
-            let y = livePanel.frame.midY + 24
-            bubblePanel.setFrame(NSRect(x: f.maxX - 6, y: y, width: size.width, height: size.height), display: true)
-            bubble.frame = NSRect(origin: .zero, size: size)
-            return
-        }
-        // To her right, unless that runs off the screen.
-        let left = f.maxX + 6 + size.width > scr.maxX - 8
-        bubble.tail = left ? .right : .left
-        let x = left ? f.minX - 6 - size.width : f.maxX + 6
-        bubblePanel.setFrame(NSRect(x: x, y: headPoint.y - size.height / 2, width: size.width, height: size.height), display: true)
+        let screen = geometry.screen.frame
+        // Reserve the menu bar even when macOS has it hidden.
+        let safeFrame = NSRect(x: screen.minX + 12, y: screen.minY + 12,
+                               width: screen.width - 24, height: geometry.notchRect.minY - screen.minY - 24)
+        let size = BubbleView.size(for: bubble.text.isEmpty ? " " : bubble.text, maxWidth: safeFrame.width)
+        let obstacle: NSRect? = cardVisible || pillVisible ? islandScreenRect : (liveVisible ? livePanel.frame : nil)
+        let target = BubbleView.frame(for: size, figure: figureRect, safeFrame: safeFrame,
+                                      obstacle: obstacle, below: liveVisible)
+        bubblePanel.setFrame(target, display: true)
         bubble.frame = NSRect(origin: .zero, size: size)
     }
 
@@ -407,15 +409,23 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         case .done: zera.activity = .done
         default: zera.activity = .none
         }
-        liveHideWork?.cancel()
+        if !done {
+            liveHideWork?.cancel()
+            liveHideWork = nil
+            finishedLiveHidden = false
+        }
         // Folded away while a card is open (the card carries the same information), while the
-        // notch has widened to show the tabs, and after right-click → hide until
-        // Claude has something new to say.
-        guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed else { hideLive(); return }
+        // notch has widened to show the tabs, and until Zera is tapped after minimizing.
+        guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed, !finishedLiveHidden else { hideLive(); return }
         showLive()
-        if done {
+        if done, liveHideWork == nil {
             // Let the green bar be seen, then tidy away.
-            let w = DispatchWorkItem { [weak self] in self?.hideLive() }
+            let w = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                self.finishedLiveHidden = true
+                self.liveHideWork = nil
+                self.hideLive()
+            }
             liveHideWork = w
             DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: w)
         }
@@ -423,6 +433,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     private func showLive() {
         positionLive()
+        positionBubble()
         guard !liveVisible else { return }
         liveVisible = true
         livePanel.orderFrontRegardless()
@@ -534,23 +545,28 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             hovering = onHer
             zera.hovered = onHer
             buddy.setRadar(active: onHer)
+            if zera.isReactingToPokes { return }
             let nowInterval = CACurrentMediaTime()
             if onHer {
-                if nowInterval - lastAnnoyTime < 1.0 {
-                    annoyPokes += 1
+                if nowInterval - lastHoverPokeTime < 1.0 {
+                    hoverPokes += 1
                 } else {
-                    annoyPokes = 1
+                    hoverPokes = 1
                 }
-                lastAnnoyTime = nowInterval
-                if annoyPokes >= 5 {
+                lastHoverPokeTime = nowInterval
+                if hoverPokes >= 5 {
                     say("dizzy! 😵‍💫", mood: .worried, for: 4.0)
-                    annoyPokes = 0
+                    hoverPokes = 0
                     return
                 }
             }
             if onHer, !asleep, !buddyDragActive, zera.mood != .error, zera.mood != .worried, zera.mood != .excited, !cardVisible {
                 say(Self.helloLines.randomElement()!, mood: .hello, for: 2.2)
             }
+        }
+        if keepLiveOnHover {
+            if onHer { return }
+            keepLiveOnHover = false
         }
         if onHer || onPill || bridge {
             pillLeftAt = nil
@@ -710,11 +726,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     @objc private func hookRequest(_ note: Notification) {
         guard let req = note.userInfo?["request"] as? HookRequest else { return }
         let what = req.toolName == "Bash" ? "a command" : req.toolName
-        say("Claude needs your approval — shall I run \(what)? 🤔", mood: .thinking, for: 0)
+        say("Allow Claude to run \(what)? 🤔", mood: .thinking, for: 0)
         if cardVisible && currentCard == .approval { (cards[.approval] as? ApprovalCard)?.reload(); return }
+        // Keep a minimized readout tucked away; the caption and tab badge still announce it.
+        if liveDismissed { return }
         // Approve / Reject right on the wing when it can show it; otherwise the approval card.
         if liveCanApprove {
-            liveDismissed = false
             if pillVisible { hidePill() } else { updateLive() }
         } else {
             show(.approval)
@@ -746,7 +763,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     @objc private func activityMilestone(_ note: Notification) {
         guard let event = note.userInfo?["event"] as? String, let s = note.userInfo?["session"] as? ClaudeSession else { return }
         let title = s.title.isEmpty ? "that" : "“\(ClaudeActivityService.oneLine(s.title, max: 40))”"
-        liveDismissed = false
         switch event {
         case "prompt": say("on it — Claude's working on \(title) 👩‍💻", mood: .focused, for: 3)
         case "waiting": if !approvalPending { say("Claude needs you in \(s.folderName) 🙋", mood: .thinking, for: 6) }
@@ -754,8 +770,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         default: break
         }
     }
-    private var reminderAlertPending: Bool { MainActor.assumeIsolated { !ReminderService.shared.pendingAlerts.isEmpty } }
-
     @objc private func reminderFired(_ note: Notification) {
         guard let a = note.userInfo?["alert"] as? ReminderAlert else { return }
         let mood: ZeraMood
@@ -999,6 +1013,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             c = r
         case .reminderAlert:
             let r = ReminderAlertCard()
+            r.onAlertChange = { [weak self] in
+                guard let self = self, self.cardVisible, self.currentCard == .reminderAlert else { return }
+                self.startBannerCountdown()
+            }
             r.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 2.5) }
             r.onDrained = { [weak self] in
                 guard let self = self, self.cardVisible, self.currentCard == .reminderAlert else { return }
@@ -1059,7 +1077,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         return c
     }
 
-    func toggleDefaultCard() { cardVisible ? dismissCardByUser() : show(defaultCard) }
+    func toggleDefaultCard() { cardVisible ? dismissCardByUser() : show(defaultCard ?? .shelf) }
 
     /// Set when you put the result card away while Zera was still working, so the answer
     /// does not jump back in front of you — her bubble says when it is ready instead.
@@ -1128,6 +1146,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         island.activeTab = Isle.tab(for: kind)
         zera.islandPose = Isle.pose(for: kind)
         positionBubble()
+        if isNotificationBanner { startBannerCountdown() }
+        else { bannerCountdown = nil }
         if kind == .approval { cardPanel.makeKey() }
         if kind == .shelf, ShelfStore.shared.items.isEmpty, bubblePanel.alphaValue < 0.5 {
             say("drop files here — I'll help you work with them 💜", mood: .idle, for: 2.6)
@@ -1151,6 +1171,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         guard cardVisible else { return }
         MainActor.assumeIsolated { ZeraDropdown.shared.dismiss() }
         cardVisible = false
+        bannerCountdown = nil
         outsideSince = nil
         externalDragOver = false
         autoHideWork?.cancel()
@@ -1170,6 +1191,16 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     private func evaluateHide(_ mouse: NSPoint) {
+        if isNotificationBanner {
+            guard var countdown = bannerCountdown else { startBannerCountdown(); return }
+            let interacting = NSPointInRect(mouse, islandScreenRect)
+                || MainActor.assumeIsolated { ZeraDropdown.shared.isOpen }
+            countdown.advance(to: CACurrentMediaTime(), paused: interacting)
+            bannerCountdown = countdown
+            (currentContent as? TimedNotificationBanner)?.countdownLine.progress = countdown.progress
+            if countdown.expired { hideCard(); settle() }
+            return
+        }
         if isDraggingOut || externalDragOver || buddyDragActive || mouseButtonDown {
             outsideSince = nil
             return
@@ -1187,21 +1218,17 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             outsideSince = nil
             return
         }
-        if currentCard == .reminderAlert, reminderAlertPending, let since = outsideSince,
-           Date().timeIntervalSince(since) < 20 {
-            return
-        }
         if currentCard == .result, MainActor.assumeIsolated({ ZeraAssistant.shared.isBusy }) {
             outsideSince = nil   // she is still working on it; do not pull the answer away
             return
         }
-        let grace: TimeInterval = currentCard == .toast ? 6 : (currentCard == .result ? 4 : leaveGrace)
+        let grace: TimeInterval = currentCard == .result ? 4 : leaveGrace
         let zone = islandScreenRect.insetBy(dx: -hoverPadding, dy: -hoverPadding)
             .union(figureRect.insetBy(dx: -10, dy: -10))
         if NSPointInRect(mouse, zone) {
             islandVisited = true
             outsideSince = nil
-        } else if !islandVisited, currentCard != .toast {
+        } else if !islandVisited {
             // Not reached yet (banners still fold away on their own).
             outsideSince = nil
         } else if let since = outsideSince {
@@ -1211,6 +1238,15 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         }
     }
 
+    private var isNotificationBanner: Bool {
+        cardVisible && (currentCard == .toast || currentCard == .reminderAlert)
+    }
+
+    private func startBannerCountdown() {
+        bannerCountdown = BannerCountdown(at: CACurrentMediaTime())
+        (currentContent as? TimedNotificationBanner)?.countdownLine.progress = 1
+    }
+
     @objc private func storeChanged() {
         if cardVisible { cardHeightChanged() }
     }
@@ -1218,6 +1254,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private func cardHeightChanged() {
         guard cardVisible, !isPresenting else { return }
         presentCurrent(direction: 0, animated: true)
+        positionBubble()
     }
 
     // MARK: - ShelfViewDelegate

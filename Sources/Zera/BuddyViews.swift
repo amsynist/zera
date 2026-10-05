@@ -147,49 +147,82 @@ final class BuddyView: NSView {
     }
 }
 
-/// Rounded speech bubble with a tail toward Zera. Lives in its own click-through panel.
+/// A compact caption in the island's navy glass. Lives in its own click-through panel.
 final class BubbleView: NSView {
-    enum Tail { case left, right }
-    var text: String = "" { didSet { needsDisplay = true } }
-    var tail: Tail = .right { didSet { needsDisplay = true } }
+    var text: String = "" {
+        didSet {
+            label.stringValue = text
+            setAccessibilityLabel(text)
+            needsLayout = true
+        }
+    }
+    private let label = NSTextField(wrappingLabelWithString: "")
 
     static let font = Theme.font(12.5, .medium)
-    static let tailSize: CGFloat = 8
-    static let hPad: CGFloat = 13
-    static let vPad: CGFloat = 8
+    static let hPad: CGFloat = 14
+    static let vPad: CGFloat = 9
+    static let maxWidth: CGFloat = 320
+    static let gap: CGFloat = 12
+    // NSTextField reserves two points at either side of its text cell.
+    private static let cellInset: CGFloat = 4
 
-    static func size(for text: String) -> NSSize {
-        let s = (text as NSString).size(withAttributes: [.font: font])
-        return NSSize(width: ceil(s.width) + hPad * 2 + tailSize,
-                      height: ceil(s.height) + vPad * 2)
+    override var isFlipped: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        label.font = Self.font
+        label.textColor = Neon.text
+        label.maximumNumberOfLines = 3
+        label.lineBreakMode = .byWordWrapping
+        label.cell?.truncatesLastVisibleLine = true
+        addSubview(label)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    static func size(for text: String, maxWidth: CGFloat = BubbleView.maxWidth) -> NSSize {
+        let width = min(Self.maxWidth, maxWidth)
+        let textWidth = max(1, min(width - hPad * 2 - cellInset,
+                                  ceil((text as NSString).size(withAttributes: [.font: font]).width)))
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        let measured = (text as NSString).boundingRect(
+            with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font, .paragraphStyle: paragraph])
+        let lineHeight = ceil(font.ascender - font.descender + font.leading)
+        return NSSize(width: min(width, max(70, textWidth + hPad * 2 + cellInset)),
+                      height: min(lineHeight * 3, max(lineHeight, ceil(measured.height))) + vPad * 2)
+    }
+
+    /// Screen coordinates: keep captions clear of Zera, the menu bar and any open surface.
+    static func frame(for size: NSSize, figure: NSRect, safeFrame: NSRect,
+                      obstacle: NSRect? = nil, below: Bool = false) -> NSRect {
+        let occupied = obstacle.map { $0.union(figure) } ?? figure
+        let y = min(safeFrame.maxY - size.height,
+                    figure.minY + figure.height * 0.55 - size.height / 2)
+        if !below {
+            let right = NSRect(x: occupied.maxX + gap, y: y, width: size.width, height: size.height)
+            if safeFrame.contains(right) { return right.integral }
+            let left = NSRect(x: occupied.minX - gap - size.width, y: y, width: size.width, height: size.height)
+            if safeFrame.contains(left) { return left.integral }
+        }
+        let x = max(safeFrame.minX, min(safeFrame.maxX - size.width, figure.midX - size.width / 2))
+        return NSRect(x: x.rounded(), y: (occupied.minY - gap - size.height).rounded(),
+                      width: size.width, height: size.height)
+    }
+
+    override func layout() {
+        super.layout()
+        label.frame = bounds.insetBy(dx: Self.hPad, dy: Self.vPad)
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let t = Self.tailSize
-        let body = NSRect(x: tail == .left ? t : 0, y: 0, width: bounds.width - t, height: bounds.height)
-        let path = NSBezierPath(roundedRect: body, xRadius: body.height / 2, yRadius: body.height / 2)
-        let tailPath = NSBezierPath()
-        if tail == .left {
-            tailPath.move(to: NSPoint(x: body.minX + 2, y: body.midY + 6))
-            tailPath.line(to: NSPoint(x: body.minX - t + 1, y: body.midY))
-            tailPath.line(to: NSPoint(x: body.minX + 2, y: body.midY - 6))
-        } else {
-            tailPath.move(to: NSPoint(x: body.maxX - 2, y: body.midY + 6))
-            tailPath.line(to: NSPoint(x: body.maxX + t - 1, y: body.midY))
-            tailPath.line(to: NSPoint(x: body.maxX - 2, y: body.midY - 6))
-        }
-        tailPath.close()
-        path.append(tailPath)
-        Theme.bubbleFill.setFill()
-        path.fill()
-        NSColor.white.withAlphaComponent(0.14).setStroke()
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 12, yRadius: 12)
+        NSGradient(starting: Neon.fillTop, ending: Neon.fillBottom)?.draw(in: path, angle: 90)
+        Neon.edge.withAlphaComponent(0.4).setStroke()
         path.lineWidth = 1
         path.stroke()
-
-        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: Theme.bubbleText]
-        let size = (text as NSString).size(withAttributes: attrs)
-        (text as NSString).draw(at: NSPoint(x: body.minX + Self.hPad, y: body.midY - size.height / 2),
-                                withAttributes: attrs)
     }
 }
 
@@ -229,4 +262,3 @@ enum CardKind: Int, CaseIterable {
         }
     }
 }
-
