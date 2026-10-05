@@ -392,7 +392,7 @@ final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
         send = IconButton(symbol: "arrow.up.circle.fill", label: "Send question", target: nil, action: #selector(ResultCard.sendTapped))
         copyButton = CardButton("Copy", style: .secondary, symbol: "doc.on.doc", target: nil, action: #selector(ResultCard.copyTapped))
         saveNote = CardButton("Save Note", style: .secondary, symbol: "note.text", target: nil, action: #selector(ResultCard.saveNoteTapped))
-        stop = CardButton("Stop", style: .secondary, symbol: "stop.fill", target: nil, action: #selector(ResultCard.stopTapped))
+        stop = CardButton("Stop", style: .destructive, symbol: "stop.fill", target: nil, action: #selector(ResultCard.stopTapped))
         super.init(width: 580, title: "Zera")
         let p = Pal
         for b in [close, send] { b.target = self }

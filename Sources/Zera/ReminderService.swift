@@ -324,6 +324,7 @@ final class ReminderService {
         r.doneOccurrences.append(occ.timeIntervalSince1970)
         if r.doneOccurrences.count > 300 { r.doneOccurrences.removeFirst(r.doneOccurrences.count - 300) }
         if !r.rule.isRepeating { r.status = .completed; r.completedAt = Date() }
+        SoundService.shared.play(.reminderDone)
         if let so = r.snoozedOccurrence, abs(so - occ.timeIntervalSince1970) < 1 { r.snoozedUntil = nil; r.snoozedOccurrence = nil }
         reminders[i] = r
         completions.append(CompletionEntry(itemKind: .reminder, refID: id.uuidString, title: r.title, occurrence: occ,
@@ -548,6 +549,7 @@ final class ReminderService {
             markDone(id, occurrence: alert.occurrence)
         } else if let eid = alert.eventID, let occ = alert.occurrence {
             markEventComplete(eid, occurrence: occ)
+            SoundService.shared.play(.reminderDone)
         }
         dismiss(alert)
     }

@@ -263,6 +263,12 @@ final class CardButton: NSButton {
 
     func setTitleText(_ t: String) { titleText = t; setAccessibilityLabel(t); restyle() }
 
+    /// Main actions click softly; the rest stay silent so the island isn't noisy.
+    override func sendAction(_ action: Selector?, to target: Any?) -> Bool {
+        if style == .primary { SoundService.shared.play(.button) }
+        return super.sendAction(action, to: target)
+    }
+
     private var textColor: NSColor {
         let p = Pal
         switch style {
@@ -282,7 +288,7 @@ final class CardButton: NSButton {
     /// Width the title (and icon) need, with side padding.
     var fittedWidth: CGFloat {
         let w = (titleText as NSString).size(withAttributes: [.font: Typo.button]).width
-        return ceil(w) + Space.l * 2 - 4 + (glyph == nil ? 0 : iconWidth + Self.iconGap)
+        return ceil(w) + Space.l * 2 - 4 + (glyph == nil ? 0 : iconWidth + (titleText.isEmpty ? 0 : Self.iconGap))
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -304,7 +310,8 @@ final class CardButton: NSButton {
         let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [.font: Typo.button, .foregroundColor: color, .paragraphStyle: para]
         let inset = Space.m
-        let iconSpace = glyph == nil ? 0 : iconWidth + Self.iconGap
+        // No gap after the icon when there is no title, so icon-only buttons stay centred.
+        let iconSpace = glyph == nil ? 0 : iconWidth + (titleText.isEmpty ? 0 : Self.iconGap)
         let textW = min(bounds.width - inset * 2 - iconSpace, ceil((titleText as NSString).size(withAttributes: attrs).width))
         let total = iconSpace + max(0, textW)
         var x = (bounds.width - total) / 2

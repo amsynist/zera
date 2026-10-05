@@ -18,6 +18,8 @@ class CardBase: NSView {
 
     let titleLabel = NSTextField(labelWithString: "")
     let subtitleLabel = NSTextField(labelWithString: "")
+    /// Zera is speaking in the header's second line: keep the title up top to make room.
+    var whispering = false { didSet { if whispering != oldValue { needsLayout = true } } }
     /// Y where content starts, under the header row Zera hangs in.
     var headerBottom: CGFloat { Isle.headerHeight }
 
@@ -52,7 +54,7 @@ class CardBase: NSView {
     /// Zera's spot in the middle; `trailingWidth` is room kept free on the right for buttons.
     func layoutHeader(trailingWidth: CGFloat = 0) {
         let w = min(bounds.width - Metrics.cardPad * 2 - trailingWidth, bounds.width / 2 - Isle.zeraGap / 2 - Metrics.cardPad)
-        let top: CGFloat = subtitleLabel.isHidden ? 33 : 24
+        let top: CGFloat = subtitleLabel.isHidden && !whispering ? 33 : 24
         titleLabel.frame = NSRect(x: Metrics.cardPad + 4, y: top, width: max(0, w), height: 22)
         subtitleLabel.frame = NSRect(x: Metrics.cardPad + 4, y: top + 22, width: max(0, w), height: 16)
     }
@@ -646,12 +648,13 @@ final class SettingsCard: CardBase, CardContent {
     var say: ((String, ZeraMood) -> Void)?
 
     enum Pane: Int, CaseIterable {
-        case general, appearance, integrations, shortcuts, about
+        case general, sounds, appearance, integrations, shortcuts, about
         case claude, github, calendar, shelf   // detail panes, reached from Integrations
         case diagnostics                        // detail of Claude
         var title: String {
             switch self {
             case .general: return "General"
+            case .sounds: return "Sounds"
             case .appearance: return "Appearance"
             case .integrations: return "Integrations"
             case .shortcuts: return "Shortcuts"
@@ -666,6 +669,7 @@ final class SettingsCard: CardBase, CardContent {
         var symbol: String {
             switch self {
             case .general: return "gearshape.fill"
+            case .sounds: return "speaker.wave.2.fill"
             case .appearance: return "paintpalette.fill"
             case .integrations: return "puzzlepiece.extension.fill"
             case .shortcuts: return "keyboard"
@@ -680,7 +684,7 @@ final class SettingsCard: CardBase, CardContent {
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
         var isDetail: Bool { rawValue >= Pane.claude.rawValue }
-        static let nav: [Pane] = [.general, .integrations, .shortcuts, .about]
+        static let nav: [Pane] = [.general, .sounds, .integrations, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
@@ -766,6 +770,7 @@ final class SettingsCard: CardBase, CardContent {
         var s = Stack(width: cardWidth - sidebarW - Metrics.cardPad * 2 - Space.m)
         switch current {
         case .general: buildGeneral(&s)
+        case .sounds: buildSounds(&s)
         case .appearance: buildAppearance(&s)
         case .integrations: buildIntegrations(&s)
         case .shortcuts: buildShortcuts(&s)
@@ -872,6 +877,42 @@ final class SettingsCard: CardBase, CardContent {
         breakPopup = popupRow("Break reminder", items: ["Off", "Every 30 min", "Every 45 min", "Every hour", "Every 90 min", "Every 2 hours"],
                               selected: Self.breakChoices.firstIndex(of: rs.breakInterval) ?? 0, &s, action: #selector(breakChanged))
         hint("Breaks are only suggested while you're actually at the keyboard.", &s)
+    }
+
+    private func buildSounds(_ s: inout Stack) {
+        let snd = SoundService.shared
+        toggleRow("Play sounds", on: snd.enabled, &s) { [weak self] on in
+            snd.enabled = on
+            if on { snd.play(.tap) }
+            self?.rebuildPane()
+        }
+        let slider = NSSlider(value: Double(snd.volume), minValue: 0, maxValue: 1, target: self, action: #selector(soundVolumeChanged(_:)))
+        slider.isContinuous = false
+        slider.isEnabled = snd.enabled
+        settingRow("Volume", &s, control: slider, controlWidth: 150)
+        for family in ZeraSound.Family.allCases {
+            toggleRow(family.title, on: snd.isOn(family), &s, enabled: snd.enabled) { on in
+                snd.set(family, on: on)
+                if on { snd.play(Self.sample(for: family)) }
+            }
+        }
+        hint("One sound at a time, quieter than system alerts. GitHub news is off unless you turn it on.", &s)
+    }
+
+    /// What a family sounds like, played when you switch it on.
+    private static func sample(for family: ZeraSound.Family) -> ZeraSound {
+        switch family {
+        case .zera: return .fileCatch
+        case .island: return .islandOpen
+        case .claude: return .claudeDone
+        case .reminders: return .water
+        case .github: return .githubPing
+        }
+    }
+
+    @objc private func soundVolumeChanged(_ sender: NSSlider) {
+        SoundService.shared.volume = Float(sender.doubleValue)
+        SoundService.shared.play(.reminderDone)
     }
 
     private func buildAppearance(_ s: inout Stack) {
@@ -1518,6 +1559,7 @@ final class ApprovalCard: CardBase, CardContent {
     @objc private func approveTapped() {
         guard let req = current else { return }
         approve.isEnabled = false; reject.isEnabled = false
+        SoundService.shared.play(.claudeApproved)
         ClaudeHookService.shared.respond(req, allow: true)
         say?("approved ✅", .approved)
     }
@@ -1525,6 +1567,7 @@ final class ApprovalCard: CardBase, CardContent {
     @objc private func rejectTapped() {
         guard let req = current else { return }
         approve.isEnabled = false; reject.isEnabled = false
+        SoundService.shared.play(.claudeRejected)
         ClaudeHookService.shared.respond(req, allow: false)
         say?("okay, not running that", .sad)
     }
