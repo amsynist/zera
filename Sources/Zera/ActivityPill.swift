@@ -935,6 +935,9 @@ final class CommandCopyButton: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        // Before its first layout the button is 0 × 0, and insetting that gives a null rect
+        // whose infinite coordinates make NSBezierPath throw. Draw nothing until it has a size.
+        guard bounds.width > 12, bounds.height > 12 else { return }
         let r = bounds.insetBy(dx: 4, dy: 4)
         let path = NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10)
         if copiedUntil != nil {

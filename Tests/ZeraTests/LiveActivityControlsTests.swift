@@ -74,3 +74,19 @@ final class LiveActivityExpandTests: XCTestCase {
         XCTAssertEqual(opened, 1)
     }
 }
+
+final class CommandCopyButtonDrawTests: XCTestCase {
+    /// Drawing before the first layout (0 × 0) used to throw from NSBezierPath and crash the app.
+    func testDrawsSafelyAtAnySize() {
+        for size in [NSSize.zero, NSSize(width: 6, height: 6), NSSize(width: 44, height: 44)] {
+            let b = CommandCopyButton(frame: NSRect(origin: .zero, size: size))
+            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 50, pixelsHigh: 50, bitsPerSample: 8,
+                                       samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                       bytesPerRow: 0, bitsPerPixel: 0)!
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            b.draw(b.bounds)
+            NSGraphicsContext.restoreGraphicsState()
+        }
+    }
+}
