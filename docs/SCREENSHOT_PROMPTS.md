@@ -1,5 +1,9 @@
 # README images — generation prompts (clean versions)
 
+> **Superseded for screens.** These prompts made the earlier illustrated screens. Since the notch
+> island redesign, the README shows renders of the design mock-ups (`docs/zera-island.gif`,
+> `docs/zera-wings.gif`, `docs/island-screens.png`, `docs/wings-states.png`). The banner prompt still applies.
+
 Prompts to recreate the six README images **without** the problems the old ones had:
 no personal identifiers, no real people, no company logos (Apple, GitHub, Anthropic/Claude, React,
 VS Code, Notion, Slack…), no unbranded-looking-but-real products, and only features Zera really has.

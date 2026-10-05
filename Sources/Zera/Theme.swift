@@ -9,15 +9,16 @@ enum Theme {
     static let topTuck: CGFloat = 18
     /// Within this distance of the notch centre she snaps back to it when dropped.
     static let snapDistance: CGFloat = 28
-    /// Width of her window — wider than she is so the sway has room.
-    static let buddyWidth: CGFloat = 140
+    /// Width of her window — much wider than she is, so the sway, hops, wiggles and sparkles
+    /// never reach its edges.
+    static let buddyWidth: CGFloat = 220
+    /// Empty room under her feet inside her window, for bounces and the ripple.
+    static let figurePad: CGFloat = 24
     /// Width of the pretend notch on Macs without one.
     static let virtualNotchWidth: CGFloat = 180
     /// Pointer stillness before she dozes off.
     static let sleepAfter: TimeInterval = 240
-    /// Gap between her feet and a card hanging under her.
-    static let cardGap: CGFloat = 10
-    /// How long the pointer may be away from her / the pill before the pill folds away.
+    /// How long the pointer may be away from her / the widened notch before it folds back.
     static let pillLinger: TimeInterval = 0.5
 
     // MARK: Shelf grid
@@ -38,7 +39,6 @@ enum Theme {
     static let purple = NSColor(srgbRed: 0.561, green: 0.482, blue: 1.000, alpha: 1.0)
     /// Selection / highlight colour used by the shelf tiles.
     static var accent: NSColor { Pal.accent }
-    static let pillFill = NSColor(srgbRed: 0.120, green: 0.105, blue: 0.180, alpha: 0.94)
     static let bubbleFill = NSColor(srgbRed: 0.120, green: 0.105, blue: 0.180, alpha: 0.94)
     static let bubbleText = NSColor(srgbRed: 0.965, green: 0.955, blue: 1.000, alpha: 1.0)
 

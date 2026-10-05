@@ -382,9 +382,9 @@ final class GHSquareButton: NSButton {
 /// The PR screen's button: violet gradient (primary) or hairline surface (secondary), 13 pt
 /// semibold, icon + title centred, hover / pressed / disabled / keyboard-focus states.
 class PRActionButton: NSButton {
-    /// primary: violet gradient · secondary: hairline surface · destructive: red-tinted (Stop) ·
-    /// warning: amber-tinted (Review approval).
-    enum Style { case primary, secondary, destructive, warning }
+    /// The island's button family (see `Palette.drawButton`): primary is a blue outline,
+    /// secondary a quiet chip, success green (Done, Approve), destructive red (Stop), warning amber.
+    enum Style { case primary, secondary, destructive, warning, success }
     var style: Style { didSet { needsDisplay = true } }
     /// Row hover: the primary button glows a little.
     var emphasized = false { didSet { if emphasized != oldValue { updateGlow() } } }
@@ -427,50 +427,34 @@ class PRActionButton: NSButton {
     override func resignFirstResponder() -> Bool { needsDisplay = true; return super.resignFirstResponder() }
 
     private func updateGlow() {
-        guard style == .primary else { layer?.shadowOpacity = 0; return }
+        // The pill draws its own hover glow; a row's emphasis adds a faint one to the main action.
+        guard style == .primary, emphasized, isEnabled else { layer?.shadowOpacity = 0; return }
         layer?.shadowColor = Pal.accent.cgColor
         layer?.shadowOffset = .zero
-        layer?.shadowRadius = 10
-        layer?.shadowOpacity = !isEnabled ? 0 : ((emphasized || hovered) ? 0.6 : 0.28)
+        layer?.shadowRadius = 8
+        layer?.shadowOpacity = 0.35
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: Radius.m, yRadius: Radius.m)
+        // A pill, except icon-only squares (a 34 × 34 trash button) keep soft corners.
+        let radius = titleText.isEmpty ? Radius.m : r.height / 2
+        let path = NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius)
         let pressed = isHighlighted
-        let text: NSColor
+        let tone: ButtonTone
         switch style {
-        case .primary:
-            let a = pressed ? p.accentPressed : (hovered || emphasized ? p.accentHover : p.accent)
-            let b = pressed ? p.accentDeep.blended(withFraction: 0.2, of: .black) ?? p.accentDeep : p.accentDeep
-            NSGradient(starting: a, ending: b)?.draw(in: path, angle: 0)
-            // A faint highlight along the top edge, like the mock's glossy buttons.
-            NSGraphicsContext.saveGraphicsState()
-            path.addClip()
-            NSGradient(colors: [NSColor.white.withAlphaComponent(0.16), NSColor.white.withAlphaComponent(0)])?
-                .draw(in: NSRect(x: 0, y: isFlipped ? 0 : bounds.height / 2, width: bounds.width, height: bounds.height / 2), angle: isFlipped ? 90 : -90)
-            NSGraphicsContext.restoreGraphicsState()
-            NSColor.white.withAlphaComponent(0.22).setStroke(); path.lineWidth = 1; path.stroke()
-            text = p.onAccent
-        case .secondary:
-            (pressed ? p.surfacePressed : (hovered ? p.surfaceHover : p.surfaceRow)).setFill(); path.fill()
-            (hovered ? p.accentBorder : p.border).setStroke(); path.lineWidth = 1; path.stroke()
-            text = p.text
-        case .destructive, .warning:
-            let tone = style == .destructive ? p.danger : p.warning
-            tone.withAlphaComponent(pressed ? 0.30 : (hovered ? 0.24 : 0.15)).setFill(); path.fill()
-            tone.withAlphaComponent(hovered ? 0.6 : 0.42).setStroke(); path.lineWidth = 1; path.stroke()
-            text = p.isDark ? (tone.blended(withFraction: 0.2, of: .white) ?? tone) : (tone.blended(withFraction: 0.35, of: .black) ?? tone)
+        case .primary: tone = .accent
+        case .secondary: tone = .neutral
+        case .destructive: tone = .danger
+        case .warning: tone = .warning
+        case .success: tone = .success
         }
-        if !isEnabled {
-            p.cardBottom.withAlphaComponent(0.5).setFill(); path.fill()
-        }
+        let color = p.drawButton(path, tone: tone, hovered: hovered || (emphasized && style == .primary), pressed: pressed, enabled: isEnabled)
         if window?.firstResponder === self {
-            let ring = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5, dy: 1.5), xRadius: Radius.m - 1, yRadius: Radius.m - 1)
-            NSColor.white.withAlphaComponent(0.8).setStroke(); ring.lineWidth = 2; ring.stroke()
+            let ring = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5, dy: 1.5), xRadius: max(0, radius - 1), yRadius: max(0, radius - 1))
+            p.accent.withAlphaComponent(0.9).setStroke(); ring.lineWidth = 2; ring.stroke()
         }
-        let color = isEnabled ? text : text.withAlphaComponent(0.55)
         let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color, .paragraphStyle: para]
         let iconW = glyph.map { ceil($0.size.width) + 7 } ?? 0
@@ -627,13 +611,7 @@ final class GitHubSegmentedControl: NSView {
             let r = slot(i)
             let on = i == selected
             if on {
-                let path = NSBezierPath(roundedRect: r, xRadius: Radius.m + 1, yRadius: Radius.m + 1)
-                NSGraphicsContext.saveGraphicsState()
-                let glow = NSShadow(); glow.shadowColor = p.accent.withAlphaComponent(0.45); glow.shadowBlurRadius = 10; glow.shadowOffset = .zero
-                glow.set()
-                NSGradient(starting: p.accent, ending: p.accentDeep)?.draw(in: path, angle: 0)
-                NSGraphicsContext.restoreGraphicsState()
-                NSColor.white.withAlphaComponent(0.22).setStroke(); path.lineWidth = 1; path.stroke()
+                p.drawSelected(NSBezierPath(roundedRect: r, xRadius: Radius.m + 1, yRadius: Radius.m + 1))
             } else if hoverIndex == i {
                 p.surfaceHover.setFill()
                 NSBezierPath(roundedRect: r, xRadius: Radius.m + 1, yRadius: Radius.m + 1).fill()
@@ -644,7 +622,7 @@ final class GitHubSegmentedControl: NSView {
                 NSRect(x: r.minX - 0.5, y: r.minY + 9, width: 1, height: r.height - 18).fill()
             }
 
-            let textColor = on ? NSColor.white : p.text(0.85)
+            let textColor = on ? p.text : p.text(0.8)
             let titleW = ceil((it.title as NSString).size(withAttributes: [.font: Self.font]).width)
             let bw = hasBadge(it) ? badgeWidth(it.count) : 0
             let icon = self.icon(it)
@@ -653,7 +631,7 @@ final class GitHubSegmentedControl: NSView {
             let showIcon = icon != nil && full <= r.width - 16
             let total = (showIcon ? iconW + 8 : 0) + titleW + (bw > 0 ? 8 + bw : 0)
             var x = r.midX - min(total, r.width - 12) / 2
-            if showIcon, let ic = icon?.withSymbolConfiguration(.init(paletteColors: [on ? .white : (it.tint ?? p.textSecondary)])) {
+            if showIcon, let ic = icon?.withSymbolConfiguration(.init(paletteColors: [on ? p.selectedAccent : (it.tint ?? p.textSecondary)])) {
                 let s = ic.size
                 ic.draw(in: NSRect(x: x, y: r.midY - s.height / 2, width: s.width, height: s.height),
                         from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
@@ -667,10 +645,10 @@ final class GitHubSegmentedControl: NSView {
             x += tw + 8
             if bw > 0 {
                 let br = NSRect(x: x, y: r.midY - 11, width: bw, height: 22)
-                (on ? NSColor.white.withAlphaComponent(0.24) : (it.badgeTint?.withAlphaComponent(0.28) ?? p.surfaceStrong)).setFill()
+                (on ? p.selectedAccent.withAlphaComponent(0.16) : (it.badgeTint?.withAlphaComponent(0.22) ?? p.surfaceStrong)).setFill()
                 NSBezierPath(roundedRect: br, xRadius: 11, yRadius: 11).fill()
                 let s = "\(it.count)" as NSString
-                let ba: [NSAttributedString.Key: Any] = [.font: Self.badgeFont, .foregroundColor: on ? NSColor.white : p.text(0.9)]
+                let ba: [NSAttributedString.Key: Any] = [.font: Self.badgeFont, .foregroundColor: on ? p.selectedAccent : p.text(0.85)]
                 let sz = s.size(withAttributes: ba)
                 s.draw(at: NSPoint(x: br.midX - sz.width / 2, y: br.midY - sz.height / 2), withAttributes: ba)
             }
@@ -777,25 +755,26 @@ final class GHSplitButton: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.m + 1, yRadius: Radius.m + 1)
-        NSGradient(starting: p.accent, ending: p.accentDeep)?.draw(in: path, angle: 0)
+        // The main action as a blue outline pill, split before the ▾ menu part.
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        let label = p.drawButton(path, tone: .accent, hovered: hoverPart != nil, pressed: pressedPart != nil)
         let split = bounds.width - chevronW
         if let h = pressedPart ?? hoverPart {
             NSGraphicsContext.saveGraphicsState()
             path.addClip()
-            (pressedPart != nil ? NSColor.black.withAlphaComponent(0.15) : NSColor.white.withAlphaComponent(0.10)).setFill()
+            p.accent.withAlphaComponent(pressedPart != nil ? 0.18 : 0.10).setFill()
             (h == 0 ? NSRect(x: 0, y: 0, width: split, height: bounds.height) : NSRect(x: split, y: 0, width: chevronW, height: bounds.height)).fill()
             NSGraphicsContext.restoreGraphicsState()
         }
-        NSColor.white.withAlphaComponent(0.2).setStroke(); path.lineWidth = 1; path.stroke()
-        NSColor.white.withAlphaComponent(0.28).setFill()
+        p.accent.withAlphaComponent(0.4).setFill()
         NSRect(x: split - 0.5, y: 8, width: 1, height: bounds.height - 16).fill()
 
-        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: NSColor.white]
+        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: label]
         let tw = ceil((title as NSString).size(withAttributes: attrs).width)
         let icon = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 12.5, weight: .semibold))?
-            .withSymbolConfiguration(.init(paletteColors: [.white]))
+            .withSymbolConfiguration(.init(paletteColors: [label]))
         let iw = icon.map { ceil($0.size.width) + 7 } ?? 0
         var x = max(12, (split - tw - iw) / 2)
         if let ic = icon {
@@ -808,7 +787,7 @@ final class GHSplitButton: NSView {
         (title as NSString).draw(in: NSRect(x: x, y: (bounds.height - th) / 2, width: min(tw, split - x - 8), height: th), withAttributes: attrs)
         if let c = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: "More")?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .bold))?
-            .withSymbolConfiguration(.init(paletteColors: [.white])) {
+            .withSymbolConfiguration(.init(paletteColors: [label])) {
             let s = c.size
             c.draw(in: NSRect(x: split + (chevronW - s.width) / 2, y: (bounds.height - s.height) / 2, width: s.width, height: s.height),
                    from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
@@ -846,7 +825,7 @@ final class GHStateView: NSView {
     private let spinner = NSProgressIndicator()
     private(set) var button: PRActionButton?
     override var isFlipped: Bool { true }
-    static let height: CGFloat = 200
+    static let height: CGFloat = 140
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -887,10 +866,10 @@ final class GHStateView: NSView {
         let hasButton = button != nil
         let spin: CGFloat = spinnerAnimating ? 22 : 0
         let buttonH: CGFloat = hasButton ? 46 : 0
-        let content: CGFloat = 84 + 10 + 20 + 4 + spin + 34 + buttonH
+        // Zera already hangs in the island's header, so the empty state is just words (and a button).
+        figure.isHidden = true
+        let content: CGFloat = 20 + 4 + spin + 34 + buttonH
         var y = max(0, (bounds.height - content) / 2)
-        figure.frame = NSRect(x: (w - 84) / 2, y: y, width: 84, height: 84)
-        y += 84 + 10
         title.frame = NSRect(x: Space.l, y: y, width: w - Space.l * 2, height: 20)
         y += 24
         spinner.frame = NSRect(x: (w - 16) / 2, y: y, width: 16, height: 16)

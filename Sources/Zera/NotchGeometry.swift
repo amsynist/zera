@@ -35,9 +35,9 @@ struct NotchGeometry {
         // Reach all the way to the top of the screen (monitor edge) so the rope draws over the menubar
         let up: CGFloat = notchRect.height
         return NSRect(x: centerX - Theme.buddyWidth / 2,
-                      y: notchRect.minY - Theme.figureHeight,
+                      y: notchRect.minY - Theme.figureHeight - Theme.figurePad,
                       width: Theme.buddyWidth,
-                      height: up + Theme.figureHeight)
+                      height: up + Theme.figureHeight + Theme.figurePad)
     }
 
     /// Points of the window hidden by the menubar/notch (applied universally so the character tucks properly)

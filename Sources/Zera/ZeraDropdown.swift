@@ -62,8 +62,11 @@ private final class DropdownRow: NSView {
         let r = bounds.insetBy(dx: 5, dy: 2)
         if hovered {
             let path = NSBezierPath(roundedRect: r, xRadius: 9, yRadius: 9)
-            (item.destructive ? p.danger.withAlphaComponent(0.16) : p.accent.withAlphaComponent(p.isDark ? 0.28 : 0.16)).setFill()
-            path.fill()
+            if item.destructive {
+                p.danger.withAlphaComponent(0.14).setFill(); path.fill()
+            } else {
+                p.drawSelected(path)
+            }
         }
         let color: NSColor = item.destructive ? p.danger : p.text
         var x: CGFloat = 14
@@ -72,9 +75,9 @@ private final class DropdownRow: NSView {
             let tint = item.tint ?? p.accent
             let tr = NSRect(x: 12, y: (bounds.height - 32) / 2, width: 32, height: 32)
             let tp = NSBezierPath(roundedRect: tr, xRadius: 9, yRadius: 9)
-            NSGradient(starting: tint.blended(withFraction: 0.15, of: .white) ?? tint, ending: tint.blended(withFraction: 0.2, of: .black) ?? tint)?
-                .draw(in: tp, angle: 90)
-            if let s = item.symbol, let img = dropdownIcon(s, 14, .white) {
+            tint.withAlphaComponent(0.14).setFill(); tp.fill()
+            tint.withAlphaComponent(0.45).setStroke(); tp.lineWidth = 1; tp.stroke()
+            if let s = item.symbol, let img = dropdownIcon(s, 14, tint.blended(withFraction: 0.25, of: .white) ?? tint) {
                 let sz = img.size
                 img.draw(in: NSRect(x: tr.midX - sz.width / 2, y: tr.midY - sz.height / 2, width: sz.width, height: sz.height),
                          from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)

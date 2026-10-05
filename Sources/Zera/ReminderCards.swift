@@ -9,7 +9,7 @@ import AppKit
 /// Snooze offers 15 min · 30 min · 1 hour · 2 hours · Tomorrow. Meetings get Join (when there
 /// is a call link) or Got it; break nudges get Taking it.
 final class ReminderAlertCard: CardBase, CardContent {
-    var cardWidth: CGFloat { 440 }
+    var cardWidth: CGFloat { 540 }
     var say: ((String, ZeraMood) -> Void)?
     var onDrained: (() -> Void)?
     /// Tapping the title: open the reminder in Reminders & Calendar.
@@ -28,7 +28,7 @@ final class ReminderAlertCard: CardBase, CardContent {
     private static let figureW: CGFloat = 84
 
     init() {
-        super.init(width: 440, title: "")
+        super.init(width: 540, title: "")
         titleLabel.isHidden = true
         figure.imageScaling = .scaleProportionallyUpOrDown
         figure.imageAlignment = .alignBottom
@@ -42,7 +42,7 @@ final class ReminderAlertCard: CardBase, CardContent {
         dismissButton = GHSquareButton(symbol: "xmark", label: "Dismiss", target: self, action: #selector(dismissTapped))
         addSubview(dismissButton)
         snooze = PRActionButton("Snooze", style: .secondary, symbol: "moon.zzz.fill", target: self, action: #selector(snoozeTapped))
-        primary = PRActionButton("Mark as done", style: .primary, symbol: "checkmark", target: self, action: #selector(primaryTapped))
+        primary = PRActionButton("Done", style: .success, symbol: "checkmark", target: self, action: #selector(primaryTapped))
         addSubview(snooze)
         addSubview(primary)
         NotificationCenter.default.addObserver(self, selector: #selector(reload), name: ReminderService.changed, object: nil)
@@ -52,7 +52,8 @@ final class ReminderAlertCard: CardBase, CardContent {
     required init?(coder: NSCoder) { fatalError() }
     deinit { NotificationCenter.default.removeObserver(self) }
 
-    var desiredHeight: CGFloat { 18 + 22 + 4 + detailHeight + 14 + 36 + 18 }
+    /// A banner: the header row Zera hangs in, plus a little air.
+    var desiredHeight: CGFloat { headerBottom + 6 }
 
     private var detailHeight: CGFloat {
         let w = bounds.width - textX - 18
@@ -95,9 +96,10 @@ final class ReminderAlertCard: CardBase, CardContent {
             snooze.setTitleText("Later")
         } else if a.isEvent {
             primary.setTitleText(a.joinURL != nil ? "Join call" : "Got it")
+            primary.style = a.joinURL != nil ? .primary : .success
             snooze.setTitleText("Snooze")
         } else {
-            primary.setTitleText("Mark as done")
+            primary.setTitleText("Done")
             snooze.setTitleText("Snooze")
         }
         needsLayout = true
@@ -141,21 +143,20 @@ final class ReminderAlertCard: CardBase, CardContent {
 
     override func layout() {
         super.layout()
-        let w = bounds.width, h = bounds.height
-        let fw = Self.figureW
-        figure.frame = NSRect(x: 8, y: h - fw - 4, width: fw, height: fw)
-        let x0 = fw + 12
-        tile.frame = NSRect(x: x0, y: 18, width: 34, height: 34)
-        dismissButton.frame = NSRect(x: w - 14 - 26, y: 14, width: 26, height: 26)
-        let cw: CGFloat = counter.stringValue.isEmpty ? 0 : 54
-        counter.frame = NSRect(x: dismissButton.frame.minX - 6 - cw, y: 20, width: cw, height: 15)
-        let tx = textX
-        headline.frame = NSRect(x: tx, y: 16, width: max(60, counter.frame.minX - 8 - tx), height: 22)
-        detail.frame = NSRect(x: tx, y: 40, width: w - tx - 18, height: detailHeight)
-        let by = h - 18 - 36
-        let pw = max(130, primary.fittedWidth)
-        primary.frame = NSRect(x: w - 18 - pw, y: by, width: pw, height: 36)
-        let sw = max(104, snooze.fittedWidth + 14)
-        snooze.frame = NSRect(x: primary.frame.minX - 10 - sw, y: by, width: sw, height: 36)
+        // Banner: tile · headline / detail left of Zera; Snooze and Done on the right.
+        let w = bounds.width
+        figure.isHidden = true
+        dismissButton.isHidden = true
+        counter.isHidden = true
+        let x: CGFloat = 20
+        tile.frame = NSRect(x: x, y: 27, width: 34, height: 34)
+        let tx = x + 44, half = w / 2 - Isle.zeraGap / 2
+        headline.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
+        detail.maximumNumberOfLines = 1
+        headline.frame = NSRect(x: tx, y: 25, width: max(60, half - tx), height: 20)
+        detail.frame = NSRect(x: tx, y: 46, width: max(60, half - tx), height: 16)
+        primary.frame = NSRect(x: w - x - max(80, primary.fittedWidth), y: 29, width: max(80, primary.fittedWidth), height: 30)
+        let sw = snooze.fittedWidth
+        snooze.frame = NSRect(x: primary.frame.minX - 8 - sw, y: 29, width: sw, height: 30)
     }
 }
