@@ -67,7 +67,7 @@ struct ZeraBuddySwiftUIView: View {
                 // Eye dimensions
                 let eyeR = r * 0.15
                 let eyeX = r * 0.35
-                var eyeY = -r * 0.1
+                let eyeY = -r * 0.1
                 
                 // Procedural blinking
                 let blinkCycle = now.truncatingRemainder(dividingBy: 4.0)
