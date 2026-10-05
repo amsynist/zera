@@ -2,13 +2,13 @@ import AppKit
 
 /// Claude Code's live readout as two dark glass wings hanging off Zera on either side of her rope:
 ///
-///   ( ◯ Claude is working…       (📄) )~~ Zera ~~( Running · 62%           4:12   ●  (⌄) )
-///   ( ◯ Claude is ready          (📄) )~~ Zera ~~( (>_) git commit -m "Update…  [✕ Reject] [✓ Approve]  ●  (⌄) )
+///   ( ◯ Claude is working…       (⌄) )~~ Zera ~~( Running · 62%           4:12   ●  (–) )
+///   ( ◯ Claude is ready          (⌄) )~~ Zera ~~( (>_) git commit -m "Update…  [✕ Reject] [✓ Approve]  ●  (–) )
 ///
 /// Left wing — what Claude is doing: a gradient ring (spinning while it works), the headline,
-/// the current step and a files button. Right wing — what it means for you: progress, session
+/// the current step and ⌄ to open the session. Right wing — what it means for you: progress, session
 /// time and the status orb while it runs, or the command waiting on you (up to two lines of it)
-/// with Reject / Approve right there. The right wing springs wider to fit the command.
+/// with Reject / Approve right there; `>_` (or the command itself) copies the whole command. The right wing springs wider to fit the command.
 ///
 /// One transparent panel spans both wings. The gap in the middle is where she hangs (her window
 /// sits above this one) and each wing tapers into a tendril that reaches into her. The wings
@@ -16,9 +16,9 @@ import AppKit
 final class LiveActivityView: NSView {
     enum Mode: Equatable { case idle, running, approval, attention, done }
 
-    /// Tap a wing or the files button: open the session.
+    /// ⌄ on the left wing: open the session. The wing bodies themselves don't react to clicks.
     var onTap: (() -> Void)?
-    /// Minimize button or right-click: hide until Zera is tapped again.
+    /// Minimize button or right-click: hide until the Claude tab is opened.
     var onMinimize: (() -> Void)?
     /// Approve (true) / Reject (false) on the right wing.
     var onDecide: ((HookRequest, Bool) -> Void)?
@@ -52,14 +52,16 @@ final class LiveActivityView: NSView {
     private let ring = RingGlyph()
     private let leftTitle = LiveActivityView.label()
     private let leftSub = LiveActivityView.label()
-    private let files = GlowIconButton(symbol: "doc.text")
+    /// ⌄ on the left wing: the only way to expand the wings into the Claude screen.
+    private let expand = GlowIconButton(symbol: "chevron.down")
 
     // Right wing.
     private let status = LiveActivityView.label()
     private let clock = LiveActivityView.label()
     private let bar = GlowProgressBar()
     private let orb = OrbView()
-    private let prompt = BoxGlyph()
+    /// The `>_` in front of the command; it turns into a copy button under the pointer.
+    private let prompt = CommandCopyButton()
     private let command = LiveActivityView.label()
     private let reject = GlowPillButton(title: "Reject", symbol: "xmark", tint: .red)
     private let approve = GlowPillButton(title: "Approve", symbol: "checkmark", tint: .green)
@@ -88,12 +90,16 @@ final class LiveActivityView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         layer?.masksToBounds = false
-        [ring, leftTitle, leftSub, files, status, clock, bar, orb, prompt, command, reject, approve, minimize].forEach { addSubview($0) }
-        files.onTap = { [weak self] in self?.onTap?() }
-        files.setAccessibilityLabel("Open the session's files")
+        [ring, leftTitle, leftSub, expand, status, clock, bar, orb, prompt, command, reject, approve, minimize].forEach { addSubview($0) }
+        expand.onTap = { [weak self] in self?.onTap?() }
+        expand.setAccessibilityLabel("Open the Claude session")
+        expand.toolTip = "Open the session"
         minimize.onTap = { [weak self] in self?.onMinimize?() }
         minimize.setAccessibilityLabel("Minimize Claude activity")
-        minimize.toolTip = "Minimize — tap Zera to show again"
+        minimize.toolTip = "Minimize — open the Claude tab to show again"
+        prompt.onTap = { [weak self] in self?.copyCommand() }
+        // Clicking the command itself copies it too.
+        command.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(commandClicked)))
         reject.onTap = { [weak self] in self?.decide(false) }
         approve.onTap = { [weak self] in self?.decide(true) }
         clock.alignment = .right
@@ -128,6 +134,20 @@ final class LiveActivityView: NSView {
         return l
     }
 
+    /// The whole command, not the two lines that fit on the wing.
+    private var fullCommand = ""
+
+    @objc private func commandClicked() { copyCommand() }
+
+    /// Puts the full command on the clipboard; the `>_` turns into a green check for a moment.
+    private func copyCommand() {
+        guard !fullCommand.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(fullCommand, forType: .string)
+        prompt.flashCopied()
+        SoundService.shared.play(.button)
+    }
+
     private func decide(_ allow: Bool) {
         guard let r = request else { return }
         onDecide?(r, allow)
@@ -136,7 +156,7 @@ final class LiveActivityView: NSView {
     /// Light ↔ dark: the wings keep their own look, but redraw so system colours settle.
     func themeChanged() {
         restyle()
-        [ring, files, bar, orb, prompt, reject, approve, minimize].forEach { $0.needsDisplay = true }
+        [ring, expand, bar, orb, prompt, reject, approve, minimize].forEach { $0.needsDisplay = true }
         ring.refresh(); bar.refresh()
         needsDisplay = true
     }
@@ -225,7 +245,8 @@ final class LiveActivityView: NSView {
             orb.set(.working)
         case .approval:
             set(command, ClaudeActivityService.oneLine(pending?.command ?? "", max: 240))
-            command.toolTip = pending?.command
+            command.toolTip = (pending?.command).map { "\($0)\n\nClick to copy" }
+            fullCommand = pending?.command ?? ""
             orb.set(.waiting)
         case .attention:
             status.attributedStringValue = Self.statusLine("Waiting", detail: "reply in \(s?.folderName ?? "the terminal")", warn: true)
@@ -352,7 +373,7 @@ final class LiveActivityView: NSView {
     private func layoutLeft(mid: CGFloat) {
         let b = leftBody
         let show = b.width >= M.minWing
-        [ring, leftTitle, leftSub, files].forEach { $0.isHidden = !show }
+        [ring, leftTitle, leftSub, expand].forEach { $0.isHidden = !show }
         guard show else { return }
         ring.frame = NSRect(x: b.minX + 10, y: mid - 22, width: 44, height: 44)
         // Keep minimize reachable when the right wing folds away near a screen edge.
@@ -360,10 +381,10 @@ final class LiveActivityView: NSView {
         if minimizeOnLeft {
             minimize.frame = NSRect(x: b.maxX - 4 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
         }
-        files.frame = NSRect(x: b.maxX - 4 - M.button - (minimizeOnLeft ? M.button : 0),
+        expand.frame = NSRect(x: b.maxX - 4 - M.button - (minimizeOnLeft ? M.button : 0),
                              y: mid - M.button / 2, width: M.button, height: M.button)
         let textX = ring.frame.maxX + 12
-        let textW = max(0, files.frame.minX - 10 - textX)
+        let textW = max(0, expand.frame.minX - 10 - textX)
         leftTitle.frame = NSRect(x: textX, y: mid - 21, width: textW, height: 21)
         leftSub.frame = NSRect(x: textX, y: mid + 2, width: textW, height: 18)
     }
@@ -486,18 +507,17 @@ final class LiveActivityView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let p = superview.map { convert(point, from: $0) } ?? point
         guard onWing(p) else { return nil }
-        // Buttons take their own clicks; labels and glyphs hand them to the wing.
+        // Buttons (and the command, which copies) take their own clicks; the rest of the wing
+        // only holds the pointer so clicks don't fall through to the window behind.
         let v = super.hitTest(point)
-        return (v is GlowIconButton || v is GlowPillButton) ? v : self
+        return (v is GlowIconButton || v is GlowPillButton || v is CommandCopyButton || v === command) ? v : self
     }
 
-    override func mouseDown(with event: NSEvent) {
-        if onWing(convert(event.locationInWindow, from: nil)) { onTap?() }
-    }
+    /// The wing body itself does nothing on click: ⌄ expands, the buttons act.
+    override func mouseDown(with event: NSEvent) {}
     override func rightMouseDown(with event: NSEvent) { onMinimize?() }
     override func resetCursorRects() {
-        if leftBody.width >= M.minWing { addCursorRect(leftBody, cursor: .pointingHand) }
-        if rightBody.width >= M.minWing { addCursorRect(rightBody, cursor: .pointingHand) }
+        if !command.isHidden { addCursorRect(command.frame, cursor: .pointingHand) }
     }
 }
 
@@ -883,12 +903,50 @@ final class OrbView: NSView {
     override func mouseExited(with event: NSEvent) { wantSpeed = 1 }
 }
 
-/// The rounded square with a `>_` prompt in front of the command waiting on you.
-final class BoxGlyph: NSView {
+/// The rounded square with a `>_` prompt in front of the command waiting on you. Under the
+/// pointer it becomes a copy button; after a copy it shows a green check for a moment.
+final class CommandCopyButton: NSView {
+    var onTap: (() -> Void)?
+    private var hovered = false { didSet { needsDisplay = true } }
+    private var copiedUntil: Date?
     override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Copy the full command")
+        toolTip = "Copy the full command"
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func flashCopied() {
+        let until = Date().addingTimeInterval(1.4)
+        copiedUntil = until
+        setAccessibilityLabel("Copied")
+        needsDisplay = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+            guard let self = self, self.copiedUntil == until else { return }
+            self.copiedUntil = nil
+            self.setAccessibilityLabel("Copy the full command")
+            self.needsDisplay = true
+        }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 4, dy: 4)
-        Neon.drawChip(NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10), hovered: false)
+        let path = NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10)
+        if copiedUntil != nil {
+            Neon.drawChip(path, hovered: true)
+            Neon.symbol("checkmark", in: r, size: 14, weight: .bold, color: Neon.green)
+            return
+        }
+        Neon.drawChip(path, hovered: hovered)
+        if hovered {
+            Neon.symbol("doc.on.doc", in: r, size: 14, weight: .semibold, color: Neon.accent)
+            return
+        }
         Neon.symbol("chevron.right", in: NSRect(x: r.minX + 6, y: r.minY, width: r.width / 2 - 2, height: r.height),
                     size: 13, weight: .bold, color: Neon.accent)
         let line = NSBezierPath()
@@ -896,6 +954,17 @@ final class BoxGlyph: NSView {
         line.lineWidth = 2; line.lineCapStyle = .round
         Neon.accent.setStroke(); line.stroke()
     }
+
+    override func mouseDown(with event: NSEvent) { onTap?() }
+    override func accessibilityPerformPress() -> Bool { onTap?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
 }
 
 /// Round glyph button (📄 / ⌄) on the wings.

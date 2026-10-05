@@ -1131,8 +1131,9 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             }
             r.onView = { [weak self] a in
                 guard let self = self else { return }
-                // Open the screen straight on that reminder's details.
-                (self.content(for: .reminders) as? RemindersView)?.focusOnShow = a.reminderID
+                // Open the screen straight on that reminder's (or event's) details.
+                let ref = a.reminderID?.uuidString ?? a.eventID
+                (self.content(for: .reminders) as? RemindersView)?.focusOnShow = ref.map { (refID: $0, occurrence: a.occurrence) }
                 self.show(.reminders)
             }
             c = r

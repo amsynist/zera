@@ -44,10 +44,33 @@ final class LiveActivityControlsTests: XCTestCase {
         XCTAssertFalse(button.isHidden)
         XCTAssertLessThan(button.frame.maxX, view.centerX)
         XCTAssertTrue(view.bounds.contains(button.frame))
-        let files = try XCTUnwrap(view.subviews.compactMap { $0 as? GlowIconButton }
-            .first { $0.accessibilityLabel() == "Open the session's files" })
-        XCTAssertFalse(button.frame.intersects(files.frame))
+        let expand = try XCTUnwrap(view.subviews.compactMap { $0 as? GlowIconButton }
+            .first { $0.accessibilityLabel() == "Open the Claude session" })
+        XCTAssertFalse(button.frame.intersects(expand.frame))
         let point = NSPoint(x: button.frame.midX, y: button.frame.midY)
         XCTAssertTrue(view.hitTest(point) === button)
+    }
+}
+
+final class LiveActivityExpandTests: XCTestCase {
+    /// Only ⌄ opens the session; clicking the wing body or the copy button must not.
+    func testOnlyTheChevronOpensTheSession() throws {
+        let view = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
+        view.centerX = LiveActivityView.panelSize.width / 2
+        let session = ClaudeSession(id: "test", cwd: "/tmp", at: Date())
+        session.status = .running
+        let request = HookRequest(id: "r", receivedAt: Date(), sessionID: session.id,
+                                  toolName: "Bash", command: "echo hello", detail: nil, cwd: "/tmp")
+        view.update(session: session, pending: request)
+        view.layoutSubtreeIfNeeded()
+        var opened = 0
+        view.onTap = { opened += 1 }
+
+        let copy = try XCTUnwrap(view.subviews.compactMap { $0 as? CommandCopyButton }.first)
+        XCTAssertTrue(view.hitTest(NSPoint(x: copy.frame.midX, y: copy.frame.midY)) === copy)
+        let expand = try XCTUnwrap(view.subviews.compactMap { $0 as? GlowIconButton }
+            .first { $0.accessibilityLabel() == "Open the Claude session" })
+        XCTAssertTrue(expand.accessibilityPerformPress())
+        XCTAssertEqual(opened, 1)
     }
 }
