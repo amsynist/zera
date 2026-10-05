@@ -16,7 +16,7 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
     var say: ((String, ZeraMood) -> Void)?
     var onDrained: (() -> Void)?
     var onAlertChange: (() -> Void)?
-    /// Tapping the title: open the reminder in Reminders & Calendar.
+    /// Tapping the banner (anywhere but its buttons): open the reminder's details.
     var onView: ((ReminderAlert) -> Void)?
 
     private let figure = NSImageView()
@@ -38,7 +38,6 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         figure.imageAlignment = .alignBottom
         addSubview(figure)
         addSubview(tile)
-        headline.toolTip = "Open in Reminders & Calendar"
         addSubview(headline)
         addSubview(detail)
         counter.alignment = .right
@@ -49,6 +48,7 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         primary = PRActionButton("Done", style: .success, symbol: "checkmark", target: self, action: #selector(primaryTapped))
         addSubview(snooze)
         addSubview(primary)
+        toolTip = "Open the details"
         addSubview(countdownLine)
         NotificationCenter.default.addObserver(self, selector: #selector(reload), name: ReminderService.changed, object: nil)
         reload()
@@ -143,11 +143,11 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         ReminderService.shared.dismiss(a)
     }
 
+    /// The banner body opens the details; only ✕ dismisses.
     override func mouseUp(with event: NSEvent) {
-        let pt = convert(event.locationInWindow, from: nil)
-        if let a = current, NSPointInRect(pt, headline.frame.union(tile.frame)) { onView?(a) }
-        else { dismissTapped() }
+        if let a = current { onView?(a) }
     }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point) else { return nil }
