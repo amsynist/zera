@@ -186,7 +186,7 @@ final class SessionProgressBar: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        Pal.surfaceStrong.setFill()
+        Neon.track.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
     }
 }
@@ -278,6 +278,7 @@ final class ClaudeSessionRow: NSView {
             note.isHidden = true
             action.isHidden = s.stopRequested
             action.style = .destructive
+            action.setSymbol("stop.fill")
             action.toolTip = "Stop — Claude halts at its next step"
         case .waiting:
             time.stringValue = "On hold"
@@ -288,6 +289,7 @@ final class ClaudeSessionRow: NSView {
             note.textColor = p.warning
             action.isHidden = false
             action.style = .warning
+            action.setSymbol("eye.fill")
             action.toolTip = "Review the approval"
         case .completed:
             time.stringValue = relativeTime(s.lastEventAt)
@@ -300,6 +302,7 @@ final class ClaudeSessionRow: NSView {
             action.isHidden = true
         }
         action.setTitleText("")
+        action.setAccessibilityLabel(kind == .waiting ? "Review approval" : "Stop session")
         setAccessibilityLabel("\(title.stringValue), \(c.text), \(time.stringValue)")
         needsLayout = true
     }
@@ -316,28 +319,39 @@ final class ClaudeSessionRow: NSView {
     override func layout() {
         super.layout()
         let w = bounds.width, h = bounds.height
-        tile.frame = NSRect(x: 14, y: (h - 44) / 2, width: 44, height: 44)
-        more.frame = NSRect(x: w - 14 - 34, y: (h - 34) / 2, width: 34, height: 34)
-        action.frame = NSRect(x: more.frame.minX - 8 - 34, y: (h - 34) / 2, width: 34, height: 34)
-        let actionsLeft = action.frame.minX
-        let statusW: CGFloat = 156
-        let sx = actionsLeft - 14 - statusW
+        let mid = (h / 2).rounded()
+        tile.frame = NSRect(x: 14, y: mid - 22, width: 44, height: 44)
+        more.frame = NSRect(x: w - 14 - 34, y: mid - 17, width: 34, height: 34)
+        action.frame = NSRect(x: more.frame.minX - 8 - 34, y: mid - 17, width: 34, height: 34)
+        // Without a stop / review button the status column moves up against the menu button.
+        let actionsLeft = action.isHidden ? more.frame.minX : action.frame.minX
+        // Chip and time side by side; the column grows so the time is never cut off.
         let cw = min(112, chip.fittedWidth)
-        chip.frame = NSRect(x: sx, y: 13, width: cw, height: 24)
-        time.frame = NSRect(x: chip.frame.maxX + 8, y: 17, width: max(0, sx + statusW - chip.frame.maxX - 8), height: 16)
+        let timeW = ceil(time.attributedStringValue.size().width) + 4
+        let statusW = max(156, cw + 8 + timeW)
+        let sx = actionsLeft - 14 - statusW
+
+        // Title and folder, plus a third line (progress or a note) when there is one, centred
+        // as a block on the row so the text lines up with the tile and the buttons.
+        let third = (kind == .running && !bar.isHidden) || kind == .waiting
+        let top = (mid - (third ? 30 : 19)).rounded()
         let tx: CGFloat = 72, tw = max(60, sx - 12 - tx)
-        title.frame = NSRect(x: tx, y: 13, width: tw, height: 20)
-        meta.frame = NSRect(x: tx, y: 35, width: tw, height: 16)
+        title.frame = NSRect(x: tx, y: top, width: tw, height: 20)
+        meta.frame = NSRect(x: tx, y: top + 22, width: tw, height: 16)
+        // The chip sits on the title's line; completed rows put the note under it.
+        let chipY = kind == .completed && !note.isHidden ? top - 3 : (third ? top - 2 : mid - 12)
+        chip.frame = NSRect(x: sx, y: chipY, width: cw, height: 24)
+        time.frame = NSRect(x: chip.frame.maxX + 8, y: chipY + 4, width: max(0, sx + statusW - chip.frame.maxX - 8), height: 16)
         switch kind {
         case .running:
             let pw: CGFloat = percent.stringValue.isEmpty ? 0 : 40
             let barRight = actionsLeft - 14 - pw
-            bar.frame = NSRect(x: tx, y: 60, width: max(40, barRight - tx), height: 6)
-            percent.frame = NSRect(x: barRight + 4, y: 55, width: pw - 4, height: 16)
+            bar.frame = NSRect(x: tx, y: top + 50, width: max(40, barRight - tx), height: 6)
+            percent.frame = NSRect(x: barRight + 4, y: top + 45, width: pw - 4, height: 16)
         case .waiting:
-            note.frame = NSRect(x: tx, y: 56, width: actionsLeft - 14 - tx, height: 16)
+            note.frame = NSRect(x: tx, y: top + 44, width: actionsLeft - 14 - tx, height: 16)
         case .completed:
-            note.frame = NSRect(x: sx, y: 45, width: statusW, height: 16)
+            note.frame = NSRect(x: sx, y: chip.frame.maxY + 6, width: statusW, height: 16)
         }
     }
 

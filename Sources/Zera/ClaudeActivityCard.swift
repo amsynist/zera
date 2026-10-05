@@ -243,11 +243,13 @@ final class ClaudeActivityCard: CardBase, CardContent {
     @objc private func approveTapped() {
         guard let r = pendingRequest else { return }
         approve.isEnabled = false; reject.isEnabled = false
+        SoundService.shared.play(.claudeApproved)
         ClaudeHookService.shared.respond(r, allow: true); say?("approved — running ✅", .approved)
     }
     @objc private func rejectTapped() {
         guard let r = pendingRequest else { return }
         approve.isEnabled = false; reject.isEnabled = false
+        SoundService.shared.play(.claudeRejected)
         ClaudeHookService.shared.respond(r, allow: false); say?("okay, skipped that", .sad)
     }
     @objc private func installTapped() {

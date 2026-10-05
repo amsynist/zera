@@ -147,49 +147,154 @@ final class BuddyView: NSView {
     }
 }
 
-/// Rounded speech bubble with a tail toward Zera. Lives in its own click-through panel.
+/// Zera's caption: a small tag in the wings' navy glass that hangs under her feet, with a
+/// tail pointing up at her and a tone dot for her mood. Lives in its own click-through panel;
+/// the panel is `halo` larger than the tag on every side so the glow is not clipped.
 final class BubbleView: NSView {
-    enum Tail { case left, right }
-    var text: String = "" { didSet { needsDisplay = true } }
-    var tail: Tail = .right { didSet { needsDisplay = true } }
+    var text: String = "" {
+        didSet {
+            label.stringValue = text
+            setAccessibilityLabel(text)
+            needsLayout = true
+        }
+    }
+    /// Cyan for a neutral line, green when she's happy, amber while she's busy, red when upset.
+    var tone: NSColor = Neon.cyan { didSet { needsDisplay = true } }
+    /// Where the tail points, in this view's x coordinates.
+    var tailX: CGFloat = 0 { didSet { needsDisplay = true } }
+    private let label = NSTextField(wrappingLabelWithString: "")
 
     static let font = Theme.font(12.5, .medium)
-    static let tailSize: CGFloat = 8
-    static let hPad: CGFloat = 13
-    static let vPad: CGFloat = 8
+    static let leadPad: CGFloat = 10
+    static let trailPad: CGFloat = 13
+    static let vPad: CGFloat = 7
+    static let dot: CGFloat = 7
+    static let dotGap: CGFloat = 8
+    static let radius: CGFloat = 14
+    static let tail: CGFloat = 6
+    /// Widest the tag gets before it wraps to a second line.
+    static let maxWidth: CGFloat = 280
+    static let maxLines = 2
+    /// Space between her (or the wings) and the tag.
+    static let gap: CGFloat = 8
+    /// Room around the tag for its halo and shadow.
+    static let halo: CGFloat = 14
+    // NSTextField reserves two points at either side of its text cell.
+    private static let cellInset: CGFloat = 4
+    private static var textLead: CGFloat { leadPad + dot + dotGap }
+    private static var lineHeight: CGFloat { ceil(font.ascender - font.descender + font.leading) }
 
-    static func size(for text: String) -> NSSize {
-        let s = (text as NSString).size(withAttributes: [.font: font])
-        return NSSize(width: ceil(s.width) + hPad * 2 + tailSize,
-                      height: ceil(s.height) + vPad * 2)
+    override var isFlipped: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        label.font = Self.font
+        label.textColor = Neon.text
+        label.maximumNumberOfLines = Self.maxLines
+        label.lineBreakMode = .byWordWrapping
+        label.cell?.truncatesLastVisibleLine = true
+        addSubview(label)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// The tag itself (not the panel): one line up to `maxWidth`, then two, then an ellipsis.
+    static func size(for text: String, maxWidth: CGFloat = BubbleView.maxWidth) -> NSSize {
+        let width = min(Self.maxWidth, maxWidth)
+        let natural = ceil((text as NSString).size(withAttributes: [.font: font]).width) + cellInset
+        let textWidth = max(1, min(width - textLead - trailPad, natural))
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        let measured = (text as NSString).boundingRect(
+            with: NSSize(width: textWidth - cellInset, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font, .paragraphStyle: paragraph])
+        let lines = min(CGFloat(maxLines), max(1, (ceil(measured.height) / lineHeight).rounded()))
+        return NSSize(width: ceil(textWidth + textLead + trailPad), height: lines * lineHeight + vPad * 2)
+    }
+
+    /// Screen coordinates for the tag: centred under `bodyX`, `gap` below her feet and below any
+    /// obstacle it would touch (the wings, the island), clamped inside `safeFrame`, which already
+    /// leaves out the menu bar.
+    static func frame(for size: NSSize, figure: NSRect, bodyX: CGFloat? = nil, safeFrame: NSRect,
+                      obstacles: [NSRect] = []) -> NSRect {
+        let cx = bodyX ?? figure.midX
+        let x = max(safeFrame.minX, min(safeFrame.maxX - size.width, cx - size.width / 2))
+        var top = min(figure.minY, safeFrame.maxY) - gap
+        // Push down past anything in the way; a few passes settle stacked obstacles.
+        for _ in 0..<3 {
+            let r = NSRect(x: x, y: top - size.height, width: size.width, height: size.height)
+            guard let hit = obstacles.first(where: { $0.intersects(r.insetBy(dx: 0, dy: -gap + 0.5)) }) else { break }
+            top = hit.minY - gap
+        }
+        let y = max(safeFrame.minY, top - size.height)
+        return NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
+    }
+
+    /// The panel around a tag frame, with room for the glow.
+    static func panelFrame(for tag: NSRect) -> NSRect { tag.insetBy(dx: -halo, dy: -halo) }
+
+    private var body: NSRect { bounds.insetBy(dx: Self.halo, dy: Self.halo) }
+
+    override func layout() {
+        super.layout()
+        let b = body
+        label.frame = NSRect(x: b.minX + Self.textLead - Self.cellInset / 2, y: b.minY + Self.vPad,
+                             width: b.width - Self.textLead - Self.trailPad + Self.cellInset,
+                             height: b.height - Self.vPad * 2)
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let t = Self.tailSize
-        let body = NSRect(x: tail == .left ? t : 0, y: 0, width: bounds.width - t, height: bounds.height)
-        let path = NSBezierPath(roundedRect: body, xRadius: body.height / 2, yRadius: body.height / 2)
+        let b = body
+        let path = NSBezierPath(roundedRect: b.insetBy(dx: 0.5, dy: 0.5), xRadius: Self.radius, yRadius: Self.radius)
+        // The tail: a small notch up toward her, sliding along the top edge.
+        let tx = max(b.minX + Self.radius + 2, min(b.maxX - Self.radius - 2, tailX))
         let tailPath = NSBezierPath()
-        if tail == .left {
-            tailPath.move(to: NSPoint(x: body.minX + 2, y: body.midY + 6))
-            tailPath.line(to: NSPoint(x: body.minX - t + 1, y: body.midY))
-            tailPath.line(to: NSPoint(x: body.minX + 2, y: body.midY - 6))
-        } else {
-            tailPath.move(to: NSPoint(x: body.maxX - 2, y: body.midY + 6))
-            tailPath.line(to: NSPoint(x: body.maxX + t - 1, y: body.midY))
-            tailPath.line(to: NSPoint(x: body.maxX - 2, y: body.midY - 6))
-        }
+        tailPath.move(to: NSPoint(x: tx - Self.tail - 1, y: b.minY + 0.5))
+        tailPath.line(to: NSPoint(x: tx, y: b.minY - Self.tail + 0.5))
+        tailPath.line(to: NSPoint(x: tx + Self.tail + 1, y: b.minY + 0.5))
         tailPath.close()
         path.append(tailPath)
-        Theme.bubbleFill.setFill()
+        path.windingRule = .nonZero
+
+        NSGraphicsContext.saveGraphicsState()
+        let shade = NSShadow()
+        shade.shadowColor = NSColor.black.withAlphaComponent(0.55)
+        shade.shadowOffset = NSSize(width: 0, height: -4)
+        shade.shadowBlurRadius = 9
+        shade.set()
+        Neon.fillBottom.setFill()
         path.fill()
-        NSColor.white.withAlphaComponent(0.14).setStroke()
+        let glow = NSShadow()
+        glow.shadowColor = Neon.halo.withAlphaComponent(0.55)
+        glow.shadowBlurRadius = 10
+        glow.set()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSGradient(starting: Neon.fillTop, ending: Neon.fillBottom)?.draw(in: path, angle: 90)
+        Neon.edge.setStroke()
         path.lineWidth = 1
         path.stroke()
+        // Cover the seam between the tail and the body.
+        Neon.fillTop.setStroke()
+        let seam = NSBezierPath()
+        seam.move(to: NSPoint(x: tx - Self.tail + 0.5, y: b.minY + 0.5))
+        seam.line(to: NSPoint(x: tx + Self.tail - 0.5, y: b.minY + 0.5))
+        seam.lineWidth = 1.2
+        seam.stroke()
 
-        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: Theme.bubbleText]
-        let size = (text as NSString).size(withAttributes: attrs)
-        (text as NSString).draw(at: NSPoint(x: body.minX + Self.hPad, y: body.midY - size.height / 2),
-                                withAttributes: attrs)
+        // Mood dot, centred on the first line.
+        let d = Self.dot
+        let dotRect = NSRect(x: b.minX + Self.leadPad, y: b.minY + Self.vPad + (Self.lineHeight - d) / 2, width: d, height: d)
+        NSGraphicsContext.saveGraphicsState()
+        let dotGlow = NSShadow()
+        dotGlow.shadowColor = tone.withAlphaComponent(0.9)
+        dotGlow.shadowBlurRadius = 5
+        dotGlow.set()
+        tone.setFill()
+        NSBezierPath(ovalIn: dotRect).fill()
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
 
@@ -229,4 +334,3 @@ enum CardKind: Int, CaseIterable {
         }
     }
 }
-

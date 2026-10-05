@@ -196,8 +196,9 @@ final class RemindersView: NSView, CardContent {
         return RS.listTop + listH + 12
     }
 
-    /// Set just before opening to land on one reminder's details (from the notification).
-    var focusOnShow: UUID?
+    /// Set just before opening to land on one reminder's or event's details (from the banner):
+    /// a reminder's UUID string or an event id, and the occurrence the banner was about.
+    var focusOnShow: (refID: String, occurrence: Date?)?
 
     /// Each time the screen opens: the overview on its own (or the reminder asked for).
     func willShow() {
@@ -206,8 +207,12 @@ final class RemindersView: NSView, CardContent {
         formReturn = .none
         form?.removeFromSuperview()
         form = nil
-        if let id = focusOnShow, let r = svc.reminder(id) {
-            side = .item(refID: r.id.uuidString, occurrence: svc.currentOccurrence(of: r))
+        if let f = focusOnShow {
+            if let id = UUID(uuidString: f.refID), let r = svc.reminder(id) {
+                side = .item(refID: r.id.uuidString, occurrence: f.occurrence ?? svc.currentOccurrence(of: r))
+            } else if let e = svc.event(f.refID) {
+                side = .item(refID: f.refID, occurrence: f.occurrence ?? e.startAt)
+            }
         }
         focusOnShow = nil
         reload()
