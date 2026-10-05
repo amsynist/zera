@@ -18,6 +18,8 @@ class CardBase: NSView {
 
     let titleLabel = NSTextField(labelWithString: "")
     let subtitleLabel = NSTextField(labelWithString: "")
+    /// Zera is speaking in the header's second line: keep the title up top to make room.
+    var whispering = false { didSet { if whispering != oldValue { needsLayout = true } } }
     /// Y where content starts, under the header row Zera hangs in.
     var headerBottom: CGFloat { Isle.headerHeight }
 
@@ -52,7 +54,7 @@ class CardBase: NSView {
     /// Zera's spot in the middle; `trailingWidth` is room kept free on the right for buttons.
     func layoutHeader(trailingWidth: CGFloat = 0) {
         let w = min(bounds.width - Metrics.cardPad * 2 - trailingWidth, bounds.width / 2 - Isle.zeraGap / 2 - Metrics.cardPad)
-        let top: CGFloat = subtitleLabel.isHidden ? 33 : 24
+        let top: CGFloat = subtitleLabel.isHidden && !whispering ? 33 : 24
         titleLabel.frame = NSRect(x: Metrics.cardPad + 4, y: top, width: max(0, w), height: 22)
         subtitleLabel.frame = NSRect(x: Metrics.cardPad + 4, y: top + 22, width: max(0, w), height: 16)
     }
@@ -641,17 +643,18 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 
 final class SettingsCard: CardBase, CardContent {
     var cardWidth: CGFloat { 560 }
-    var onDefaultChanged: ((CardKind) -> Void)?
+    var onDefaultChanged: ((CardKind?) -> Void)?
     var onShowZeraChanged: ((Bool) -> Void)?
     var say: ((String, ZeraMood) -> Void)?
 
     enum Pane: Int, CaseIterable {
-        case general, appearance, integrations, shortcuts, about
+        case general, sounds, appearance, integrations, shortcuts, about
         case claude, github, calendar, shelf   // detail panes, reached from Integrations
         case diagnostics                        // detail of Claude
         var title: String {
             switch self {
             case .general: return "General"
+            case .sounds: return "Sounds"
             case .appearance: return "Appearance"
             case .integrations: return "Integrations"
             case .shortcuts: return "Shortcuts"
@@ -666,6 +669,7 @@ final class SettingsCard: CardBase, CardContent {
         var symbol: String {
             switch self {
             case .general: return "gearshape.fill"
+            case .sounds: return "speaker.wave.2.fill"
             case .appearance: return "paintpalette.fill"
             case .integrations: return "puzzlepiece.extension.fill"
             case .shortcuts: return "keyboard"
@@ -680,7 +684,7 @@ final class SettingsCard: CardBase, CardContent {
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
         var isDetail: Bool { rawValue >= Pane.claude.rawValue }
-        static let nav: [Pane] = [.general, .integrations, .shortcuts, .about]
+        static let nav: [Pane] = [.general, .sounds, .integrations, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
@@ -689,12 +693,12 @@ final class SettingsCard: CardBase, CardContent {
     private let backButton: CardButton
     private let pane = FlippedView()
     private(set) var current: Pane = .general
-    private let defaultKind: CardKind
+    private var defaultKind: CardKind?
     private let showingZera: Bool
     private let sidebarW: CGFloat = 150
     private var paneHeight: CGFloat = 200
 
-    init(defaultKind: CardKind, showingZera: Bool, loginEnabled: Bool) {
+    init(defaultKind: CardKind?, showingZera: Bool, loginEnabled: Bool) {
         self.defaultKind = defaultKind
         self.showingZera = showingZera
         backButton = CardButton("Integrations", style: .tertiary, symbol: "chevron.left", target: nil, action: #selector(SettingsCard.backTapped))
@@ -766,6 +770,7 @@ final class SettingsCard: CardBase, CardContent {
         var s = Stack(width: cardWidth - sidebarW - Metrics.cardPad * 2 - Space.m)
         switch current {
         case .general: buildGeneral(&s)
+        case .sounds: buildSounds(&s)
         case .appearance: buildAppearance(&s)
         case .integrations: buildIntegrations(&s)
         case .shortcuts: buildShortcuts(&s)
@@ -857,11 +862,11 @@ final class SettingsCard: CardBase, CardContent {
     private static let timeoutChoices = [60, 120, 180, 300, 600, 900]
     private static let cliModelChoices = ["", "sonnet", "opus", "haiku"]
     private static let maxOutputChoices = [1024, 2048, 4096, 8192]
-    private static let defaultChoices: [CardKind] = [.shelf, .home, .claude, .reminders, .github]
+    private static let defaultChoices: [CardKind?] = [.shelf, .home, .claude, .reminders, .github, nil]
     private static let breakChoices = [0, 30, 45, 60, 90, 120]
 
     private func buildGeneral(_ s: inout Stack) {
-        defaultPopup = popupRow("Tap on Zera opens", items: Self.defaultChoices.map { $0.title },
+        defaultPopup = popupRow("Tap on Zera opens", items: Self.defaultChoices.map { $0?.title ?? "Nothing" },
                                 selected: Self.defaultChoices.firstIndex(of: defaultKind) ?? 0, &s, action: #selector(defaultChanged))
         toggleRow("Show Zera at the notch", on: showingZera, &s) { [weak self] on in self?.onShowZeraChanged?(on) }
         toggleRow("Open at login", on: SMAppService.mainApp.status == .enabled, &s) { on in
@@ -872,6 +877,42 @@ final class SettingsCard: CardBase, CardContent {
         breakPopup = popupRow("Break reminder", items: ["Off", "Every 30 min", "Every 45 min", "Every hour", "Every 90 min", "Every 2 hours"],
                               selected: Self.breakChoices.firstIndex(of: rs.breakInterval) ?? 0, &s, action: #selector(breakChanged))
         hint("Breaks are only suggested while you're actually at the keyboard.", &s)
+    }
+
+    private func buildSounds(_ s: inout Stack) {
+        let snd = SoundService.shared
+        toggleRow("Play sounds", on: snd.enabled, &s) { [weak self] on in
+            snd.enabled = on
+            if on { snd.play(.tap) }
+            self?.rebuildPane()
+        }
+        let slider = NSSlider(value: Double(snd.volume), minValue: 0, maxValue: 1, target: self, action: #selector(soundVolumeChanged(_:)))
+        slider.isContinuous = false
+        slider.isEnabled = snd.enabled
+        settingRow("Volume", &s, control: slider, controlWidth: 150)
+        for family in ZeraSound.Family.allCases {
+            toggleRow(family.title, on: snd.isOn(family), &s, enabled: snd.enabled) { on in
+                snd.set(family, on: on)
+                if on { snd.play(Self.sample(for: family)) }
+            }
+        }
+        hint("One sound at a time, quieter than system alerts. GitHub news is off unless you turn it on.", &s)
+    }
+
+    /// What a family sounds like, played when you switch it on.
+    private static func sample(for family: ZeraSound.Family) -> ZeraSound {
+        switch family {
+        case .zera: return .fileCatch
+        case .island: return .islandOpen
+        case .claude: return .claudeDone
+        case .reminders: return .water
+        case .github: return .githubPing
+        }
+    }
+
+    @objc private func soundVolumeChanged(_ sender: NSSlider) {
+        SoundService.shared.volume = Float(sender.doubleValue)
+        SoundService.shared.play(.reminderDone)
     }
 
     private func buildAppearance(_ s: inout Stack) {
@@ -1217,7 +1258,8 @@ final class SettingsCard: CardBase, CardContent {
 
     @objc private func defaultChanged() {
         guard let pop = defaultPopup else { return }
-        onDefaultChanged?(Self.defaultChoices[max(0, min(Self.defaultChoices.count - 1, pop.indexOfSelectedItem))])
+        defaultKind = Self.defaultChoices[max(0, min(Self.defaultChoices.count - 1, pop.indexOfSelectedItem))]
+        onDefaultChanged?(defaultKind)
     }
 
     @objc private func breakChanged() {
@@ -1517,6 +1559,7 @@ final class ApprovalCard: CardBase, CardContent {
     @objc private func approveTapped() {
         guard let req = current else { return }
         approve.isEnabled = false; reject.isEnabled = false
+        SoundService.shared.play(.claudeApproved)
         ClaudeHookService.shared.respond(req, allow: true)
         say?("approved ✅", .approved)
     }
@@ -1524,6 +1567,7 @@ final class ApprovalCard: CardBase, CardContent {
     @objc private func rejectTapped() {
         guard let req = current else { return }
         approve.isEnabled = false; reject.isEnabled = false
+        SoundService.shared.play(.claudeRejected)
         ClaudeHookService.shared.respond(req, allow: false)
         say?("okay, not running that", .sad)
     }
@@ -1555,28 +1599,30 @@ final class ApprovalCard: CardBase, CardContent {
 // MARK: - Notification toast
 
 /// Compact: "New PR opened · repo #125 · 2 min ago" with Review Now / Later.
-final class ToastCard: CardBase, CardContent {
+final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
     var cardWidth: CGFloat { 520 }
+    let countdownLine = BannerCountdownLine()
     var onDismiss: (() -> Void)?
     var onOpenURL: ((URL) -> Void)?
 
     private var tile: IconTile
     private let when = NSTextField(labelWithString: "")
     private let primary: CardButton
-    private let later: CardButton
+    private let dismiss: IconButton
     private let zera = ZeraCompanion(pose: "card_notify", size: 74)
     private var url: URL?
 
     init() {
         tile = IconTile(symbol: "bell.fill", color: Pal.accent, size: 36, pointSize: 16)
         primary = CardButton("Open", style: .primary, target: nil, action: #selector(ToastCard.primaryTapped))
-        later = CardButton("Later", style: .tertiary, target: nil, action: #selector(ToastCard.laterTapped))
+        dismiss = IconButton(symbol: "xmark", label: "Dismiss notification", target: nil, action: #selector(ToastCard.dismissTapped))
         super.init(width: 520, title: "")
-        primary.target = self; later.target = self
+        primary.target = self; dismiss.target = self
         addSubview(tile)
         when.font = Typo.caption; when.textColor = Pal.textTertiary; when.alignment = .right; addSubview(when)
         addSubview(zera)
-        addSubview(primary); addSubview(later)
+        addSubview(primary); addSubview(dismiss)
+        addSubview(countdownLine)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -1613,11 +1659,18 @@ final class ToastCard: CardBase, CardContent {
     }
 
     @objc private func primaryTapped() { if let u = url { onOpenURL?(u) }; onDismiss?() }
-    @objc private func laterTapped() { onDismiss?() }
+    @objc private func dismissTapped() { onDismiss?() }
+
+    override func mouseUp(with event: NSEvent) { onDismiss?() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        return hit is NSButton ? hit : self
+    }
 
     override func layout() {
         super.layout()
-        // Banner: icon · heading / detail left of Zera; the action and Later on the right.
+        // Banner: icon · heading / detail left of Zera; the action and dismiss on the right.
         let x = Metrics.cardPad
         zera.isHidden = true
         when.isHidden = true
@@ -1625,8 +1678,9 @@ final class ToastCard: CardBase, CardContent {
         let half = bounds.width / 2 - Isle.zeraGap / 2
         titleLabel.frame = NSRect(x: x + 46, y: 25, width: max(0, half - x - 46), height: 20)
         subtitleLabel.frame = NSRect(x: x + 46, y: 46, width: max(0, half - x - 46), height: 16)
-        let lw = later.fittedWidth, pw = primary.fittedWidth
-        later.frame = NSRect(x: bounds.width - x - lw, y: 29, width: lw, height: 30)
-        primary.frame = NSRect(x: later.frame.minX - Space.s - pw, y: 29, width: pw, height: 30)
+        let pw = primary.fittedWidth
+        dismiss.frame = NSRect(x: bounds.width - x - Metrics.control, y: 30, width: Metrics.control, height: Metrics.control)
+        primary.frame = NSRect(x: dismiss.frame.minX - Space.s - pw, y: 29, width: pw, height: 30)
+        countdownLine.frame = NSRect(x: 18, y: bounds.height - 8, width: max(0, bounds.width - 36), height: 2)
     }
 }

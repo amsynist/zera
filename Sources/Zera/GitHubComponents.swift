@@ -416,6 +416,18 @@ class PRActionButton: NSButton {
 
     func setTitleText(_ t: String) { titleText = t; setAccessibilityLabel(t); needsDisplay = true }
 
+    /// Main actions click softly; the rest stay silent so the island isn't noisy.
+    override func sendAction(_ action: Selector?, to target: Any?) -> Bool {
+        if style == .primary { SoundService.shared.play(.button) }
+        return super.sendAction(action, to: target)
+    }
+
+    func setSymbol(_ name: String?) {
+        glyph = name.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold)) }
+        needsDisplay = true
+    }
+
     var fittedWidth: CGFloat {
         let w = ceil((titleText as NSString).size(withAttributes: [.font: Self.font]).width)
         return w + 36 + (glyph.map { ceil($0.size.width) + 7 } ?? 0)
@@ -457,7 +469,8 @@ class PRActionButton: NSButton {
         }
         let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color, .paragraphStyle: para]
-        let iconW = glyph.map { ceil($0.size.width) + 7 } ?? 0
+        // The gap after the icon only when a title follows, so icon-only buttons stay centred.
+        let iconW = glyph.map { ceil($0.size.width) + (titleText.isEmpty ? 0 : 7) } ?? 0
         let textW = min(bounds.width - 24 - iconW, ceil((titleText as NSString).size(withAttributes: attrs).width))
         var x = (bounds.width - iconW - max(0, textW)) / 2
         if let g = glyph?.withSymbolConfiguration(.init(paletteColors: [color])) {

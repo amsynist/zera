@@ -2,13 +2,13 @@ import AppKit
 
 /// Claude Code's live readout as two dark glass wings hanging off Zera on either side of her rope:
 ///
-///   ( ◯ Claude is working…       (📄) )~~ Zera ~~( Running · 62%           4:12   ●  (⌄) )
-///   ( ◯ Claude is ready          (📄) )~~ Zera ~~( (>_) git commit -m "Update…  [✕ Reject] [✓ Approve]  ●  (⌄) )
+///   ( ◯ Claude is working…       (⌄) )~~ Zera ~~( Running · 62%           4:12   ●  (–) )
+///   ( ◯ Claude is ready          (⌄) )~~ Zera ~~( (>_) git commit -m "Update…  [✕ Reject] [✓ Approve]  ●  (–) )
 ///
 /// Left wing — what Claude is doing: a gradient ring (spinning while it works), the headline,
-/// the current step and a files button. Right wing — what it means for you: progress, session
+/// the current step and ⌄ to open the session. Right wing — what it means for you: progress, session
 /// time and the status orb while it runs, or the command waiting on you (up to two lines of it)
-/// with Reject / Approve right there. The right wing springs wider to fit the command.
+/// with Reject / Approve right there; `>_` (or the command itself) copies the whole command. The right wing springs wider to fit the command.
 ///
 /// One transparent panel spans both wings. The gap in the middle is where she hangs (her window
 /// sits above this one) and each wing tapers into a tendril that reaches into her. The wings
@@ -16,10 +16,10 @@ import AppKit
 final class LiveActivityView: NSView {
     enum Mode: Equatable { case idle, running, approval, attention, done }
 
-    /// Tap a wing, the files button or the chevron: open the session.
+    /// ⌄ on the left wing: open the session. The wing bodies themselves don't react to clicks.
     var onTap: (() -> Void)?
-    /// Right-click: hide until Claude has something new.
-    var onClose: (() -> Void)?
+    /// Minimize button or right-click: hide until the Claude tab is opened.
+    var onMinimize: (() -> Void)?
     /// Approve (true) / Reject (false) on the right wing.
     var onDecide: ((HookRequest, Bool) -> Void)?
 
@@ -38,9 +38,8 @@ final class LiveActivityView: NSView {
         static let wingH: CGFloat = 60
         static let tail: CGFloat = 70          // body end → her centre
         static let tip: CGFloat = 14           // the tendril ends this far from her centre (behind her)
-        static let droop: CGFloat = 6          // tendrils meet her a little below the wings' centre line
         static let edge: CGFloat = 18          // outer margin, room for the glow
-        static let leftMax: CGFloat = 390
+        static let leftMax: CGFloat = 430
         static let rightRun: CGFloat = 430     // right wing while Claude works
         static let rightAsk: CGFloat = 760     // right wing with a command, Reject and Approve
         static let minWing: CGFloat = 220
@@ -53,18 +52,20 @@ final class LiveActivityView: NSView {
     private let ring = RingGlyph()
     private let leftTitle = LiveActivityView.label()
     private let leftSub = LiveActivityView.label()
-    private let files = GlowIconButton(symbol: "doc.text")
+    /// ⌄ on the left wing: the only way to expand the wings into the Claude screen.
+    private let expand = GlowIconButton(symbol: "chevron.down")
 
     // Right wing.
     private let status = LiveActivityView.label()
     private let clock = LiveActivityView.label()
     private let bar = GlowProgressBar()
     private let orb = OrbView()
-    private let prompt = BoxGlyph()
+    /// The `>_` in front of the command; it turns into a copy button under the pointer.
+    private let prompt = CommandCopyButton()
     private let command = LiveActivityView.label()
     private let reject = GlowPillButton(title: "Reject", symbol: "xmark", tint: .red)
     private let approve = GlowPillButton(title: "Approve", symbol: "checkmark", tint: .green)
-    private let chevron = GlowIconButton(symbol: "chevron.down")
+    private let minimize = GlowIconButton(symbol: "minus")
 
     /// A soft glow behind her in the state's colour. It lives here rather than in her window so
     /// her window's shadow never traces it.
@@ -74,8 +75,6 @@ final class LiveActivityView: NSView {
     private var rightBody = NSRect.zero
     private var leftPath = NSBezierPath()
     private var rightPath = NSBezierPath()
-    private var leftTail = NSBezierPath()
-    private var rightTail = NSBezierPath()
 
     /// The right wing's width springs between `rightRun` and `rightAsk`.
     private var rightW: CGFloat = M.rightRun
@@ -91,11 +90,16 @@ final class LiveActivityView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         layer?.masksToBounds = false
-        [ring, leftTitle, leftSub, files, status, clock, bar, orb, prompt, command, reject, approve, chevron].forEach { addSubview($0) }
-        files.onTap = { [weak self] in self?.onTap?() }
-        files.setAccessibilityLabel("Open the session's files")
-        chevron.onTap = { [weak self] in self?.onTap?() }
-        chevron.setAccessibilityLabel("Open the session")
+        [ring, leftTitle, leftSub, expand, status, clock, bar, orb, prompt, command, reject, approve, minimize].forEach { addSubview($0) }
+        expand.onTap = { [weak self] in self?.onTap?() }
+        expand.setAccessibilityLabel("Open the Claude session")
+        expand.toolTip = "Open the session"
+        minimize.onTap = { [weak self] in self?.onMinimize?() }
+        minimize.setAccessibilityLabel("Minimize Claude activity")
+        minimize.toolTip = "Minimize — open the Claude tab to show again"
+        prompt.onTap = { [weak self] in self?.copyCommand() }
+        // Clicking the command itself copies it too.
+        command.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(commandClicked)))
         reject.onTap = { [weak self] in self?.decide(false) }
         approve.onTap = { [weak self] in self?.decide(true) }
         clock.alignment = .right
@@ -130,6 +134,20 @@ final class LiveActivityView: NSView {
         return l
     }
 
+    /// The whole command, not the two lines that fit on the wing.
+    private var fullCommand = ""
+
+    @objc private func commandClicked() { copyCommand() }
+
+    /// Puts the full command on the clipboard; the `>_` turns into a green check for a moment.
+    private func copyCommand() {
+        guard !fullCommand.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(fullCommand, forType: .string)
+        prompt.flashCopied()
+        SoundService.shared.play(.button)
+    }
+
     private func decide(_ allow: Bool) {
         guard let r = request else { return }
         onDecide?(r, allow)
@@ -138,7 +156,7 @@ final class LiveActivityView: NSView {
     /// Light ↔ dark: the wings keep their own look, but redraw so system colours settle.
     func themeChanged() {
         restyle()
-        [ring, files, bar, orb, prompt, reject, approve, chevron].forEach { $0.needsDisplay = true }
+        [ring, expand, bar, orb, prompt, reject, approve, minimize].forEach { $0.needsDisplay = true }
         ring.refresh(); bar.refresh()
         needsDisplay = true
     }
@@ -204,7 +222,7 @@ final class LiveActivityView: NSView {
         }
 
         // Right wing: status line, time and bar — or the command with its two buttons.
-        // The orb and chevron stay in both.
+        // The orb and minimize stay in both.
         let asking = mode == .approval
         let runGroup: [NSView] = [status, clock, bar]
         let askGroup: [NSView] = [prompt, command, reject, approve]
@@ -227,7 +245,8 @@ final class LiveActivityView: NSView {
             orb.set(.working)
         case .approval:
             set(command, ClaudeActivityService.oneLine(pending?.command ?? "", max: 240))
-            command.toolTip = pending?.command
+            command.toolTip = (pending?.command).map { "\($0)\n\nClick to copy" }
+            fullCommand = pending?.command ?? ""
             orb.set(.waiting)
         case .attention:
             status.attributedStringValue = Self.statusLine("Waiting", detail: "reply in \(s?.folderName ?? "the terminal")", warn: true)
@@ -333,15 +352,14 @@ final class LiveActivityView: NSView {
         super.layout()
         let y = ((bounds.height - M.wingH) / 2).rounded()
         let mid = y + M.wingH / 2
-        let tipY = mid + M.droop
 
         let lx1 = centerX - M.tail
         let lx0 = max(M.edge, lx1 - M.leftMax)
         leftBody = NSRect(x: lx0, y: y, width: max(0, lx1 - lx0), height: M.wingH)
         rightBody = NSRect(x: centerX + M.tail, y: y, width: room(for: rightW), height: M.wingH)
 
-        (leftPath, leftTail) = Self.wing(body: leftBody, inward: 1, tip: NSPoint(x: centerX - M.tip, y: tipY))
-        (rightPath, rightTail) = Self.wing(body: rightBody, inward: -1, tip: NSPoint(x: centerX + M.tip, y: tipY))
+        leftPath = Self.wing(body: leftBody, inward: 1, tip: NSPoint(x: centerX - M.tip, y: mid))
+        rightPath = Self.wing(body: rightBody, inward: -1, tip: NSPoint(x: centerX + M.tip, y: mid))
 
         CATransaction.begin(); CATransaction.setDisableActions(true)
         glow.frame = CGRect(x: centerX - 60, y: mid - 56, width: 120, height: 120)
@@ -355,12 +373,18 @@ final class LiveActivityView: NSView {
     private func layoutLeft(mid: CGFloat) {
         let b = leftBody
         let show = b.width >= M.minWing
-        [ring, leftTitle, leftSub, files].forEach { $0.isHidden = !show }
+        [ring, leftTitle, leftSub, expand].forEach { $0.isHidden = !show }
         guard show else { return }
         ring.frame = NSRect(x: b.minX + 10, y: mid - 22, width: 44, height: 44)
-        files.frame = NSRect(x: b.maxX - 4 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
+        // Keep minimize reachable when the right wing folds away near a screen edge.
+        let minimizeOnLeft = rightBody.width < M.minWing
+        if minimizeOnLeft {
+            minimize.frame = NSRect(x: b.maxX - 4 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
+        }
+        expand.frame = NSRect(x: b.maxX - 4 - M.button - (minimizeOnLeft ? M.button : 0),
+                             y: mid - M.button / 2, width: M.button, height: M.button)
         let textX = ring.frame.maxX + 12
-        let textW = max(0, files.frame.minX - 10 - textX)
+        let textW = max(0, expand.frame.minX - 10 - textX)
         leftTitle.frame = NSRect(x: textX, y: mid - 21, width: textW, height: 21)
         leftSub.frame = NSRect(x: textX, y: mid + 2, width: textW, height: 18)
     }
@@ -368,12 +392,16 @@ final class LiveActivityView: NSView {
     private func layoutRight(mid: CGFloat) {
         let b = rightBody
         let show = b.width >= M.minWing
-        let all: [NSView] = [status, clock, bar, orb, prompt, command, reject, approve, chevron]
-        if !show { all.forEach { $0.isHidden = true }; return }
-        chevron.isHidden = false
+        let all: [NSView] = [status, clock, bar, orb, prompt, command, reject, approve]
+        if !show {
+            all.forEach { $0.isHidden = true }
+            minimize.isHidden = leftBody.width < M.minWing
+            return
+        }
+        minimize.isHidden = false
         orb.isHidden = false
-        chevron.frame = NSRect(x: b.maxX - 8 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
-        orb.frame = NSRect(x: chevron.frame.minX - 4 - M.orb, y: mid - M.orb / 2, width: M.orb, height: M.orb)
+        minimize.frame = NSRect(x: b.maxX - 8 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
+        orb.frame = NSRect(x: minimize.frame.minX - 4 - M.orb, y: mid - M.orb / 2, width: M.orb, height: M.orb)
         if mode == .approval {
             let aw = approve.fittedWidth, rw = reject.fittedWidth
             approve.frame = NSRect(x: orb.frame.minX - 6 - aw, y: mid - 22, width: aw, height: 44)
@@ -396,77 +424,72 @@ final class LiveActivityView: NSView {
 
     /// A pill whose inner end swells into a tail and tapers to a point at `tip`.
     /// `inward` is +1 when the tail points right (the left wing), −1 for the right wing.
-    private static func wing(body b: NSRect, inward d: CGFloat, tip: NSPoint) -> (NSBezierPath, NSBezierPath) {
-        let path = NSBezierPath(), tail = NSBezierPath()
-        guard b.width > 0 else { return (path, tail) }
+    static func wing(body b: NSRect, inward d: CGFloat, tip: NSPoint) -> NSBezierPath {
+        let path = NSBezierPath()
+        guard b.width > 0 else { return path }
         let r = b.height / 2
         let outer = d > 0 ? b.minX : b.maxX
         let inner = d > 0 ? b.maxX : b.minX
         let cap = outer + d * r
         let top = b.minY, bottom = b.maxY
-        let cpOut: CGFloat = 30, cpIn: CGFloat = 26
+        let cpOut: CGFloat = 28, cpIn: CGFloat = 20
+        let tipRadius: CGFloat = 3
+        let tipCenter = NSPoint(x: tip.x - d * tipRadius, y: tip.y)
 
         path.move(to: NSPoint(x: cap, y: top))
         path.line(to: NSPoint(x: inner, y: top))
-        path.curve(to: NSPoint(x: tip.x, y: tip.y - 1.2), controlPoint1: NSPoint(x: inner + d * cpOut, y: top),
-                   controlPoint2: NSPoint(x: tip.x - d * cpIn, y: tip.y - 4))
-        path.line(to: NSPoint(x: tip.x, y: tip.y + 1.2))
-        path.curve(to: NSPoint(x: inner, y: bottom), controlPoint1: NSPoint(x: tip.x - d * cpIn, y: tip.y + 4),
+        path.curve(to: NSPoint(x: tipCenter.x, y: tip.y - tipRadius), controlPoint1: NSPoint(x: inner + d * cpOut, y: top),
+                   controlPoint2: NSPoint(x: tip.x - d * cpIn, y: tip.y - tipRadius))
+        // A rounded nose joins the mirrored top and bottom curves without a sharp seam.
+        path.appendArc(withCenter: tipCenter, radius: tipRadius, startAngle: 270, endAngle: 90, clockwise: d < 0)
+        path.curve(to: NSPoint(x: inner, y: bottom), controlPoint1: NSPoint(x: tip.x - d * cpIn, y: tip.y + tipRadius),
                    controlPoint2: NSPoint(x: inner + d * cpOut, y: bottom))
         path.line(to: NSPoint(x: cap, y: bottom))
         // Round outer end: bottom (90°) → top (270°) through the outer side.
         path.appendArc(withCenter: NSPoint(x: cap, y: b.midY), radius: r, startAngle: 90, endAngle: 270, clockwise: d < 0)
         path.close()
 
-        // The tendril: the two curves that sweep into her.
-        tail.move(to: NSPoint(x: inner - d * 24, y: top))
-        tail.line(to: NSPoint(x: inner, y: top))
-        tail.curve(to: NSPoint(x: tip.x, y: tip.y - 1.2), controlPoint1: NSPoint(x: inner + d * cpOut, y: top),
-                   controlPoint2: NSPoint(x: tip.x - d * cpIn, y: tip.y - 4))
-        tail.line(to: NSPoint(x: tip.x, y: tip.y + 1.2))
-        tail.curve(to: NSPoint(x: inner, y: bottom), controlPoint1: NSPoint(x: tip.x - d * cpIn, y: tip.y + 4),
-                   controlPoint2: NSPoint(x: inner + d * cpOut, y: bottom))
-        tail.line(to: NSPoint(x: inner - d * 24, y: bottom))
-        return (path, tail)
+        return path
     }
 
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
-        if leftBody.width >= M.minWing { drawWing(leftPath, tail: leftTail, body: leftBody, inward: 1) }
-        if rightBody.width >= M.minWing { drawWing(rightPath, tail: rightTail, body: rightBody, inward: -1) }
+        if leftBody.width >= M.minWing { drawWing(leftPath, body: leftBody, inward: 1) }
+        if rightBody.width >= M.minWing { drawWing(rightPath, body: rightBody, inward: -1) }
     }
 
-    private func drawWing(_ path: NSBezierPath, tail: NSBezierPath, body: NSRect, inward d: CGFloat) {
+    private func drawWing(_ path: NSBezierPath, body: NSRect, inward d: CGFloat) {
         // Navy-black glass with a wide blue halo.
         Neon.glowing(Neon.halo, blur: 18) { Neon.fillBottom.setFill(); path.fill() }
         NSGradient(starting: Neon.fillTop, ending: Neon.fillBottom)?.draw(in: path, angle: -90)
 
         // Hairline edge with a soft glow of its own.
         Neon.glowing(Neon.edge.withAlphaComponent(0.6), blur: 5) {
-            Neon.edge.setStroke()
+            Neon.edge.withAlphaComponent(0.4).setStroke()
             path.lineWidth = 1.3
             path.stroke()
         }
 
-        // The tendril glows cyan → violet as it reaches her.
+        // One constant-width edge, fading gradually from blue into cyan toward Zera.
+        // Extending the gradient over the whole outline avoids thick, abruptly capped overlays.
         guard let ctx = NSGraphicsContext.current?.cgContext,
-              let gradient = NSGradient(colors: [Neon.edge, Neon.cyan, Neon.violet]) else { return }
-        let from = d > 0 ? body.maxX - 28 : body.minX + 28
+              let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                  colors: [Neon.edge.cgColor, Neon.cyan.withAlphaComponent(0.85).cgColor,
+                           Neon.cyan.withAlphaComponent(0.65).cgColor] as CFArray,
+                  locations: [0, 0.8, 1]) else { return }
+        let inner = d > 0 ? body.maxX : body.minX
+        let from = inner - d * 130
         let to = centerX - d * M.tip
-        let cg = tail.cgPathCompat
-        let passes: [(width: CGFloat, alpha: CGFloat)] = [(6, 0.35), (3, 0.5), (1.5, 1)]
-        for pass in passes {
-            ctx.saveGState()
-            ctx.addPath(cg)
-            ctx.setLineWidth(pass.width)
-            ctx.setLineCap(.round)
-            ctx.replacePathWithStrokedPath()
-            ctx.clip()
-            ctx.setAlpha(pass.alpha)
-            gradient.draw(from: NSPoint(x: from, y: 0), to: NSPoint(x: to, y: 0), options: [])
-            ctx.restoreGState()
-        }
+        ctx.saveGState()
+        ctx.addPath(path.cgPathCompat)
+        ctx.setLineWidth(1.3)
+        ctx.replacePathWithStrokedPath()
+        ctx.clip()
+        ctx.drawLinearGradient(gradient, start: CGPoint(x: from, y: body.midY),
+                               end: CGPoint(x: to, y: body.midY),
+                               options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+        ctx.restoreGState()
     }
 
     // MARK: - Mouse
@@ -484,18 +507,17 @@ final class LiveActivityView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let p = superview.map { convert(point, from: $0) } ?? point
         guard onWing(p) else { return nil }
-        // Buttons take their own clicks; labels and glyphs hand them to the wing.
+        // Buttons (and the command, which copies) take their own clicks; the rest of the wing
+        // only holds the pointer so clicks don't fall through to the window behind.
         let v = super.hitTest(point)
-        return (v is GlowIconButton || v is GlowPillButton) ? v : self
+        return (v is GlowIconButton || v is GlowPillButton || v is CommandCopyButton || v === command) ? v : self
     }
 
-    override func mouseDown(with event: NSEvent) {
-        if onWing(convert(event.locationInWindow, from: nil)) { onTap?() }
-    }
-    override func rightMouseDown(with event: NSEvent) { onClose?() }
+    /// The wing body itself does nothing on click: ⌄ expands, the buttons act.
+    override func mouseDown(with event: NSEvent) {}
+    override func rightMouseDown(with event: NSEvent) { onMinimize?() }
     override func resetCursorRects() {
-        if leftBody.width >= M.minWing { addCursorRect(leftBody, cursor: .pointingHand) }
-        if rightBody.width >= M.minWing { addCursorRect(rightBody, cursor: .pointingHand) }
+        if !command.isHidden { addCursorRect(command.frame, cursor: .pointingHand) }
     }
 }
 
@@ -881,12 +903,50 @@ final class OrbView: NSView {
     override func mouseExited(with event: NSEvent) { wantSpeed = 1 }
 }
 
-/// The rounded square with a `>_` prompt in front of the command waiting on you.
-final class BoxGlyph: NSView {
+/// The rounded square with a `>_` prompt in front of the command waiting on you. Under the
+/// pointer it becomes a copy button; after a copy it shows a green check for a moment.
+final class CommandCopyButton: NSView {
+    var onTap: (() -> Void)?
+    private var hovered = false { didSet { needsDisplay = true } }
+    private var copiedUntil: Date?
     override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Copy the full command")
+        toolTip = "Copy the full command"
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func flashCopied() {
+        let until = Date().addingTimeInterval(1.4)
+        copiedUntil = until
+        setAccessibilityLabel("Copied")
+        needsDisplay = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+            guard let self = self, self.copiedUntil == until else { return }
+            self.copiedUntil = nil
+            self.setAccessibilityLabel("Copy the full command")
+            self.needsDisplay = true
+        }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 4, dy: 4)
-        Neon.drawChip(NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10), hovered: false)
+        let path = NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10)
+        if copiedUntil != nil {
+            Neon.drawChip(path, hovered: true)
+            Neon.symbol("checkmark", in: r, size: 14, weight: .bold, color: Neon.green)
+            return
+        }
+        Neon.drawChip(path, hovered: hovered)
+        if hovered {
+            Neon.symbol("doc.on.doc", in: r, size: 14, weight: .semibold, color: Neon.accent)
+            return
+        }
         Neon.symbol("chevron.right", in: NSRect(x: r.minX + 6, y: r.minY, width: r.width / 2 - 2, height: r.height),
                     size: 13, weight: .bold, color: Neon.accent)
         let line = NSBezierPath()
@@ -894,6 +954,17 @@ final class BoxGlyph: NSView {
         line.lineWidth = 2; line.lineCapStyle = .round
         Neon.accent.setStroke(); line.stroke()
     }
+
+    override func mouseDown(with event: NSEvent) { onTap?() }
+    override func accessibilityPerformPress() -> Bool { onTap?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
 }
 
 /// Round glyph button (📄 / ⌄) on the wings.

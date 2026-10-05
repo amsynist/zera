@@ -78,6 +78,8 @@ final class IslandView: NSView {
 
     var activeTab: CardKind? { didSet { tabs.forEach { $0.isOn = $0.kind == activeTab } } }
     var badges: Set<CardKind> = [] { didSet { tabs.forEach { $0.hasBadge = badges.contains($0.kind) } } }
+    /// Numbers on the tabs, such as running Claude sessions.
+    var counts: [CardKind: Int] = [:] { didSet { tabs.forEach { $0.count = counts[$0.kind] ?? 0 } } }
 
     /// The island's current shape, in view coordinates.
     private(set) var islandRect = NSRect.zero
@@ -91,6 +93,9 @@ final class IslandView: NSView {
     private let hostMask = CAShapeLayer()
     private let host = IslandHost()
     private var tabs: [IslandTab] = []
+    /// Zera's line while a screen is open: the header's second line, left of her.
+    private let whisperView = IslandWhisper()
+    private(set) var whisperText: String?
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -125,6 +130,9 @@ final class IslandView: NSView {
         host.wantsLayer = true
         host.layer?.mask = hostMask
         addSubview(host)
+        whisperView.alphaValue = 0
+        whisperView.isHidden = true
+        addSubview(whisperView)
 
         for kind in Isle.leftTabs + Isle.rightTabs {
             let t = IslandTab(kind: kind)
@@ -196,6 +204,39 @@ final class IslandView: NSView {
         CATransaction.commit()
         host.frame = b
         layoutTabs()
+        layoutWhisper()
+    }
+
+    // MARK: - Zera's whisper
+
+    /// Shows `text` in the header's second line of the open screen (nil hides it). It sits on
+    /// the island's own fill, so it covers that screen's subtitle while it's up.
+    func whisper(_ text: String?, tone: NSColor = Neon.cyan) {
+        let on = !(text ?? "").isEmpty && mode == .open && content != nil
+        whisperText = on ? text : nil
+        (content as? CardBase)?.whispering = on
+        if on {
+            whisperView.text = text ?? ""
+            whisperView.tone = tone
+            layoutWhisper()
+            whisperView.isHidden = false
+        }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = Motion.duration(on ? 0.22 : 0.18)
+            whisperView.animator().alphaValue = on ? 1 : 0
+        }, completionHandler: { [weak self] in
+            guard let self = self, self.whisperText == nil else { return }
+            self.whisperView.isHidden = true
+        })
+    }
+
+    private func layoutWhisper() {
+        guard let c = content else { return }
+        let f = c.frame
+        // Screens built on CardBase start their header text at cardPad + 4; the others at 24.
+        let lead: CGFloat = c is CardBase ? Metrics.cardPad + 4 : 24
+        let width = f.width / 2 - Isle.zeraGap / 2 - lead
+        whisperView.frame = NSRect(x: f.minX + lead - 2, y: band + 45, width: max(0, width + 2), height: 18)
     }
 
     private func layoutTabs() {
@@ -230,6 +271,7 @@ final class IslandView: NSView {
     func close(animated: Bool = true, completion: (() -> Void)? = nil) {
         mode = .closed
         activeTab = nil
+        whisper(nil)
         dismissContent(direction: 0)
         setTabs(visible: false)
         setChrome(open: false)
@@ -285,6 +327,8 @@ final class IslandView: NSView {
             view.frame = target
         }
         applyShape(shapeRect(width: w, height: band + h), corner: Isle.corner, animated: animated)
+        if let t = whisperText { (content as? CardBase)?.whispering = true; whisperView.text = t }
+        layoutWhisper()
     }
 
     private func dismissContent(direction: CGFloat) {
@@ -324,18 +368,61 @@ final class IslandView: NSView {
     }
 }
 
+/// Zera's line inside an open island: a small spark and the line in her tone, on the island's
+/// own fill so it can sit over the screen's subtitle.
+final class IslandWhisper: NSView {
+    var text = "" { didSet { label.stringValue = text; setAccessibilityLabel(text) } }
+    var tone: NSColor = Neon.cyan { didSet { label.textColor = tone; needsDisplay = true } }
+    private let label = NSTextField(labelWithString: "")
+    override var isFlipped: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        label.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        label.textColor = tone
+        label.lineBreakMode = .byTruncatingTail
+        addSubview(label)
+        setAccessibilityRole(.staticText)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        label.frame = NSRect(x: 18, y: 0, width: max(0, bounds.width - 18), height: bounds.height)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // The island's fill at this depth, opaque, feathered on the right so the cover is invisible.
+        let base = Neon.fillTop.withAlphaComponent(1)
+        NSGradient(colors: [base, base, base.withAlphaComponent(0)], atLocations: [0, 0.92, 1], colorSpace: .sRGB)?
+            .draw(in: bounds, angle: 0)
+        Neon.symbol("sparkle", in: NSRect(x: 2, y: (bounds.height - 12) / 2 - 1, width: 12, height: 12),
+                    size: 10, weight: .bold, color: tone)
+    }
+}
+
 /// Holds the current screen, clipped to the island's shape.
 final class IslandHost: NSView {
     override var isFlipped: Bool { true }
 }
 
 /// One tab at notch level: an SF Symbol that lights up cyan with a glowing underline when its
-/// screen is open, and wears an amber dot when something there needs you.
+/// screen is open, and wears an amber dot when something there needs you, or a small count
+/// (cyan, amber when it needs you) for things in progress.
 final class IslandTab: NSView {
     let kind: CardKind
     var onTap: (() -> Void)?
     var isOn = false { didSet { if isOn != oldValue { needsDisplay = true } } }
     var hasBadge = false { didSet { if hasBadge != oldValue { needsDisplay = true } } }
+    var count = 0 {
+        didSet {
+            guard count != oldValue else { return }
+            needsDisplay = true
+            setAccessibilityValue(count > 0 ? "\(count)" : nil)
+        }
+    }
     private var hovered = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -362,7 +449,17 @@ final class IslandTab: NSView {
             let u = NSRect(x: b.midX - 7, y: b.maxY - 3, width: 14, height: 2)
             Neon.glowing(Neon.cyan, blur: 6) { Neon.cyan.setFill(); NSBezierPath(roundedRect: u, xRadius: 1, yRadius: 1).fill() }
         }
-        if hasBadge {
+        if count > 0 {
+            let text = count > 9 ? "9+" : "\(count)"
+            let font = NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .bold)
+            let tw = ceil((text as NSString).size(withAttributes: [.font: font]).width)
+            let pill = NSRect(x: b.maxX - max(12, tw + 6), y: 0, width: max(12, tw + 6), height: 12)
+            let tone = hasBadge ? Neon.warning : Neon.cyan
+            Neon.glowing(tone, blur: 5) { tone.setFill(); NSBezierPath(roundedRect: pill, xRadius: 6, yRadius: 6).fill() }
+            let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Neon.fillBottom.withAlphaComponent(1)]
+            let ts = (text as NSString).size(withAttributes: attrs)
+            (text as NSString).draw(at: NSPoint(x: pill.midX - ts.width / 2, y: pill.midY - ts.height / 2), withAttributes: attrs)
+        } else if hasBadge {
             let d = NSRect(x: b.maxX - 8, y: 3, width: 6, height: 6)
             Neon.glowing(Neon.warning, blur: 5) { Neon.warning.setFill(); NSBezierPath(ovalIn: d).fill() }
         }

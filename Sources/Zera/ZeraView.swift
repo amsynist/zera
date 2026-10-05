@@ -16,6 +16,45 @@ enum ZeraStyle { case hanging, standing }
 /// breathing and swinging while it works, perking up when a command needs you, hopping when done.
 enum ZeraActivity { case none, running, approval, done }
 
+/// Four actual clicks close together trigger a short reaction; hovering does not count.
+struct ZeraPokeReaction {
+    static let duration: TimeInterval = 2.6
+    private var lastPokeAt: TimeInterval?
+    private var count = 0
+    private(set) var startedAt: TimeInterval?
+
+    mutating func register(at now: TimeInterval) -> Bool {
+        guard !isActive(at: now) else { return false }
+        count = lastPokeAt.map { now >= $0 && now - $0 <= 1.1 } == true ? count + 1 : 1
+        lastPokeAt = now
+        guard count == 4 else { return false }
+        count = 0
+        startedAt = now
+        return true
+    }
+
+    func isActive(at now: TimeInterval) -> Bool {
+        guard let start = startedAt else { return false }
+        return now >= start && now - start < Self.duration
+    }
+
+    func intensity(at now: TimeInterval) -> CGFloat {
+        guard let start = startedAt, isActive(at: now) else { return 0 }
+        let t = now - start
+        let edge = CGFloat(min(1, t / 0.15, (Self.duration - t) / 0.45))
+        return edge * edge * (3 - 2 * edge)
+    }
+
+    func motion(at now: TimeInterval, reduceMotion: Bool) -> (angle: CGFloat, dy: CGFloat, sx: CGFloat, sy: CGFloat) {
+        guard let start = startedAt, isActive(at: now), !reduceMotion else { return (0, 0, 1, 1) }
+        let t = now - start
+        let strength = intensity(at: now)
+        let shake = CGFloat(sin(t * 2 * .pi / 0.22) * exp(-t * 1.5)) * strength
+        let huff = CGFloat(max(0, sin(t * 2 * .pi / 0.5)) * max(0, 1 - t / 1.5)) * strength
+        return (shake * 6, -huff * 2.5, 1 + huff * 0.045, 1 - huff * 0.05)
+    }
+}
+
 /// Zera, rendered from the PNG cut-outs in `Resources/Sprites`: a pendulum sway on the rope,
 /// a lean toward whatever she is looking at, cross-fades between expressions and idle fidgets.
 /// If the sprites are missing she draws a tiny placeholder so the app still runs.
@@ -47,8 +86,30 @@ final class ZeraView: NSView {
     /// The pointer is on her; while Claude is active she wiggles.
     var hovered = false
 
-    /// A tap: a little jump with a burst of sparkles.
-    func bump() { bumpAt = CACurrentMediaTime() }
+    /// A tap: a little jump with a burst of sparkles, and a swing on the rope that settles.
+    /// Each tap kicks her the other way, so a few taps rock her back and forth.
+    func bump() {
+        bumpAt = CACurrentMediaTime()
+        swingSide = -swingSide
+    }
+
+    /// A new caption: a small hop, no sparkles.
+    func nudge() {
+        guard !isReactingToPokes else { return }
+        nudgeAt = CACurrentMediaTime()
+    }
+
+    private var pokeReaction = ZeraPokeReaction()
+    var isReactingToPokes: Bool { pokeReaction.isActive(at: CACurrentMediaTime()) }
+
+    /// Returns true on the fourth quick tap. Further taps let the reaction finish.
+    func poke() -> Bool {
+        let triggered = pokeReaction.register(at: CACurrentMediaTime())
+        if triggered { bumpAt = -10 }
+        else if !isReactingToPokes { bump() }
+        needsDisplay = true
+        return triggered
+    }
 
     /// The pose for every Claude state: holding on to the rope with both hands.
     static let claudePose = "hang_climb"
@@ -83,6 +144,8 @@ final class ZeraView: NSView {
     private var droop: CGFloat = 0
     private var activityChangedAt: Double = -10
     private var bumpAt: Double = -10
+    private var nudgeAt: Double = -10
+    private var swingSide: CGFloat = 1
     // Eased 0…1 amounts so effects fade in and out instead of popping.
     private var wiggleAmt: CGFloat = 0
     private var askAmt: CGFloat = 0
@@ -128,11 +191,12 @@ final class ZeraView: NSView {
         blend(&raise, [.excited, .happy, .celebrate, .surprised].contains(mood) ? 1 : 0, 0.22)
         blend(&wave, mood == .hello ? 1 : 0, 0.20)
         blend(&droop, mood == .sleepy ? 1 : 0, 0.06)
-        blend(&wiggleAmt, hovered && activity != .none ? 1 : 0, 0.2)
-        blend(&askAmt, activity == .approval ? 1 : 0, 0.1)
-        blend(&arcsAmt, activity == .running ? 1 : 0, 0.12)
-        blend(&burstAmt, activity == .approval ? 1 : 0, 0.15)
-        let sparkling = activity == .done || CACurrentMediaTime() - bumpAt < 1.4
+        let angry = isReactingToPokes
+        blend(&wiggleAmt, !angry && hovered && activity != .none ? 1 : 0, 0.2)
+        blend(&askAmt, !angry && activity == .approval ? 1 : 0, 0.1)
+        blend(&arcsAmt, !angry && activity == .running ? 1 : 0, 0.12)
+        blend(&burstAmt, !angry && activity == .approval ? 1 : 0, 0.15)
+        let sparkling = !angry && (activity == .done || CACurrentMediaTime() - bumpAt < 1.4)
         blend(&starsAmt, sparkling ? 1 : 0, 0.15)
         look.x += (lookTarget.x - look.x) * 0.18
         look.y += (lookTarget.y - look.y) * 0.18
@@ -186,6 +250,7 @@ final class ZeraView: NSView {
     private static let hangingFidgets = ["hang_upsidedown", "hang_upsidedown2", "hang_back", "hang_swing", "hang_think", "hang_climb"]
 
     private func resolvedSpriteName(now: Double) -> String {
+        if pokeReaction.isActive(at: now) { return style == .hanging ? Self.claudePose : "error" }
         if style == .hanging, let p = islandPose { return p }
         if style == .hanging, activity != .none { return Self.claudePose }
         if style == .hanging, mood == .idle, !Self.reduceMotion {
@@ -246,6 +311,12 @@ final class ZeraView: NSView {
             // you; a wiggle when you point at her.
             angle += askAmt * (CGFloat(sin(phase * 2.4)) * 1.2 + CGFloat(sin(phase * 2 * .pi / 1.1)) * 2.5) * k
             angle += wiggleAmt * CGFloat(sin(phase * 2 * .pi / 0.9)) * 4 * k
+            angle += pokeReaction.motion(at: CACurrentMediaTime(), reduceMotion: Self.reduceMotion).angle
+            // A tap swings her on the rope: a quick push that dies away.
+            let sinceTap = CACurrentMediaTime() - bumpAt
+            if sinceTap < 1.8, !Self.reduceMotion {
+                angle += swingSide * 7 * CGFloat(sin(sinceTap * 2 * .pi / 0.85) * exp(-sinceTap * 2.4))
+            }
             ctx.translateBy(x: pivot.x, y: pivot.y)
             ctx.rotate(by: angle * .pi / 180)
             ctx.translateBy(x: -pivot.x, y: -pivot.y)
@@ -275,15 +346,20 @@ final class ZeraView: NSView {
             ctx.setShadow(offset: CGSize(width: 0, height: -3), blur: 7, color: NSColor.black.withAlphaComponent(0.45 * alpha).cgColor)
             sprite.image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: alpha, respectFlipped: false, hints: nil)
             ctx.restoreGState()
-            if effects { drawEffects(around: rect) }
+            if effects {
+                if isReactingToPokes { drawAngryReaction(around: rect, alpha: alpha) }
+                else { drawEffects(around: rect) }
+            }
             ctx.restoreGState()
         } else {
             let h = max(1, bounds.height - 2)
             let w = min(h * sprite.aspect, bounds.width)
             let hh = w / sprite.aspect
             let foot = NSPoint(x: bounds.midX, y: bounds.minY + 1)
-            ctx.translateBy(x: foot.x + look.x * 1.5, y: foot.y + lift)
-            ctx.rotate(by: (-look.x * 4 + droop * 4) * .pi / 180)
+            let anger = pokeReaction.motion(at: CACurrentMediaTime(), reduceMotion: Self.reduceMotion)
+            ctx.translateBy(x: foot.x + look.x * 1.5, y: foot.y + lift + anger.dy)
+            ctx.rotate(by: (-look.x * 4 + droop * 4 + anger.angle) * .pi / 180)
+            ctx.scaleBy(x: anger.sx, y: anger.sy)
             ctx.translateBy(x: -foot.x, y: -foot.y)
             sprite.image.draw(in: NSRect(x: foot.x - w / 2, y: foot.y, width: w, height: hh),
                               from: .zero, operation: .sourceOver, fraction: alpha, respectFlipped: false, hints: nil)
@@ -295,6 +371,10 @@ final class ZeraView: NSView {
 
     /// Vertical offset (up is +) and squash for her body this frame.
     private func bodyMotion() -> (dy: CGFloat, sx: CGFloat, sy: CGFloat) {
+        if isReactingToPokes {
+            let anger = pokeReaction.motion(at: CACurrentMediaTime(), reduceMotion: Self.reduceMotion)
+            return (anger.dy, anger.sx, anger.sy)
+        }
         guard !Self.reduceMotion else { return (0, 1, 1) }
         let now = CACurrentMediaTime()
         var dy: CGFloat = 0, sx: CGFloat = 1, sy: CGFloat = 1
@@ -321,6 +401,11 @@ final class ZeraView: NSView {
             let p = Self.keyframes(sinceBump / 0.7, [(0, 0, 1, 1), (0.25, 12, 0.96, 1.05), (0.55, -2, 1.05, 0.95), (1, 0, 1, 1)])
             dy += p.0; sx *= p.1; sy *= p.2
         }
+        let sinceNudge = CGFloat(now - nudgeAt)
+        if sinceNudge < 0.45 {
+            let p = Self.keyframes(sinceNudge / 0.45, [(0, 0, 1, 1), (0.35, 4, 0.98, 1.03), (0.7, -1, 1.02, 0.98), (1, 0, 1, 1)])
+            dy += p.0; sx *= p.1; sy *= p.2
+        }
         return (dy, sx, sy)
     }
 
@@ -339,6 +424,54 @@ final class ZeraView: NSView {
     private static let violet = NSColor(srgbRed: 0.58, green: 0.40, blue: 1.0, alpha: 1)
     private static let cyan = NSColor(srgbRed: 0.30, green: 0.74, blue: 1.0, alpha: 1)
     private static let green = NSColor(srgbRed: 0.21, green: 0.89, blue: 0.67, alpha: 1)
+
+    /// Eyebrows follow the tilted face of hang_climb; small steam clouds stay in her window.
+    private func drawAngryReaction(around rect: NSRect, alpha: CGFloat) {
+        let now = CACurrentMediaTime()
+        let strength = (Self.reduceMotion ? 1 : pokeReaction.intensity(at: now)) * alpha
+        let w = rect.width, h = rect.height
+        func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+            NSPoint(x: rect.minX + w * x, y: rect.minY + h * y)
+        }
+        NSColor(srgbRed: 0.20, green: 0.10, blue: 0.13, alpha: strength).setStroke()
+        for (a, b) in [(point(0.31, 0.285), point(0.455, 0.235)),
+                       (point(0.61, 0.385), point(0.73, 0.47))] {
+            let brow = NSBezierPath()
+            brow.move(to: a); brow.line(to: b)
+            brow.lineWidth = max(1.3, w * 0.027)
+            brow.lineCapStyle = .round
+            brow.stroke()
+        }
+
+        // A tiny anime anger mark beside her tuft, easing with the reaction.
+        let mark = point(0.08, 0.61)
+        let size = max(3, w * 0.065)
+        NSColor(srgbRed: 1, green: 0.40, blue: 0.48, alpha: strength * 0.9).setStroke()
+        for (dx, dy) in [(-1.0, -1.0), (-1.0, 1.0), (1.0, -1.0), (1.0, 1.0)] {
+            let p = NSBezierPath()
+            let x = CGFloat(dx), y = CGFloat(dy)
+            p.move(to: NSPoint(x: mark.x + x * size, y: mark.y + y * size * 0.3))
+            p.curve(to: NSPoint(x: mark.x + x * size * 0.3, y: mark.y + y * size),
+                    controlPoint1: NSPoint(x: mark.x + x * size * 0.4, y: mark.y + y * size * 0.3),
+                    controlPoint2: NSPoint(x: mark.x + x * size * 0.3, y: mark.y + y * size * 0.4))
+            p.lineWidth = max(1, w * 0.025)
+            p.lineCapStyle = .round
+            p.stroke()
+        }
+
+        guard let start = pokeReaction.startedAt else { return }
+        for (x, y, delay) in [(-0.08, 0.34, 0.0), (1.02, 0.46, 0.25)] {
+            let u = Self.reduceMotion ? 0.5 : (now - start + delay).truncatingRemainder(dividingBy: 0.8) / 0.8
+            let fade = Self.reduceMotion ? 0.65 : sin(u * .pi)
+            let center = point(CGFloat(x), CGFloat(y) + CGFloat(u) * 0.10)
+            let r = max(1.5, w * 0.035) * (0.7 + CGFloat(u))
+            NSColor(srgbRed: 1, green: 0.82, blue: 0.85, alpha: strength * fade * 0.75).setFill()
+            for (dx, dy) in [(-0.6, 0.0), (0.0, 0.4), (0.6, 0.0)] {
+                NSBezierPath(ovalIn: NSRect(x: center.x + CGFloat(dx) * r - r, y: center.y + CGFloat(dy) * r - r,
+                                           width: r * 2, height: r * 2)).fill()
+            }
+        }
+    }
 
     /// Motion arcs by her feet while Claude works, burst lines by her head while a command waits
     /// on you, and twinkling sparkles when it is done (or when you tap her).
