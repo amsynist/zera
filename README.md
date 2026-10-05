@@ -28,8 +28,8 @@ it's doing and let you approve its commands right there. **No API key and no acc
 Claude runs through your existing Claude Code login, and GitHub uses a token you paste once.
 
 <p align="center">
-  <img src="docs/zera-island.gif" alt="Hovering the notch shows the tabs; Home, Claude sessions, a session, the Shelf, pull requests, Today and a reminder banner open out of the notch in turn" width="700"><br>
-  <sub>Every screen opens out of the notch. Rendered from the design mock-up with sample data.</sub>
+  <img src="docs/zera-island.webp" alt="Hovering Zera shows the tabs; Home, Claude sessions, the Shelf, pull requests, Reminders and Settings open out of the notch in turn, then a meeting banner opens its details" width="736"><br>
+  <sub>Every screen opens out of the notch. Recorded from the app with sample data.</sub>
 </p>
 
 ## Download
@@ -54,7 +54,7 @@ big window.
 
 - **Tabs at notch level.** Hover Zera and the notch widens to show six tabs on either side of it:
   **Home · Claude · Files** on the left, **PRs · Reminders · Settings** on the right. An amber dot marks
-  a tab that needs you.
+  a tab that needs you, and the Claude tab counts running sessions.
 - **Opens, morphs, folds away.** Click a tab and the island springs open to that screen's size.
   Switching tabs resizes it in place, sliding the new screen in from the side its tab is on. Click
   outside or press <kbd>esc</kbd> and it folds back into the notch. A screen you open from somewhere
@@ -69,15 +69,15 @@ big window.
   files, thinking over PRs and file answers, smiling at Reminders, swinging in Settings.
 
 <p align="center">
-  <img src="docs/island-screens.png" alt="Home, Claude sessions, a Claude session, the Shelf, a file answer, pull requests, Today, Settings, a reminder banner and the hover tabs, each shown as a compact island under the notch" width="100%"><br>
-  <sub>Every screen, held open. Rendered from the design mock-up with sample data.</sub>
+  <img src="docs/island-screens.png" alt="The hover tabs with a caption under Zera, Home, Claude sessions, the Shelf, pull requests, Reminders, Settings → Sounds, a meeting banner and an event's details, each a compact island under the notch" width="100%"><br>
+  <sub>Every screen, held open. Recorded from the app with sample data.</sub>
 </p>
 
 ## Live wings
 
 <p align="center">
-  <img src="docs/zera-wings.gif" alt="The live wings while Claude works, then asking to run git commit with Reject and Approve, then done" width="900"><br>
-  <sub>Running → approval → done. Rendered from the design mock-up with sample data.</sub>
+  <img src="docs/zera-wings.webp" alt="The live wings while Claude works, then asking to run git commit with Reject and Approve, the command copied, approved, then done" width="960"><br>
+  <sub>Running → approval → copy → approve → done. Recorded from the app with sample data.</sub>
 </p>
 
 While a Claude Code session is active, two glass wings hang off Zera on either side of her rope.
@@ -87,14 +87,15 @@ While a Claude Code session is active, two glass wings hang off Zera on either s
 - **Right wing:** **Running · 62%** with a progress bar and the session time, and a status orb that
   swirls blue-violet while Claude works, amber while it waits on you and green when it's done.
 - **Approvals right on the wing.** When Claude Code would ask you for permission, the right wing
-  springs wider to show the command (up to two lines of it) with **Reject** and **Approve**.
-- Click a wing or its chevron to open the session; right-click to hide the wings until Claude has
-  something new.
+  springs wider to show the command (up to two lines of it) with **Reject** and **Approve**. Click
+  the `>_` (or the command) to copy the whole command.
+- **⌄** on the left wing opens the session; the wing body itself doesn't react to clicks. **–** (or a
+  right-click) minimizes the wings; they stay away until you open the Claude tab.
 - **Zera acts it out.** She hugs her rope, breathes and swings while Claude works; perks up with burst
   lines when a command needs you; hops among sparkles when Claude is done. Hover her for a wiggle, tap
   her for a bounce.
 
-<p align="center"><img src="docs/wings-states.png" alt="The wings in three states: running at 62%, asking to run git commit, and done at 100%" width="100%"></p>
+<p align="center"><img src="docs/wings-states.png" alt="The wings in three states: running at 43%, asking to run git commit with the command just copied, and done at 100% with a caption under Zera" width="100%"></p>
 
 ## Features
 
@@ -156,7 +157,8 @@ nothing goes to Claude until you ask.
 - One recurrence engine drives the list, the details and the scheduler: "every 2 hours, 9 AM → 9 PM"
   fires at 9, 11, 1, 3, 5, 7 and 9, every day.
 - A banner drops from the notch when one is due, with **Done** and **Snooze** (15 min · 30 min ·
-  1 hour · 2 hours · Tomorrow). States: upcoming, due, overdue, snoozed, done, off.
+  1 hour · 2 hours · Tomorrow); meetings get **Join call**. Tap the banner itself to open the
+  reminder's or event's details. States: upcoming, due, overdue, snoozed, done, off.
 - Completed items can be **restored** or deleted. Everything survives a restart.
 - Events you create are kept by Zera on this Mac, or, if you pick one of your calendars, added to it
   through macOS Calendar. Zera never labels its own events as Google, Outlook or Apple.
@@ -165,10 +167,11 @@ nothing goes to Claude until you ask.
 
 | | |
 | --- | --- |
-| **At the notch** | Hangs on a rope, sways toward your pointer, says hi, dozes off when you're away. Drag her along the top edge. A ripple shows when she's tappable. |
+| **At the notch** | Hangs on a rope, sways toward your pointer, says hi, dozes off when you're away. Drag her along the top edge. Tap her and she swings on her rope. Her lines appear in a small tag under her feet (or in the open island's header), never over the menu bar or the wings. |
+| **Sounds** | 32 short cues generated for Zera: boops when you tap her, glass for the island, bells and droplets for reminders, a sparkle when Claude finishes. One at a time and quiet. **Settings → Sounds** has a main switch, volume and a switch per group (GitHub starts off). |
 | **Home** | A greeting, **Ask Zera**, up to three things that need you (approvals, reminders, PRs, meetings) and one row of quick actions. |
 | **Break nudges** | Optional "time for a break?" every 30 min – 2 hours, only while you're at the keyboard. |
-| **Settings** | General · Integrations · Shortcuts · About. Diagnostics for the Claude CLI. Honours Reduce Motion: no sway, no springs. |
+| **Settings** | General · Sounds · Integrations · Shortcuts · About. Diagnostics for the Claude CLI. Honours Reduce Motion: no sway, no springs. |
 
 ## Setup
 
@@ -265,8 +268,9 @@ and no dependencies.
 | `Sources/Zera/ReminderModels.swift`, `ReminderService.swift` | Events, reminders, the recurrence engine, scheduler, macOS Calendar |
 | `Sources/Zera/Cards.swift`, `ResultCard.swift` | Home, Settings, approvals, banners, file answers |
 | `Sources/Zera/Palette.swift`, `Theme.swift` | Design tokens, the selected look and shared controls |
+| `Sources/Zera/SoundService.swift`, `Resources/Sounds`, `scripts/synth_sounds.py` | Sound cues: the player and settings, the WAVs, and the script that generates them |
 | `Resources/Sprites` | Her poses (60+ cut-outs; AI-assisted artwork, see `Resources/CARD_SPRITE_PROMPT.md`) |
-| `docs/` | README images (renders of the design mock-ups) and the privacy and network notes |
+| `docs/` | README images (recorded from the app with sample data) and the privacy and network notes |
 | `Tests/ZeraTests` | XCTest suite |
 | `.github/workflows`, `scripts/package.sh` | CI and releases |
 
