@@ -851,13 +851,13 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         case .screenshot:
             hideCard()
             // Interactive capture to the clipboard, then onto the shelf.
-            DispatchQueue.global().async {
+            DispatchQueue.global().async { [weak self] in
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
                 p.arguments = ["-i", "-c"]
                 try? p.run()
                 p.waitUntilExit()
-                DispatchQueue.main.async { [weak self] in
+                DispatchQueue.main.async {
                     let n = ShelfStore.shared.ingest(pasteboard: .general)
                     if n > 0 { self?.show(.shelf); self?.say("screenshot's on the shelf 📸", mood: .happy, for: 2) }
                 }
