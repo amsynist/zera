@@ -139,9 +139,8 @@ final class ClaudeHookService {
     func respond(_ req: HookRequest, allow: Bool) {
         let decision: [String: Any] = [
             "hookSpecificOutput": [
-                "hookEventName": "PreToolUse",
-                "permissionDecision": allow ? "allow" : "deny",
-                "permissionDecisionReason": allow ? "Approved in Zera" : "Rejected in Zera"
+                "hookEventName": "PermissionRequest",
+                "decision": allow ? ["behavior": "allow"] : ["behavior": "deny", "message": "Rejected in Zera"]
             ]
         ]
         if let data = try? JSONSerialization.data(withJSONObject: decision) {
@@ -159,9 +158,11 @@ final class ClaudeHookService {
 
     static let script = """
     #!/bin/bash
-    # Zera — Claude Code PreToolUse hook.
-    # Shows the pending tool call in Zera and waits for Approve / Reject. If Zera is not
-    # running or nobody answers, exits silently so Claude Code asks in the terminal instead.
+    # Zera — Claude Code PermissionRequest hook.
+    # Claude Code runs it only when it is about to ask you for permission, so auto mode, bypass
+    # mode and your allow rules are respected. Shows the request in Zera and waits for Approve /
+    # Reject. If Zera is not running or nobody answers, exits silently so Claude Code asks in the
+    # terminal instead.
     umask 077
     BASE="$HOME/Library/Application Support/Zera/hooks"
     REQ="$BASE/requests"; RES="$BASE/responses"
@@ -196,6 +197,7 @@ final class ClaudeHookService {
     /// it went missing while `settings.json` still points at it.
     private func refreshScriptIfNeeded() {
         guard settingsHasEntry else { return }
+        migrateIfNeeded()
         let current = try? String(contentsOf: scriptURL, encoding: .utf8)
         guard current != Self.script else { return }
         try? fm.createDirectory(at: base, withIntermediateDirectories: true)
@@ -203,12 +205,53 @@ final class ClaudeHookService {
         try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
     }
 
+    /// The event the approval hook hangs off. Earlier versions used `PreToolUse`, which fires on
+    /// every tool call, so Zera asked even in auto mode and for commands you had already allowed.
+    private static let event = "PermissionRequest"
+    private static let legacyEvent = "PreToolUse"
+
+    private func settingsJSON() -> [String: Any]? {
+        guard let data = try? Data(contentsOf: settingsURL) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    private func hasEntry(_ event: String, in json: [String: Any]?) -> Bool {
+        let list = (json?["hooks"] as? [String: Any])?[event] as? [[String: Any]] ?? []
+        return list.contains { Self.entryIsOurs($0) }
+    }
+
     private var settingsHasEntry: Bool {
-        guard let data = try? Data(contentsOf: settingsURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let hooks = json["hooks"] as? [String: Any],
-              let pre = hooks["PreToolUse"] as? [[String: Any]] else { return false }
-        return pre.contains { Self.entryIsOurs($0) }
+        let json = settingsJSON()
+        return hasEntry(Self.event, in: json) || hasEntry(Self.legacyEvent, in: json)
+    }
+
+    /// Moves an install from the old `PreToolUse` hook to `PermissionRequest`, once.
+    private func migrateIfNeeded() {
+        guard var json = settingsJSON(), hasEntry(Self.legacyEvent, in: json) else { return }
+        var hooks = json["hooks"] as? [String: Any] ?? [:]
+        Self.removeOurs(Self.legacyEvent, from: &hooks)
+        Self.addOurs(to: &hooks, script: scriptURL)
+        json["hooks"] = hooks
+        if let out = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) {
+            try? out.write(to: settingsURL, options: .atomic)
+        }
+    }
+
+    private static func removeOurs(_ event: String, from hooks: inout [String: Any]) {
+        guard var list = hooks[event] as? [[String: Any]] else { return }
+        list.removeAll { entryIsOurs($0) }
+        if list.isEmpty { hooks.removeValue(forKey: event) } else { hooks[event] = list }
+    }
+
+    /// Every tool: the hook only runs when Claude Code would show you a permission prompt anyway.
+    private static func addOurs(to hooks: inout [String: Any], script: URL) {
+        var list = hooks[event] as? [[String: Any]] ?? []
+        list.removeAll { entryIsOurs($0) }
+        list.append([
+            "matcher": "*",
+            "hooks": [["type": "command", "command": "\"\(script.path)\"", "timeout": 600]]
+        ])
+        hooks[event] = list
     }
 
     var isInstalled: Bool { fm.fileExists(atPath: scriptURL.path) && settingsHasEntry }
@@ -218,8 +261,8 @@ final class ClaudeHookService {
         return inner.contains { ($0["command"] as? String ?? "").contains("zera-hook") }
     }
 
-    /// Writes the script and registers it for Bash calls in `~/.claude/settings.json`,
-    /// leaving everything else in that file untouched.
+    /// Writes the script and registers it as the `PermissionRequest` hook in
+    /// `~/.claude/settings.json`, leaving everything else in that file untouched.
     func install() throws {
         try fm.createDirectory(at: base, withIntermediateDirectories: true)
         try Self.script.write(to: scriptURL, atomically: true, encoding: .utf8)
@@ -231,17 +274,8 @@ final class ClaudeHookService {
             json = existing
         }
         var hooks = json["hooks"] as? [String: Any] ?? [:]
-        var pre = hooks["PreToolUse"] as? [[String: Any]] ?? []
-        pre.removeAll { Self.entryIsOurs($0) }
-        pre.append([
-            "matcher": "Bash",
-            "hooks": [[
-                "type": "command",
-                "command": "\"\(scriptURL.path)\"",
-                "timeout": 600
-            ]]
-        ])
-        hooks["PreToolUse"] = pre
+        Self.removeOurs(Self.legacyEvent, from: &hooks)
+        Self.addOurs(to: &hooks, script: scriptURL)
         json["hooks"] = hooks
         try fm.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let out = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
@@ -253,10 +287,9 @@ final class ClaudeHookService {
     func uninstall() throws {
         guard let data = try? Data(contentsOf: settingsURL),
               var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-        if var hooks = json["hooks"] as? [String: Any],
-           var pre = hooks["PreToolUse"] as? [[String: Any]] {
-            pre.removeAll { Self.entryIsOurs($0) }
-            if pre.isEmpty { hooks.removeValue(forKey: "PreToolUse") } else { hooks["PreToolUse"] = pre }
+        if var hooks = json["hooks"] as? [String: Any] {
+            Self.removeOurs(Self.event, from: &hooks)
+            Self.removeOurs(Self.legacyEvent, from: &hooks)
             if hooks.isEmpty { json.removeValue(forKey: "hooks") } else { json["hooks"] = hooks }
         }
         let out = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])

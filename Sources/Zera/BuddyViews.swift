@@ -22,6 +22,10 @@ final class BuddyView: NSView {
     var hangInset: CGFloat = 0 {
         didSet { zera.hangInset = hangInset }
     }
+    /// Empty room under her feet (bounces, the ripple); not part of her body.
+    var bottomPad: CGFloat = 0 {
+        didSet { zera.bottomPad = bottomPad; needsLayout = true }
+    }
 
     /// Soft rings that grow out from her like a radar ping — one per tap, repeating on hover.
     private let radar = CALayer()
@@ -44,11 +48,13 @@ final class BuddyView: NSView {
 
     deinit { radarTimer?.invalidate() }
 
-    /// One ring: starts just around her body, grows to ~2.6× and fades out.
+    /// One ring: starts just around her body, grows and fades out.
     func ping(strong: Bool = false) {
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         let f = figureBounds
-        let center = CGPoint(x: f.midX, y: f.minY + f.height * 0.45)
+        // Around her body, which hangs beside the rope in the Claude pose.
+        let bodyX = f.midX + (zera.activity == .none ? 0 : zera.claudeBodyOffset)
+        let center = CGPoint(x: bodyX, y: f.minY + f.height * 0.45)
         let r0: CGFloat = 18
         let ring = CAShapeLayer()
         ring.path = CGPath(ellipseIn: CGRect(x: -r0, y: -r0, width: r0 * 2, height: r0 * 2), transform: nil)
@@ -71,14 +77,10 @@ final class BuddyView: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + group.duration) { ring.removeFromSuperlayer() }
     }
 
-    /// Hovering: a gentle repeating ping while the pointer stays on her.
+    /// Hovering: one gentle ping when the pointer arrives on her (not a constant ripple).
     func setRadar(active: Bool) {
         radarTimer?.invalidate(); radarTimer = nil
-        guard active else { return }
-        ping()
-        radarTimer = Timer.scheduledTimer(withTimeInterval: 1.4, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.ping() }
-        }
+        if active { ping() }
     }
 
     override var isFlipped: Bool { false }
@@ -92,7 +94,7 @@ final class BuddyView: NSView {
 
     /// Her body, in view coordinates: the strip below the notch, as wide as she is.
     var figureBounds: NSRect {
-        NSRect(x: bounds.midX - 32, y: 0, width: 64, height: max(0, bounds.height - hangInset))
+        NSRect(x: bounds.midX - 32, y: bottomPad, width: 64, height: max(0, bounds.height - hangInset - bottomPad))
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -228,86 +230,3 @@ enum CardKind: Int, CaseIterable {
     }
 }
 
-/// Small pill of round buttons that fades in beside her on hover.
-final class ActionPill: NSView {
-    var onPick: ((CardKind) -> Void)?
-    var defaultKind: CardKind = .shelf { didSet { needsDisplay = true } }
-    /// The card that is open right now; it, not the default, wears the highlight while up.
-    var activeKind: CardKind? { didSet { if activeKind != oldValue { needsDisplay = true } } }
-    /// Red dot on a button (e.g. unseen GitHub activity).
-    var badges: Set<CardKind> = [] { didSet { needsDisplay = true } }
-    let kinds: [CardKind] = [.shelf, .home, .claude, .reminders, .github, .settings]
-
-    static let buttonSize: CGFloat = 28
-    static let gap: CGFloat = 4
-    static let inset: CGFloat = 4
-
-    static var preferredSize: NSSize {
-        let n = CGFloat(6)
-        return NSSize(width: inset * 2 + n * buttonSize + (n - 1) * gap, height: inset * 2 + buttonSize)
-    }
-
-    private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
-
-    override var isFlipped: Bool { false }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    private func slot(_ i: Int) -> NSRect {
-        NSRect(x: Self.inset + CGFloat(i) * (Self.buttonSize + Self.gap), y: Self.inset,
-               width: Self.buttonSize, height: Self.buttonSize)
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways],
-                                       owner: self, userInfo: nil))
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        hoverIndex = kinds.indices.first { NSPointInRect(p, slot($0)) }
-    }
-
-    override func mouseExited(with event: NSEvent) { hoverIndex = nil }
-
-    override func mouseDown(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        if let i = kinds.indices.first(where: { NSPointInRect(p, slot($0)) }) { onPick?(kinds[i]) }
-    }
-
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let pill = NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2)
-        Theme.pillFill.setFill()
-        pill.fill()
-        NSColor.white.withAlphaComponent(0.14).setStroke()
-        pill.lineWidth = 1
-        pill.stroke()
-
-        // Highlight the open card; with nothing open, the one a tap on her would open.
-        let lit: CardKind = activeKind ?? defaultKind
-        for (i, kind) in kinds.enumerated() {
-            let r = slot(i)
-            let isDefault = kind == lit
-            let hot = hoverIndex == i
-            if isDefault || hot {
-                (isDefault ? Theme.purple.withAlphaComponent(hot ? 0.95 : 0.8) : NSColor.white.withAlphaComponent(0.14)).setFill()
-                NSBezierPath(ovalIn: r).fill()
-            }
-            let tint = isDefault ? NSColor.white : NSColor.white.withAlphaComponent(hot ? 0.95 : 0.75)
-            if let img = NSImage(systemSymbolName: kind.symbol, accessibilityDescription: kind.title)?
-                .withSymbolConfiguration(.init(pointSize: 12.5, weight: .semibold))?
-                .withSymbolConfiguration(.init(hierarchicalColor: tint)) {
-                let s = img.size
-                img.draw(in: NSRect(x: r.midX - s.width / 2, y: r.midY - s.height / 2, width: s.width, height: s.height),
-                         from: .zero, operation: .sourceOver, fraction: 1)
-            }
-            if badges.contains(kind) {
-                NSColor(srgbRed: 1.0, green: 0.35, blue: 0.42, alpha: 1).setFill()
-                NSBezierPath(ovalIn: NSRect(x: r.maxX - 8, y: r.maxY - 8, width: 7, height: 7)).fill()
-            }
-        }
-    }
-}

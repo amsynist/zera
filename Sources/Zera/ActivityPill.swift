@@ -1,17 +1,18 @@
 import AppKit
 
-/// Claude Code's live readout as two glass wings hanging off Zera on either side of her rope:
+/// Claude Code's live readout as two dark glass wings hanging off Zera on either side of her rope:
 ///
-///   ( ◯ Claude is working…       (📄) )~~ Zera ~~( Running · 62%  ━━━━━━──   ılıl  (⌄) )
-///   ( ◯ Claude is ready          (📄) )~~ Zera ~~( (>_) git commit -m "…"  [✕ Reject] [✓ Approve] (⌄) )
+///   ( ◯ Claude is working…       (📄) )~~ Zera ~~( Running · 62%           4:12   ●  (⌄) )
+///   ( ◯ Claude is ready          (📄) )~~ Zera ~~( (>_) git commit -m "Update…  [✕ Reject] [✓ Approve]  ●  (⌄) )
 ///
 /// Left wing — what Claude is doing: a gradient ring (spinning while it works), the headline,
-/// the current step and a files button. Right wing — what it means for you: progress while it
-/// runs, or the command waiting on you with Reject / Approve right there.
+/// the current step and a files button. Right wing — what it means for you: progress, session
+/// time and the status orb while it runs, or the command waiting on you (up to two lines of it)
+/// with Reject / Approve right there. The right wing springs wider to fit the command.
 ///
 /// One transparent panel spans both wings. The gap in the middle is where she hangs (her window
-/// sits above this one) and each wing tapers into a tendril that reaches into her. Light and dark
-/// follow the app palette.
+/// sits above this one) and each wing tapers into a tendril that reaches into her. The wings
+/// keep their navy-black look in light and dark mode.
 final class LiveActivityView: NSView {
     enum Mode: Equatable { case idle, running, approval, attention, done }
 
@@ -22,7 +23,8 @@ final class LiveActivityView: NSView {
     /// Approve (true) / Reject (false) on the right wing.
     var onDecide: ((HookRequest, Bool) -> Void)?
 
-    static let panelSize = NSSize(width: 1280, height: 88)
+    /// The widest the panel gets; the controller narrows it to the screen.
+    static let panelSize = NSSize(width: 1520, height: 92)
 
     /// Where she hangs, in this view's coordinates. The controller sets it after placing the panel.
     var centerX: CGFloat = LiveActivityView.panelSize.width / 2 { didSet { needsLayout = true; needsDisplay = true } }
@@ -30,19 +32,21 @@ final class LiveActivityView: NSView {
     private(set) var request: HookRequest?
 
     /// Wide enough for the command and both buttons; otherwise the approval card takes over.
-    var canShowApproval: Bool { rightBody.width >= M.approvalMin }
+    var canShowApproval: Bool { room(for: M.rightAsk) >= M.approvalMin }
 
     private enum M {
         static let wingH: CGFloat = 60
-        static let tail: CGFloat = 64          // body end → her centre
-        static let tip: CGFloat = 12           // the tendril ends this far from her centre (behind her)
+        static let tail: CGFloat = 70          // body end → her centre
+        static let tip: CGFloat = 14           // the tendril ends this far from her centre (behind her)
         static let droop: CGFloat = 6          // tendrils meet her a little below the wings' centre line
-        static let edge: CGFloat = 14          // outer margin, room for the glow
-        static let leftMax: CGFloat = 420
-        static let rightMax: CGFloat = 560
+        static let edge: CGFloat = 18          // outer margin, room for the glow
+        static let leftMax: CGFloat = 390
+        static let rightRun: CGFloat = 430     // right wing while Claude works
+        static let rightAsk: CGFloat = 760     // right wing with a command, Reject and Approve
         static let minWing: CGFloat = 220
-        static let approvalMin: CGFloat = 470
+        static let approvalMin: CGFloat = 520
         static let button: CGFloat = 44        // round buttons, glow included
+        static let orb: CGFloat = 34
     }
 
     // Left wing.
@@ -53,13 +57,18 @@ final class LiveActivityView: NSView {
 
     // Right wing.
     private let status = LiveActivityView.label()
+    private let clock = LiveActivityView.label()
     private let bar = GlowProgressBar()
-    private let wave = Waveform()
+    private let orb = OrbView()
     private let prompt = BoxGlyph()
     private let command = LiveActivityView.label()
     private let reject = GlowPillButton(title: "Reject", symbol: "xmark", tint: .red)
     private let approve = GlowPillButton(title: "Approve", symbol: "checkmark", tint: .green)
     private let chevron = GlowIconButton(symbol: "chevron.down")
+
+    /// A soft glow behind her in the state's colour. It lives here rather than in her window so
+    /// her window's shadow never traces it.
+    private let glow = CAGradientLayer()
 
     private var leftBody = NSRect.zero
     private var rightBody = NSRect.zero
@@ -68,6 +77,13 @@ final class LiveActivityView: NSView {
     private var leftTail = NSBezierPath()
     private var rightTail = NSBezierPath()
 
+    /// The right wing's width springs between `rightRun` and `rightAsk`.
+    private var rightW: CGFloat = M.rightRun
+    private var rightV: CGFloat = 0
+    private var rightTarget: CGFloat = M.rightRun
+    private var springTimer: Timer?
+    private var lastSpringAt: CFTimeInterval = 0
+
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -75,18 +91,36 @@ final class LiveActivityView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         layer?.masksToBounds = false
-        [ring, leftTitle, leftSub, files, status, bar, wave, prompt, command, reject, approve, chevron].forEach { addSubview($0) }
+        [ring, leftTitle, leftSub, files, status, clock, bar, orb, prompt, command, reject, approve, chevron].forEach { addSubview($0) }
         files.onTap = { [weak self] in self?.onTap?() }
         files.setAccessibilityLabel("Open the session's files")
         chevron.onTap = { [weak self] in self?.onTap?() }
         chevron.setAccessibilityLabel("Open the session")
         reject.onTap = { [weak self] in self?.decide(false) }
         approve.onTap = { [weak self] in self?.decide(true) }
+        clock.alignment = .right
+        // The command gets two lines, broken anywhere, so long shell lines stay readable.
+        command.maximumNumberOfLines = 2
+        command.lineBreakMode = .byCharWrapping
+        command.cell?.truncatesLastVisibleLine = true
+        glow.type = .radial
+        glow.startPoint = CGPoint(x: 0.5, y: 0.5)
+        glow.endPoint = CGPoint(x: 1, y: 1)
+        layer?.addSublayer(glow)
+        if !Motion.reduced {
+            let a = CABasicAnimation(keyPath: "opacity")
+            a.fromValue = 0.55; a.toValue = 1; a.duration = 1.3
+            a.autoreverses = true; a.repeatCount = .infinity
+            a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            glow.add(a, forKey: "pulse")
+        }
         setAccessibilityRole(.group)
         restyle()
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    deinit { springTimer?.invalidate() }
 
     private static func label() -> NSTextField {
         let l = NSTextField(labelWithString: "")
@@ -101,11 +135,11 @@ final class LiveActivityView: NSView {
         onDecide?(r, allow)
     }
 
-    /// Light ↔ dark: recolour everything.
+    /// Light ↔ dark: the wings keep their own look, but redraw so system colours settle.
     func themeChanged() {
         restyle()
-        [ring, files, bar, wave, prompt, reject, approve, chevron].forEach { $0.needsDisplay = true }
-        ring.refresh(); wave.refresh(); bar.refresh()
+        [ring, files, bar, orb, prompt, reject, approve, chevron].forEach { $0.needsDisplay = true }
+        ring.refresh(); bar.refresh()
         needsDisplay = true
     }
 
@@ -114,8 +148,10 @@ final class LiveActivityView: NSView {
         leftTitle.textColor = Neon.text
         leftSub.font = NSFont.systemFont(ofSize: 12.5, weight: .regular)
         leftSub.textColor = Neon.textDim
-        command.font = NSFont.systemFont(ofSize: 14, weight: .medium)
+        command.font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .medium)
         command.textColor = Neon.text
+        clock.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        clock.textColor = Neon.textDim
     }
 
     // MARK: - Content
@@ -133,6 +169,7 @@ final class LiveActivityView: NSView {
             case .idle, .ended: newMode = .idle
             }
         } else { newMode = .idle }
+        let wasAsking = mode == .approval
         let modeChanged = newMode != mode
         mode = newMode
 
@@ -152,7 +189,7 @@ final class LiveActivityView: NSView {
             let step: String? = current.map { $0.finished || $0.progressLine.isEmpty ? $0.text : "\($0.text)…" }
             set(leftSub, step ?? (task.isEmpty ? "Thinking…" : task))
         case .approval:
-            ring.set(.idle)
+            ring.set(.breathing)
             set(leftTitle, "Claude is ready")
             set(leftSub, pending?.detail.map { ClaudeActivityService.oneLine($0, max: 60) }
                 ?? (task.isEmpty ? "Waiting on your OK to continue" : task))
@@ -166,52 +203,68 @@ final class LiveActivityView: NSView {
             set(leftSub, task.isEmpty ? "All finished" : task)
         }
 
-        // Right wing: a status line + bar, or the command with its two buttons.
+        // Right wing: status line, time and bar — or the command with its two buttons.
+        // The orb and chevron stay in both.
         let asking = mode == .approval
-        [status, bar, wave].forEach { $0.isHidden = asking }
-        [prompt, command, reject, approve].forEach { $0.isHidden = !asking }
+        let runGroup: [NSView] = [status, clock, bar]
+        let askGroup: [NSView] = [prompt, command, reject, approve]
+        runGroup.forEach { $0.isHidden = asking }
+        askGroup.forEach { $0.isHidden = !asking }
+        if asking != wasAsking { fadeIn(asking ? askGroup : runGroup) }
+
         let p = s?.progress ?? 0
+        let real = s?.hasRealProgress ?? false
+        set(clock, mode == .idle ? "" : (elapsed ?? ""))
         switch mode {
         case .idle:
             status.attributedStringValue = Self.statusLine("Ready", detail: "waiting for your next request")
             bar.set(progress: 0, tint: .accent)
-            wave.set(.resting)
+            orb.set(.working)
         case .running:
-            // The percentage is only real when Claude keeps a plan; otherwise show the time.
-            let real = s?.hasRealProgress ?? false
-            status.attributedStringValue = Self.statusLine("Running", detail: real ? "\(Int((p * 100).rounded()))%" : (elapsed ?? "…"),
-                                                       strong: true)
-            bar.set(progress: p, tint: .accent)
-            wave.set(.live)
+            // The percentage is only real when Claude keeps a plan; otherwise the bar sweeps.
+            status.attributedStringValue = Self.statusLine("Running", detail: real ? "\(Int((p * 100).rounded(.down)))%" : nil, strong: true)
+            bar.set(progress: real ? p : 0, tint: .accent, indeterminate: !real)
+            orb.set(.working)
         case .approval:
-            set(command, ClaudeActivityService.oneLine(pending?.command ?? "", max: 80))
+            set(command, ClaudeActivityService.oneLine(pending?.command ?? "", max: 240))
             command.toolTip = pending?.command
+            orb.set(.waiting)
         case .attention:
             status.attributedStringValue = Self.statusLine("Waiting", detail: "reply in \(s?.folderName ?? "the terminal")", warn: true)
             bar.set(progress: p, tint: .warning)
-            wave.set(.resting)
+            orb.set(.waiting)
         case .done:
-            status.attributedStringValue = Self.statusLine("Done", detail: elapsed ?? "100%", strong: true, good: true)
+            status.attributedStringValue = Self.statusLine("Done", detail: "100%", strong: true, good: true)
             bar.set(progress: 1, tint: .success)
-            wave.set(.done)
+            orb.set(.done)
         }
 
         setAccessibilityLabel(asking
             ? "Claude needs your approval: \(command.stringValue)"
-            : "\(leftTitle.stringValue), \(leftSub.stringValue). \(status.stringValue)")
+            : "\(leftTitle.stringValue), \(leftSub.stringValue). \(status.stringValue) \(clock.stringValue)")
+        let tint: NSColor
+        switch mode {
+        case .approval: tint = Neon.cyan.withAlphaComponent(0.5)
+        case .attention: tint = Neon.warning.withAlphaComponent(0.4)
+        case .done: tint = Neon.green.withAlphaComponent(0.42)
+        case .idle, .running: tint = NSColor(srgbRed: 0.43, green: 0.43, blue: 1, alpha: 0.42)
+        }
+        glow.colors = [tint.cgColor, tint.withAlphaComponent(0).cgColor]
+        springRight(to: asking ? M.rightAsk : M.rightRun)
         needsLayout = true
         if modeChanged { needsDisplay = true }
     }
 
-    /// "Running · 62%" — the word in the quiet colour, the detail in the accent.
-    private static func statusLine(_ word: String, detail: String, strong: Bool = false, warn: Bool = false, good: Bool = false) -> NSAttributedString {
-        let s = NSMutableAttributedString(string: word, attributes: [
-            .font: NSFont.systemFont(ofSize: 15.5, weight: .medium), .foregroundColor: Neon.textDim])
+    /// "Running · 62%" — the word in the main colour, the detail in the accent.
+    private static func statusLine(_ word: String, detail: String?, strong: Bool = false, warn: Bool = false, good: Bool = false) -> NSAttributedString {
         let tint = warn ? Neon.warning : (good ? Neon.green : Neon.accent)
+        let s = NSMutableAttributedString(string: word, attributes: [
+            .font: NSFont.systemFont(ofSize: 15.5, weight: .medium), .foregroundColor: Neon.text.withAlphaComponent(0.86)])
+        guard let detail = detail else { return s }
         s.append(NSAttributedString(string: "  ·  ", attributes: [
-            .font: NSFont.systemFont(ofSize: 15.5, weight: .bold), .foregroundColor: tint]))
+            .font: NSFont.systemFont(ofSize: 15.5, weight: .bold), .foregroundColor: Neon.textDim]))
         s.append(NSAttributedString(string: detail, attributes: [
-            .font: NSFont.systemFont(ofSize: 15.5, weight: strong ? .semibold : .regular),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 15.5, weight: strong ? .semibold : .regular),
             .foregroundColor: strong ? tint : Neon.textDim]))
         return s
     }
@@ -226,11 +279,58 @@ final class LiveActivityView: NSView {
         label.stringValue = text
     }
 
+    /// The incoming half of the right wing fades in once the wing has started to resize.
+    private func fadeIn(_ views: [NSView]) {
+        guard !Motion.reduced else { return }
+        for v in views {
+            v.wantsLayer = true
+            let a = CABasicAnimation(keyPath: "opacity")
+            a.fromValue = 0; a.toValue = 1
+            a.beginTime = CACurrentMediaTime() + 0.16
+            a.duration = 0.22
+            a.fillMode = .backwards
+            v.layer?.add(a, forKey: "fadeIn")
+        }
+    }
+
+    // MARK: - Right wing spring
+
+    private func springRight(to target: CGFloat) {
+        guard target != rightTarget else { return }
+        rightTarget = target
+        if Motion.reduced || window == nil { rightW = target; rightV = 0; needsLayout = true; needsDisplay = true; return }
+        guard springTimer == nil else { return }
+        lastSpringAt = CACurrentMediaTime()
+        let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.stepSpring() }
+        RunLoop.main.add(t, forMode: .common)
+        springTimer = t
+    }
+
+    private func stepSpring() {
+        let now = CACurrentMediaTime()
+        let dt = CGFloat(min(0.05, now - lastSpringAt))
+        lastSpringAt = now
+        let force = (rightTarget - rightW) * 170 - rightV * 20
+        rightV += force * dt
+        rightW += rightV * dt
+        if abs(rightTarget - rightW) < 0.3, abs(rightV) < 0.3 {
+            rightW = rightTarget; rightV = 0
+            springTimer?.invalidate(); springTimer = nil
+        }
+        needsLayout = true
+        needsDisplay = true
+    }
+
+    /// How wide the right wing can be at `width`, after clamping to the panel edge.
+    private func room(for width: CGFloat) -> CGFloat {
+        let rx0 = centerX + M.tail
+        return max(0, min(bounds.width - M.edge, rx0 + width) - rx0)
+    }
+
     // MARK: - Layout
 
     override func layout() {
         super.layout()
-        let w = bounds.width
         let y = ((bounds.height - M.wingH) / 2).rounded()
         let mid = y + M.wingH / 2
         let tipY = mid + M.droop
@@ -238,12 +338,14 @@ final class LiveActivityView: NSView {
         let lx1 = centerX - M.tail
         let lx0 = max(M.edge, lx1 - M.leftMax)
         leftBody = NSRect(x: lx0, y: y, width: max(0, lx1 - lx0), height: M.wingH)
-        let rx0 = centerX + M.tail
-        let rx1 = min(w - M.edge, rx0 + M.rightMax)
-        rightBody = NSRect(x: rx0, y: y, width: max(0, rx1 - rx0), height: M.wingH)
+        rightBody = NSRect(x: centerX + M.tail, y: y, width: room(for: rightW), height: M.wingH)
 
         (leftPath, leftTail) = Self.wing(body: leftBody, inward: 1, tip: NSPoint(x: centerX - M.tip, y: tipY))
         (rightPath, rightTail) = Self.wing(body: rightBody, inward: -1, tip: NSPoint(x: centerX + M.tip, y: tipY))
+
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        glow.frame = CGRect(x: centerX - 60, y: mid - 56, width: 120, height: 120)
+        CATransaction.commit()
 
         layoutLeft(mid: mid)
         layoutRight(mid: mid)
@@ -255,9 +357,9 @@ final class LiveActivityView: NSView {
         let show = b.width >= M.minWing
         [ring, leftTitle, leftSub, files].forEach { $0.isHidden = !show }
         guard show else { return }
-        ring.frame = NSRect(x: b.minX + 14, y: mid - 22, width: 44, height: 44)
-        files.frame = NSRect(x: b.maxX - 2 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
-        let textX = ring.frame.maxX + 14
+        ring.frame = NSRect(x: b.minX + 10, y: mid - 22, width: 44, height: 44)
+        files.frame = NSRect(x: b.maxX - 4 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
+        let textX = ring.frame.maxX + 12
         let textW = max(0, files.frame.minX - 10 - textX)
         leftTitle.frame = NSRect(x: textX, y: mid - 21, width: textW, height: 21)
         leftSub.frame = NSRect(x: textX, y: mid + 2, width: textW, height: 18)
@@ -266,22 +368,29 @@ final class LiveActivityView: NSView {
     private func layoutRight(mid: CGFloat) {
         let b = rightBody
         let show = b.width >= M.minWing
-        if !show { [status, bar, wave, prompt, command, reject, approve, chevron].forEach { $0.isHidden = true }; return }
+        let all: [NSView] = [status, clock, bar, orb, prompt, command, reject, approve, chevron]
+        if !show { all.forEach { $0.isHidden = true }; return }
         chevron.isHidden = false
-        chevron.frame = NSRect(x: b.maxX - 10 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
+        orb.isHidden = false
+        chevron.frame = NSRect(x: b.maxX - 8 - M.button, y: mid - M.button / 2, width: M.button, height: M.button)
+        orb.frame = NSRect(x: chevron.frame.minX - 4 - M.orb, y: mid - M.orb / 2, width: M.orb, height: M.orb)
         if mode == .approval {
             let aw = approve.fittedWidth, rw = reject.fittedWidth
-            approve.frame = NSRect(x: chevron.frame.minX - 6 - aw, y: mid - 22, width: aw, height: 44)
-            reject.frame = NSRect(x: approve.frame.minX - 6 - rw, y: mid - 22, width: rw, height: 44)
-            prompt.frame = NSRect(x: b.minX + 14, y: mid - 22, width: 44, height: 44)
-            let cx = prompt.frame.maxX + 12
-            command.frame = NSRect(x: cx, y: mid - 10, width: max(0, reject.frame.minX - 10 - cx), height: 20)
+            approve.frame = NSRect(x: orb.frame.minX - 6 - aw, y: mid - 22, width: aw, height: 44)
+            reject.frame = NSRect(x: approve.frame.minX - 2 - rw, y: mid - 22, width: rw, height: 44)
+            prompt.frame = NSRect(x: b.minX + 26, y: mid - 22, width: 44, height: 44)
+            let cx = prompt.frame.maxX + 8
+            let cw = max(0, reject.frame.minX - 8 - cx)
+            // One line when it fits, two when it is long; centred on the wing either way.
+            let lines = command.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: cw, height: 100)).height ?? 17
+            let ch = min(36, max(17, ceil(lines)))
+            command.frame = NSRect(x: cx, y: (mid - ch / 2).rounded(), width: cw, height: ch)
         } else {
-            wave.frame = NSRect(x: chevron.frame.minX - 18 - 40, y: mid - 14, width: 40, height: 28)
-            let sx = b.minX + 26
-            let sw = max(0, wave.frame.minX - 24 - sx)
-            status.frame = NSRect(x: sx, y: mid - 22, width: sw, height: 21)
-            bar.frame = NSRect(x: sx, y: mid + 7, width: min(sw, 340), height: 8)
+            let sx = b.minX + 36
+            let sw = max(0, orb.frame.minX - 14 - sx)
+            clock.frame = NSRect(x: sx + sw - 56, y: mid - 19, width: 56, height: 17)
+            status.frame = NSRect(x: sx, y: mid - 22, width: max(0, sw - 60), height: 21)
+            bar.frame = NSRect(x: sx, y: mid + 8, width: sw, height: 6)
         }
     }
 
@@ -295,13 +404,14 @@ final class LiveActivityView: NSView {
         let inner = d > 0 ? b.maxX : b.minX
         let cap = outer + d * r
         let top = b.minY, bottom = b.maxY
-        let cpOut: CGFloat = 30, cpIn: CGFloat = 32
+        let cpOut: CGFloat = 30, cpIn: CGFloat = 26
 
         path.move(to: NSPoint(x: cap, y: top))
         path.line(to: NSPoint(x: inner, y: top))
-        path.curve(to: tip, controlPoint1: NSPoint(x: inner + d * cpOut, y: top),
-                   controlPoint2: NSPoint(x: tip.x - d * cpIn, y: tip.y - 1.5))
-        path.curve(to: NSPoint(x: inner, y: bottom), controlPoint1: NSPoint(x: tip.x - d * cpIn, y: tip.y + 1.5),
+        path.curve(to: NSPoint(x: tip.x, y: tip.y - 1.2), controlPoint1: NSPoint(x: inner + d * cpOut, y: top),
+                   controlPoint2: NSPoint(x: tip.x - d * cpIn, y: tip.y - 4))
+        path.line(to: NSPoint(x: tip.x, y: tip.y + 1.2))
+        path.curve(to: NSPoint(x: inner, y: bottom), controlPoint1: NSPoint(x: tip.x - d * cpIn, y: tip.y + 4),
                    controlPoint2: NSPoint(x: inner + d * cpOut, y: bottom))
         path.line(to: NSPoint(x: cap, y: bottom))
         // Round outer end: bottom (90°) → top (270°) through the outer side.
@@ -311,9 +421,10 @@ final class LiveActivityView: NSView {
         // The tendril: the two curves that sweep into her.
         tail.move(to: NSPoint(x: inner - d * 24, y: top))
         tail.line(to: NSPoint(x: inner, y: top))
-        tail.curve(to: tip, controlPoint1: NSPoint(x: inner + d * cpOut, y: top),
-                   controlPoint2: NSPoint(x: tip.x - d * cpIn, y: tip.y - 1.5))
-        tail.curve(to: NSPoint(x: inner, y: bottom), controlPoint1: NSPoint(x: tip.x - d * cpIn, y: tip.y + 1.5),
+        tail.curve(to: NSPoint(x: tip.x, y: tip.y - 1.2), controlPoint1: NSPoint(x: inner + d * cpOut, y: top),
+                   controlPoint2: NSPoint(x: tip.x - d * cpIn, y: tip.y - 4))
+        tail.line(to: NSPoint(x: tip.x, y: tip.y + 1.2))
+        tail.curve(to: NSPoint(x: inner, y: bottom), controlPoint1: NSPoint(x: tip.x - d * cpIn, y: tip.y + 4),
                    controlPoint2: NSPoint(x: inner + d * cpOut, y: bottom))
         tail.line(to: NSPoint(x: inner - d * 24, y: bottom))
         return (path, tail)
@@ -327,22 +438,24 @@ final class LiveActivityView: NSView {
     }
 
     private func drawWing(_ path: NSBezierPath, tail: NSBezierPath, body: NSRect, inward d: CGFloat) {
-        // Glass body with a soft halo.
-        Neon.glowing(Neon.halo, blur: 16) { Neon.fillBottom.setFill(); path.fill() }
+        // Navy-black glass with a wide blue halo.
+        Neon.glowing(Neon.halo, blur: 18) { Neon.fillBottom.setFill(); path.fill() }
         NSGradient(starting: Neon.fillTop, ending: Neon.fillBottom)?.draw(in: path, angle: -90)
 
-        // Hairline edge.
-        Neon.edge.setStroke()
-        path.lineWidth = 1.2
-        path.stroke()
+        // Hairline edge with a soft glow of its own.
+        Neon.glowing(Neon.edge.withAlphaComponent(0.6), blur: 5) {
+            Neon.edge.setStroke()
+            path.lineWidth = 1.3
+            path.stroke()
+        }
 
         // The tendril glows cyan → violet as it reaches her.
         guard let ctx = NSGraphicsContext.current?.cgContext,
-              let gradient = NSGradient(colors: [Neon.cyan.withAlphaComponent(0.1), Neon.cyan, Neon.violet]) else { return }
+              let gradient = NSGradient(colors: [Neon.edge, Neon.cyan, Neon.violet]) else { return }
         let from = d > 0 ? body.maxX - 28 : body.minX + 28
         let to = centerX - d * M.tip
         let cg = tail.cgPathCompat
-        let passes: [(width: CGFloat, blur: CGFloat, alpha: CGFloat)] = [(5, 8, 0.45), (1.6, 0, 1)]
+        let passes: [(width: CGFloat, alpha: CGFloat)] = [(6, 0.35), (3, 0.5), (1.5, 1)]
         for pass in passes {
             ctx.saveGState()
             ctx.addPath(cg)
@@ -406,31 +519,30 @@ private extension NSBezierPath {
 
 // MARK: - Look
 
-/// The wings' colours: frosted white glass with a lavender glow in light mode, deep navy glass
-/// with blue neon in dark mode — read live from the app palette.
+/// The wings' colours: deep navy-black glass with blue neon. They keep this look in light and
+/// dark mode — they sit on the desktop under the notch, where a dark wing reads best.
 enum Neon {
-    private static var dark: Bool { Pal.isDark }
     private static func c(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> NSColor {
         NSColor(srgbRed: r, green: g, blue: b, alpha: a)
     }
 
-    static var fillTop: NSColor { dark ? c(0.055, 0.085, 0.215, 0.96) : c(1.0, 1.0, 1.0, 0.95) }
-    static var fillBottom: NSColor { dark ? c(0.025, 0.040, 0.125, 0.96) : c(0.940, 0.948, 1.0, 0.95) }
-    static var edge: NSColor { dark ? c(0.33, 0.50, 1.0, 0.70) : c(0.62, 0.70, 1.0, 0.55) }
-    static var halo: NSColor { dark ? c(0.22, 0.36, 1.0, 0.55) : c(0.55, 0.62, 1.0, 0.30) }
-    static var cyan: NSColor { dark ? c(0.30, 0.74, 1.0) : c(0.36, 0.72, 1.0) }
-    static var violet: NSColor { c(0.58, 0.40, 1.0) }
-    static var accent: NSColor { dark ? c(0.38, 0.72, 1.0) : c(0.16, 0.52, 0.98) }
-    static var text: NSColor { dark ? c(0.96, 0.97, 1.0) : c(0.07, 0.09, 0.20) }
-    static var textDim: NSColor { dark ? c(0.72, 0.76, 0.92) : c(0.34, 0.38, 0.52) }
-    static var glyph: NSColor { dark ? c(0.62, 0.72, 1.0) : c(0.30, 0.42, 0.85) }
-    static var chip: NSColor { dark ? c(0.075, 0.105, 0.260) : c(0.945, 0.950, 1.0) }
-    static var chipHover: NSColor { dark ? c(0.105, 0.155, 0.360) : c(0.900, 0.915, 1.0) }
-    static var chipEdge: NSColor { dark ? c(0.33, 0.50, 1.0, 0.45) : c(0.62, 0.70, 1.0, 0.55) }
-    static var track: NSColor { dark ? c(0.16, 0.20, 0.36) : c(0.86, 0.88, 0.96) }
-    static var red: NSColor { dark ? c(1.0, 0.32, 0.42) : c(0.93, 0.22, 0.34) }
-    static var green: NSColor { dark ? c(0.22, 0.90, 0.68) : c(0.08, 0.70, 0.52) }
-    static var warning: NSColor { c(1.0, 0.70, 0.25) }
+    static let fillTop = c(0.039, 0.071, 0.173, 0.97)
+    static let fillBottom = c(0.016, 0.031, 0.071, 0.97)
+    static let edge = c(0.33, 0.50, 1.0, 0.75)
+    static let halo = c(0.19, 0.34, 1.0, 0.60)
+    static let cyan = c(0.30, 0.74, 1.0)
+    static let violet = c(0.58, 0.40, 1.0)
+    static let accent = c(0.38, 0.72, 1.0)
+    static let text = c(0.953, 0.961, 1.0)
+    static let textDim = c(0.545, 0.588, 0.776)
+    static let glyph = c(0.62, 0.71, 1.0)
+    static let chip = c(0.035, 0.067, 0.157)
+    static let chipHover = c(0.063, 0.106, 0.271)
+    static let chipEdge = c(0.33, 0.50, 1.0, 0.42)
+    static let track = c(0.071, 0.102, 0.212)
+    static let red = c(1.0, 0.33, 0.41)
+    static let green = c(0.21, 0.89, 0.67)
+    static let warning = c(1.0, 0.70, 0.25)
 
     /// Draws an SF Symbol centred in `rect`.
     static func symbol(_ name: String, in rect: NSRect, size: CGFloat, weight: NSFont.Weight = .semibold, color: NSColor) {
@@ -468,9 +580,10 @@ enum Neon {
 // MARK: - Pieces
 
 /// The ring at the start of the left wing: a thick cyan → violet arc, spinning while Claude
-/// works, pulsing amber while it waits on you, a full green ring when done.
+/// works, still and breathing its glow while a command waits on you, pulsing amber while Claude
+/// waits for a reply, a full green ring when done.
 final class RingGlyph: NSView {
-    enum Style { case idle, spinning, waiting, done }
+    enum Style { case idle, spinning, breathing, waiting, done }
     private let track = CAShapeLayer()
     private let spinner = CALayer()           // rotates; holds the gradient masked to the arc
     private let gradient = CAGradientLayer()
@@ -508,11 +621,11 @@ final class RingGlyph: NSView {
         refresh()
     }
 
-    /// Colours and motion for the current style and theme.
+    /// Colours and motion for the current style.
     func refresh() {
         let colors: [NSColor]
         switch style {
-        case .idle, .spinning: colors = [Neon.violet, Neon.cyan, Neon.accent, Neon.violet]
+        case .idle, .spinning, .breathing: colors = [Neon.violet, Neon.cyan, Neon.accent, Neon.violet]
         case .waiting: colors = [Neon.warning, Neon.warning.withAlphaComponent(0.6), Neon.warning]
         case .done: colors = [Neon.green, Neon.green]
         }
@@ -522,15 +635,23 @@ final class RingGlyph: NSView {
         arc.strokeEnd = style == .done ? 1 : 0.78
         spinner.removeAllAnimations()
         guard !Motion.reduced else { return }
-        if style == .spinning {
+        switch style {
+        case .spinning:
             let a = CABasicAnimation(keyPath: "transform.rotation.z")
             a.fromValue = 0; a.toValue = -2 * Double.pi
             a.duration = 1.2; a.repeatCount = .infinity
             spinner.add(a, forKey: "spin")
-        } else if style == .waiting {
+        case .breathing:
+            let a = CABasicAnimation(keyPath: "shadowRadius")
+            a.fromValue = 3; a.toValue = 10; a.duration = 1.0
+            a.autoreverses = true; a.repeatCount = .infinity
+            a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            spinner.add(a, forKey: "breathe")
+        case .waiting:
             let a = CABasicAnimation(keyPath: "opacity")
             a.fromValue = 1; a.toValue = 0.45; a.duration = 0.8; a.autoreverses = true; a.repeatCount = .infinity
             spinner.add(a, forKey: "pulse")
+        case .idle, .done: break
         }
     }
 
@@ -547,12 +668,16 @@ final class RingGlyph: NSView {
     }
 }
 
-/// Thin rounded progress bar: cyan → violet fill with a soft glow over a quiet track.
+/// Thin rounded progress bar: cyan → violet fill with a soft glow and a light sweeping across it.
+/// Without a real percentage it runs indeterminate: a short segment gliding along the track.
 final class GlowProgressBar: NSView {
     enum Tint { case accent, warning, success }
     private let fill = CAGradientLayer()
+    private let sheenClip = CALayer()         // the fill's shape, clipping the sheen
+    private let sheen = CAGradientLayer()
     private var progress: CGFloat = 0
     private var tint: Tint = .accent
+    private var indeterminate = false
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
@@ -561,22 +686,31 @@ final class GlowProgressBar: NSView {
         layer?.masksToBounds = false
         fill.startPoint = CGPoint(x: 0, y: 0.5); fill.endPoint = CGPoint(x: 1, y: 0.5)
         fill.shadowOpacity = 0.7
-        fill.shadowRadius = 4
+        fill.shadowRadius = 5
         fill.shadowOffset = .zero
         layer?.addSublayer(fill)
+        sheenClip.masksToBounds = true
+        sheen.startPoint = CGPoint(x: 0, y: 0.5); sheen.endPoint = CGPoint(x: 1, y: 0.5)
+        sheen.colors = [NSColor.white.withAlphaComponent(0).cgColor, NSColor.white.withAlphaComponent(0.55).cgColor,
+                        NSColor.white.withAlphaComponent(0).cgColor]
+        sheenClip.addSublayer(sheen)
+        layer?.addSublayer(sheenClip)
         refresh()
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func set(progress p: Double, tint t: Tint) {
+    func set(progress p: Double, tint t: Tint, indeterminate ind: Bool = false) {
         let np = CGFloat(max(0, min(1, p)))
-        guard np != progress || t != tint else { return }
+        guard np != progress || t != tint || ind != indeterminate else { return }
         progress = np
+        let restart = ind != indeterminate
+        indeterminate = ind
         if t != tint { tint = t; refresh() }
         CATransaction.begin()
         CATransaction.setAnimationDuration(Motion.duration(0.45))
         place()
         CATransaction.commit()
+        if restart { animate() }
     }
 
     func refresh() {
@@ -584,92 +718,167 @@ final class GlowProgressBar: NSView {
         switch tint {
         case .accent: colors = [Neon.cyan, Neon.accent, Neon.violet]
         case .warning: colors = [Neon.warning, Neon.warning]
-        case .success: colors = [Neon.green, Neon.green]
+        case .success: colors = [Neon.green.blended(withFraction: 0.3, of: Neon.cyan) ?? Neon.green, Neon.green]
         }
         fill.colors = colors.map { $0.cgColor }
         fill.shadowColor = colors[colors.count / 2].cgColor
         layer?.backgroundColor = Neon.track.cgColor
+        sheenClip.isHidden = tint != .accent
     }
 
     private func place() {
-        let h = bounds.height
+        let h = bounds.height, w = bounds.width
         layer?.cornerRadius = h / 2
         fill.cornerRadius = h / 2
-        fill.frame = CGRect(x: 0, y: 0, width: progress == 0 ? 0 : max(h, bounds.width * progress), height: h)
+        let fw = indeterminate ? w * 0.3 : (progress == 0 ? 0 : max(h, w * progress))
+        fill.frame = CGRect(x: 0, y: 0, width: fw, height: h)
+        sheenClip.frame = fill.frame
+        sheenClip.cornerRadius = h / 2
+        sheen.frame = CGRect(x: 0, y: 0, width: max(h, fw * 0.4), height: h)
     }
+
+    /// The sweep of light across the fill, or the gliding segment when indeterminate.
+    private func animate() {
+        fill.removeAnimation(forKey: "glide"); sheenClip.removeAnimation(forKey: "glide"); sheen.removeAnimation(forKey: "sheen")
+        guard !Motion.reduced, window != nil, bounds.width > 0 else { return }
+        let w = bounds.width
+        if indeterminate {
+            let a = CABasicAnimation(keyPath: "transform.translation.x")
+            a.fromValue = -w * 0.3; a.toValue = w
+            a.duration = 1.4; a.repeatCount = .infinity
+            a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            fill.add(a, forKey: "glide"); sheenClip.add(a, forKey: "glide")
+            layer?.masksToBounds = true
+        } else {
+            layer?.masksToBounds = false
+            let a = CABasicAnimation(keyPath: "transform.translation.x")
+            a.fromValue = -sheen.bounds.width; a.toValue = fill.bounds.width + sheen.bounds.width
+            a.duration = 2.0; a.repeatCount = .infinity
+            a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            sheen.add(a, forKey: "sheen")
+        }
+    }
+
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); animate() }
 
     override func layout() {
         super.layout()
         CATransaction.begin(); CATransaction.setDisableActions(true); place(); CATransaction.commit()
+        animate()
     }
 }
 
-/// Little equaliser bars: moving while Claude works, resting otherwise, green when done.
-final class Waveform: NSView {
-    enum Style { case resting, live, done }
-    private var bars: [CALayer] = []
-    private var style: Style = .resting
-    private static let heights: [CGFloat] = [0.35, 0.7, 0.45, 1.0, 0.6, 0.85, 0.4]
+/// The status orb on the right wing: a small glass sphere with colour swirling inside.
+/// Blue-violet while Claude works, amber while it waits on you, green when done. It eases
+/// between colours, pulses its glow and spins faster under the pointer.
+final class OrbView: NSView {
+    enum Style { case working, waiting, done }
+
+    private struct Colors {
+        var a: [CGFloat], b: [CGFloat], c: [CGFloat], core: [CGFloat], glow: [CGFloat]
+        var pulse: CGFloat
+    }
+    private static func colors(_ s: Style) -> Colors {
+        switch s {
+        case .working: return Colors(a: [77, 189, 255], b: [148, 102, 255], c: [96, 130, 255], core: [18, 14, 64], glow: [100, 120, 255], pulse: 1)
+        case .waiting: return Colors(a: [255, 179, 64], b: [255, 110, 60], c: [255, 214, 110], core: [58, 24, 4], glow: [255, 165, 60], pulse: 2.2)
+        case .done: return Colors(a: [70, 214, 140], b: [40, 190, 170], c: [160, 240, 190], core: [4, 38, 24], glow: [54, 227, 170], pulse: 0.5)
+        }
+    }
+
+    private var cur = OrbView.colors(.working)
+    private var target = OrbView.colors(.working)
+    private var phase: CGFloat = CGFloat.random(in: 0...10)
+    private var speed: CGFloat = 1
+    private var wantSpeed: CGFloat = 1
+    private var timer: Timer?
+    private var lastTick: CFTimeInterval = 0
     override var isFlipped: Bool { true }
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        layer?.masksToBounds = false
-        for _ in Self.heights {
-            let b = CALayer()
-            b.cornerRadius = 1.25
-            b.shadowOpacity = 0.6
-            b.shadowRadius = 2.5
-            b.shadowOffset = .zero
-            layer?.addSublayer(b)
-            bars.append(b)
-        }
-        refresh()
-    }
-    required init?(coder: NSCoder) { fatalError() }
+    func set(_ s: Style) { target = Self.colors(s) }
 
-    func set(_ st: Style) {
-        guard st != style else { return }
-        style = st
-        refresh()
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        timer?.invalidate(); timer = nil
+        guard window != nil else { return }
+        lastTick = CACurrentMediaTime()
+        let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tick() }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
-    func refresh() {
-        for (i, b) in bars.enumerated() {
-            let c: NSColor
-            switch style {
-            case .done: c = Neon.green
-            case .live: c = i % 3 == 1 ? Neon.violet : Neon.accent
-            case .resting: c = Neon.accent.withAlphaComponent(0.55)
-            }
-            b.backgroundColor = c.cgColor
-            b.shadowColor = c.cgColor
-            b.removeAllAnimations()
-            if style == .live, !Motion.reduced {
-                let a = CABasicAnimation(keyPath: "transform.scale.y")
-                a.fromValue = 0.35; a.toValue = 1
-                a.duration = 0.4 + Double(i % 4) * 0.11
-                a.autoreverses = true; a.repeatCount = .infinity
-                a.timeOffset = Double(i) * 0.13
-                b.add(a, forKey: "bounce")
-            }
-        }
+    deinit { timer?.invalidate() }
+
+    private func tick() {
+        let now = CACurrentMediaTime()
+        let dt = CGFloat(min(0.1, now - lastTick))
+        lastTick = now
+        guard let w = window, w.isVisible, w.alphaValue > 0.02, !isHiddenOrHasHiddenAncestor else { return }
+        let k: CGFloat = 0.08
+        func ease(_ v: inout [CGFloat], _ t: [CGFloat]) { for i in 0..<3 { v[i] += (t[i] - v[i]) * k } }
+        ease(&cur.a, target.a); ease(&cur.b, target.b); ease(&cur.c, target.c)
+        ease(&cur.core, target.core); ease(&cur.glow, target.glow)
+        cur.pulse += (target.pulse - cur.pulse) * k
+        speed += (wantSpeed - speed) * 0.06
+        if !Motion.reduced { phase += dt * speed }
+        needsDisplay = true
     }
 
-    override func layout() {
-        super.layout()
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        let bw: CGFloat = 2.5, gap: CGFloat = 3
-        let total = CGFloat(bars.count) * bw + CGFloat(bars.count - 1) * gap
-        var x = (bounds.width - total) / 2
-        for (i, b) in bars.enumerated() {
-            let h = max(4, bounds.height * Self.heights[i])
-            b.frame = CGRect(x: x, y: (bounds.height - h) / 2, width: bw, height: h)
-            x += bw + gap
-        }
-        CATransaction.commit()
+    private static func rgba(_ c: [CGFloat], _ a: CGFloat) -> CGColor {
+        CGColor(srgbRed: c[0] / 255, green: c[1] / 255, blue: c[2] / 255, alpha: a)
     }
+
+    private static func radial(_ ctx: CGContext, _ colors: [CGColor], _ locs: [CGFloat],
+                               from c0: CGPoint, _ r0: CGFloat, to c1: CGPoint, _ r1: CGFloat) {
+        guard let g = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors as CFArray, locations: locs) else { return }
+        ctx.drawRadialGradient(g, startCenter: c0, startRadius: r0, endCenter: c1, endRadius: r1, options: [])
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let s = min(bounds.width, bounds.height)
+        let c = CGPoint(x: bounds.midX, y: bounds.midY)
+        let r = s * 0.31
+        let p = cur, t = phase
+        let pulse = 0.5 + 0.5 * sin(t * 2.6 * p.pulse)
+
+        // Glow around it.
+        Self.radial(ctx, [Self.rgba(p.glow, 0.34 + 0.3 * pulse), Self.rgba(p.glow, 0)], [0, 1], from: c, r * 0.6, to: c, s / 2)
+
+        ctx.saveGState()
+        ctx.addEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
+        ctx.clip()
+        ctx.setFillColor(Self.rgba(p.core, 1))
+        ctx.fill(bounds)
+        // Three coloured blobs orbiting inside, added together.
+        ctx.setBlendMode(.plusLighter)
+        for (col, sp, off) in [(p.a, CGFloat(1), CGFloat(0)), (p.b, -1.35, 2.1), (p.c, 0.8, 4.2)] {
+            let ang = t * 1.2 * sp + off
+            let bc = CGPoint(x: c.x + cos(ang) * r * 0.5, y: c.y + sin(ang * 1.3) * r * 0.5)
+            Self.radial(ctx, [Self.rgba(col, 0.95), Self.rgba(col, 0)], [0, 1], from: bc, 0, to: bc, r * 1.05)
+        }
+        ctx.setBlendMode(.normal)
+        // Shading toward the rim, then a highlight up and to the left.
+        let black = [CGFloat(0), 0, 0]
+        Self.radial(ctx, [Self.rgba(black, 0), Self.rgba(black, 0.05), Self.rgba(black, 0.5)], [0, 0.72, 1],
+                    from: CGPoint(x: c.x - r * 0.25, y: c.y - r * 0.3), r * 0.2, to: c, r)
+        let hl = CGPoint(x: c.x - r * 0.38, y: c.y - r * 0.45)
+        let white = [CGFloat(255), 255, 255]
+        Self.radial(ctx, [Self.rgba(white, 0.85), Self.rgba(white, 0)], [0, 1], from: hl, 0, to: hl, r * 0.55)
+        ctx.restoreGState()
+
+        ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.16))
+        ctx.setLineWidth(0.7)
+        ctx.strokeEllipse(in: CGRect(x: c.x - r + 0.3, y: c.y - r + 0.3, width: r * 2 - 0.6, height: r * 2 - 0.6))
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { wantSpeed = 3.4 }
+    override func mouseExited(with event: NSEvent) { wantSpeed = 1 }
 }
 
 /// The rounded square with a `>_` prompt in front of the command waiting on you.
@@ -744,24 +953,24 @@ final class GlowPillButton: NSView {
 
     /// Glow inset + padding + icon + gap + text + padding.
     var fittedWidth: CGFloat {
-        ceil((title as NSString).size(withAttributes: [.font: Self.font]).width) + 4 * 2 + 18 + 16 + 8 + 20
+        ceil((title as NSString).size(withAttributes: [.font: Self.font]).width) + 4 * 2 + 14 + 15 + 7 + 17
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let color = tint == .red ? Neon.red : Neon.green
         let r = bounds.insetBy(dx: 4, dy: 4)
         let shape = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        Neon.glowing(color.withAlphaComponent(hovered ? 0.55 : 0.3), blur: hovered ? 10 : 6) {
-            color.withAlphaComponent(hovered ? 0.2 : 0.11).setFill()
+        Neon.glowing(color.withAlphaComponent(hovered ? 0.5 : 0.25), blur: hovered ? 12 : 7) {
+            color.withAlphaComponent(hovered ? 0.16 : 0.08).setFill()
             shape.fill()
         }
-        shape.lineWidth = 1.3
-        color.withAlphaComponent(0.85).setStroke(); shape.stroke()
-        let icon = NSRect(x: r.minX + 18, y: r.midY - 8, width: 16, height: 16)
-        Neon.symbol(symbol, in: icon, size: 14, weight: .bold, color: color)
+        shape.lineWidth = 1.2
+        color.withAlphaComponent(0.65).setStroke(); shape.stroke()
+        let icon = NSRect(x: r.minX + 14, y: r.midY - 7.5, width: 15, height: 15)
+        Neon.symbol(symbol, in: icon, size: 13, weight: .bold, color: color)
         let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color]
         let s = (title as NSString).size(withAttributes: attrs)
-        (title as NSString).draw(at: NSPoint(x: icon.maxX + 8, y: r.midY - s.height / 2), withAttributes: attrs)
+        (title as NSString).draw(at: NSPoint(x: icon.maxX + 7, y: r.midY - s.height / 2), withAttributes: attrs)
     }
 
     override func mouseDown(with event: NSEvent) { onTap?() }

@@ -26,7 +26,8 @@ private enum RS {
     static let expandedHeight: CGFloat = 720
     static let tipH: CGFloat = 72
     static let rowGap: CGFloat = 8
-    static let listTop: CGFloat = 212
+    /// Header (88) · tabs · source filters, then the list.
+    static let listTop: CGFloat = 174
 }
 
 /// Snooze choices shared by the list, the detail panel and the notification.
@@ -139,8 +140,8 @@ final class RemindersView: NSView, CardContent {
         return ScreenIconTile(symbol: "calendar.badge.clock", top: c.blended(withFraction: 0.12, of: .white) ?? c,
                               bottom: c.blended(withFraction: 0.25, of: .black) ?? c)
     }()
-    private let titleLabel = rlabel(NSFont.systemFont(ofSize: 21, weight: .bold), Pal.text)
-    private let subtitleLabel = rlabel(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary)
+    private let titleLabel = rlabel(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
+    private let subtitleLabel = rlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
     private let peek = NSImageView()
     private let bubble = ZeraGitHubBubble()
     private let addButton = GHSplitButton(title: "Add Event", symbol: "plus")
@@ -159,8 +160,8 @@ final class RemindersView: NSView, CardContent {
     private var back: GHSquareButton!
     private var close: GHSquareButton!
     private let sideTile = AgendaTile()
-    private let sideTitle = rlabel(NSFont.systemFont(ofSize: 18, weight: .semibold), Pal.text)
-    private let sideSubtitle = rlabel(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary, lines: 2)
+    private let sideTitle = rlabel(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
+    private let sideSubtitle = rlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
     private let sideZera = NSImageView()
     private var form: ReminderFormBase?
     private let detailScroll = NSScrollView()
@@ -184,17 +185,15 @@ final class RemindersView: NSView, CardContent {
     private var screen: NSRect { (window?.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 875) }
     private var expanded: Bool { if case .none = side { return false }; return true }
     /// Not wide enough for both panels: the side panel replaces the overview (with a back button).
-    private var singlePane: Bool { screen.width - 40 < RS.mainWidth + RS.gap + RS.sideWidth }
-    private var mainWidth: CGFloat { min(RS.mainWidth, screen.width - 40) }
+    /// In the island the details (or a form) replace the overview, with a back button.
+    private var singlePane: Bool { true }
+    private var mainWidth: CGFloat { min(600, screen.width - 40) }
 
-    var cardWidth: CGFloat {
-        expanded && !singlePane ? RS.mainWidth + RS.gap + RS.sideWidth : mainWidth
-    }
+    var cardWidth: CGFloat { mainWidth }
     var desiredHeight: CGFloat {
-        let full = max(520, min(RS.maxHeight, screen.height - 110))
-        if expanded { return min(full, RS.expandedHeight) }
-        let listH = entries.isEmpty ? 230 : min(5.5 * (AgendaRow.height + RS.rowGap), entries.reduce(0) { $0 + $1.height + RS.rowGap })
-        return min(full, max(470, RS.listTop + listH + 24 + RS.tipH + RS.pad))
+        if expanded { return Isle.maxContentHeight }
+        let listH = entries.isEmpty ? 150 : min(4 * (AgendaRow.height + RS.rowGap), entries.reduce(0) { $0 + $1.height + RS.rowGap })
+        return RS.listTop + listH + 12
     }
 
     /// Set just before opening to land on one reminder's details (from the notification).
@@ -222,7 +221,7 @@ final class RemindersView: NSView, CardContent {
         addSubview(sidePanel)
 
         main.addSubview(screenTile)
-        titleLabel.stringValue = "Reminders & Calendar"
+        titleLabel.stringValue = "Reminders"
         main.addSubview(titleLabel)
         subtitleLabel.stringValue = "Your day, all in one place"
         main.addSubview(subtitleLabel)
@@ -657,7 +656,7 @@ final class RemindersView: NSView, CardContent {
             if st == .disabled {
                 row1.append(button("Turn on", .primary, "play.fill") { [weak self] in self?.svc.setEnabled(id, true); self?.say?("back on 🔔", .happy) })
             } else if st != .doneForToday {
-                row1.append(button("Mark as done", .primary, "checkmark") { [weak self] in self?.complete(item) })
+                row1.append(button("Mark as done", .success, "checkmark") { [weak self] in self?.complete(item) })
                 let snooze = button("Snooze", .secondary, "moon.zzz.fill") {}
                 snooze.handler = { [weak self, weak snooze] in
                     guard let self = self, let s = snooze else { return }
@@ -895,30 +894,21 @@ final class RemindersView: NSView, CardContent {
 
     private func layoutMain(_ size: NSSize) {
         let w = size.width, h = size.height, x = RS.pad, iw = w - RS.pad * 2
+        let half = w / 2 - Isle.zeraGap / 2
 
-        // Header: tile · title / subtitle · bubble · Zera peeking over "+ Add Event ▾".
-        let bw = min(200, addButton.fittedWidth + 8)
-        addButton.frame = NSRect(x: w - x - bw, y: 60, width: bw, height: 38)
-        let zs: CGFloat = 78
-        peek.frame = NSRect(x: addButton.frame.maxX - zs - 4, y: 0, width: zs, height: zs)
-        let bs = bubble.fittedSize
-        bubble.frame = NSRect(x: peek.frame.minX + 10 - bs.width, y: 6, width: bs.width, height: bs.height)
-        screenTile.frame = NSRect(x: x, y: 32, width: 48, height: 48)
-        let tx = x + 48 + 12
-        titleLabel.frame = NSRect(x: tx, y: 32, width: max(80, min(bubble.frame.minX - 8, addButton.frame.minX - 12) - tx), height: 27)
-        subtitleLabel.frame = NSRect(x: tx, y: 62, width: max(80, addButton.frame.minX - 12 - tx), height: 17)
+        // Island header: title and summary left of Zera (she hangs in the middle); "+ Add ▾" on
+        // the right. Her own pictures and the tip stay hidden in the island.
+        [screenTile, peek, bubble, tip, tipZera].forEach { $0.isHidden = true }
+        titleLabel.frame = NSRect(x: x + 4, y: 24, width: half - x - 4, height: 22)
+        subtitleLabel.frame = NSRect(x: x + 4, y: 46, width: half - x - 4, height: 16)
+        let bw = min(170, addButton.fittedWidth + 8)
+        addButton.frame = NSRect(x: w - x - bw, y: 28, width: bw, height: 32)
 
-        tabs.frame = NSRect(x: x, y: 112, width: iw, height: 42)
+        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: 36)
         filters.fill = filters.preferredWidth > iw
-        filters.frame = NSRect(x: x, y: 166, width: filters.fill ? iw : filters.preferredWidth, height: 30)
+        filters.frame = NSRect(x: x, y: Isle.headerHeight + 36 + 10, width: filters.fill ? iw : filters.preferredWidth, height: 28)
 
-        // Tip at the bottom, Zera standing at its left with her head over the top.
-        let tipY = h - RS.pad - RS.tipH
-        tip.frame = NSRect(x: x, y: tipY, width: iw, height: RS.tipH)
-        let tz: CGFloat = 96
-        tipZera.frame = NSRect(x: x + 4, y: tipY + RS.tipH - 4 - tz, width: tz, height: tz)
-        let listBottom = tipY - 24
-
+        let listBottom = h - 12
         let y = RS.listTop
         scroll.frame = NSRect(x: x - 6, y: y - 4, width: iw + 12, height: max(0, listBottom - y + 4))
         emptyState.frame = NSRect(x: x, y: y, width: iw, height: max(0, listBottom - y))
@@ -937,31 +927,29 @@ final class RemindersView: NSView, CardContent {
         close.isHidden = single
         back.frame = NSRect(x: x, y: 28, width: 34, height: 34)
         close.frame = NSRect(x: w - x - 34, y: 24, width: 34, height: 34)
-        let tileX = single ? x + 44 : x
-        sideTile.frame = NSRect(x: tileX, y: 22, width: 48, height: 48)
-        let zs: CGFloat = 72
-        let zeraX = (single ? w - x : close.frame.minX - 6) - zs
-        sideZera.frame = NSRect(x: zeraX, y: 4, width: zs, height: zs)
-        let tx = tileX + 48 + 14
-        sideTitle.frame = NSRect(x: tx, y: 22, width: max(60, zeraX - 6 - tx), height: 24)
-        sideSubtitle.frame = NSRect(x: tx, y: 48, width: max(60, zeraX - 6 - tx), height: 34)
+        // Island header: back · title / subtitle left of Zera (she hangs in the middle).
+        sideTile.isHidden = true
+        sideZera.isHidden = true
+        let tx = x + 44, half = w / 2 - Isle.zeraGap / 2
+        sideTitle.frame = NSRect(x: tx, y: 24, width: max(60, half - tx), height: 22)
+        sideSubtitle.frame = NSRect(x: tx, y: 46, width: max(60, half - tx), height: 16)
 
-        let bodyTop: CGFloat = 92
+        let bodyTop: CGFloat = Isle.headerHeight
         if let f = form {
             f.frame = NSRect(x: x, y: bodyTop, width: iw, height: max(0, h - RS.pad - bodyTop))
             return
         }
 
         // Buttons pinned to the bottom, one row per group, equal widths.
-        var by = h - RS.pad
+        var by = h - 16
         for row in detailButtons.reversed() {
-            by -= 38
+            by -= 32
             let n = CGFloat(row.count)
-            let bw = (iw - (n - 1) * 10) / max(1, n)
+            let bw = (iw - (n - 1) * 8) / max(1, n)
             for (i, b) in row.enumerated() {
-                b.frame = NSRect(x: x + CGFloat(i) * (bw + 10), y: by, width: bw, height: 38)
+                b.frame = NSRect(x: x + CGFloat(i) * (bw + 8), y: by, width: bw, height: 32)
             }
-            by -= 10
+            by -= 8
         }
         detailScroll.frame = NSRect(x: x, y: bodyTop, width: iw, height: max(0, by - 6 - bodyTop))
 

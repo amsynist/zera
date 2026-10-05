@@ -8,26 +8,18 @@ protocol CardContent: NSView {
     var onHeightChange: (() -> Void)? { get set }
 }
 
-/// Soft wash over the blur.
-final class CardWash: NSView {
-    override func draw(_ dirtyRect: NSRect) {
-        NSGradient(colors: [Pal.cardTop, Pal.cardBottom])?.draw(in: bounds, angle: -90)
-    }
-}
-
-/// Card chrome: blur, wash, hairline border, rounded corners, and the standard header.
-/// Cards are rebuilt when the palette changes, so colours are read once at construction.
+/// A screen in the notch island: the island draws the glass, so this is just the standard
+/// header — title and subtitle on the left of Zera, who hangs in the middle; buttons go on the
+/// right. Cards are rebuilt when the palette changes, so colours are read once at construction.
 class CardBase: NSView {
-    private let blur = NSVisualEffectView()
-    private let wash = CardWash()
     var onHeightChange: (() -> Void)?
     /// Esc anywhere in the card.
     var onEscape: (() -> Void)?
 
     let titleLabel = NSTextField(labelWithString: "")
     let subtitleLabel = NSTextField(labelWithString: "")
-    /// Y where content starts, under the header.
-    var headerBottom: CGFloat { Space.l + 22 + (subtitleLabel.isHidden ? 0 : 18) + Space.m }
+    /// Y where content starts, under the header row Zera hangs in.
+    var headerBottom: CGFloat { Isle.headerHeight }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -35,22 +27,10 @@ class CardBase: NSView {
 
     init(width: CGFloat, title: String) {
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: 200))
-        roundLayer(Radius.card)
         let p = Pal
-        blur.material = p.blurMaterial
-        blur.blendingMode = .behindWindow
-        blur.state = .active
-        blur.autoresizingMask = [.width, .height]
-        blur.frame = bounds
-        addSubview(blur)
-        wash.autoresizingMask = [.width, .height]
-        wash.frame = bounds
-        addSubview(wash)
-        layer?.borderWidth = 1
-        layer?.borderColor = p.border.cgColor
-
         titleLabel.stringValue = title
-        titleLabel.font = Typo.title
+        titleLabel.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.textColor = p.text
         addSubview(titleLabel)
         subtitleLabel.font = Typo.caption
@@ -68,12 +48,19 @@ class CardBase: NSView {
         needsLayout = true
     }
 
-    /// Lays out the header; subclasses call this first in `layout()`. `trailingWidth` is room
-    /// kept free on the right of the title row for buttons.
+    /// Lays out the header; subclasses call this first in `layout()`. The title stays left of
+    /// Zera's spot in the middle; `trailingWidth` is room kept free on the right for buttons.
     func layoutHeader(trailingWidth: CGFloat = 0) {
-        let w = bounds.width - Metrics.cardPad * 2
-        titleLabel.frame = NSRect(x: Metrics.cardPad, y: Space.l, width: w - trailingWidth, height: 22)
-        subtitleLabel.frame = NSRect(x: Metrics.cardPad, y: Space.l + 22, width: w, height: 16)
+        let w = min(bounds.width - Metrics.cardPad * 2 - trailingWidth, bounds.width / 2 - Isle.zeraGap / 2 - Metrics.cardPad)
+        let top: CGFloat = subtitleLabel.isHidden ? 33 : 24
+        titleLabel.frame = NSRect(x: Metrics.cardPad + 4, y: top, width: max(0, w), height: 22)
+        subtitleLabel.frame = NSRect(x: Metrics.cardPad + 4, y: top + 22, width: max(0, w), height: 16)
+    }
+
+    /// The header's right side, for buttons: everything right of Zera's spot.
+    var headerTrailingRect: NSRect {
+        let x = bounds.width / 2 + Isle.zeraGap / 2
+        return NSRect(x: x, y: 26, width: bounds.width - Metrics.cardPad - x, height: 36)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -154,9 +141,18 @@ final class ListRow: NSView {
 
     func setTrailingColor(_ c: NSColor) { trailing.textColor = c }
 
+    /// Glass row: a navy step up with a soft blue edge that lights up under the pointer.
     private func restyle() {
         let p = Pal
-        layer?.backgroundColor = (selected ? p.accentSoft : (hovered && onTap != nil ? p.surfaceHover : p.surface)).cgColor
+        let hot = hovered && onTap != nil
+        layer?.backgroundColor = (selected ? p.accentSoft : (hot ? p.surfaceHover : p.surfaceRow)).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = (selected ? p.selectedEdge : (hot ? p.accent.withAlphaComponent(0.45) : p.divider)).cgColor
+        layer?.masksToBounds = false
+        layer?.shadowColor = p.accent.cgColor
+        layer?.shadowRadius = 8
+        layer?.shadowOffset = .zero
+        layer?.shadowOpacity = hot ? 0.25 : 0
     }
 
     override func layout() {
@@ -240,8 +236,10 @@ final class NavRow: NSView {
 
     private func restyle() {
         let p = Pal
-        layer?.backgroundColor = (selected ? p.accentSoft : (hovered ? p.surfaceHover : .clear)).cgColor
-        icon.contentTintColor = selected ? p.accent : p.textSecondary
+        layer?.backgroundColor = (selected ? p.selectedFill : (hovered ? p.surfaceHover : .clear)).cgColor
+        layer?.borderWidth = selected ? 1 : 0
+        layer?.borderColor = p.selectedEdge.cgColor
+        icon.contentTintColor = selected ? p.selectedAccent : p.textSecondary
         title.textColor = selected ? p.text : p.text(0.8)
         title.font = selected ? Typo.bodyStrong : Typo.nav
     }
@@ -285,7 +283,12 @@ final class ActionTile: NSView {
     var onTap: (() -> Void)?
     private let tile: IconTile
     private let title = NSTextField(labelWithString: "")
-    private var hovered = false { didSet { layer?.backgroundColor = (hovered ? Pal.surfaceHover : Pal.surface).cgColor } }
+    private var hovered = false {
+        didSet {
+            layer?.backgroundColor = (hovered ? Pal.surfaceHover : Pal.surfaceRow).cgColor
+            layer?.borderColor = (hovered ? Pal.accent.withAlphaComponent(0.45) : Pal.divider).cgColor
+        }
+    }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -294,7 +297,9 @@ final class ActionTile: NSView {
         tile = IconTile(symbol: symbol, color: color, size: 26, pointSize: 12)
         super.init(frame: .zero)
         roundLayer(Radius.l)
-        layer?.backgroundColor = Pal.surface.cgColor
+        layer?.backgroundColor = Pal.surfaceRow.cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = Pal.divider.cgColor
         addSubview(tile)
         title.stringValue = t
         title.font = Typo.caption
@@ -334,9 +339,9 @@ final class SectionHeader: NSView {
 
     init(_ t: String, link l: String? = nil) {
         super.init(frame: .zero)
-        title.stringValue = t
-        title.font = Typo.section
-        title.textColor = Pal.text
+        // Small caps label, quiet, so the rows carry the weight.
+        title.attributedStringValue = NSAttributedString(string: t.uppercased(), attributes: [
+            .font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: Pal.textTertiary, .kern: 0.8])
         addSubview(title)
         link.isBordered = false
         link.isHidden = l == nil
@@ -374,6 +379,20 @@ enum QuickAction {
         }
     }
 
+    /// One word for the Home tiles, which sit six in a row.
+    var tileTitle: String {
+        switch self {
+        case .openClaude: return "Claude"
+        case .dropFiles: return "Files"
+        case .newNote: return "Note"
+        case .takeBreak: return "Break"
+        case .screenshot: return "Screenshot"
+        case .startTimer: return "Timer"
+        case .searchFiles: return "Search"
+        case .askZera: return "Ask"
+        }
+    }
+
     var symbol: String {
         switch self {
         case .openClaude: return "sparkles"
@@ -405,16 +424,15 @@ enum QuickAction {
 
 // MARK: - Home
 
-/// "What does Zera want me to know right now?" Greeting → search / ask → Needs attention →
-/// Recent → Quick Actions. Navigation lives in the hover pill, not here.
+/// "What does Zera want me to know right now?" Greeting in the header → ask Zera → what needs
+/// you (up to three) → one row of quick actions. Recent files live on the Files tab.
 final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
-    var cardWidth: CGFloat { 460 }
+    var cardWidth: CGFloat { 540 }
     var onOpen: ((CardKind) -> Void)?
     var onAction: ((QuickAction) -> Void)?
     var onOpenURL: ((URL) -> Void)?
 
-    private let zera = ZeraCompanion(pose: "card_greet", size: 92)
-    private let search = SearchBox(placeholder: "Search files, notes, or ask Zera…")
+    private let search = SearchBox(placeholder: "Ask Zera anything, or search recent files…")
     private let attentionHeader = SectionHeader("Needs attention")
     private var attentionRows: [ListRow] = []
     private let allClear = NSTextField(labelWithString: "")
@@ -426,10 +444,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     private var query = ""
 
     init() {
-        super.init(width: 460, title: "")
+        super.init(width: 540, title: "")
         let p = Pal
-        titleLabel.isHidden = true   // she greets you herself
-        addSubview(zera)
         search.field.delegate = self
         addSubview(search)
         addSubview(attentionHeader)
@@ -441,7 +457,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         addSubview(recentEmpty)
         addSubview(quickHeader)
         for a in QuickAction.grid {
-            let t = ActionTile(symbol: a.symbol, color: a.color, title: a.title)
+            let t = ActionTile(symbol: a.symbol, color: a.color, title: a.tileTitle)
             t.onTap = { [weak self] in self?.onAction?(a) }
             addSubview(t)
             tiles.append(t)
@@ -456,28 +472,23 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 
     func focusSearch() { window?.makeKey(); window?.makeFirstResponder(search.field) }
 
-    private let tileHeight: CGFloat = 56
-    private var tileRows: Int { (tiles.count + 2) / 3 }
+    private let tileHeight: CGFloat = 54
+    private let rowH: CGFloat = 46
+    private static let maxAttention = 3
 
-    private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (Metrics.row + Space.xs) - Space.xs }
-
-    /// Zera + her bubble replace the text header.
-    private var greetingBottom: CGFloat { Space.l + zera.preferredHeight + Space.m }
+    private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (rowH + 6) - 6 }
 
     var desiredHeight: CGFloat {
-        var h = greetingBottom + Metrics.control + 4 + Space.l
-        h += 18 + Space.s + listHeight(attentionRows.count) + Space.l
-        h += 18 + Space.s + listHeight(recentRows.count) + Space.l
-        h += 18 + Space.s + CGFloat(tileRows) * (tileHeight + Space.s) - Space.s + Metrics.cardPad
+        var h = headerBottom + 36 + Space.l
+        h += 18 + Space.s + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.l
+        h += 18 + Space.s + tileHeight + Metrics.cardPad
         return h
     }
 
     @objc func refresh() {
         let p = Pal
         let hour = Calendar.current.component(.hour, from: Date())
-        let greeting = hour < 12 ? "Good morning! 👋" : (hour < 17 ? "Good afternoon! 👋" : "Good evening! 🌙")
-        zera.line = "\(greeting)\nWhat shall we do today?"
-        zera.set(pose: hour >= 22 || hour < 6 ? "card_sleepy_sit" : "card_greet")
+        titleLabel.stringValue = hour < 12 ? "Good morning" : (hour < 17 ? "Good afternoon" : "Good evening")
 
         // Needs attention: Claude approvals, alerts, unseen GitHub, overdue reminders, a meeting soon.
         attentionRows.forEach { $0.removeFromSuperview() }
@@ -527,9 +538,13 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             r.onTap = { [weak self] in self?.onOpen?(.reminders) }
             attentionRows.append(r)
         }
+        let needs = attentionRows.count
+        attentionRows = Array(attentionRows.prefix(Self.maxAttention))
         for r in attentionRows { addSubview(r) }
         allClear.isHidden = !attentionRows.isEmpty
         allClear.stringValue = "All clear — nothing needs you right now ✨"
+        let day = Date().formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        setSubtitle(needs == 0 ? "\(day) · all clear" : "\(day) · \(needs) thing\(needs == 1 ? "" : "s") need\(needs == 1 ? "s" : "") you")
 
         // Recent: shelf items and PR activity, newest first, filtered by the search box.
         recentRows.forEach { $0.removeFromSuperview() }
@@ -548,13 +563,13 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             entries.append((e.date, e.title + " " + e.subtitle, r))
         }
         entries.sort { $0.0 > $1.0 }
-        for (_, text, r) in entries where query.isEmpty || text.localizedCaseInsensitiveContains(query) {
+        // Recent shows only while you search: the matches, so Return can still ask Zera instead.
+        for (_, text, r) in entries where !query.isEmpty && text.localizedCaseInsensitiveContains(query) {
             addSubview(r)
             recentRows.append(r)
-            if recentRows.count == 3 { break }
+            if recentRows.count == Self.maxAttention { break }
         }
-        recentEmpty.isHidden = !recentRows.isEmpty
-        recentEmpty.stringValue = query.isEmpty ? "Files you drop and PRs you touch show up here." : "No match — press Return to ask Zera."
+        recentEmpty.isHidden = true
         needsLayout = true
         layoutSubtreeIfNeeded()
         onHeightChange?()
@@ -581,36 +596,40 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 
     override func layout() {
         super.layout()
+        layoutHeader()
         let x = Metrics.cardPad, w = bounds.width - x * 2
-        zera.frame = NSRect(x: x, y: Space.l, width: w, height: zera.preferredHeight)
-        var y = greetingBottom
-        search.frame = NSRect(x: x, y: y, width: w, height: Metrics.control + 4)
-        y += Metrics.control + 4 + Space.l
+        var y = headerBottom
+        search.frame = NSRect(x: x, y: y, width: w, height: 36)
+        y += 36 + Space.l
 
+        // While searching, the matches take the place of "Needs you".
+        let searching = !query.isEmpty
+        attentionHeader.title.attributedStringValue = NSAttributedString(string: searching ? "MATCHES" : "NEEDS YOU", attributes: [
+            .font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: Pal.textTertiary, .kern: 0.8])
+        let shown = searching ? recentRows : attentionRows
+        attentionRows.forEach { $0.isHidden = searching }
+        recentRows.forEach { $0.isHidden = !searching }
         attentionHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.s
-        if attentionRows.isEmpty {
+        if shown.isEmpty {
+            allClear.isHidden = false
+            allClear.stringValue = searching ? "No match — press Return to ask Zera." : "All clear — nothing needs you right now ✨"
             allClear.frame = NSRect(x: x + Space.xs, y: y, width: w - Space.xs, height: 20)
+            y += 20
         } else {
-            for r in attentionRows { r.frame = NSRect(x: x, y: y, width: w, height: Metrics.row); y += Metrics.row + Space.xs }
-            y -= Space.xs + 20
+            allClear.isHidden = true
+            for r in shown { r.frame = NSRect(x: x, y: y, width: w, height: rowH); y += rowH + 6 }
+            y -= 6
         }
-        y += 20 + Space.l
-
-        recentHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.s
-        if recentRows.isEmpty {
-            recentEmpty.frame = NSRect(x: x + Space.xs, y: y, width: w - Space.xs, height: 20)
-        } else {
-            for r in recentRows { r.frame = NSRect(x: x, y: y, width: w, height: Metrics.row); y += Metrics.row + Space.xs }
-            y -= Space.xs + 20
-        }
-        y += 20 + Space.l
+        y += Space.l
 
         quickHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.s
-        let tw = (w - Space.s * 2) / 3
+        let n = CGFloat(max(1, tiles.count))
+        let tw = (w - Space.s * (n - 1)) / n
         for (i, t) in tiles.enumerated() {
-            let col = CGFloat(i % 3), row = CGFloat(i / 3)
-            t.frame = NSRect(x: x + col * (tw + Space.s), y: y + row * (tileHeight + Space.s), width: tw, height: tileHeight)
+            t.frame = NSRect(x: x + CGFloat(i) * (tw + Space.s), y: y, width: tw, height: tileHeight)
         }
+        recentHeader.isHidden = true
+        recentEmpty.isHidden = true
     }
 }
 
@@ -661,7 +680,7 @@ final class SettingsCard: CardBase, CardContent {
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
         var isDetail: Bool { rawValue >= Pane.claude.rawValue }
-        static let nav: [Pane] = [.general, .appearance, .integrations, .shortcuts, .about]
+        static let nav: [Pane] = [.general, .integrations, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
@@ -1043,9 +1062,9 @@ final class SettingsCard: CardBase, CardContent {
 
         sectionLabel("Approvals · Claude Code hook", &s)
         statusLine(hook.isInstalled ? .connected : .disconnected,
-                   detail: hook.isInstalled ? (hook.pending.isEmpty ? "Bash commands ask here first" : "\(hook.pending.count) waiting") : "approve commands from Zera instead of the terminal", &s)
+                   detail: hook.isInstalled ? (hook.pending.isEmpty ? "Permission prompts show up here" : "\(hook.pending.count) waiting") : "approve commands from Zera instead of the terminal", &s)
         buttonRow(hook.isInstalled ? "Remove hook" : "Install hook", style: hook.isInstalled ? .secondary : .primary,
-                  status: hook.isInstalled ? "Restart open Claude Code sessions after changes" : "Adds a PreToolUse hook to ~/.claude/settings.json", &s, action: #selector(claudeTapped))
+                  status: hook.isInstalled ? "Restart open Claude Code sessions after changes" : "Adds a PermissionRequest hook to ~/.claude/settings.json", &s, action: #selector(claudeTapped))
     }
 
     private func keyRow(_ s: inout Stack) {
@@ -1368,7 +1387,7 @@ final class SettingsCard: CardBase, CardContent {
         super.layout()
         layoutHeader(trailingWidth: 40)
         let x = Metrics.cardPad
-        closeButton.frame = NSRect(x: bounds.width - x - Metrics.control, y: Space.l - 3, width: Metrics.control, height: Metrics.control)
+        closeButton.frame = NSRect(x: bounds.width - x - Metrics.control, y: 30, width: Metrics.control, height: Metrics.control)
         var y = headerBottom
         for row in navRows {
             row.frame = NSRect(x: x, y: y, width: sidebarW, height: Metrics.control)
@@ -1390,7 +1409,7 @@ final class SettingsCard: CardBase, CardContent {
 // MARK: - Claude Code approval
 
 final class ApprovalCard: CardBase, CardContent {
-    var cardWidth: CGFloat { 420 }
+    var cardWidth: CGFloat { 560 }
     var say: ((String, ZeraMood) -> Void)?
     var onDrained: (() -> Void)?
 
@@ -1406,9 +1425,9 @@ final class ApprovalCard: CardBase, CardContent {
     private var current: HookRequest?
 
     init() {
-        reject = CardButton("Reject", style: .secondary, target: nil, action: #selector(ApprovalCard.rejectTapped))
-        approve = CardButton("Approve", style: .primary, target: nil, action: #selector(ApprovalCard.approveTapped))
-        super.init(width: 420, title: "Claude wants to run a command")
+        reject = CardButton("Reject", style: .destructive, target: nil, action: #selector(ApprovalCard.rejectTapped))
+        approve = CardButton("Approve", style: .success, target: nil, action: #selector(ApprovalCard.approveTapped))
+        super.init(width: 560, title: "Claude wants to run a command")
         let p = Pal
         reject.target = self; approve.target = self
         reject.keyEquivalent = "\u{1b}"; approve.keyEquivalent = "\r"
@@ -1466,8 +1485,7 @@ final class ApprovalCard: CardBase, CardContent {
         var h = headerBottom + commandHeight + Space.s
         if !riskChip.isHidden { h += 22 + Space.s }
         if !detail.isHidden { h += 18 + Space.xs }
-        h += 16 + Space.l + Metrics.button + Metrics.cardPad
-        return h
+        return h + Metrics.cardPad
     }
 
     @objc func reload() {
@@ -1475,7 +1493,8 @@ final class ApprovalCard: CardBase, CardContent {
         current = hook.pending.first
         guard let req = current else { onDrained?(); return }
         titleLabel.stringValue = req.toolName == "Bash" ? "Claude wants to run a command" : "Claude wants to use \(req.toolName)"
-        setSubtitle(req.sessionID.isEmpty ? nil : "Session \(req.sessionID.prefix(8))")
+        setSubtitle(req.cwd.isEmpty ? (req.sessionID.isEmpty ? nil : "Session \(req.sessionID.prefix(8))") : req.cwdDisplay)
+        titleLabel.stringValue = req.toolName == "Bash" ? "Run this command?" : "Use \(req.toolName)?"
         counter.stringValue = hook.pending.count > 1 ? "1 of \(hook.pending.count)" : ""
         commandText.stringValue = req.command
         if let why = Self.risk(of: req.command) {
@@ -1511,11 +1530,15 @@ final class ApprovalCard: CardBase, CardContent {
 
     override func layout() {
         super.layout()
+        // Island header: what Claude wants and where, left of Zera; Reject / Approve on the right.
         let x = Metrics.cardPad, w = bounds.width - x * 2
-        tile.frame = NSRect(x: x, y: Space.l - 3, width: 28, height: 28)
-        titleLabel.frame = NSRect(x: x + 36, y: Space.l, width: w - 36 - 70, height: 22)
-        subtitleLabel.frame = NSRect(x: x + 36, y: Space.l + 22, width: w - 36, height: 16)
-        counter.frame = NSRect(x: bounds.width - x - 70, y: Space.l + 3, width: 70, height: 16)
+        tile.isHidden = true
+        layoutHeader()
+        let aw = max(96, approve.fittedWidth), rw = max(84, reject.fittedWidth)
+        approve.frame = NSRect(x: bounds.width - x - aw, y: 29, width: aw, height: 30)
+        reject.frame = NSRect(x: approve.frame.minX - Space.s - rw, y: 29, width: rw, height: 30)
+        counter.frame = NSRect(x: reject.frame.minX - 70, y: 36, width: 62, height: 16)
+        location.isHidden = true
         var y = headerBottom
         let ch = commandHeight
         commandBox.frame = NSRect(x: x, y: y, width: w, height: ch)
@@ -1525,12 +1548,7 @@ final class ApprovalCard: CardBase, CardContent {
             let cw = ceil((riskChip.stringValue as NSString).size(withAttributes: [.font: Typo.badge]).width) + 4
             riskChip.frame = NSRect(x: x, y: y, width: cw, height: 22); y += 22 + Space.s
         }
-        if !detail.isHidden { detail.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.xs }
-        location.frame = NSRect(x: x, y: y, width: w, height: 16)
-        y += 16 + Space.l
-        let aw = max(100, approve.fittedWidth), rw = max(88, reject.fittedWidth)
-        approve.frame = NSRect(x: bounds.width - x - aw, y: y, width: aw, height: Metrics.button)
-        reject.frame = NSRect(x: bounds.width - x - aw - Space.s - rw, y: y, width: rw, height: Metrics.button)
+        if !detail.isHidden { detail.frame = NSRect(x: x, y: y, width: w, height: 18) }
     }
 }
 
@@ -1538,7 +1556,7 @@ final class ApprovalCard: CardBase, CardContent {
 
 /// Compact: "New PR opened · repo #125 · 2 min ago" with Review Now / Later.
 final class ToastCard: CardBase, CardContent {
-    var cardWidth: CGFloat { 400 }
+    var cardWidth: CGFloat { 520 }
     var onDismiss: (() -> Void)?
     var onOpenURL: ((URL) -> Void)?
 
@@ -1553,7 +1571,7 @@ final class ToastCard: CardBase, CardContent {
         tile = IconTile(symbol: "bell.fill", color: Pal.accent, size: 36, pointSize: 16)
         primary = CardButton("Open", style: .primary, target: nil, action: #selector(ToastCard.primaryTapped))
         later = CardButton("Later", style: .tertiary, target: nil, action: #selector(ToastCard.laterTapped))
-        super.init(width: 400, title: "")
+        super.init(width: 520, title: "")
         primary.target = self; later.target = self
         addSubview(tile)
         when.font = Typo.caption; when.textColor = Pal.textTertiary; when.alignment = .right; addSubview(when)
@@ -1563,7 +1581,8 @@ final class ToastCard: CardBase, CardContent {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    var desiredHeight: CGFloat { Space.l + 40 + Space.m + zera.preferredHeight + Space.m + Metrics.button + Metrics.cardPad }
+    /// A banner: just the header row (Zera hangs in its middle), plus a little air.
+    var desiredHeight: CGFloat { headerBottom + 6 }
 
     func show(event e: GHEvent) {
         tile.removeFromSuperview()
@@ -1586,7 +1605,7 @@ final class ToastCard: CardBase, CardContent {
         zera.set(pose: pose)
         zera.line = line
         titleLabel.stringValue = heading
-        setSubtitle("\(e.subtitle) · \(e.title)")
+        setSubtitle("\(e.subtitle) · \(e.title) · \(relativeTime(e.date))")
         when.stringValue = relativeTime(e.date)
         primary.setTitleText(button)
         url = e.url
@@ -1598,16 +1617,16 @@ final class ToastCard: CardBase, CardContent {
 
     override func layout() {
         super.layout()
-        let x = Metrics.cardPad, w = bounds.width - x * 2
-        tile.frame = NSRect(x: x, y: Space.l, width: 36, height: 36)
-        when.frame = NSRect(x: bounds.width - x - 70, y: Space.l + 2, width: 70, height: 14)
-        titleLabel.frame = NSRect(x: x + 46, y: Space.l - 1, width: w - 46 - 76, height: 20)
-        subtitleLabel.frame = NSRect(x: x + 46, y: Space.l + 20, width: w - 46, height: 16)
-        var y = Space.l + 40 + Space.m
-        zera.frame = NSRect(x: x, y: y, width: w, height: zera.preferredHeight)
-        y += zera.preferredHeight + Space.m
+        // Banner: icon · heading / detail left of Zera; the action and Later on the right.
+        let x = Metrics.cardPad
+        zera.isHidden = true
+        when.isHidden = true
+        tile.frame = NSRect(x: x, y: 26, width: 36, height: 36)
+        let half = bounds.width / 2 - Isle.zeraGap / 2
+        titleLabel.frame = NSRect(x: x + 46, y: 25, width: max(0, half - x - 46), height: 20)
+        subtitleLabel.frame = NSRect(x: x + 46, y: 46, width: max(0, half - x - 46), height: 16)
         let lw = later.fittedWidth, pw = primary.fittedWidth
-        later.frame = NSRect(x: bounds.width - x - lw, y: y, width: lw, height: Metrics.button)
-        primary.frame = NSRect(x: bounds.width - x - lw - Space.s - pw, y: y, width: pw, height: Metrics.button)
+        later.frame = NSRect(x: bounds.width - x - lw, y: 29, width: lw, height: 30)
+        primary.frame = NSRect(x: later.frame.minX - Space.s - pw, y: 29, width: pw, height: 30)
     }
 }
