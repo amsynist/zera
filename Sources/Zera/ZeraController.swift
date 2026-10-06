@@ -278,6 +278,9 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
         layoutBuddy()
         startPolling()
+        _ = ClipboardStore.shared   // starts watching the clipboard, if history is on
+        registerClipboardHotKey()
+        setUpOpener()
         MainActor.assumeIsolated {
             GitHubService.shared.startPolling()
             ClaudeHookService.shared.start()
@@ -419,7 +422,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         }
         // Folded away while a card is open (the card carries the same information), while the
         // notch has widened to show the tabs, and until Zera is tapped after minimizing.
-        guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed, !finishedLiveHidden else { hideLive(); return }
+        // Also folded away while she's down with the app opener.
+        guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed, !finishedLiveHidden, !openerOpen else { hideLive(); return }
         showLive()
         if done, liveHideWork == nil {
             // Let the green bar be seen, then tidy away.
@@ -674,6 +678,120 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let work = DispatchWorkItem { [weak self] in self?.settle() }
         sayResetWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + hold, execute: work)
+    }
+
+    // MARK: - Clipboard
+
+    private var clipboardHotKey: GlobalHotKey?
+
+    /// A recorded shortcut kept in defaults under `key`: the default until you record another,
+    /// nil once you turn it off.
+    private static func storedShortcut(_ key: String, default d: HotKeyShortcut) -> HotKeyShortcut? {
+        let u = UserDefaults.standard
+        if u.bool(forKey: key + "Off") { return nil }
+        return u.data(forKey: key).flatMap { try? JSONDecoder().decode(HotKeyShortcut.self, from: $0) } ?? d
+    }
+    private static func store(_ s: HotKeyShortcut?, _ key: String) {
+        let u = UserDefaults.standard
+        u.set(s == nil, forKey: key + "Off")
+        if let s = s, let data = try? JSONEncoder().encode(s) { u.set(data, forKey: key) }
+    }
+
+    /// The shortcut that opens Clipboard from any app (⇧⌘V unless you recorded another); nil is off.
+    var clipboardShortcut: HotKeyShortcut? {
+        get { Self.storedShortcut("clipboard.shortcut", default: .default) }
+        set { Self.store(newValue, "clipboard.shortcut") }
+    }
+
+    // MARK: - App opener
+
+    private let opener = AppOpener()
+    /// The opener is down: the wings and the hanging Zera step aside until it's gone.
+    private var openerOpen = false
+    private var openerHotKey: GlobalHotKey?
+
+    /// ⌥Space unless you recorded another; nil is off.
+    var openerShortcut: HotKeyShortcut? {
+        get { Self.storedShortcut("appOpener.shortcut", default: AppOpenerSettings.defaultShortcut) }
+        set { Self.store(newValue, "appOpener.shortcut") }
+    }
+
+    /// Registers the opener's shortcut (when the opener is on). False if macOS refused it.
+    @discardableResult
+    func registerOpenerHotKey() -> Bool {
+        openerHotKey = nil
+        guard AppOpenerSettings.enabled, let s = openerShortcut else { return true }
+        openerHotKey = GlobalHotKey(s) { [weak self] in self?.toggleOpener() }
+        return openerHotKey != nil
+    }
+
+    private func setOpenerShortcut(_ s: HotKeyShortcut?) -> Bool {
+        let old = openerShortcut
+        openerShortcut = s
+        if registerOpenerHotKey() { return true }
+        openerShortcut = old
+        registerOpenerHotKey()
+        return false
+    }
+
+    func toggleOpener() {
+        if cardVisible { hideCard() }
+        opener.toggle(notch: geometry.notchRect, screen: geometry.screen.frame)
+    }
+
+    /// While she's down with the opener, the hanging Zera steps aside (there's only one of her).
+    private func setUpOpener() {
+        opener.onOpenChanged = { [weak self] open in
+            guard let self = self else { return }
+            self.openerOpen = open
+            guard self.buddyEnabled else { self.updateLive(); return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = Motion.duration(open ? 0.12 : 0.25)
+                self.buddyPanel.animator().alphaValue = open ? 0 : 1
+                if open { self.bubblePanel.animator().alphaValue = 0 }
+            }
+            if !open { self.updateLive() } else { self.hideLive() }
+        }
+        opener.onLaunched = { [weak self] app in
+            self?.say("opening \(app.name) ✨", mood: .happy, for: 2)
+        }
+        registerOpenerHotKey()
+        // Load the app list now, in the background, so the first ⌥Space is instant.
+        AppCatalog.shared.refreshIfNeeded()
+    }
+
+    /// Registers the clipboard shortcut. Returns false if macOS refused it (another app owns it).
+    @discardableResult
+    func registerClipboardHotKey() -> Bool {
+        clipboardHotKey = nil
+        guard let s = clipboardShortcut else { return true }
+        clipboardHotKey = GlobalHotKey(s) { [weak self] in
+            guard let self = self else { return }
+            if self.cardVisible, self.currentCard == .clipboard { self.dismissCardByUser() }
+            else { self.suppressUntil = .distantPast; self.show(.clipboard) }
+        }
+        return clipboardHotKey != nil
+    }
+
+    /// From the recorder in Settings: try the new shortcut, keep the old one if it can't be used.
+    private func setClipboardShortcut(_ s: HotKeyShortcut?) -> Bool {
+        let old = clipboardShortcut
+        clipboardShortcut = s
+        if registerClipboardHotKey() { return true }
+        clipboardShortcut = old
+        registerClipboardHotKey()
+        return false
+    }
+
+    /// Something went back on the clipboard: she says so, and the island folds away so ⌘V can
+    /// paste it into the app underneath (unless you chose to keep it open).
+    private func clipboardCopied() {
+        say("copied ✨ press ⌘V to paste", mood: .happy, for: 2.4)
+        guard ClipboardStore.shared.foldAfterCopy else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
+            guard let self = self, self.cardVisible, self.currentCard == .clipboard else { return }
+            self.hideCard()
+        }
     }
 
     private func sound(_ s: ZeraSound) {
@@ -977,6 +1095,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             sound(.timerSet)
             say("timer set — I'll tell you at \(ReminderService.timeFormatter.string(from: due)) ⏱", mood: .focused, for: 3)
             hideCard()
+        case .clipboard:
+            show(.clipboard)
         case .searchFiles:
             show(.home)
             (cards[.home] as? HomeCard)?.focusSearch()
@@ -1104,6 +1224,18 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                                  loginEnabled: SMAppService.mainApp.status == .enabled)
             s.onDefaultChanged = { [weak self] k in self?.defaultCard = k }
             s.onShowZeraChanged = { [weak self] on in self?.setBuddyEnabled(on) }
+            s.clipboardShortcut = clipboardShortcut
+            s.onClipboardShortcutChanged = { [weak self] c in self?.setClipboardShortcut(c) ?? false }
+            // While you record, the current shortcut is paused so pressing it gets recorded.
+            s.onClipboardShortcutRecording = { [weak self] on in
+                if on { self?.clipboardHotKey = nil } else { self?.registerClipboardHotKey() }
+            }
+            s.openerShortcut = openerShortcut
+            s.onOpenerShortcutChanged = { [weak self] c in self?.setOpenerShortcut(c) ?? false }
+            s.onOpenerShortcutRecording = { [weak self] on in
+                if on { self?.openerHotKey = nil } else { self?.registerOpenerHotKey() }
+            }
+            s.onOpenerEnabledChanged = { [weak self] _ in self?.registerOpenerHotKey() }
             s.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 3) }
             c = s
         case .approval:
@@ -1145,6 +1277,15 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             }
             t.onOpenURL = { [weak self] u in self?.open(u) }
             c = t
+        case .clipboard:
+            let v = ClipboardView()
+            v.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 2.5) }
+            v.onCopied = { [weak self] _ in self?.clipboardCopied() }
+            v.onOpenSettings = { [weak self] in
+                self?.show(.settings)
+                (self?.cards[.settings] as? SettingsCard)?.select(.clipboard)
+            }
+            c = v
         case .claude:
             let a = ClaudeSessionsView()
             a.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 2.5) }
@@ -1239,6 +1380,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             (cards[.claude] as? ClaudeSessionsView)?.willShow(expanded: claudeOpenExpanded)
             claudeOpenExpanded = false
         case .settings: break
+        case .clipboard: (cards[.clipboard] as? ClipboardView)?.willShow()
         }
 
         if !cardVisible { islandVisited = false }
@@ -1260,6 +1402,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         if isNotificationBanner { startBannerCountdown() }
         else { bannerCountdown = nil }
         if kind == .approval { cardPanel.makeKey() }
+        if kind == .clipboard {
+            // Arrow keys, ⏎ and ⌘1–⌘9 work straight away. The panel doesn't activate Zera, so the
+            // app you came from is still the one ⌘V pastes into once the island folds away.
+            cardPanel.makeKey()
+            cardPanel.makeFirstResponder(currentContent)
+        }
     }
 
     /// Sizes the current screen for the island (compact: capped width and height) and shows it.

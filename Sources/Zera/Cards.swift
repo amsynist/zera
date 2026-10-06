@@ -364,7 +364,7 @@ final class SectionHeader: NSView {
 // MARK: - Quick actions
 
 enum QuickAction {
-    case openClaude, dropFiles, newNote, takeBreak, screenshot, startTimer, searchFiles
+    case openClaude, dropFiles, clipboard, newNote, takeBreak, screenshot, startTimer, searchFiles
     /// A question typed into Home — answered inside Zera, no file attached.
     case askZera(String)
 
@@ -372,6 +372,7 @@ enum QuickAction {
         switch self {
         case .openClaude: return "Open Claude"
         case .dropFiles: return "Drop Files"
+        case .clipboard: return "Clipboard"
         case .newNote: return "New Note"
         case .takeBreak: return "Take a Break"
         case .screenshot: return "Screenshot"
@@ -381,11 +382,12 @@ enum QuickAction {
         }
     }
 
-    /// One word for the Home tiles, which sit six in a row.
+    /// One word for the Home tiles, which sit seven in a row.
     var tileTitle: String {
         switch self {
         case .openClaude: return "Claude"
         case .dropFiles: return "Files"
+        case .clipboard: return "Clipboard"
         case .newNote: return "Note"
         case .takeBreak: return "Break"
         case .screenshot: return "Screenshot"
@@ -399,6 +401,7 @@ enum QuickAction {
         switch self {
         case .openClaude: return "sparkles"
         case .dropFiles: return "tray.and.arrow.down.fill"
+        case .clipboard: return "doc.on.clipboard.fill"
         case .newNote: return "note.text"
         case .takeBreak: return "cup.and.saucer.fill"
         case .screenshot: return "camera.viewfinder"
@@ -413,6 +416,7 @@ enum QuickAction {
         switch self {
         case .openClaude, .askZera: return p.tileClaude
         case .dropFiles: return p.accent
+        case .clipboard: return p.info
         case .newNote: return p.tileNote
         case .takeBreak: return p.info
         case .screenshot: return p.accentSoft.blended(withFraction: 0.5, of: p.accent) ?? p.accent
@@ -421,7 +425,7 @@ enum QuickAction {
         }
     }
 
-    static let grid: [QuickAction] = [.openClaude, .dropFiles, .newNote, .takeBreak, .screenshot, .startTimer]
+    static let grid: [QuickAction] = [.openClaude, .dropFiles, .clipboard, .newNote, .takeBreak, .screenshot, .startTimer]
 }
 
 // MARK: - Home
@@ -645,16 +649,27 @@ final class SettingsCard: CardBase, CardContent {
     var cardWidth: CGFloat { 560 }
     var onDefaultChanged: ((CardKind?) -> Void)?
     var onShowZeraChanged: ((Bool) -> Void)?
+    /// The shortcut that opens Clipboard from any app.
+    var clipboardShortcut: HotKeyShortcut? = .default
+    /// Returns false when the shortcut can't be used (another app owns it).
+    var onClipboardShortcutChanged: ((HotKeyShortcut?) -> Bool)?
+    var onClipboardShortcutRecording: ((Bool) -> Void)?
+    /// The app opener's shortcut (nil = off) and its switches.
+    var openerShortcut: HotKeyShortcut? = AppOpenerSettings.defaultShortcut
+    var onOpenerShortcutChanged: ((HotKeyShortcut?) -> Bool)?
+    var onOpenerShortcutRecording: ((Bool) -> Void)?
+    var onOpenerEnabledChanged: ((Bool) -> Void)?
     var say: ((String, ZeraMood) -> Void)?
 
     enum Pane: Int, CaseIterable {
-        case general, sounds, appearance, integrations, shortcuts, about
+        case general, sounds, clipboard, appearance, integrations, shortcuts, about
         case claude, github, calendar, shelf   // detail panes, reached from Integrations
         case diagnostics                        // detail of Claude
         var title: String {
             switch self {
             case .general: return "General"
             case .sounds: return "Sounds"
+            case .clipboard: return "Clipboard"
             case .appearance: return "Appearance"
             case .integrations: return "Integrations"
             case .shortcuts: return "Shortcuts"
@@ -670,6 +685,7 @@ final class SettingsCard: CardBase, CardContent {
             switch self {
             case .general: return "gearshape.fill"
             case .sounds: return "speaker.wave.2.fill"
+            case .clipboard: return "doc.on.clipboard.fill"
             case .appearance: return "paintpalette.fill"
             case .integrations: return "puzzlepiece.extension.fill"
             case .shortcuts: return "keyboard"
@@ -684,7 +700,7 @@ final class SettingsCard: CardBase, CardContent {
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
         var isDetail: Bool { rawValue >= Pane.claude.rawValue }
-        static let nav: [Pane] = [.general, .sounds, .integrations, .shortcuts, .about]
+        static let nav: [Pane] = [.general, .sounds, .clipboard, .integrations, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
@@ -692,6 +708,8 @@ final class SettingsCard: CardBase, CardContent {
     private let closeButton: IconButton
     private let backButton: CardButton
     private let pane = FlippedView()
+    /// Panes taller than the island scroll instead of being cut off.
+    private let paneScroll = NSScrollView()
     private(set) var current: Pane = .general
     private var defaultKind: CardKind?
     private let showingZera: Bool
@@ -719,7 +737,14 @@ final class SettingsCard: CardBase, CardContent {
         paneTitle.font = Typo.section
         paneTitle.textColor = Pal.text
         addSubview(paneTitle)
-        addSubview(pane)
+        paneScroll.drawsBackground = false
+        paneScroll.contentView.drawsBackground = false
+        paneScroll.borderType = .noBorder
+        paneScroll.hasVerticalScroller = true
+        paneScroll.scrollerStyle = .overlay
+        paneScroll.verticalScrollElasticity = .allowed
+        paneScroll.documentView = pane
+        addSubview(paneScroll)
         for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed, ClaudeActivityService.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(serviceChanged), name: name, object: nil)
         }
@@ -730,11 +755,17 @@ final class SettingsCard: CardBase, CardContent {
 
     var desiredHeight: CGFloat {
         let nav = headerBottom + CGFloat(Pane.nav.count) * (Metrics.control + Space.xs) + Metrics.cardPad
-        return max(nav, headerBottom + 24 + paneHeight + Metrics.cardPad)
+        return max(nav, headerBottom + 24 + visiblePaneHeight + Metrics.cardPad)
+    }
+
+    /// As much of the pane as fits in the island; the rest scrolls.
+    private var visiblePaneHeight: CGFloat {
+        min(paneHeight, Isle.maxContentHeight - headerBottom - 24 - Metrics.cardPad)
     }
 
     func select(_ p: Pane) {
         current = p
+        paneScroll.contentView.scroll(to: .zero)
         let highlight: Pane = p.isDetail ? .integrations : p
         for (i, row) in navRows.enumerated() { row.selected = Pane.nav[i] == highlight }
         rebuildPane()
@@ -757,6 +788,10 @@ final class SettingsCard: CardBase, CardContent {
     /// Service notifications rebuild the pane — except while you are typing into a field,
     /// so a background GitHub poll cannot wipe a half-pasted token.
     @objc private func serviceChanged() {
+        // Only panes that show a service's state need rebuilding. Claude sessions report changes
+        // every second, and a rebuild would throw away whatever you're in the middle of.
+        guard [.integrations, .claude, .github, .calendar, .shelf, .diagnostics].contains(current) else { return }
+        if shortcutRecorder?.isRecording == true { return }
         if let f = tokenField, f.currentEditor() != nil { return }
         if let f = apiKeyField, f.currentEditor() != nil { return }
         rebuildPane()
@@ -771,6 +806,7 @@ final class SettingsCard: CardBase, CardContent {
         switch current {
         case .general: buildGeneral(&s)
         case .sounds: buildSounds(&s)
+        case .clipboard: buildClipboard(&s)
         case .appearance: buildAppearance(&s)
         case .integrations: buildIntegrations(&s)
         case .shortcuts: buildShortcuts(&s)
@@ -849,6 +885,7 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private var defaultPopup: NSPopUpButton?
+    private weak var shortcutRecorder: ShortcutRecorder?
     private var breakPopup: NSPopUpButton?
     private var tokenField: ThemedSecureField?
     private var apiKeyField: ThemedSecureField?
@@ -877,6 +914,25 @@ final class SettingsCard: CardBase, CardContent {
         breakPopup = popupRow("Break reminder", items: ["Off", "Every 30 min", "Every 45 min", "Every hour", "Every 90 min", "Every 2 hours"],
                               selected: Self.breakChoices.firstIndex(of: rs.breakInterval) ?? 0, &s, action: #selector(breakChanged))
         hint("Breaks are only suggested while you're actually at the keyboard.", &s)
+
+        // The app opener has no tab: Zera brings it down from the notch when you press its shortcut.
+        toggleRow("App opener", on: AppOpenerSettings.enabled, &s) { [weak self] on in
+            AppOpenerSettings.enabled = on
+            self?.onOpenerEnabledChanged?(on)
+            self?.rebuildPane()
+        }
+        let recorder = ShortcutRecorder()
+        recorder.shortcut = openerShortcut
+        recorder.onChange = { [weak self] new in
+            guard let self = self, self.onOpenerShortcutChanged?(new) ?? true else { return false }
+            self.openerShortcut = new
+            return true
+        }
+        recorder.onRecording = { [weak self] on in self?.onOpenerShortcutRecording?(on) }
+        settingRow("Open apps with", &s, control: recorder, controlWidth: 150)
+        toggleRow("Show running apps first", on: AppOpenerSettings.runningFirst, &s, enabled: AppOpenerSettings.enabled) { on in
+            AppOpenerSettings.runningFirst = on
+        }
     }
 
     private func buildSounds(_ s: inout Stack) {
@@ -906,8 +962,52 @@ final class SettingsCard: CardBase, CardContent {
         case .island: return .islandOpen
         case .claude: return .claudeDone
         case .reminders: return .water
+        case .clipboard: return .clipCopy
+        case .opener: return .openerLaunch
         case .github: return .githubPing
         }
+    }
+
+    private func buildClipboard(_ s: inout Stack) {
+        let clip = ClipboardStore.shared
+        toggleRow("Keep clipboard history", on: clip.enabled, &s) { [weak self] on in
+            clip.enabled = on
+            self?.rebuildPane()
+        }
+        let on = clip.enabled
+        let keep = popupRow("Keep items for", items: ClipboardStore.keepChoices.map { $0 == 0 ? "Until the limit" : ($0 == 1 ? "1 day" : "\($0) days") },
+                            selected: ClipboardStore.keepChoices.firstIndex(of: clip.keepDays) ?? 1, &s, action: #selector(clipKeepChanged(_:)))
+        let max = popupRow("Up to", items: ClipboardStore.maxChoices.map { "\($0) items" },
+                           selected: ClipboardStore.maxChoices.firstIndex(of: clip.maxItems) ?? 2, &s, action: #selector(clipMaxChanged(_:)))
+        [keep, max].forEach { $0.isEnabled = on }
+        let recorder = ShortcutRecorder()
+        shortcutRecorder = recorder
+        recorder.shortcut = clipboardShortcut
+        recorder.onChange = { [weak self] new in
+            guard let self = self, self.onClipboardShortcutChanged?(new) ?? true else { return false }
+            self.clipboardShortcut = new
+            return true
+        }
+        recorder.onRecording = { [weak self] on in self?.onClipboardShortcutRecording?(on) }
+        settingRow("Open with (from any app)", &s, control: recorder, controlWidth: 150)
+        toggleRow("Fold away after copying", on: clip.foldAfterCopy, &s, enabled: on) { v in clip.foldAfterCopy = v }
+        hint("Click the shortcut, then press keys with ⌘, ⌥ or ⌃ (⌫ turns it off). Passwords, private copies and password "
+             + "managers are never kept, and everything stays on this Mac.", &s)
+        if !clip.items.isEmpty {
+            buttonRow("Clear history", style: .destructive, status: "Pinned items stay", &s, action: #selector(clipClearTapped))
+        }
+    }
+
+    @objc private func clipKeepChanged(_ sender: NSPopUpButton) {
+        ClipboardStore.shared.keepDays = ClipboardStore.keepChoices[max(0, sender.indexOfSelectedItem)]
+    }
+    @objc private func clipMaxChanged(_ sender: NSPopUpButton) {
+        ClipboardStore.shared.maxItems = ClipboardStore.maxChoices[max(0, sender.indexOfSelectedItem)]
+    }
+    @objc private func clipClearTapped() {
+        ClipboardStore.shared.clear()
+        SoundService.shared.play(.clipClear)
+        rebuildPane()
     }
 
     @objc private func soundVolumeChanged(_ sender: NSSlider) {
@@ -1232,6 +1332,9 @@ final class SettingsCard: CardBase, CardContent {
         let items: [(String, String)] = [
             ("Open the default card", "Tap Zera"), ("Show the pill", "Hover Zera"), ("Move Zera along the top", "Drag her"),
             ("Close any card", "Esc"), ("Approve / reject a Claude command", "⏎ / Esc"), ("Add an event or reminder", "+ Add Event ▾"),
+            ("Open clipboard history", clipboardShortcut?.label ?? "Clipboard tab"),
+            ("Open an app", openerShortcut?.label ?? "Off (Settings → General)"),
+            ("Copy an item again", "Click it · ⏎ · ⌘1–⌘9"),
             ("Paste clipboard onto the shelf", "⌘V"), ("Select all tiles", "⌘A"), ("Remove selected tiles", "⌫"),
         ]
         for (what, key) in items {
@@ -1444,7 +1547,8 @@ final class SettingsCard: CardBase, CardContent {
             backButton.frame = NSRect(x: px - Space.s, y: headerBottom - 5, width: bw, height: Metrics.control)
             paneTitle.frame = NSRect(x: px + bw, y: headerBottom, width: pw - bw, height: 18)
         }
-        pane.frame = NSRect(x: px, y: headerBottom + 24, width: pw, height: paneHeight)
+        paneScroll.frame = NSRect(x: px, y: headerBottom + 24, width: pw, height: visiblePaneHeight)
+        pane.frame = NSRect(x: 0, y: 0, width: pw, height: paneHeight)
     }
 }
 

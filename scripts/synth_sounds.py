@@ -292,6 +292,37 @@ def _():
 @sound("github_ci_passed", 0.3)
 def _(): return mix(0.5, (pluck(N["E6"], 0.2, 16), 0, 1), (pluck(N["A6"], 0.3, 11), 0.08, 1))
 
+# ---------------------------------------------------------------- Clipboard
+
+@sound("clip_copy", 0.26)
+def _():
+    # A soft paper snap, then two quick rising notes: "got it, it's on the clipboard".
+    snap = band(noise(0.025), 2500, 7000) * env(0.025, 0.0005, 180)
+    return mix(0.4, (snap, 0, 0.5), (pluck(N["G6"], 0.12, 30), 0.012, 0.8), (pluck(N["C7"], 0.22, 18), 0.07, 0.9))
+
+@sound("clip_clear", 0.2)
+def _():
+    sw = sweep_noise(0.26, 3600, 600) * env(0.26, 0.02, 7, 0.05)
+    return mix(0.45, (sw, 0, 1), (pluck(N["E5"], 0.2, 14), 0.16, 0.5))
+
+# ---------------------------------------------------------------- App opener
+
+@sound("opener_drop", 0.26)
+def _():
+    # Down the rope: a falling glide that bounces once as she lands.
+    d = 0.3
+    fall = osc(glide(980, 520, d, 0.8), d, "soft") * env(d, 0.01, 7, 0.04)
+    land = pluck(N["G5"], 0.16, 22)
+    return mix(0.5, (fall, 0, 0.8), (land, 0.24, 0.6))
+
+@sound("opener_tick", 0.1)
+def _(): return pluck(2650, 0.04, 120)
+
+@sound("opener_launch", 0.28)
+def _():
+    sw = sweep_noise(0.22, 700, 5200) * env(0.22, 0.08, 9, 0.04)
+    return mix(0.5, (sw, 0, 0.8), (pluck(N["C7"], 0.25, 14), 0.16, 0.8), (pluck(N["E7"], 0.25, 14), 0.2, 0.5))
+
 
 def write(name, x):
     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2")

@@ -20,15 +20,21 @@ enum ZeraSound: String, CaseIterable {
     case calendar = "reminder_calendar", reminderDone = "reminder_done"
     // GitHub
     case githubPing = "github_ping", ciFailed = "github_ci_failed", ciPassed = "github_ci_passed"
+    // Clipboard
+    case clipCopy = "clip_copy", clipClear = "clip_clear"
+    // App opener
+    case openerDrop = "opener_drop", openerTick = "opener_tick", openerLaunch = "opener_launch"
 
     enum Family: String, CaseIterable {
-        case zera, island, claude, reminders, github
+        case zera, island, claude, reminders, clipboard, opener, github
         var title: String {
             switch self {
             case .zera: return "Zera"
             case .island: return "Island"
             case .claude: return "Claude Code"
             case .reminders: return "Reminders"
+            case .clipboard: return "Clipboard"
+            case .opener: return "App opener"
             case .github: return "GitHub"
             }
         }
@@ -44,13 +50,15 @@ enum ZeraSound: String, CaseIterable {
         case .claudeStart, .claudeApproval, .claudeApproved, .claudeRejected, .claudeDone: return .claude
         case .reminder, .water, .breakTime, .calendar, .reminderDone: return .reminders
         case .githubPing, .ciFailed, .ciPassed: return .github
+        case .clipCopy, .clipClear: return .clipboard
+        case .openerDrop, .openerTick, .openerLaunch: return .opener
         }
     }
 
     /// Whisper / soft / alert, relative to the volume setting.
     var gain: Float {
         switch self {
-        case .caption, .islandOpen, .islandClose, .tab, .button, .fileHover, .fileDragOut, .hello: return 0.55
+        case .caption, .islandOpen, .islandClose, .tab, .button, .fileHover, .fileDragOut, .hello, .openerTick: return 0.55
         case .claudeApproval, .claudeDone, .reminder, .water, .breakTime, .calendar: return 1.0
         default: return 0.8
         }
