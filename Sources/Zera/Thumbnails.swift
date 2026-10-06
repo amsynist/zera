@@ -5,8 +5,10 @@ import QuickLookThumbnailing
 /// QuickLook preview when one is available.
 final class Thumbnails {
     static let shared = Thumbnails()
-    private var cache: [String: NSImage] = [:]
-    private var inFlight: Set<String> = []
+    private let cache = NSCache<NSString, NSImage>()
+    private var pending: [String: [(NSImage) -> Void]] = [:]
+
+    private init() { cache.countLimit = 200 }
 
     func icon(for url: URL) -> NSImage {
         let img = NSWorkspace.shared.icon(forFile: url.path)
@@ -16,10 +18,10 @@ final class Thumbnails {
 
     func thumbnail(for url: URL, completion: @escaping (NSImage) -> Void) {
         let key = url.path
-        if let cached = cache[key] { completion(cached); return }
+        if let cached = cache.object(forKey: key as NSString) { completion(cached); return }
         completion(icon(for: url))
-        guard !inFlight.contains(key) else { return }
-        inFlight.insert(key)
+        if pending[key] != nil { pending[key]?.append(completion); return }
+        pending[key] = [completion]
 
         let scale = NSScreen.main?.backingScaleFactor ?? 2
         let req = QLThumbnailGenerator.Request(fileAt: url,
@@ -29,14 +31,12 @@ final class Thumbnails {
         QLThumbnailGenerator.shared.generateBestRepresentation(for: req) { [weak self] rep, _ in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.inFlight.remove(key)
+                let callbacks = self.pending.removeValue(forKey: key) ?? []
                 guard let cg = rep?.cgImage else { return }
                 let img = NSImage(cgImage: cg, size: NSSize(width: Theme.thumbSize, height: Theme.thumbSize))
-                self.cache[key] = img
-                completion(img)
+                self.cache.setObject(img, forKey: key as NSString)
+                callbacks.forEach { $0(img) }
             }
         }
     }
-
-    func forget(_ url: URL) { cache.removeValue(forKey: url.path) }
 }

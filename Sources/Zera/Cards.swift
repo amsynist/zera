@@ -141,8 +141,6 @@ final class ListRow: NSView {
         needsLayout = true
     }
 
-    func setTrailingColor(_ c: NSColor) { trailing.textColor = c }
-
     /// Glass row: a navy step up with a soft blue edge that lights up under the pointer.
     private func restyle() {
         let p = Pal
@@ -262,22 +260,6 @@ final class NavRow: NSView {
     override func mouseDown(with event: NSEvent) { onTap?() }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func draw(_ dirtyRect: NSRect) { drawBadge(badge, rightEdge: bounds.maxX - Space.m, midY: bounds.midY) }
-}
-
-/// A placeholder row while a list loads: a soft tile and two bars where the text will be.
-final class SkeletonRow: NSView {
-    override var isFlipped: Bool { true }
-    override func draw(_ dirtyRect: NSRect) {
-        let p = Pal
-        p.surface.setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: Radius.l, yRadius: Radius.l).fill()
-        p.surfaceStrong.setFill()
-        let h = bounds.height
-        NSBezierPath(roundedRect: NSRect(x: Space.m, y: (h - Metrics.icon) / 2, width: Metrics.icon, height: Metrics.icon), xRadius: Radius.m, yRadius: Radius.m).fill()
-        let x = Space.m + Metrics.icon + Space.m
-        NSBezierPath(roundedRect: NSRect(x: x, y: h / 2 - 13, width: bounds.width * 0.55, height: 9), xRadius: 4, yRadius: 4).fill()
-        NSBezierPath(roundedRect: NSRect(x: x, y: h / 2 + 3, width: bounds.width * 0.32, height: 7), xRadius: 3.5, yRadius: 3.5).fill()
-    }
 }
 
 /// Square tile for the Quick Actions grid.

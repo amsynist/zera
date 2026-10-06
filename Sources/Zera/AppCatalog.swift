@@ -5,6 +5,8 @@ struct AppEntry: Equatable {
     let name: String
     let url: URL
     let bundleID: String?
+    /// Resolved once during discovery, so running-state checks don't touch the file system per query.
+    let canonicalURL: URL
     /// "/Applications", "/System/Applications/Utilities" … where it lives, for the hero line.
     var folder: String { url.deletingLastPathComponent().path }
 }
@@ -53,70 +55,90 @@ final class AppCatalog {
     private(set) var apps: [AppEntry] = []
     private var scannedAt = Date.distantPast
     private var scanning = false
-    private var icons: [URL: NSImage] = [:]
+    private var refreshCallbacks: [() -> Void] = []
+    private let icons = NSCache<NSURL, NSImage>()
     private static let usageKey = "appOpener.usage"
+
+    private init() { icons.countLimit = 128 }
 
     private static var folders: [URL] {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        return ["/Applications", "/Applications/Utilities", "/System/Applications", "/System/Applications/Utilities",
+        return ["/Applications", "/System/Applications", "/System/Cryptexes/App/System/Applications",
                 "/System/Library/CoreServices/Applications"].map { URL(fileURLWithPath: $0) }
             + [home.appendingPathComponent("Applications")]
     }
 
     /// Rescans in the background when the list is older than a few minutes (or empty).
     func refreshIfNeeded(_ done: (() -> Void)? = nil) {
-        guard !scanning, apps.isEmpty || Date().timeIntervalSince(scannedAt) > 300 else { done?(); return }
+        if scanning {
+            if let done = done { refreshCallbacks.append(done) }
+            return
+        }
+        guard apps.isEmpty || Date().timeIntervalSince(scannedAt) > 300 else { done?(); return }
         scanning = true
+        if let done = done { refreshCallbacks.append(done) }
+        let running = NSWorkspace.shared.runningApplications.compactMap(\.bundleURL)
         DispatchQueue.global(qos: .userInitiated).async {
-            let found = Self.scan()
+            // Spotlight finds apps outside the usual folders; direct scanning still works when
+            // indexing is disabled. Finder lives outside Apple's Applications folders.
+            let indexed = ProcessTools.run("/usr/bin/mdfind", ["-0", "kMDItemContentType == 'com.apple.application-bundle'"])
+                .map { $0.split(separator: "\0").map { URL(fileURLWithPath: String($0)) } } ?? []
+            let found = Self.scan(additionalURLs: [URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")] + running + indexed)
             DispatchQueue.main.async {
                 self.apps = found
                 self.scannedAt = Date()
                 self.scanning = false
-                done?()
+                let callbacks = self.refreshCallbacks
+                self.refreshCallbacks.removeAll()
+                callbacks.forEach { $0() }
             }
         }
     }
 
-    private static func scan() -> [AppEntry] {
+    static func scan(folders: [URL] = AppCatalog.folders, additionalURLs: [URL] = []) -> [AppEntry] {
         let fm = FileManager.default
         var seen = Set<String>()
         var out: [AppEntry] = []
-        func add(_ url: URL) {
+        func add(_ candidate: URL) {
+            // Keep the launchable alias: physical Cryptex paths can lose their Finder icons.
+            let url = candidate.standardizedFileURL
+            guard url.pathExtension.lowercased() == "app", fm.fileExists(atPath: url.path),
+                  !url.deletingLastPathComponent().pathComponents.contains(where: { $0.lowercased().hasSuffix(".app") }) else { return }
             let b = Bundle(url: url)
-            let key = b?.bundleIdentifier ?? url.path
+            let canonicalURL = url.resolvingSymlinksInPath().standardizedFileURL
+            let key = b?.bundleIdentifier ?? canonicalURL.path
             guard !seen.contains(key) else { return }
             seen.insert(key)
             let name = (b?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
-                ?? fm.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
-            out.append(AppEntry(name: name, url: url, bundleID: b?.bundleIdentifier))
+                ?? (b?.object(forInfoDictionaryKey: "CFBundleName") as? String)
+                ?? url.deletingPathExtension().lastPathComponent
+            out.append(AppEntry(name: name, url: url, bundleID: b?.bundleIdentifier, canonicalURL: canonicalURL))
         }
         for folder in folders {
-            guard let items = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { continue }
-            for url in items {
-                if url.pathExtension == "app" { add(url) }
-                else if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
-                        let inner = try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
-                    // One level down: "Adobe Photoshop 2025/Adobe Photoshop.app".
-                    inner.filter { $0.pathExtension == "app" }.forEach(add)
-                }
+            guard let enumerator = fm.enumerator(at: folder, includingPropertiesForKeys: [.isPackageKey],
+                                                  options: [.skipsPackageDescendants]) else { continue }
+            for case let url as URL in enumerator {
+                if url.pathExtension.lowercased() == "app" { add(url); enumerator.skipDescendants() }
             }
         }
+        additionalURLs.forEach(add)
         return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     func icon(_ app: AppEntry) -> NSImage {
-        if let i = icons[app.url] { return i }
+        if let i = icons.object(forKey: app.url as NSURL) { return i }
         let i = NSWorkspace.shared.icon(forFile: app.url.path)
-        icons[app.url] = i
+        icons.setObject(i, forKey: app.url as NSURL)
         return i
     }
 
     var runningURLs: Set<URL> {
-        Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.standardizedFileURL })
+        Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.resolvingSymlinksInPath().standardizedFileURL })
     }
 
-    func isRunning(_ app: AppEntry, _ running: Set<URL>) -> Bool { running.contains(app.url.standardizedFileURL) }
+    func isRunning(_ app: AppEntry, _ running: Set<URL>) -> Bool {
+        running.contains(app.canonicalURL)
+    }
 
     // MARK: Usage
 
@@ -133,35 +155,32 @@ final class AppCatalog {
         usage = u
     }
 
-    /// How much you use it from here: opens, fading over two weeks.
-    private func weight(_ app: AppEntry) -> Double {
-        guard let u = usage[app.url.path], u.count == 2 else { return 0 }
-        let days = max(0, Date().timeIntervalSince1970 - u[1]) / 86400
-        return u[0] * exp(-days / 14)
-    }
-
     /// Results for a query: best first, with the letters that matched.
     func results(for query: String, runningFirst: Bool, limit: Int = 7) -> [(app: AppEntry, hits: [Int], running: Bool, score: Int)] {
         let running = runningURLs
+        let now = Date().timeIntervalSince1970
+        // Read defaults once per query, rather than twice for every sorting comparison.
+        let weights = usage.mapValues { u in
+            u.count == 2 ? u[0] * exp(-max(0, now - u[1]) / (14 * 86400)) : 0
+        }
         let q = query.trimmingCharacters(in: .whitespaces)
         if q.isEmpty {
             // Your usual: most-opened from here, then running apps, then a few everyday ones.
             let everyday = ["Safari", "Mail", "Notes", "Calendar", "Messages", "Finder", "Music", "System Settings"]
-            let ranked = apps.sorted { a, b in
-                let wa = weight(a), wb = weight(b)
-                if wa != wb { return wa > wb }
-                let ra = isRunning(a, running), rb = isRunning(b, running)
-                if ra != rb { return ra }
-                let ea = everyday.firstIndex(of: a.name) ?? 99, eb = everyday.firstIndex(of: b.name) ?? 99
-                if ea != eb { return ea < eb }
-                return a.name < b.name
+            let ranked = apps.map { app in
+                (app: app, weight: weights[app.url.path] ?? 0, running: isRunning(app, running), everyday: everyday.firstIndex(of: app.name) ?? 99)
+            }.sorted { a, b in
+                if a.weight != b.weight { return a.weight > b.weight }
+                if runningFirst, a.running != b.running { return a.running }
+                if a.everyday != b.everyday { return a.everyday < b.everyday }
+                return a.app.name < b.app.name
             }
-            return ranked.prefix(limit).map { ($0, [], isRunning($0, running), 0) }
+            return ranked.prefix(limit).map { ($0.app, [], $0.running, 0) }
         }
         let scored = apps.compactMap { app -> (AppEntry, Int, [Int], Bool)? in
             guard let m = AppMatcher.match(app.name, q) else { return nil }
             let run = isRunning(app, running)
-            let bonus = Int(min(150, weight(app) * 15)) + (runningFirst && run ? 60 : 0)
+            let bonus = Int(min(150, (weights[app.url.path] ?? 0) * 15)) + (runningFirst && run ? 60 : 0)
             return (app, m.score + bonus, m.hits, run)
         }
         return scored.sorted { $0.1 > $1.1 }.prefix(limit).map { ($0.0, $0.2, $0.3, $0.1) }
