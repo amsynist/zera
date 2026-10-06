@@ -755,6 +755,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         opener.onLaunched = { [weak self] app in
             self?.say("opening \(app.name) ✨", mood: .happy, for: 2)
         }
+        opener.onNotice = { [weak self] line in self?.say(line, mood: .happy, for: 2.6) }
         registerOpenerHotKey()
         // Load the app list now, in the background, so the first ⌥Space is instant.
         AppCatalog.shared.refreshIfNeeded()

@@ -99,12 +99,13 @@ enum ProcessTools {
 
 /// Commands the opener can run besides opening apps.
 enum OpenerCommand: CaseIterable {
-    case killProcess, killPort, custom
+    case killProcess, killPort, quitAll, custom
 
     var title: String {
         switch self {
         case .killProcess: return "Kill Process"
         case .killPort: return "Kill Port"
+        case .quitAll: return "Quit All Apps"
         case .custom: return "Custom Commands"
         }
     }
@@ -112,6 +113,7 @@ enum OpenerCommand: CaseIterable {
         switch self {
         case .killProcess: return "Command · stop a running process by name"
         case .killPort: return "Command · free a port by stopping what listens on it"
+        case .quitAll: return "Command · quit every open app for a clean desk"
         case .custom: return "Coming soon · your own scripts as commands"
         }
     }
@@ -119,6 +121,7 @@ enum OpenerCommand: CaseIterable {
         switch self {
         case .killProcess: return "xmark.octagon.fill"
         case .killPort: return "network.slash"
+        case .quitAll: return "sparkles.rectangle.stack.fill"
         case .custom: return "terminal.fill"
         }
     }
@@ -126,6 +129,7 @@ enum OpenerCommand: CaseIterable {
         switch self {
         case .killProcess: return Neon.red
         case .killPort: return Neon.warning
+        case .quitAll: return Neon.green
         case .custom: return Neon.violet
         }
     }
@@ -134,6 +138,7 @@ enum OpenerCommand: CaseIterable {
         switch self {
         case .killProcess: return ["kill", "process", "quit", "force quit", "stop", "task"]
         case .killPort: return ["kill", "port", "lsof", "listen", "free port", "network"]
+        case .quitAll: return ["quit", "quit all", "close all", "clean", "tidy", "kill all"]
         case .custom: return ["custom", "script", "command", "shell"]
         }
     }
@@ -147,6 +152,8 @@ enum OpenerCommand: CaseIterable {
     }
 
     var icon: NSImage { OpenerIcon.glyph(symbol, tint) }
+    /// Lists that come from `ps` / `lsof`, so they load off the main thread.
+    var loadsInBackground: Bool { self == .killProcess || self == .killPort }
 }
 
 /// Icons for things that aren't apps: an SF Symbol on a tinted, app-icon-shaped square.

@@ -29,7 +29,7 @@ an **app opener** brings her down from the notch with a search capsule for apps 
 Claude runs through your existing Claude Code login, and GitHub uses a token you paste once.
 
 <p align="center">
-  <img src="docs/zera-island.webp" alt="Hovering Zera shows the tabs; Home, Claude sessions, the Shelf, Clipboard, pull requests, Reminders and Settings open out of the notch in turn; a meeting banner opens its details; then the app opener comes down with apps, commands and actions" width="736"><br>
+  <img src="docs/zera-island.webp" alt="Hovering Zera shows the tabs; Home, Claude sessions, the Shelf, Clipboard, pull requests, Reminders and Settings open out of the notch in turn; a meeting banner opens its details; then Zera brings down the app opener: the tree of your apps, a search, ⌘K actions on Safari and Quit All Apps" width="736"><br>
   <sub>Every screen opens out of the notch. Recorded from the app with sample data.</sub>
 </p>
 
@@ -197,16 +197,30 @@ Clipboard tab or with **⇧⌘V** from any app (record your own shortcut in **Se
 
 ### App opener
 
-Press **⌥Space** in any app and Zera rappels down from the notch holding a glass search capsule. It's
-its own floating panel, not a tab, and folds away once you've chosen.
+Press **⌥Space** in any app and Zera rappels down from the notch holding the opener: a window
+whose search is the root of a tree. Your usual apps, Commands and Actions hang from it as
+branches (<kbd>⇥</kbd> opens the next one), the path to the chosen item lights up, and the right
+side shows the chosen app: running or not, its version, how often you open it from here and
+where it lives. It's its own floating panel, not a tab, and folds away once you've chosen.
 
 - **Instant.** Your app list is read in the background at launch and kept in memory, so the opener
   shows at once and you can type straight away.
-- **All · Apps · Commands · Actions** (<kbd>⇥</kbd> to switch). Typing matches loosely: "vsc" finds
-  Visual Studio Code. The best match fills the big spot and five more sit below; running apps get a
-  dot, and the apps you open most move up.
+- **Typing** opens every branch with its best matches: "vsc" finds Visual Studio Code. Running
+  apps get a dot, and the apps you open most move up.
+- **<kbd>⌘K</kbd> actions** grow as the chosen item's children in the tree, and the search field
+  searches them. For an app:
+  Open, Show in Finder, Show Package Contents, Copy Path / Name / Bundle Identifier, Hide, Quit and
+  Force Quit (when it's running), Remove from Your Usual, and **Uninstall Application**, which asks
+  first, quits the app and moves it to the Trash (Put Back restores it; apps installed by an admin
+  are selected in Finder for you to delete with your password; macOS apps can't be removed). The
+  shortcuts shown (<kbd>⇧⌘C</kbd> copy path, <kbd>⌘Q</kbd> quit, <kbd>⌃⌘⌫</kbd> uninstall…) work
+  without opening the panel too. Processes and ports have theirs: copy the PID or path, open
+  `localhost:<port>` in the browser.
 - **Commands:** **Kill Process** (search running processes by name; <kbd>⏎</kbd> quits, <kbd>⌘⏎</kbd>
-  force-quits) and **Kill Port** (type a port number to stop whatever listens on it). Your own
+  force-quits; a command opens into its own list right in the tree), **Kill Port** (type a port number to stop whatever listens on it) and **Quit All
+  Apps**, which lists every open app with a switch and quits them in one go for a clean desk.
+  <kbd>Space</kbd> or a click keeps one open (remembered for next time); apps with unsaved work still ask first, and
+  Zera tells you which held out. Finder and Zera are never quit. Kill commands touch your own
   processes only. **Custom commands**, your own scripts, are coming soon.
 - **Actions:** Zera's own: Clipboard History, Screenshot, a 25-minute timer, a note, Open Claude, the
   Shelf, a break and file search.
@@ -214,13 +228,13 @@ its own floating panel, not a tab, and folds away once you've chosen.
   <kbd>⌘⏎</kbd> shows the app in Finder and <kbd>esc</kbd> sends her back up. The shortcut and
   options are in **Settings → General**.
 
-<p align="center"><img src="docs/screens/11-app-opener.png" alt="The app opener: Zera holding the capsule, with your usual apps and the best one in the big spot" width="640"></p>
+<p align="center"><img src="docs/screens/11-app-opener.png" alt="The app opener: Zera holding the window, Your usual branch open with Safari chosen and its details on the right" width="640"></p>
 
-<p align="center"><img src="docs/screens/12-app-opener-search.png" alt="Typing “no”: Notes is the best match, with New Note and others below" width="640"></p>
+<p align="center"><img src="docs/screens/12-app-opener-search.png" alt="Typing “no”: Notes is the best match, with every branch showing its matches" width="640"></p>
 
-<p align="center"><img src="docs/screens/13-app-opener-commands.png" alt="The Commands tab: Kill Process, Kill Port and Custom Commands" width="640"></p>
+<p align="center"><img src="docs/screens/13-app-opener-actions.png" alt="⌘K on Safari: its actions grow under it in the tree, Copy Path chosen" width="640"></p>
 
-<p align="center"><img src="docs/screens/14-app-opener-actions.png" alt="The Actions tab: Clipboard History, Screenshot, a timer, a note, Open Claude and the Shelf" width="640"></p>
+<p align="center"><img src="docs/screens/14-app-opener-quit-all.png" alt="Quit All Apps opened into the open apps, each with a switch, and Quit 7 apps on the right" width="640"></p>
 
 ### Home
 
