@@ -199,6 +199,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private let tabs = GitHubSegmentedControl(items: Filter.allCases.map { .init(symbol: "", title: $0.title, count: 0, tint: nil) })
     private var results: [OpenerItem] = []
     private var selected = 0
+    private var resultPageStart: Int { selected / OP.tiles * OP.tiles }
 
     /// Opening apps, or inside a command (Kill Process, Kill Port, Custom Commands).
     private enum Mode: Equatable { case root, command(OpenerCommand) }
@@ -210,6 +211,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private var ports: [PortEntry] = []
     private var listItems: [(title: String, detail: String, trailing: String, pid: Int32)] = []
     private var loading = false
+    private var commandScan = UUID()
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -315,8 +317,15 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         capsule.addSubview(hero)
         for i in 0..<OP.tiles {
             let t = OpenerTile(index: i)
-            t.onHover = { [weak self] in self?.select(i) }
-            t.onClick = { [weak self] in self?.select(i); self?.openSelected() }
+            t.onHover = { [weak self] in
+                guard let self = self else { return }
+                self.select(self.resultPageStart + i)
+            }
+            t.onClick = { [weak self] in
+                guard let self = self else { return }
+                self.select(self.resultPageStart + i)
+                self.openSelected()
+            }
             capsule.addSubview(t)
             tiles.append(t)
         }
@@ -349,9 +358,15 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
 
     func prepare() {
         mode = .root
+        commandScan = UUID()
+        loading = false
         filter = .all
         tabs.selected = 0
         field.stringValue = ""
+        if let p = field.placeholderAttributedString?.mutableCopy() as? NSMutableAttributedString {
+            p.mutableString.setString("Open an app…")
+            field.placeholderAttributedString = p
+        }
         selected = 0
         needsLayout = true
         layoutSubtreeIfNeeded()
@@ -364,7 +379,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         let typing = !q.isEmpty
         var scored: [(OpenerItem, Int)] = []
         if filter == .all || filter == .apps {
-            scored += AppCatalog.shared.results(for: q, runningFirst: AppOpenerSettings.runningFirst, limit: OP.tiles)
+            scored += AppCatalog.shared.results(for: q, runningFirst: AppOpenerSettings.runningFirst, limit: .max)
                 .map { (.app($0.app, hits: $0.hits, running: $0.running), $0.score) }
         }
         // Commands and actions: every one on their own tab, the matching ones on All once you type.
@@ -381,7 +396,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             }
         }
         if typing { scored.sort { $0.1 > $1.1 } }
-        results = Array(scored.prefix(OP.tiles).map(\.0))
+        results = scored.map(\.0)
         selected = min(selected, max(0, results.count - 1))
         leftLabel.isHidden = true
         tabs.isHidden = false
@@ -395,18 +410,23 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         hero.isHidden = none
         empty.stringValue = AppCatalog.shared.apps.isEmpty && filter != .commands && filter != .actions ? "Looking for your apps…"
             : "Nothing called “\(q)”.\n⏎ searches the web for it."
-        for (i, t) in tiles.enumerated() {
-            if i < results.count {
-                t.isHidden = false
-                t.set(item: results[i], selected: i == selected)
-            } else {
-                t.isHidden = true
-            }
-        }
-        if let r = results[safe: selected] { hero.set(item: r) }
+        updateVisibleResults()
         zera.frameCenterRotation = none && typing ? 10 : 0     // a puzzled head-tilt
         foot.stringValue = "←→ choose   ⏎ open   ⌘1–⌘6 quick open   ⌘⏎ show in Finder"
         footRight.stringValue = "⇥ next tab"
+    }
+
+    /// Keep six tiles on screen, while arrows can reach every result.
+    private func updateVisibleResults() {
+        for (i, tile) in tiles.enumerated() {
+            let index = resultPageStart + i
+            tile.isHidden = !results.indices.contains(index)
+            if let item = results[safe: index] { tile.set(item: item, selected: index == selected) }
+        }
+        if let item = results[safe: selected] { hero.set(item: item) }
+        if results.count > OP.tiles {
+            rightLabel.stringValue = "\(resultPageStart + 1)–\(min(resultPageStart + OP.tiles, results.count)) OF \(results.count)"
+        }
     }
 
     private func setFilter(_ f: Filter) {
@@ -427,11 +447,10 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     }
 
     private func select(_ i: Int) {
-        guard i < results.count, i != selected else { return }
+        guard results.indices.contains(i), i != selected else { return }
         selected = i
         SoundService.shared.play(.openerTick)
-        for (k, t) in tiles.enumerated() where k < results.count { t.selected = k == i }
-        hero.set(item: results[i])
+        updateVisibleResults()
     }
 
     private func openSelected(finder: Bool = false) {
@@ -465,14 +484,22 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         rightLabel.stringValue = c == .custom ? "SOON" : "LOADING…"
         setRootVisible(false)
         processes = []; ports = []
+        loading = c != .custom
         reloadList(c)
         guard c != .custom else { return }
+        refreshCommand(c)
+    }
+
+    private func refreshCommand(_ c: OpenerCommand) {
+        commandScan = UUID()
+        let scan = commandScan
         loading = true
+        rightLabel.stringValue = "LOADING…"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let procs = c == .killProcess ? ProcessTools.processes() : []
             let listening = c == .killPort ? ProcessTools.listeningPorts() : []
             DispatchQueue.main.async {
-                guard let self = self, self.mode == .command(c) else { return }
+                guard let self = self, self.mode == .command(c), self.commandScan == scan else { return }
                 self.loading = false
                 self.processes = procs
                 self.ports = listening
@@ -483,6 +510,8 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
 
     private func back() {
         mode = .root
+        commandScan = UUID()
+        loading = false
         field.stringValue = ""
         selected = 0
         (field.placeholderAttributedString?.mutableCopy() as? NSMutableAttributedString).map { p in
@@ -496,18 +525,20 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         let q = field.stringValue.trimmingCharacters(in: .whitespaces).lowercased()
         switch c {
         case .killProcess:
-            let filtered = q.isEmpty ? processes : processes.filter { $0.name.lowercased().contains(q) || String($0.pid).hasPrefix(q) }
-            listItems = filtered.prefix(60).map { p in
+            let filtered = q.isEmpty ? processes : processes.filter {
+                $0.name.localizedCaseInsensitiveContains(q) || $0.path.localizedCaseInsensitiveContains(q) || String($0.pid).hasPrefix(q)
+            }
+            listItems = filtered.map { p in
                 (p.name, "pid \(p.pid) · \(ProcessTools.memory(p.memoryKB))", String(format: "%.1f%% CPU", p.cpu), p.pid)
             }
-            foot.stringValue = "↑↓ choose   ⏎ quit   ⌘⏎ force quit"
+            foot.stringValue = "↑↓ choose   ⏎ quit   ⌘⏎ force quit   ⌘R refresh"
             footRight.stringValue = "esc back"
         case .killPort:
             let filtered = q.isEmpty ? ports : ports.filter { String($0.port).hasPrefix(q) || $0.command.lowercased().contains(q) }
-            listItems = filtered.prefix(60).map { p in
+            listItems = filtered.map { p in
                 (":\(p.port)", "\(p.command) · pid \(p.pid) · \(p.address == "*" ? "all addresses" : p.address)", "listening", p.pid)
             }
-            foot.stringValue = "↑↓ choose   ⏎ stop what's on the port   ⌘⏎ force"
+            foot.stringValue = "↑↓ choose   ⏎ stop port   ⌘⏎ force   ⌘R refresh"
             footRight.stringValue = "esc back"
         case .custom:
             listItems = []
@@ -535,7 +566,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     }
 
     private func selectRow(_ i: Int) {
-        guard i < rows.count, i != selected else { return }
+        guard rows.indices.contains(i), i != selected else { return }
         selected = i
         SoundService.shared.play(.openerTick)
         for (k, r) in rows.enumerated() { r.selected = k == i }
@@ -544,6 +575,10 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
 
     private func killSelected(force: Bool) {
         guard case .command(let c) = mode, c != .custom, let it = listItems[safe: selected] else { return }
+        if it.pid == getpid(), !force {
+            NSApp.terminate(nil) // Let Zera cancel her background tasks before quitting.
+            return
+        }
         switch ProcessTools.kill(it.pid, force: force) {
         case .done:
             SoundService.shared.play(.clipClear)
@@ -577,7 +612,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             default: return false
             }
         }
-        let n = min(results.count, OP.tiles)
+        let n = results.count
         switch sel {
         case #selector(NSResponder.moveRight(_:)) where textView.selectedRange().location >= field.stringValue.count,
              #selector(NSResponder.moveDown(_:)):
@@ -600,9 +635,13 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown, event.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: event) }
-        if mode == .root, let c = event.charactersIgnoringModifiers, let n = Int(c), (1...OP.tiles).contains(n), n - 1 < results.count {
-            selected = n - 1
-            reload()
+        if case .command(let command) = mode, command != .custom, event.charactersIgnoringModifiers?.lowercased() == "r" {
+            refreshCommand(command)
+            return true
+        }
+        if mode == .root, let c = event.charactersIgnoringModifiers, let n = Int(c), (1...OP.tiles).contains(n), resultPageStart + n - 1 < results.count {
+            selected = resultPageStart + n - 1
+            updateVisibleResults()
             openSelected()
             return true
         }

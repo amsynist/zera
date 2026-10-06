@@ -183,12 +183,6 @@ final class ShelfStore {
         NotificationCenter.default.post(name: ShelfStore.changed, object: nil)
     }
 
-    func pruneMissing() {
-        let before = items.count
-        items.removeAll { !$0.exists }
-        if items.count != before { save() }
-    }
-
     // MARK: - Persistence
 
     private func load() {

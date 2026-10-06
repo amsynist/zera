@@ -12,7 +12,7 @@ Zera is a native macOS desktop companion app built using Swift and AppKit. She l
 
 ## Technical Architecture & Constraints
 - **Frameworks:** Exclusively AppKit (macOS native).
-- **Layout System (CRITICAL):** Zera explicitly **REJECTS AutoLayout**. All custom views (e.g., `CardBase`, `ShelfView`, `ClaudeActivityCard`, `ZeraDropdown`) use strict, predictable **manual coordinate math** inside overridden `layout()` methods.
+- **Layout System (CRITICAL):** Zera explicitly **REJECTS AutoLayout**. All custom views (e.g., `CardBase`, `DropFilesView`, `ClaudeActivityCard`, `ZeraDropdown`) use strict, predictable **manual coordinate math** inside overridden `layout()` methods.
   - **Constraint Warning:** Mixing AutoLayout/Constraints with the existing manual layout system breaks the UI entirely (causing zero-sized dimensions, overlapping, and clipping). 
 - **Design Philosophy:** Premium, neat, native macOS feel. Absolutely zero tolerance for overlapping views, clipped text, or misaligned controls.
 
