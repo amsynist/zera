@@ -87,12 +87,26 @@ jobs:
           chmod +x scripts/package.sh
           ./scripts/package.sh
 
+      - name: Read versioned changelog
+        id: changelog
+        env:
+          CHANGELOG_FILE: docs/releases/v${{ steps.v.outputs.version }}.md
+        run: |
+          if [ -f "$CHANGELOG_FILE" ]; then
+            CHANGELOG_DELIMITER="$(uuidgen)"
+            {
+              printf 'notes<<%s\n' "$CHANGELOG_DELIMITER"
+              cat "$CHANGELOG_FILE"
+              printf '\n%s\n' "$CHANGELOG_DELIMITER"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: v${{ steps.v.outputs.version }}
           name: Zera ${{ steps.v.outputs.version }}
-          generate_release_notes: true
+          generate_release_notes: ${{ steps.changelog.outputs.notes == '' }}
           draft: false
           prerelease: ${{ contains(steps.v.outputs.version, '-') }}
           body: |
@@ -102,6 +116,8 @@ jobs:
             ${{ env.CODESIGN_IDENTITY == '' && 'This build is not notarized yet: the first time, right-click Zera in Applications → **Open** → **Open**.' || 'Signed and notarized by Apple.' }}
 
             Verify: `shasum -a 256 -c SHA256SUMS.txt`
+
+            ${{ steps.changelog.outputs.notes }}
           files: |
             dist/Zera-${{ steps.v.outputs.version }}.dmg
             dist/Zera-${{ steps.v.outputs.version }}.zip
