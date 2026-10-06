@@ -2,33 +2,32 @@ import AppKit
 
 // MARK: - App opener
 //
-//                 ┃  (her rope, from the notch)
-//              (Zera)   paws on the capsule's edge
-//  ╭───────────────────────────────────────────────╮
-//  │ 🔍 Open an app…                          esc │
-//  │ YOUR USUAL                      this afternoon │
-//  │ [icon] Notes                         ⏎ Open   │
-//  │ [N] [S] [V] [S] [F] [>_]   ⌘1…⌘6               │
-//  │ ←→ choose · ⏎ open · ⌘1–⌘6 · ⌘⏎ show in Finder │
-//  ╰───────────────────────────────────────────────╯
+//                      ┃  (her rope, from the notch)
+//                   (Zera)  paws on the window
+//  ╭──────────────────────────────────────────────────────────╮
+//  │ (🔍) Open an app…                                         │  ← the root
+//  │  ┃                                │                      │
+//  │  ┣━ YOUR USUAL                    │      [ Safari ]      │
+//  │  ┃   ┣━ [S] Safari       ● Running│      Application     │
+//  │  ┃   ┗━ [C] Code                  │  Status   Running    │
+//  │  ┣━ COMMANDS · 4                  │  Version  18.0       │
+//  │  ┗━ ACTIONS · 8                   │  [ Open Safari  ⏎ ]  │
+//  │ ↑↓ choose  ⇥ next branch          │  [ Actions     ⌘K ]  │
+//  ╰──────────────────────────────────────────────────────────╯
 //
-// Its own floating panel, not a tab: Zera rappels down from the notch carrying it, the apps pop
-// in, and ⏎ tosses the chosen app up to her before she climbs back.
+// Its own floating window, held by Zera from the notch. The search is the root of a tree: the
+// branches fold open under it, the path to the chosen item is lit, ⌘K grows the item's
+// actions as its children, and a command (Kill Process, Quit All…) opens into its own list.
 
 private enum OP {
-    static let width: CGFloat = 640
-    static let margin: CGFloat = 40          // room for the glow
+    static let cardW: CGFloat = 780
+    static let cardH: CGFloat = 560
+    static let margin: CGFloat = 40           // room for the glow
+    static let width: CGFloat = cardW + margin * 2
     static let ropeGap: CGFloat = 34          // notch → her head
     static let zeraW: CGFloat = 104
-    static let paws: CGFloat = 9              // how far her paws overlap the capsule
-    static let pad: CGFloat = 16
-    static let gap: CGFloat = 12
-    static let fieldH: CGFloat = 48
-    static let tabsH: CGFloat = 32
-    static let heroH: CGFloat = 80
-    static let tileH: CGFloat = 96
-    static let footH: CGFloat = 16
-    static let tiles = 6
+    static let paws: CGFloat = 9              // how far her paws overlap the window
+    static let tiles = 6                      // ⌘1…⌘6
 }
 
 /// One result: an app to open, or a command to run.
@@ -80,6 +79,12 @@ enum AppOpenerSettings {
         set { UserDefaults.standard.set(newValue, forKey: runningKey) }
     }
     static let defaultShortcut = HotKeyShortcut(keyCode: 49, modifiers: UInt32(2048), key: "Space")   // ⌥Space
+    private static let keepKey = "appOpener.keepRunning"
+    /// Apps Quit All leaves open (bundle IDs), remembered between runs.
+    static var keepRunning: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: keepKey) ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted(), forKey: keepKey) }
+    }
 }
 
 /// Owns the opener's panel: shows it under the notch, closes it, launches apps.
@@ -90,11 +95,13 @@ final class AppOpener: NSObject, NSWindowDelegate {
     /// Hide / show the hanging Zera while this Zera is down.
     var onOpenChanged: ((Bool) -> Void)?
     var onLaunched: ((AppEntry) -> Void)?
+    /// Something for Zera to say once she's back up ("copied the path ✨").
+    var onNotice: ((String) -> Void)?
     /// One of Zera's actions was chosen; it runs once she's back up.
     var onAction: ((QuickAction) -> Void)?
 
     override init() {
-        panel = FloatingPanel.make(size: NSSize(width: OP.width + OP.margin * 2, height: 600),
+        panel = FloatingPanel.make(size: NSSize(width: OP.width, height: 700),
                                    level: NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 4), keyable: true)
         super.init()
         panel.hasShadow = false
@@ -104,6 +111,12 @@ final class AppOpener: NSObject, NSWindowDelegate {
         view.onLaunch = { [weak self] app, finder in self?.launch(app, inFinder: finder) }
         view.onSearchWeb = { [weak self] q in self?.searchWeb(q) }
         view.onClose = { [weak self] in self?.close() }
+        view.onFinish = { [weak self] notice in
+            self?.close()
+            guard let notice = notice else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { self?.onNotice?(notice) }
+        }
+        view.onQuitAll = { [weak self] apps in self?.quitAll(apps) }
         view.onAction = { [weak self] a in
             SoundService.shared.play(.openerLaunch)
             self?.close()
@@ -118,7 +131,7 @@ final class AppOpener: NSObject, NSWindowDelegate {
         isOpen = true
         onOpenChanged?(true)
         let band = max(24, notch.height)
-        let size = NSSize(width: OP.width + OP.margin * 2, height: view.panelHeight(band: band))
+        let size = NSSize(width: OP.width, height: view.panelHeight(band: band))
         let x = max(screen.minX, min(screen.maxX - size.width, notch.midX - size.width / 2))
         panel.setFrame(NSRect(x: x, y: screen.maxY - size.height, width: size.width, height: size.height), display: false)
         view.band = band
@@ -156,6 +169,22 @@ final class AppOpener: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Asks each app to quit (they can still ask to save), then says which ones held out.
+    private func quitAll(_ apps: [NSRunningApplication]) {
+        apps.forEach { $0.terminate() }
+        SoundService.shared.play(.clipClear)
+        close()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.onNotice?("quitting \(apps.count) app\(apps.count == 1 ? "" : "s") 🧹")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            let left = apps.filter { !$0.isTerminated }.compactMap(\.localizedName)
+            guard !left.isEmpty else { self?.onNotice?("all clean ✨"); return }
+            let names = left.count <= 2 ? left.joined(separator: " and ") : "\(left[0]) and \(left.count - 1) more"
+            self?.onNotice?("\(names) still open, maybe unsaved work")
+        }
+    }
+
     private func searchWeb(_ q: String) {
         var c = URLComponents(string: "https://www.google.com/search")!
         c.queryItems = [URLQueryItem(name: "q", value: q)]
@@ -167,51 +196,122 @@ final class AppOpener: NSObject, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) { close() }
 }
 
-/// The content: rope, Zera holding the capsule, and the capsule itself.
+/// The content: rope, Zera holding the opener, and the opener itself: a window whose search
+/// is the root of a tree. Branches (Your usual, Commands, Actions) fold open under it, the path
+/// to the chosen item lights up, ⌘K grows the chosen item's actions as its children, and a
+/// command opens into its own list. The chosen item's details sit on the right.
 final class AppOpenerView: NSView, NSTextFieldDelegate {
     var onLaunch: ((AppEntry, Bool) -> Void)?
     var onSearchWeb: ((String) -> Void)?
     var onClose: (() -> Void)?
     var onAction: ((QuickAction) -> Void)?
+    /// Done here: close, and have Zera say this (if anything) once she's back up.
+    var onFinish: ((String?) -> Void)?
+    var onQuitAll: (([NSRunningApplication]) -> Void)?
     var band: CGFloat = 32
     var ropeX: CGFloat = 0
 
     private let rope = NSView()
     private let holder = OpenerFlipped()
     private let zera = NSImageView()
-    private let capsule = OpenerGlass()
+    private let card = OpenerGlass()
+    // The search row: the root.
+    private let rootDot = OpenerGlass()
     private let searchIcon = NSImageView()
+    private let chip = OpenerPill()
     private let field = NSTextField()
-    private let escHint = NSTextField(labelWithString: "esc")
-    private let leftLabel = NSTextField(labelWithString: "YOUR USUAL")
     private let rightLabel = NSTextField(labelWithString: "")
-    private let hero = OpenerHero()
-    private var tiles: [OpenerTile] = []
-    private let empty = NSTextField(wrappingLabelWithString: "")
+    private let rootStem = NSView()
+    // The tree.
+    private let treeScroll = NSScrollView()
+    private let treeDoc = OpenerFlipped()
+    private let dimLines = CAShapeLayer()
+    private let litLines = CAShapeLayer()
+    private var lineViews: [NSView] = []
+    // The chosen item, on the right.
+    private let detail = OpenerFlipped()
+    private let dIcon = NSImageView()
+    private let dHalo = CAGradientLayer()
+    private let dName = NSTextField(labelWithString: "")
+    private let dBlurb = NSTextField(wrappingLabelWithString: "")
+    private var dFacts: [(NSTextField, NSTextField, NSView)] = []
+    private let dPrimary = TreeButton()
+    private let dSecondary = TreeButton()
+    private let dEmpty = NSTextField(wrappingLabelWithString: "")
+    // The footer.
+    private let footRule = NSView()
+    private let paneRule = NSView()
     private let foot = NSTextField(labelWithString: "")
-    private let footRight = NSTextField(labelWithString: "")
-    /// All · Apps · Commands · Actions.
-    private enum Filter: Int, CaseIterable {
-        case all, apps, commands, actions
-        var title: String { ["All", "Apps", "Commands", "Actions"][rawValue] }
-    }
-    private var filter: Filter = .all
-    private let tabs = GitHubSegmentedControl(items: Filter.allCases.map { .init(symbol: "", title: $0.title, count: 0, tint: nil) })
-    private var results: [OpenerItem] = []
-    private var selected = 0
-    private var resultPageStart: Int { selected / OP.tiles * OP.tiles }
+    private let footOpen = OpenerPill()
+    private let footActions = OpenerPill()
 
-    /// Opening apps, or inside a command (Kill Process, Kill Port, Custom Commands).
+    /// The branches under the root.
+    private enum Branch: Int, CaseIterable {
+        case usual, commands, actions
+        var title: String { ["YOUR USUAL", "COMMANDS", "ACTIONS"][rawValue] }
+    }
+    /// Each branch with what's in it (matches, while typing) and how many there are in all.
+    private var branches: [(branch: Branch, items: [OpenerItem], total: Int)] = []
+    /// The open branch (every branch opens while you type).
+    private var openBranch: Branch = .usual
+    /// Everything you can choose, top to bottom: the items of the open branches.
+    private var results: [OpenerItem] = []
+    /// The chosen item (or, inside a command, the chosen row of its list).
+    private var selected = 0
+    private var typing: Bool { !query.isEmpty }
+    private var query: String { field.stringValue.trimmingCharacters(in: .whitespaces) }
+
+    /// Browsing the tree, or inside a command (Kill Process, Kill Port, Quit All, Custom).
     private enum Mode: Equatable { case root, command(OpenerCommand) }
     private var mode: Mode = .root
-    private let listScroll = NSScrollView()
-    private let listDoc = OpenerFlipped()
-    private var rows: [OpenerRow] = []
     private var processes: [ProcessEntry] = []
     private var ports: [PortEntry] = []
-    private var listItems: [(title: String, detail: String, trailing: String, pid: Int32)] = []
+    /// One row in a command's list.
+    private struct ListItem {
+        var title: String, detail: String, trailing: String
+        var pid: Int32
+        var path = ""
+        var port: Int?
+        var app: NSRunningApplication?
+        var keep = false
+    }
+    private var listItems: [ListItem] = []
+    /// Quit All: the open apps it would close (kept ones included, marked).
+    private var runningApps: [NSRunningApplication] = []
     private var loading = false
     private var commandScan = UUID()
+
+    /// ⌘K: the chosen item's actions, grown as its children. The search field filters them.
+    private var actionsOpen = false
+    private var allActions: [PanelAction] = []
+    private var shownActions: [PanelAction] = []
+    private var leaf = 0
+    private var confirming: Int?
+    private var savedQuery = ""
+    private var flashToken = UUID()
+
+    /// What the tree shows, top to bottom.
+    private enum Line {
+        case group(Branch, open: Bool, count: Int)
+        case item(Int)          // results[i]
+        case command(OpenerCommand)
+        case child(Int)         // listItems[i]
+        case leaf(Int)          // shownActions[i]
+        case note(String)
+    }
+    private struct Placed {
+        let line: Line
+        let view: NSView
+        let level: Int          // 0 group, 1 item, 2 child or leaf, 3 leaf of a child
+        var lit: Bool
+    }
+    private var placed: [Placed] = []
+    private var versions: [URL: String] = [:]
+
+    var isShowingActions: Bool { actionsOpen }
+    var chosenActionTitle: String? { actionsOpen ? shownActions[safe: leaf]?.title : nil }
+    var openBranchTitle: String { effectiveBranch.title }
+    var visibleRowTitles: [String] { placed.compactMap { ($0.view as? TreeRowView)?.accessibilityLabel() } }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -240,11 +340,9 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         guard let img = zera.image, img.size.width > 0 else { return 117 }
         return OP.zeraW * img.size.height / img.size.width
     }
-    private var capsuleTop: CGFloat { band + OP.ropeGap + zeraH - OP.paws }
-    private var capsuleH: CGFloat {
-        OP.pad + OP.fieldH + OP.gap + OP.tabsH + OP.gap + OP.heroH + 10 + OP.tileH + OP.gap + OP.footH + 14
-    }
-    func panelHeight(band: CGFloat) -> CGFloat { self.band = band; return capsuleTop + capsuleH + OP.margin }
+    private var cardTop: CGFloat { band + OP.ropeGap + zeraH - OP.paws }
+    private var cx: CGFloat { ropeX > 0 ? ropeX : bounds.width / 2 }
+    func panelHeight(band: CGFloat) -> CGFloat { self.band = band; return cardTop + OP.cardH + OP.margin }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -256,33 +354,32 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         rope.layer?.backgroundColor = (ropePattern().map { NSColor(patternImage: $0) }
             ?? sprite?.ropeColor ?? NSColor(srgbRed: 0.36, green: 0.23, blue: 0.13, alpha: 1)).cgColor
         addSubview(rope)
-
         holder.wantsLayer = true
         holder.layer?.masksToBounds = false
         addSubview(holder)
 
-        capsule.radius = 26
-        capsule.fill = NSColor(srgbRed: 0.027, green: 0.045, blue: 0.11, alpha: 1)
-        capsule.edge = Neon.edge
-        capsule.lineWidth = 1.5
-        capsule.glow = 0.75
-        holder.addSubview(capsule)
-        zera.image = SpriteLibrary.shared.sprite("hang_peek")?.image
-        zera.imageScaling = .scaleProportionallyUpOrDown
-        zera.wantsLayer = true
-        holder.addSubview(zera)
+        card.radius = 24
+        card.fill = NSColor(srgbRed: 0.028, green: 0.045, blue: 0.11, alpha: 0.98)
+        card.edge = Neon.edge.withAlphaComponent(0.7)
+        card.lineWidth = 1
+        card.glow = 0.45
+        holder.addSubview(card)
 
-        let fieldBox = OpenerGlass()
-        fieldBox.radius = 16
-        fieldBox.fill = NSColor(srgbRed: 0.012, green: 0.024, blue: 0.065, alpha: 1)
-        fieldBox.edge = Neon.chipEdge
-        fieldBox.lineWidth = 1
-        fieldBox.glow = 0
-        fieldBox.identifier = NSUserInterfaceItemIdentifier("fieldBox")
-        capsule.addSubview(fieldBox)
+        // The root: a glowing node with the magnifier, then the field.
+        rootDot.radius = 15
+        rootDot.fill = Neon.cyan.withAlphaComponent(0.14)
+        rootDot.edge = Neon.cyan.withAlphaComponent(0.6)
+        rootDot.lineWidth = 1
+        rootDot.glow = 0
+        card.addSubview(rootDot)
         searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 15, weight: .semibold).applying(.init(paletteColors: [Neon.cyan])))
-        fieldBox.addSubview(searchIcon)
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .bold).applying(.init(paletteColors: [Neon.cyan])))
+        rootDot.addSubview(searchIcon)
+        chip.key = "‹"
+        chip.ghost = true
+        chip.isHidden = true
+        chip.onClick = { [weak self] in self?.collapse() }
+        card.addSubview(chip)
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
@@ -294,60 +391,101 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         field.cell?.isScrollable = true
         field.delegate = self
         field.setAccessibilityLabel("App name")
-        fieldBox.addSubview(field)
-        escHint.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium)
-        escHint.textColor = Neon.glyph
-        escHint.alignment = .center
-        escHint.wantsLayer = true
-        escHint.layer?.cornerRadius = 6
-        escHint.layer?.borderWidth = 1
-        escHint.layer?.borderColor = Neon.chipEdge.cgColor
-        fieldBox.addSubview(escHint)
-
-        for l in [leftLabel, rightLabel] {
-            l.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold)
-            l.textColor = Neon.textDim
-            capsule.addSubview(l)
-        }
+        card.addSubview(field)
+        rightLabel.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold)
+        rightLabel.textColor = Neon.textDim
         rightLabel.alignment = .right
-        tabs.fitToContent = true
-        tabs.onSelect = { [weak self] i in self?.setFilter(Filter(rawValue: i) ?? .all) }
-        capsule.addSubview(tabs)
-        hero.onOpen = { [weak self] in self?.openSelected() }
-        capsule.addSubview(hero)
-        for i in 0..<OP.tiles {
-            let t = OpenerTile(index: i)
-            t.onHover = { [weak self] in
-                guard let self = self else { return }
-                self.select(self.resultPageStart + i)
-            }
-            t.onClick = { [weak self] in
-                guard let self = self else { return }
-                self.select(self.resultPageStart + i)
-                self.openSelected()
-            }
-            capsule.addSubview(t)
-            tiles.append(t)
+        card.addSubview(rightLabel)
+        rootStem.wantsLayer = true
+        rootStem.layer?.backgroundColor = Neon.cyan.withAlphaComponent(0.9).cgColor
+        card.addSubview(rootStem)
+
+        // The tree: rows in a scroll view (no scroll bar), branches drawn under them.
+        treeScroll.drawsBackground = false
+        treeScroll.contentView.drawsBackground = false
+        treeScroll.borderType = .noBorder
+        treeScroll.hasVerticalScroller = false
+        treeScroll.documentView = treeDoc
+        treeDoc.wantsLayer = true
+        for (l, color, width) in [(dimLines, NSColor(srgbRed: 0.43, green: 0.55, blue: 1, alpha: 0.3), CGFloat(1.5)),
+                                  (litLines, Neon.cyan, 1.8)] {
+            l.fillColor = nil
+            l.strokeColor = color.cgColor
+            l.lineWidth = width
+            l.lineCap = .round
+            l.lineJoin = .round
+            treeDoc.layer?.addSublayer(l)
         }
-        listScroll.drawsBackground = false
-        listScroll.contentView.drawsBackground = false
-        listScroll.borderType = .noBorder
-        listScroll.hasVerticalScroller = true
-        listScroll.scrollerStyle = .overlay
-        listScroll.documentView = listDoc
-        listScroll.isHidden = true
-        capsule.addSubview(listScroll)
-        empty.font = NSFont.systemFont(ofSize: 13)
-        empty.textColor = Neon.textDim
-        empty.alignment = .center
-        capsule.addSubview(empty)
-        for f in [foot, footRight] {
-            f.font = NSFont.systemFont(ofSize: 11)
-            f.textColor = Neon.textDim
-            f.lineBreakMode = .byTruncatingTail
-            capsule.addSubview(f)
+        card.addSubview(treeScroll)
+
+        // The chosen item.
+        dHalo.type = .radial
+        dHalo.colors = [Neon.accent.withAlphaComponent(0.45).cgColor, Neon.halo.withAlphaComponent(0.15).cgColor, NSColor.clear.cgColor]
+        dHalo.locations = [0, 0.5, 1]
+        dHalo.startPoint = CGPoint(x: 0.5, y: 0.5)
+        dHalo.endPoint = CGPoint(x: 1, y: 1)
+        detail.wantsLayer = true
+        detail.layer?.addSublayer(dHalo)
+        dIcon.imageScaling = .scaleProportionallyUpOrDown
+        detail.addSubview(dIcon)
+        dName.font = NSFont.systemFont(ofSize: 18, weight: .semibold)
+        dName.textColor = Neon.text
+        dName.alignment = .center
+        dName.lineBreakMode = .byTruncatingTail
+        detail.addSubview(dName)
+        dBlurb.font = NSFont.systemFont(ofSize: 12)
+        dBlurb.textColor = Neon.textDim
+        dBlurb.alignment = .center
+        dBlurb.maximumNumberOfLines = 2
+        detail.addSubview(dBlurb)
+        for _ in 0..<4 {
+            let k = NSTextField(labelWithString: ""), v = NSTextField(labelWithString: ""), rule = NSView()
+            k.font = NSFont.systemFont(ofSize: 12.5)
+            k.textColor = Neon.textDim
+            v.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+            v.textColor = NSColor(srgbRed: 0.87, green: 0.9, blue: 1, alpha: 1)
+            v.alignment = .right
+            v.lineBreakMode = .byTruncatingMiddle
+            rule.wantsLayer = true
+            rule.layer?.backgroundColor = Neon.chipEdge.withAlphaComponent(0.18).cgColor
+            [k, v, rule].forEach(detail.addSubview)
+            dFacts.append((k, v, rule))
         }
-        footRight.alignment = .right
+        dPrimary.primary = true
+        dPrimary.onClick = { [weak self] in self?.primaryAction() }
+        dSecondary.key = "⌘K"
+        dSecondary.title = "Actions"
+        dSecondary.onClick = { [weak self] in self?.toggleActions() }
+        detail.addSubview(dPrimary)
+        detail.addSubview(dSecondary)
+        dEmpty.font = NSFont.systemFont(ofSize: 13.5)
+        dEmpty.textColor = Neon.textDim
+        dEmpty.alignment = .center
+        detail.addSubview(dEmpty)
+        card.addSubview(detail)
+
+        for r in [paneRule, footRule] {
+            r.wantsLayer = true
+            r.layer?.backgroundColor = Neon.chipEdge.withAlphaComponent(0.25).cgColor
+            card.addSubview(r)
+        }
+        foot.font = NSFont.systemFont(ofSize: 12)
+        foot.textColor = NSColor(srgbRed: 0.55, green: 0.59, blue: 0.78, alpha: 1)
+        foot.lineBreakMode = .byTruncatingTail
+        card.addSubview(foot)
+        footOpen.ghost = true
+        footOpen.onClick = { [weak self] in self?.primaryAction() }
+        footActions.ghost = true
+        footActions.key = "⌘K"
+        footActions.title = "Actions"
+        footActions.onClick = { [weak self] in self?.toggleActions() }
+        card.addSubview(footOpen)
+        card.addSubview(footActions)
+
+        zera.image = sprite?.image
+        zera.imageScaling = .scaleProportionallyUpOrDown
+        zera.wantsLayer = true
+        holder.addSubview(zera)
         setAccessibilityRole(.group)
         setAccessibilityLabel("App opener")
     }
@@ -357,107 +495,463 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     // MARK: Data
 
     func prepare() {
+        actionsOpen = false
         mode = .root
         commandScan = UUID()
         loading = false
-        filter = .all
-        tabs.selected = 0
+        openBranch = .usual
         field.stringValue = ""
-        if let p = field.placeholderAttributedString?.mutableCopy() as? NSMutableAttributedString {
-            p.mutableString.setString("Open an app…")
-            field.placeholderAttributedString = p
-        }
+        setPlaceholder("Open an app…")
         selected = 0
         needsLayout = true
         layoutSubtreeIfNeeded()
         reload()
+        treeScroll.contentView.scroll(to: .zero)
+    }
+
+    private func setPlaceholder(_ text: String) {
+        if let p = field.placeholderAttributedString?.mutableCopy() as? NSMutableAttributedString {
+            p.mutableString.setString(text)
+            field.placeholderAttributedString = p
+        }
+    }
+
+    /// The open branch, or the first one with anything in it.
+    private var effectiveBranch: Branch {
+        if branches.contains(where: { $0.branch == openBranch }) { return openBranch }
+        return branches.first?.branch ?? .usual
     }
 
     func reload() {
         if case .command(let c) = mode { reloadList(c); return }
-        let q = field.stringValue.trimmingCharacters(in: .whitespaces)
-        let typing = !q.isEmpty
-        var scored: [(OpenerItem, Int)] = []
-        if filter == .all || filter == .apps {
-            scored += AppCatalog.shared.results(for: q, runningFirst: AppOpenerSettings.runningFirst, limit: .max)
-                .map { (.app($0.app, hits: $0.hits, running: $0.running), $0.score) }
-        }
-        // Commands and actions: every one on their own tab, the matching ones on All once you type.
-        if filter == .commands || (filter == .all && typing) {
-            scored += OpenerCommand.allCases.compactMap { c in
-                if !typing { return (.command(c, hits: []), 0) }
-                return c.match(q).map { (.command(c, hits: $0.hits), $0.score) }
-            }
-        }
-        if filter == .actions || (filter == .all && typing) {
-            scored += OpenerActions.all.compactMap { a in
-                if !typing { return (.action(a, hits: []), 0) }
-                return OpenerActions.match(a, q).map { (.action(a, hits: $0.hits), $0.score) }
-            }
-        }
-        if typing { scored.sort { $0.1 > $1.1 } }
-        results = scored.map(\.0)
+        if actionsOpen { rebuild(); return }
+        let q = query
+        let apps = AppCatalog.shared.results(for: q, runningFirst: AppOpenerSettings.runningFirst, limit: typing ? 8 : 7)
+            .map { OpenerItem.app($0.app, hits: $0.hits, running: $0.running) }
+        let commands = OpenerCommand.allCases.compactMap { c -> (OpenerItem, Int)? in
+            if !typing { return (.command(c, hits: []), 0) }
+            return c.match(q).map { (.command(c, hits: $0.hits), $0.score) }
+        }.sorted { $0.1 > $1.1 }.map(\.0)
+        let actions = OpenerActions.all.compactMap { a -> (OpenerItem, Int)? in
+            if !typing { return (.action(a, hits: []), 0) }
+            return OpenerActions.match(a, q).map { (.action(a, hits: $0.hits), $0.score) }
+        }.sorted { $0.1 > $1.1 }.map(\.0)
+        branches = [(Branch.usual, apps, apps.count),
+                    (Branch.commands, typing ? Array(commands.prefix(4)) : commands, commands.count),
+                    (Branch.actions, typing ? Array(actions.prefix(4)) : actions, actions.count)].filter { !$0.1.isEmpty }
+        results = branches.filter { typing || $0.branch == effectiveBranch }.flatMap(\.items)
         selected = min(selected, max(0, results.count - 1))
-        leftLabel.isHidden = true
-        tabs.isHidden = false
-        let hour = Calendar.current.component(.hour, from: Date())
-        let when = hour < 12 ? "THIS MORNING" : (hour < 18 ? "THIS AFTERNOON" : "THIS EVENING")
-        rightLabel.stringValue = typing ? "\(results.count) RESULT\(results.count == 1 ? "" : "S")"
-            : (filter == .all || filter == .apps ? "YOUR USUAL · \(when)" : "\(results.count) \(filter == .commands ? "COMMANDS" : "ACTIONS")")
-        let none = results.isEmpty
-        setRootVisible(true)
-        empty.isHidden = !none
-        hero.isHidden = none
-        empty.stringValue = AppCatalog.shared.apps.isEmpty && filter != .commands && filter != .actions ? "Looking for your apps…"
-            : "Nothing called “\(q)”.\n⏎ searches the web for it."
-        updateVisibleResults()
-        zera.frameCenterRotation = none && typing ? 10 : 0     // a puzzled head-tilt
-        foot.stringValue = "←→ choose   ⏎ open   ⌘1–⌘6 quick open   ⌘⏎ show in Finder"
-        footRight.stringValue = "⇥ next tab"
+        zera.frameCenterRotation = results.isEmpty && typing ? 10 : 0     // a puzzled head-tilt
+        rightLabel.textColor = Neon.textDim
+        rightLabel.stringValue = typing ? (results.isEmpty ? "NO MATCHES" : "\(results.count) FOUND") : ""
+        rebuild()
     }
 
-    /// Keep six tiles on screen, while arrows can reach every result.
-    private func updateVisibleResults() {
-        for (i, tile) in tiles.enumerated() {
-            let index = resultPageStart + i
-            tile.isHidden = !results.indices.contains(index)
-            if let item = results[safe: index] { tile.set(item: item, selected: index == selected) }
+    private var verb: String {
+        if let r = results[safe: selected], !r.isApp { return "Run" }
+        return "Open"
+    }
+
+    // MARK: The tree
+
+    /// Makes the rows for what's showing and lays them out; the branches are drawn to match.
+    private func rebuild() {
+        placed.forEach { $0.view.removeFromSuperview() }
+        placed = []
+        var lines: [(Line, Int, Bool)] = []          // line, level, on the lit path
+        switch mode {
+        case .root:
+            let shown = Set(results.indices)
+            var i = 0
+            for b in branches {
+                let open = typing || b.branch == effectiveBranch
+                let holds = open && b.items.indices.map { i + $0 }.contains(selected) && !results.isEmpty
+                lines.append((.group(b.branch, open: open, count: b.total), 0, holds))
+                guard open else { continue }
+                for _ in b.items {
+                    guard shown.contains(i) else { i += 1; continue }
+                    lines.append((.item(i), 1, i == selected))
+                    if i == selected, actionsOpen {
+                        for (k, _) in shownActions.enumerated() { lines.append((.leaf(k), 2, k == leaf)) }
+                        if shownActions.isEmpty { lines.append((.note("No action called “\(query)”."), 2, false)) }
+                    }
+                    i += 1
+                }
+            }
+            if branches.isEmpty { lines.append((.note("Nothing called “\(query)”. ⏎ searches the web."), 0, false)) }
+        case .command(let entered):
+            lines.append((.group(.commands, open: true, count: OpenerCommand.allCases.count), 0, true))
+            for c in OpenerCommand.allCases {
+                lines.append((.command(c), 1, c == entered))
+                guard c == entered else { continue }
+                if listItems.isEmpty { lines.append((.note(emptyNote(c)), 2, false)) }
+                for (k, _) in listItems.enumerated() {
+                    lines.append((.child(k), 2, k == selected))
+                    if k == selected, actionsOpen {
+                        for (a, _) in shownActions.enumerated() { lines.append((.leaf(a), 3, a == leaf)) }
+                    }
+                }
+            }
         }
-        if let item = results[safe: selected] { hero.set(item: item) }
-        if results.count > OP.tiles {
-            rightLabel.stringValue = "\(resultPageStart + 1)–\(min(resultPageStart + OP.tiles, results.count)) OF \(results.count)"
+        for (line, level, lit) in lines {
+            let v = makeRow(line)
+            treeDoc.addSubview(v)
+            placed.append(Placed(line: line, view: v, level: level, lit: lit))
+        }
+        layoutTree()
+        updateDetail()
+        updateFooter()
+    }
+
+    private func emptyNote(_ c: OpenerCommand) -> String {
+        let q = query
+        switch c {
+        case .custom: return "Coming soon: your own scripts as commands."
+        case .quitAll: return q.isEmpty ? "Nothing to quit: only Finder and Zera are open." : "No open app matches “\(q)”."
+        case .killPort: return loading ? "Looking…" : (q.isEmpty ? "Nothing is listening on a port." : "Nothing is listening on \(q).")
+        case .killProcess: return loading ? "Looking…" : "No process matches “\(q)”."
         }
     }
 
-    private func setFilter(_ f: Filter) {
-        guard f != filter else { return }
-        filter = f
-        tabs.selected = f.rawValue
+    private func makeRow(_ line: Line) -> NSView {
+        switch line {
+        case .group(let b, let open, let count):
+            let g = TreeGroupView(title: typing && b == .usual ? "APPS" : b.title, count: open ? nil : count, open: open)
+            g.onClick = { [weak self] in self?.openBranchTapped(b) }
+            return g
+        case .item(let i):
+            let it = results[i]
+            let r = TreeRowView(style: .item)
+            r.icon = it.icon
+            r.titleText = highlighted(it.name, it.hits, size: 14, weight: .medium)
+            switch it {
+            case .app(_, _, let running):
+                r.accessory = running ? "Running" : ""
+                r.running = running
+            case .command(let c, _): r.sub = c.subtitle.replacingOccurrences(of: "Command · ", with: ""); r.accessory = "Command"
+            case .action(let a, _): r.sub = OpenerActions.subtitle(a).replacingOccurrences(of: "Action · ", with: ""); r.accessory = "Action"
+            }
+            r.setAccessibilityLabel(it.name)
+            r.selected = i == selected && !actionsOpen
+            r.onClick = { [weak self] in
+                guard let self = self else { return }
+                if i == self.selected, !self.actionsOpen { self.openSelected() } else { self.choose(i) }
+            }
+            return r
+        case .command(let c):
+            let r = TreeRowView(style: .item)
+            r.icon = c.icon
+            r.titleText = NSAttributedString(string: c.title, attributes: [.font: NSFont.systemFont(ofSize: 14, weight: .semibold), .foregroundColor: Neon.text])
+            r.sub = c.subtitle.replacingOccurrences(of: "Command · ", with: "")
+            r.dimmed = mode != .command(c)
+            r.setAccessibilityLabel(c.title)
+            r.onClick = { [weak self] in
+                guard let self = self else { return }
+                if self.mode == .command(c) { self.back() } else { self.enter(c) }
+            }
+            return r
+        case .child(let k):
+            let it = listItems[k]
+            let r = TreeRowView(style: .child)
+            r.icon = it.app?.icon
+            r.mono = it.port != nil
+            r.titleText = NSAttributedString(string: it.title, attributes: [
+                .font: it.port != nil ? NSFont.monospacedSystemFont(ofSize: 13.5, weight: .semibold) : NSFont.systemFont(ofSize: 13.5, weight: .medium),
+                .foregroundColor: Neon.text])
+            if mode == .command(.quitAll) {
+                r.toggle = !it.keep
+                r.sub = it.keep ? "stays open" : ""
+                r.dimmed = it.keep
+            } else {
+                r.sub = it.detail
+                r.accessory = it.trailing
+            }
+            r.setAccessibilityLabel(it.title)
+            r.selected = k == selected && !actionsOpen
+            r.onClick = { [weak self] in
+                guard let self = self else { return }
+                self.chooseChild(k)
+                if self.mode == .command(.quitAll) { self.toggleKeep() }
+            }
+            return r
+        case .leaf(let k):
+            let a = shownActions[k]
+            let r = TreeRowView(style: .leaf)
+            let ask = confirming == k
+            r.symbol = ask ? "exclamationmark.triangle.fill" : a.symbol
+            r.tint = ask ? Neon.red : a.tint
+            r.titleText = NSAttributedString(string: ask ? (a.confirm ?? a.title) : a.title, attributes: [
+                .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: (ask ? Neon.red : (a.tint ?? Neon.text))])
+            r.accessory = ask ? "⏎ confirm" : (a.shortcut?.label ?? "")
+            r.selected = k == leaf
+            r.setAccessibilityLabel(a.title)
+            // Hover only tints the row: choosing on hover fought the arrow keys (the list scrolls
+            // under a resting pointer, and the row under it took the highlight back).
+            r.onClick = { [weak self] in self?.triggerLeaf(k) }
+            return r
+        case .note(let text):
+            let r = TreeRowView(style: .note)
+            r.titleText = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Neon.textDim])
+            return r
+        }
+    }
+
+    /// Rows top to bottom, then the branches: a trunk from the root, an elbow into each row,
+    /// and a trunk under any row with children. The path to the chosen row is drawn lit.
+    private func layoutTree() {
+        let w = treeScroll.contentSize.width
+        var y: CGFloat = 10
+        var frames: [NSRect] = []
+        for (n, p) in placed.enumerated() {
+            if n > 0, case .group = p.line { y += 4 }
+            let x = TV.rowX[p.level]
+            let h: CGFloat
+            switch p.line {
+            case .group: h = 30
+            case .item, .command: h = 40
+            case .child: h = 38
+            case .leaf: h = 32
+            case .note: h = 30
+            }
+            let f = NSRect(x: x, y: y, width: w - x - 12, height: h)
+            p.view.frame = f
+            frames.append(f)
+            y += h
+        }
+        treeDoc.frame = NSRect(x: 0, y: 0, width: w, height: max(y + 14, treeScroll.contentSize.height))
+
+        // Branches. Each row hangs from the nearest row above it one level up (or the root).
+        let dim = CGMutablePath(), lit = CGMutablePath()
+        var lastChild: [Int: CGFloat] = [:]                 // parent row index → its last child's mid y
+        var parentOf: [Int] = Array(repeating: -1, count: placed.count)
+        for (n, p) in placed.enumerated() {
+            var parent = -1
+            for m in stride(from: n - 1, through: 0, by: -1) where placed[m].level < p.level { parent = m; break }
+            if p.level > 0, parent >= 0, placed[parent].level != p.level - 1 { parent = -1 }
+            parentOf[n] = parent
+            let mid = frames[n].midY
+            lastChild[parent] = mid
+            let tx = TV.trunkX[p.level]
+            let end = frames[n].minX + (p.level == 0 ? -4 : 0)
+            elbow(dim, x: tx, y: mid, to: end)
+            if p.lit { elbow(lit, x: tx, y: mid, to: end) }
+        }
+        for (parent, last) in lastChild {
+            let level = parent < 0 ? 0 : placed[parent].level + 1
+            let tx = TV.trunkX[level]
+            let top = parent < 0 ? 0 : frames[parent].maxY - (placed[parent].level == 0 ? 6 : 4)
+            dim.move(to: CGPoint(x: tx, y: top)); dim.addLine(to: CGPoint(x: tx, y: last - 7))
+        }
+        // The lit trunk: from each lit row's parent down to it.
+        for (n, p) in placed.enumerated() where p.lit {
+            let parent = parentOf[n]
+            let tx = TV.trunkX[p.level]
+            let top = parent < 0 ? 0 : frames[parent].maxY - (placed[parent].level == 0 ? 6 : 4)
+            lit.move(to: CGPoint(x: tx, y: top)); lit.addLine(to: CGPoint(x: tx, y: frames[n].midY - 7))
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        dimLines.frame = treeDoc.bounds
+        litLines.frame = treeDoc.bounds
+        dimLines.path = dim
+        litLines.path = lit
+        // Keep the lines under the rows.
+        treeDoc.layer?.insertSublayer(litLines, at: 0)
+        treeDoc.layer?.insertSublayer(dimLines, at: 0)
+        CATransaction.commit()
+        revealChosen()
+    }
+
+    private func elbow(_ p: CGMutablePath, x: CGFloat, y: CGFloat, to end: CGFloat) {
+        p.move(to: CGPoint(x: x, y: y - 7))
+        p.addQuadCurve(to: CGPoint(x: x + 7, y: y), control: CGPoint(x: x, y: y))
+        p.addLine(to: CGPoint(x: max(x + 7, end - 2), y: y))
+    }
+
+    /// Scrolls the chosen row (or the chosen action) into view.
+    private func revealChosen() {
+        let target = placed.last { p in
+            switch p.line {
+            case .leaf(let k): return actionsOpen && k == leaf
+            case .item(let i): return !actionsOpen && i == selected
+            case .child(let k): return !actionsOpen && k == selected
+            default: return false
+            }
+        }
+        guard let v = target?.view else { return }
+        v.scrollToVisible(v.bounds.insetBy(dx: 0, dy: -24))
+    }
+
+    private func choose(_ i: Int) {
+        guard results.indices.contains(i) else { return }
+        let wasOpen = actionsOpen
+        if wasOpen { closeActions(refocus: true, rebuildTree: false) }
+        guard i != selected || wasOpen else { return }
+        selected = i
+        SoundService.shared.play(.openerTick)
+        rebuild()
+    }
+
+    private func chooseChild(_ k: Int) {
+        guard listItems.indices.contains(k), k != selected || actionsOpen else { return }
+        if actionsOpen { closeActions(refocus: true, rebuildTree: false) }
+        selected = k
+        SoundService.shared.play(.openerTick)
+        rebuild()
+    }
+
+    private func openBranchTapped(_ b: Branch) {
+        if case .command = mode { back(); return }
+        guard !typing else { return }
+        closeActions(refocus: true, rebuildTree: false)
+        openBranch = b
         selected = 0
         SoundService.shared.play(.openerTick)
         reload()
-        popTiles()
+        popRows()
     }
 
-    private func setRootVisible(_ root: Bool) {
-        hero.isHidden = !root
-        tiles.forEach { $0.isHidden = !root }
-        listScroll.isHidden = root
-        if root { empty.isHidden = true }
+    /// ⇥: the next branch along opens (while typing, the chosen item jumps to its first match).
+    private func nextBranch(_ d: Int) {
+        guard mode == .root, !branches.isEmpty else { return }
+        if typing {
+            var start = 0, starts: [Int] = []
+            for b in branches { starts.append(start); start += b.items.count }
+            let cur = starts.lastIndex { $0 <= selected } ?? 0
+            choose(starts[(cur + d + starts.count) % starts.count])
+            return
+        }
+        let ids = branches.map(\.branch)
+        let cur = ids.firstIndex(of: effectiveBranch) ?? 0
+        openBranchTapped(ids[(cur + d + ids.count) % ids.count])
     }
 
-    private func select(_ i: Int) {
-        guard results.indices.contains(i), i != selected else { return }
-        selected = i
-        SoundService.shared.play(.openerTick)
-        updateVisibleResults()
+    private func move(_ d: Int) {
+        if actionsOpen {
+            guard !shownActions.isEmpty else { return }
+            leaf = (leaf + d + shownActions.count) % shownActions.count
+            confirming = nil
+            SoundService.shared.play(.openerTick)
+            rebuild()
+            return
+        }
+        if case .command = mode {
+            guard !listItems.isEmpty else { return }
+            chooseChild(max(0, min(listItems.count - 1, selected + d)))
+            return
+        }
+        guard !results.isEmpty else { return }
+        choose((selected + d + results.count) % results.count)
+    }
+
+    // MARK: The chosen item
+
+    private func version(_ app: AppEntry) -> String {
+        if let v = versions[app.url] { return v }
+        let v = (Bundle(url: app.url)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "—"
+        versions[app.url] = v
+        return v
+    }
+
+    private func updateDetail() {
+        var icon: NSImage?, name = "", blurb = "", facts: [(String, String)] = []
+        var primary = "", primaryTint: NSColor? = nil
+        switch mode {
+        case .root:
+            if let it = results[safe: selected] {
+                icon = it.icon; name = it.name
+                switch it {
+                case .app(let a, _, let running):
+                    blurb = "Application"
+                    let opens = AppCatalog.shared.openCount(a)
+                    facts = [("Status", running ? "Running" : "Not running"), ("Version", version(a)),
+                             ("Opened from Zera", opens == 0 ? "Never yet" : (opens == 1 ? "Once" : "\(opens) times")), ("Where", a.folder)]
+                    primary = "Open \(a.name)"
+                case .command(let c, _):
+                    blurb = c.subtitle.replacingOccurrences(of: "Command · ", with: "").capitalizedFirst
+                    facts = [("Kind", "Command")]
+                    primary = "Open command"
+                case .action(let a, _):
+                    blurb = OpenerActions.subtitle(a).replacingOccurrences(of: "Action · ", with: "").capitalizedFirst
+                    facts = [("Kind", "Zera action")]
+                    primary = "Run"
+                }
+            }
+        case .command(let c):
+            icon = c.icon; name = c.title
+            blurb = c.subtitle.replacingOccurrences(of: "Command · ", with: "").capitalizedFirst
+            let it = listItems[safe: selected]
+            switch c {
+            case .quitAll:
+                let n = quitTargets.count
+                facts = [("Open apps", "\(runningApps.count)"), ("Will quit", "\(n)"),
+                         ("Stay open", "Finder, Zera" + (runningApps.count > n ? " + \(runningApps.count - n)" : ""))]
+                primary = n == 1 ? "Quit 1 app" : "Quit \(n) apps"
+                primaryTint = Neon.green
+            case .killProcess:
+                facts = [("Processes", loading ? "…" : "\(listItems.count)")]
+                if let it = it { facts += [("Chosen", it.title), ("Process ID", "\(it.pid)")]; primary = "Quit \(it.title)" }
+            case .killPort:
+                facts = [("Listening", loading ? "…" : "\(listItems.count)")]
+                if let it = it { facts += [("Chosen", it.title), ("Process ID", "\(it.pid)")]; primary = "Stop \(it.title)" }
+            case .custom:
+                facts = [("Kind", "Command"), ("Status", "Coming soon")]
+            }
+        }
+        if actionsOpen, let a = shownActions[safe: leaf] {
+            primary = confirming == leaf ? (a.confirm ?? a.title) : a.title
+            primaryTint = a.tint
+        }
+        let has = icon != nil
+        ([dIcon, dName, dBlurb, dPrimary, dSecondary] as [NSView]).forEach { $0.isHidden = !has }
+        dEmpty.isHidden = has
+        dEmpty.stringValue = typing ? "Nothing called “\(query)”.\n⏎ searches the web for it." : (AppCatalog.shared.apps.isEmpty ? "Looking for your apps…" : "")
+        dIcon.image = icon
+        dName.stringValue = name
+        dBlurb.stringValue = blurb
+        for (n, f) in dFacts.enumerated() {
+            let fact = facts[safe: n]
+            ([f.0, f.1, f.2] as [NSView]).forEach { $0.isHidden = fact == nil }
+            f.0.stringValue = fact?.0 ?? ""
+            f.1.stringValue = fact?.1 ?? ""
+        }
+        dPrimary.title = primary
+        dPrimary.isHidden = !has || primary.isEmpty
+        dPrimary.tint = primaryTint
+        dSecondary.title = actionsOpen ? "Hide actions" : "Actions"
+        dSecondary.key = actionsOpen ? "esc" : "⌘K"
+        needsLayout = true
+    }
+
+    private func updateFooter() {
+        switch mode {
+        case .root where actionsOpen: foot.stringValue = "↑↓ choose   ⏎ run   type to search actions   esc back"
+        case .root: foot.stringValue = "↑↓ choose   ⇥ next branch   ⌘1–⌘6 quick open"
+        case .command(.quitAll): foot.stringValue = "↑↓ choose   space or click to keep   esc back"
+        case .command(.custom): foot.stringValue = "esc back"
+        case .command: foot.stringValue = "↑↓ choose   ⌘⏎ force   ⌘R refresh   esc back"
+        }
+        footOpen.title = mode == .command(.quitAll) ? "Quit all" : (actionsOpen ? "Run" : (mode == .root ? (results.isEmpty ? "Search the web" : verb) : (mode == .command(.killPort) ? "Stop" : "Quit")))
+        footActions.isHidden = mode == .command(.custom) || (mode == .root && results.isEmpty)
+        footActions.title = actionsOpen ? "Close" : "Actions"
+        footActions.key = actionsOpen ? "esc" : "⌘K"
+        needsLayout = true
+    }
+
+    /// ⏎ (or the big button): the chosen item's main thing.
+    private func primaryAction() {
+        if actionsOpen { triggerLeaf(leaf); return }
+        if case .command(let c) = mode {
+            if c == .quitAll { quitAllApps() } else { killSelected(force: false) }
+            return
+        }
+        openSelected()
     }
 
     private func openSelected(finder: Bool = false) {
         if case .command = mode { killSelected(force: finder); return }
         guard let r = results[safe: selected] else {
-            let q = field.stringValue.trimmingCharacters(in: .whitespaces)
-            if !q.isEmpty, !finder { onSearchWeb?(q) }
+            if !query.isEmpty, !finder { onSearchWeb?(query) }
             return
         }
         switch r {
@@ -470,31 +964,38 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     // MARK: Commands
 
     private func enter(_ c: OpenerCommand) {
+        if actionsOpen { closeActions(refocus: true, rebuildTree: false) }
         mode = .command(c)
         SoundService.shared.play(.openerTick)
         field.stringValue = ""
         selected = 0
-        (field.placeholderAttributedString?.mutableCopy() as? NSMutableAttributedString).map { p in
-            p.mutableString.setString(c == .killPort ? "Port number…" : (c == .killProcess ? "Search processes…" : "Coming soon"))
-            field.placeholderAttributedString = p
+        switch c {
+        case .killPort: setPlaceholder("Port number…")
+        case .killProcess: setPlaceholder("Search processes…")
+        case .quitAll: setPlaceholder("Search open apps…")
+        case .custom: setPlaceholder("Coming soon")
         }
-        leftLabel.stringValue = "‹  " + c.title.uppercased()
-        leftLabel.isHidden = false
-        tabs.isHidden = true
-        rightLabel.stringValue = c == .custom ? "SOON" : "LOADING…"
-        setRootVisible(false)
+        chip.title = c.title
+        chip.isHidden = false
         processes = []; ports = []
-        loading = c != .custom
+        runningApps = c == .quitAll ? AppTools.quitCandidates() : []
+        loading = c.loadsInBackground
         reloadList(c)
-        guard c != .custom else { return }
+        popRows(from: 1)
+        guard c.loadsInBackground else { return }
         refreshCommand(c)
     }
 
     private func refreshCommand(_ c: OpenerCommand) {
+        if c == .quitAll {
+            runningApps = AppTools.quitCandidates()
+            reloadList(c)
+            return
+        }
+        guard c.loadsInBackground else { return }
         commandScan = UUID()
         let scan = commandScan
         loading = true
-        rightLabel.stringValue = "LOADING…"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let procs = c == .killProcess ? ProcessTools.processes() : []
             let listening = c == .killPort ? ProcessTools.listeningPorts() : []
@@ -508,73 +1009,72 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         }
     }
 
+    /// Fold a command (or the actions) back up.
+    private func collapse() {
+        if actionsOpen { closeActions(); return }
+        back()
+    }
+
     private func back() {
+        if actionsOpen { closeActions(refocus: true, rebuildTree: false) }
         mode = .root
         commandScan = UUID()
         loading = false
+        chip.isHidden = true
         field.stringValue = ""
+        setPlaceholder("Open an app…")
+        openBranch = .commands
         selected = 0
-        (field.placeholderAttributedString?.mutableCopy() as? NSMutableAttributedString).map { p in
-            p.mutableString.setString("Open an app…")
-            field.placeholderAttributedString = p
-        }
         reload()
     }
 
     private func reloadList(_ c: OpenerCommand) {
-        let q = field.stringValue.trimmingCharacters(in: .whitespaces).lowercased()
+        if actionsOpen { rebuild(); return }
+        let q = query.lowercased()
         switch c {
         case .killProcess:
             let filtered = q.isEmpty ? processes : processes.filter {
                 $0.name.localizedCaseInsensitiveContains(q) || $0.path.localizedCaseInsensitiveContains(q) || String($0.pid).hasPrefix(q)
             }
             listItems = filtered.map { p in
-                (p.name, "pid \(p.pid) · \(ProcessTools.memory(p.memoryKB))", String(format: "%.1f%% CPU", p.cpu), p.pid)
+                ListItem(title: p.name, detail: "pid \(p.pid) · \(ProcessTools.memory(p.memoryKB))",
+                         trailing: String(format: "%.1f%% CPU", p.cpu), pid: p.pid, path: p.path)
             }
-            foot.stringValue = "↑↓ choose   ⏎ quit   ⌘⏎ force quit   ⌘R refresh"
-            footRight.stringValue = "esc back"
         case .killPort:
             let filtered = q.isEmpty ? ports : ports.filter { String($0.port).hasPrefix(q) || $0.command.lowercased().contains(q) }
             listItems = filtered.map { p in
-                (":\(p.port)", "\(p.command) · pid \(p.pid) · \(p.address == "*" ? "all addresses" : p.address)", "listening", p.pid)
+                ListItem(title: ":\(p.port)", detail: "\(p.command) · pid \(p.pid)", trailing: p.address == "*" ? "all addresses" : p.address,
+                         pid: p.pid, port: p.port)
             }
-            foot.stringValue = "↑↓ choose   ⏎ stop port   ⌘⏎ force   ⌘R refresh"
-            footRight.stringValue = "esc back"
+        case .quitAll:
+            let keep = AppOpenerSettings.keepRunning
+            let filtered = q.isEmpty ? runningApps : runningApps.filter { ($0.localizedName ?? "").localizedCaseInsensitiveContains(q) }
+            listItems = filtered.map { r in
+                let k = keep.contains(AppTools.keepKey(r))
+                return ListItem(title: r.localizedName ?? "App", detail: k ? "stays open" : "will quit",
+                                trailing: k ? "KEEP" : "QUIT", pid: r.processIdentifier, path: r.bundleURL?.path ?? "", app: r, keep: k)
+            }
         case .custom:
             listItems = []
-            foot.stringValue = ""
-            footRight.stringValue = "esc back"
         }
         selected = min(selected, max(0, listItems.count - 1))
-        if !loading, c != .custom {
-            rightLabel.stringValue = "\(listItems.count) \(c == .killPort ? "PORT" : "PROCESS")\(listItems.count == 1 ? "" : (c == .killPort ? "S" : "ES"))"
+        rightLabel.textColor = Neon.textDim
+        switch c {
+        case .killProcess, .killPort:
+            rightLabel.stringValue = loading ? "LOADING…" : "\(listItems.count) \(c == .killPort ? "PORT" : "PROCESS")\(listItems.count == 1 ? "" : (c == .killPort ? "S" : "ES"))"
+        case .quitAll: rightLabel.stringValue = "\(quitTargets.count) OF \(runningApps.count) WILL QUIT"
+        case .custom: rightLabel.stringValue = "SOON"
         }
-        empty.isHidden = !listItems.isEmpty
-        empty.stringValue = c == .custom ? "Custom commands are coming soon: add your own scripts and run them from here."
-            : (loading ? "Looking…" : (c == .killPort ? (q.isEmpty ? "Nothing is listening on a port." : "Nothing is listening on \(q).")
-                                                      : "No process matches “\(q)”."))
-        rows.forEach { $0.removeFromSuperview() }
-        rows = listItems.enumerated().map { i, it in
-            let r = OpenerRow(title: it.title, detail: it.detail, trailing: it.trailing, mono: c == .killPort)
-            r.selected = i == selected
-            r.onHover = { [weak self] in self?.selectRow(i) }
-            r.onClick = { [weak self] in self?.selectRow(i); self?.killSelected(force: false) }
-            listDoc.addSubview(r)
-            return r
-        }
-        layoutList()
-    }
-
-    private func selectRow(_ i: Int) {
-        guard rows.indices.contains(i), i != selected else { return }
-        selected = i
-        SoundService.shared.play(.openerTick)
-        for (k, r) in rows.enumerated() { r.selected = k == i }
-        rows[i].scrollToVisible(rows[i].bounds)
+        rebuild()
     }
 
     private func killSelected(force: Bool) {
-        guard case .command(let c) = mode, c != .custom, let it = listItems[safe: selected] else { return }
+        guard case .command(let c) = mode, c.loadsInBackground, let it = listItems[safe: selected] else { return }
+        kill(it, force: force)
+    }
+
+    private func kill(_ it: ListItem, force: Bool) {
+        guard case .command(let c) = mode else { return }
         if it.pid == getpid(), !force {
             NSApp.terminate(nil) // Let Zera cancel her background tasks before quitting.
             return
@@ -582,15 +1082,13 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         switch ProcessTools.kill(it.pid, force: force) {
         case .done:
             SoundService.shared.play(.clipClear)
-            rightLabel.stringValue = force ? "FORCE QUIT \(it.title.uppercased())" : "STOPPED \(it.title.uppercased())"
             processes.removeAll { $0.pid == it.pid }
             ports.removeAll { $0.pid == it.pid }
-            let keep = rightLabel.stringValue
             reloadList(c)
-            rightLabel.stringValue = keep
+            flash(force ? "FORCE QUIT \(it.title.uppercased())" : "STOPPED \(it.title.uppercased())")
         case .notAllowed:
             NSSound.beep()
-            rightLabel.stringValue = "NOT ALLOWED: OWNED BY THE SYSTEM"
+            flash("NOT ALLOWED: OWNED BY THE SYSTEM", tint: Neon.red)
         case .gone:
             processes.removeAll { $0.pid == it.pid }
             ports.removeAll { $0.pid == it.pid }
@@ -598,144 +1096,449 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         }
     }
 
-    func controlTextDidChange(_ obj: Notification) { selected = 0; reload() }
+    // MARK: Quit All
 
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
-        if case .command = mode {
-            switch sel {
-            case #selector(NSResponder.moveDown(_:)): selectRow(min(rows.count - 1, selected + 1)); return true
-            case #selector(NSResponder.moveUp(_:)): selectRow(max(0, selected - 1)); return true
-            case #selector(NSResponder.insertNewline(_:)):
-                killSelected(force: NSApp.currentEvent?.modifierFlags.contains(.command) == true); return true
-            case #selector(NSResponder.cancelOperation(_:)): back(); return true
-            case #selector(NSResponder.deleteBackward(_:)) where field.stringValue.isEmpty: back(); return true
-            default: return false
+    /// The open apps Quit All will close: every one you haven't kept.
+    private var quitTargets: [NSRunningApplication] {
+        let keep = AppOpenerSettings.keepRunning
+        return runningApps.filter { !keep.contains(AppTools.keepKey($0)) && !$0.isTerminated }
+    }
+
+    /// Keep the chosen app open (or let it go again). Remembered for next time.
+    private func toggleKeep() {
+        guard mode == .command(.quitAll), let app = listItems[safe: selected]?.app else { return }
+        var keep = AppOpenerSettings.keepRunning
+        let key = AppTools.keepKey(app)
+        if keep.contains(key) { keep.remove(key) } else { keep.insert(key) }
+        AppOpenerSettings.keepRunning = keep
+        SoundService.shared.play(.openerTick)
+        reloadList(.quitAll)
+    }
+
+    private func quitAllApps() {
+        let targets = quitTargets
+        guard !targets.isEmpty else { NSSound.beep(); flash("NOTHING TO QUIT", tint: Neon.warning); return }
+        onQuitAll?(targets)
+    }
+
+    // MARK: ⌘K actions
+
+    /// The chosen result, by name, with everything you can do to it.
+    private func currentActions() -> (name: String, actions: [PanelAction])? {
+        switch mode {
+        case .root:
+            guard let item = results[safe: selected] else { return nil }
+            switch item {
+            case .app(let a, _, let running): return (a.name, appActions(a, running: running))
+            case .command(let c, _):
+                return (c.title, [PanelAction("Open Command", c.symbol, .code(KeyCombo.returnKey), section: 0) { [weak self] in self?.enter(c) }])
+            case .action(let a, _):
+                return (OpenerActions.title(a), [PanelAction("Run Action", a.symbol, .code(KeyCombo.returnKey), section: 0) { [weak self] in self?.onAction?(a) }])
+            }
+        case .command(let c):
+            guard let it = listItems[safe: selected] else { return nil }
+            switch c {
+            case .killProcess: return (it.title, processActions(it))
+            case .killPort: return (it.title, portActions(it))
+            case .quitAll: return (it.title, quitAllActions(it))
+            case .custom: return nil
             }
         }
-        let n = results.count
+    }
+
+    private func appActions(_ app: AppEntry, running: Bool) -> [PanelAction] {
+        var list: [PanelAction] = [
+            PanelAction("Open Application", "arrow.up.forward.app", .code(KeyCombo.returnKey), section: 0) { [weak self] in self?.onLaunch?(app, false) },
+            PanelAction("Show in Finder", "folder", .code(KeyCombo.returnKey, .command), section: 0) { [weak self] in self?.onLaunch?(app, true) },
+            PanelAction("Show Package Contents", "shippingbox", .cmd("o", .shift), section: 0) { [weak self] in
+                NSWorkspace.shared.activateFileViewerSelecting([app.url.appendingPathComponent("Contents")])
+                self?.onFinish?(nil)
+            },
+            PanelAction("Copy Path", "doc.on.doc", .cmd("c", .shift), section: 1) { [weak self] in
+                AppTools.copy(app.url.path)
+                self?.onFinish?("copied the path to \(app.name) ✨")
+            },
+            PanelAction("Copy Name", "textformat", .cmd(".", .shift), section: 1) { [weak self] in
+                AppTools.copy(app.name)
+                self?.onFinish?("copied “\(app.name)” ✨")
+            },
+        ]
+        if let id = app.bundleID {
+            list.append(PanelAction("Copy Bundle Identifier", "barcode", .cmd("b", .shift), section: 1) { [weak self] in
+                AppTools.copy(id)
+                self?.onFinish?("copied \(id) ✨")
+            })
+        }
+        if running {
+            list += [
+                PanelAction("Hide Application", "eye.slash", .cmd("h"), section: 2) { [weak self] in
+                    AppTools.running(app).forEach { $0.hide() }
+                    self?.onFinish?(nil)
+                },
+                PanelAction("Quit Application", "xmark.circle", .cmd("q"), section: 2) { [weak self] in
+                    AppTools.running(app).forEach { $0.terminate() }
+                    SoundService.shared.play(.clipClear)
+                    self?.flash("QUITTING \(app.name.uppercased())")
+                    self?.reloadSoon()
+                },
+                PanelAction("Force Quit Application", "bolt.circle", .cmd("q", .option), section: 2, tint: Neon.red) { [weak self] in
+                    AppTools.running(app).forEach { $0.forceTerminate() }
+                    SoundService.shared.play(.clipClear)
+                    self?.flash("FORCE QUIT \(app.name.uppercased())")
+                    self?.reloadSoon()
+                },
+            ]
+        }
+        if AppCatalog.shared.hasUsage(app) {
+            list.append(PanelAction("Remove from Your Usual", "star.slash", section: 3) { [weak self] in
+                AppCatalog.shared.forgetUsage(app)
+                self?.reload()
+                self?.flash("REMOVED FROM YOUR USUAL")
+            })
+        }
+        if AppTools.uninstallBlocker(app) == nil {
+            list.append(PanelAction("Uninstall Application", "trash", .code(KeyCombo.deleteKey, [.command, .control]), section: 3,
+                                    tint: Neon.red, confirm: "Move \(app.name) to the Trash?") { [weak self] in self?.uninstall(app) })
+        }
+        return list
+    }
+
+    private func uninstall(_ app: AppEntry) {
+        flash("MOVING \(app.name.uppercased()) TO THE TRASH…", tint: Neon.warning, for: 8)
+        AppTools.moveToTrash(app) { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .trashed:
+                SoundService.shared.play(.clipClear)
+                AppCatalog.shared.remove(app)
+                self.reload()
+                self.onFinish?("\(app.name) is in the Trash 🗑️ Put Back brings it home")
+            case .stillRunning:
+                NSSound.beep()
+                self.flash("\(app.name.uppercased()) IS STILL OPEN: SAVE AND QUIT IT FIRST", tint: Neon.red)
+            case .needsFinder:
+                NSWorkspace.shared.activateFileViewerSelecting([app.canonicalURL])
+                self.onFinish?("\(app.name) needs your password: it's selected in Finder, press ⌘⌫")
+            }
+        }
+    }
+
+    private func processActions(_ it: ListItem) -> [PanelAction] {
+        var list: [PanelAction] = [
+            PanelAction("Quit Process", "xmark.circle", .code(KeyCombo.returnKey), section: 0) { [weak self] in self?.kill(it, force: false) },
+            PanelAction("Force Quit Process", "bolt.circle", .code(KeyCombo.returnKey, .command), section: 0, tint: Neon.red) { [weak self] in self?.kill(it, force: true) },
+            PanelAction("Copy Process ID", "number", .cmd("c", .shift), section: 1) { [weak self] in
+                AppTools.copy(String(it.pid)); self?.flash("COPIED PID \(it.pid)")
+            },
+        ]
+        if it.path.hasPrefix("/") {
+            list.append(PanelAction("Copy Path", "doc.on.doc", .cmd("p", .shift), section: 1) { [weak self] in
+                AppTools.copy(it.path); self?.flash("COPIED THE PATH")
+            })
+            list.append(PanelAction("Show in Finder", "folder", .cmd("f", .shift), section: 1) { [weak self] in
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: it.path)])
+                self?.onFinish?(nil)
+            })
+        }
+        return list
+    }
+
+    private func portActions(_ it: ListItem) -> [PanelAction] {
+        guard let port = it.port else { return [] }
+        let url = "http://localhost:\(port)"
+        return [
+            PanelAction("Stop Listener", "xmark.circle", .code(KeyCombo.returnKey), section: 0) { [weak self] in self?.kill(it, force: false) },
+            PanelAction("Force Stop Listener", "bolt.circle", .code(KeyCombo.returnKey, .command), section: 0, tint: Neon.red) { [weak self] in self?.kill(it, force: true) },
+            PanelAction("Open in Browser", "globe", .cmd("o"), section: 1) { [weak self] in
+                if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+                self?.onFinish?(nil)
+            },
+            PanelAction("Copy URL", "link", .cmd("c", .shift), section: 1) { [weak self] in
+                AppTools.copy(url); self?.flash("COPIED \(url.uppercased())")
+            },
+            PanelAction("Copy Process ID", "number", .cmd("i", .shift), section: 1) { [weak self] in
+                AppTools.copy(String(it.pid)); self?.flash("COPIED PID \(it.pid)")
+            },
+        ]
+    }
+
+    private func quitAllActions(_ it: ListItem) -> [PanelAction] {
+        guard let app = it.app else { return [] }
+        let n = quitTargets.count
+        return [
+            PanelAction(n == 1 ? "Quit 1 App" : "Quit All \(n) Apps", "sparkles", .code(KeyCombo.returnKey), section: 0) { [weak self] in self?.quitAllApps() },
+            PanelAction(it.keep ? "Quit It Too" : "Keep It Open", it.keep ? "minus.circle" : "pin", .code(49), section: 1) { [weak self] in self?.toggleKeep() },
+            PanelAction("Quit Only \(it.title)", "xmark.circle", .code(KeyCombo.returnKey, .command), section: 1) { [weak self] in
+                app.terminate()
+                SoundService.shared.play(.clipClear)
+                self?.flash("QUITTING \(it.title.uppercased())")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { self?.refreshCommand(.quitAll) }
+            },
+        ]
+    }
+
+    private func toggleActions() {
+        actionsOpen ? closeActions() : openActions()
+    }
+
+    /// Grows the chosen item's actions under it; the search field now searches them.
+    private func openActions(confirming ask: Int? = nil) {
+        guard let (name, actions) = currentActions(), !actions.isEmpty else { NSSound.beep(); return }
+        SoundService.shared.play(.openerTick)
+        if !actionsOpen { savedQuery = field.stringValue }
+        actionsOpen = true
+        allActions = actions
+        shownActions = actions
+        leaf = ask ?? 0
+        confirming = ask
+        field.stringValue = ""
+        setPlaceholder("Search actions for \(name)…")
+        chip.title = name
+        chip.isHidden = false
+        rightLabel.textColor = Neon.textDim
+        rightLabel.stringValue = "\(actions.count) ACTIONS"
+        window?.makeFirstResponder(field)
+        rebuild()
+        popRows(leavesOnly: true)
+    }
+
+    private func closeActions(refocus: Bool = true, rebuildTree: Bool = true) {
+        guard actionsOpen else { return }
+        actionsOpen = false
+        confirming = nil
+        field.stringValue = savedQuery
+        if case .command(let c) = mode {
+            chip.title = c.title
+            switch c {
+            case .killPort: setPlaceholder("Port number…")
+            case .killProcess: setPlaceholder("Search processes…")
+            case .quitAll: setPlaceholder("Search open apps…")
+            case .custom: setPlaceholder("Coming soon")
+            }
+        } else {
+            chip.isHidden = true
+            setPlaceholder("Open an app…")
+        }
+        if refocus { window?.makeFirstResponder(field) }
+        if rebuildTree { reload() }
+    }
+
+    private func filterActions() {
+        let q = query
+        shownActions = q.isEmpty ? allActions : allActions.compactMap { a in AppMatcher.match(a.title, q).map { (a, $0.score) } }
+            .sorted { $0.1 > $1.1 }.map(\.0)
+        leaf = 0
+        confirming = nil
+        rebuild()
+    }
+
+    /// Runs an action; ones that ask first (Uninstall) ask on the first ⏎ and go on the second.
+    private func triggerLeaf(_ k: Int) {
+        guard let a = shownActions[safe: k] else { return }
+        if a.confirm != nil, confirming != k {
+            leaf = k
+            confirming = k
+            SoundService.shared.play(.openerTick)
+            rebuild()
+            return
+        }
+        closeActions()
+        a.run()
+    }
+
+    /// Runs the chosen result's action for this shortcut, if it has one. Ones that ask first
+    /// (Uninstall) open the actions at their confirmation instead.
+    private func runShortcut(_ event: NSEvent) -> Bool {
+        guard let (_, actions) = currentActionsForShortcut(),
+              let i = actions.firstIndex(where: { $0.shortcut?.matches(event) == true }) else { return false }
+        if actions[i].confirm != nil {
+            if actionsOpen, let k = shownActions.firstIndex(where: { $0.title == actions[i].title }) { leaf = k; confirming = k; rebuild(); return true }
+            openActions(confirming: i)
+            return true
+        }
+        closeActions()
+        actions[i].run()
+        return true
+    }
+
+    /// While the actions are open, shortcuts still act on the chosen item.
+    private func currentActionsForShortcut() -> (name: String, actions: [PanelAction])? {
+        actionsOpen ? ("", allActions) : currentActions()
+    }
+
+    /// Briefly says what just happened, top right.
+    private func flash(_ text: String, tint: NSColor = Neon.cyan, for seconds: Double = 1.8) {
+        let token = UUID()
+        flashToken = token
+        rightLabel.stringValue = text
+        rightLabel.textColor = tint
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            guard let self = self, self.flashToken == token else { return }
+            self.rightLabel.textColor = Neon.textDim
+            if case .command(let c) = self.mode { self.reloadList(c) } else { self.reload() }
+        }
+    }
+
+    /// After a quit, once the app has had a moment to go: its running dot goes out.
+    private func reloadSoon() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+            guard let self = self, self.mode == .root, !self.actionsOpen else { return }
+            let keep = self.rightLabel.stringValue, tint = self.rightLabel.textColor
+            self.reload()
+            if tint != Neon.textDim { self.rightLabel.stringValue = keep; self.rightLabel.textColor = tint }
+        }
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        if actionsOpen { filterActions(); return }
+        // Quit All: space (on an empty search) keeps the chosen app open, or lets it go.
+        if mode == .command(.quitAll), field.stringValue == " " {
+            field.stringValue = ""
+            toggleKeep()
+            return
+        }
+        selected = 0
+        reload()
+        treeScroll.contentView.scroll(to: .zero)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
         switch sel {
-        case #selector(NSResponder.moveRight(_:)) where textView.selectedRange().location >= field.stringValue.count,
-             #selector(NSResponder.moveDown(_:)):
-            if n > 0 { select((selected + 1) % n) }; return true
-        case #selector(NSResponder.moveLeft(_:)) where textView.selectedRange().location >= field.stringValue.count,
-             #selector(NSResponder.moveUp(_:)):
-            if n > 0 { select((selected - 1 + n) % n) }; return true
+        case #selector(NSResponder.moveDown(_:)): move(1); return true
+        case #selector(NSResponder.moveUp(_:)): move(-1); return true
         case #selector(NSResponder.insertNewline(_:)):
-            let finder = NSApp.currentEvent?.modifierFlags.contains(.command) == true
-            openSelected(finder: finder); return true
+            if NSApp.currentEvent?.modifierFlags.contains(.command) == true, !actionsOpen {
+                if case .command = mode { killSelected(force: true) } else { openSelected(finder: true) }
+                return true
+            }
+            primaryAction(); return true
         case #selector(NSResponder.insertTab(_:)):
-            setFilter(Filter(rawValue: (filter.rawValue + 1) % Filter.allCases.count) ?? .all); return true
+            if mode == .root, !actionsOpen { nextBranch(1) }
+            return true
         case #selector(NSResponder.insertBacktab(_:)):
-            setFilter(Filter(rawValue: (filter.rawValue + Filter.allCases.count - 1) % Filter.allCases.count) ?? .all); return true
+            if mode == .root, !actionsOpen { nextBranch(-1) }
+            return true
         case #selector(NSResponder.cancelOperation(_:)):
-            onClose?(); return true
+            if actionsOpen {
+                if confirming != nil { confirming = nil; rebuild() } else { closeActions() }
+            } else if case .command = mode { back() } else { onClose?() }
+            return true
+        case #selector(NSResponder.deleteBackward(_:)) where field.stringValue.isEmpty:
+            if actionsOpen { closeActions(); return true }
+            if case .command = mode { back(); return true }
+            return false
         default: return false
         }
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard event.type == .keyDown, event.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: event) }
-        if case .command(let command) = mode, command != .custom, event.charactersIgnoringModifiers?.lowercased() == "r" {
+        guard event.type == .keyDown, !event.modifierFlags.intersection([.command, .control]).isEmpty else {
+            return super.performKeyEquivalent(with: event)
+        }
+        let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        if mods == .command, key == "k" { toggleActions(); return true }
+        if mods == .command, key == "r", case .command(let command) = mode, command != .custom {
             refreshCommand(command)
             return true
         }
-        if mode == .root, let c = event.charactersIgnoringModifiers, let n = Int(c), (1...OP.tiles).contains(n), resultPageStart + n - 1 < results.count {
-            selected = resultPageStart + n - 1
-            updateVisibleResults()
+        if runShortcut(event) { return true }
+        // ⌘Q only ever quits the chosen app, never Zera herself.
+        if mods.contains(.command), key == "q" { NSSound.beep(); return true }
+        // ⌘1…⌘6: the first six showing, top to bottom.
+        if !actionsOpen, mode == .root, mods == .command, let c = key, let n = Int(c), (1...OP.tiles).contains(n), n - 1 < results.count {
+            selected = n - 1
             openSelected()
             return true
         }
-        if event.keyCode == 36 { openSelected(finder: true); return true }
+        if !actionsOpen, event.keyCode == KeyCombo.returnKey, mods == .command { openSelected(finder: true); return true }
         return super.performKeyEquivalent(with: event)
     }
 
     override func mouseDown(with event: NSEvent) {
-        // Clicking the empty glass around the capsule closes it, like clicking anywhere else.
+        // A click outside the window sends her back up.
         let p = convert(event.locationInWindow, from: nil)
-        if !capsule.frame.offsetBy(dx: holder.frame.minX, dy: holder.frame.minY).contains(p) { onClose?() }
-    }
-
-    private func layoutList() {
-        let w = listScroll.contentSize.width
-        var y: CGFloat = 0
-        for r in rows { r.frame = NSRect(x: 0, y: y, width: w, height: 36); y += 40 }
-        listDoc.frame = NSRect(x: 0, y: 0, width: w, height: max(y, listScroll.frame.height))
+        if !card.frame.contains(p) { onClose?() }
     }
 
     // MARK: Layout
 
     override func layout() {
         super.layout()
-        let w = bounds.width
-        let zh = zeraH
-        holder.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height)
-        let cx = ropeX > 0 ? ropeX : w / 2
+        let c = cx
+        holder.frame = bounds
         // Her picture's own rope sits exactly on the drawn one.
-        zera.frame = NSRect(x: (cx - ropeFraction * OP.zeraW).rounded(), y: band + OP.ropeGap, width: OP.zeraW, height: zh)
-        capsule.frame = NSRect(x: OP.margin, y: capsuleTop, width: OP.width, height: capsuleH)
-        if rope.layer?.animation(forKey: "drop") == nil {
-            // From the very top (into the notch) to a little way under her picture's own rope,
-            // so the two read as one rope with no joint.
-            rope.frame = NSRect(x: (cx - ropeWidth / 2).rounded(), y: 0, width: ropeWidth, height: band + OP.ropeGap + 14)
+        zera.frame = NSRect(x: (c - ropeFraction * OP.zeraW).rounded(), y: band + OP.ropeGap, width: OP.zeraW, height: zeraH)
+        if rope.layer?.animation(forKey: "grow") == nil {
+            rope.frame = NSRect(x: (c - ropeWidth / 2).rounded(), y: 0, width: ropeWidth, height: band + OP.ropeGap + 14)
         }
-        let iw = OP.width - OP.pad * 2
-        var y = OP.pad
-        if let box = capsule.subviews.first(where: { $0.identifier?.rawValue == "fieldBox" }) {
-            box.frame = NSRect(x: OP.pad, y: y, width: iw, height: OP.fieldH)
-            searchIcon.frame = NSRect(x: 16, y: (OP.fieldH - 18) / 2, width: 18, height: 18)
-            escHint.frame = NSRect(x: iw - 14 - 34, y: (OP.fieldH - 18) / 2, width: 34, height: 18)
-            field.frame = NSRect(x: 46, y: (OP.fieldH - 24) / 2, width: iw - 46 - 60, height: 24)
+        let W = OP.cardW, H = OP.cardH
+        card.frame = NSRect(x: (c - W / 2).rounded(), y: cardTop, width: W, height: H)
+
+        // The root row.
+        rootDot.frame = NSRect(x: TV.trunkX[0] - 15, y: 17, width: 30, height: 30)
+        searchIcon.frame = NSRect(x: 8, y: 8, width: 14, height: 14)
+        var fx = rootDot.frame.maxX + 14
+        if !chip.isHidden {
+            let w = min(260, chip.fittedWidth)
+            chip.frame = NSRect(x: fx, y: 17, width: w, height: 30)
+            fx = chip.frame.maxX + 12
         }
-        y += OP.fieldH + OP.gap
-        let tw0 = min(iw - 170, tabs.preferredWidth)
-        tabs.frame = NSRect(x: OP.pad, y: y, width: tw0, height: OP.tabsH)
-        leftLabel.frame = NSRect(x: OP.pad + 4, y: y + (OP.tabsH - 14) / 2, width: iw / 2, height: 14)
-        rightLabel.frame = NSRect(x: OP.pad + iw - 220, y: y + (OP.tabsH - 14) / 2, width: 216, height: 14)
-        y += OP.tabsH + OP.gap
-        hero.frame = NSRect(x: OP.pad, y: y, width: iw, height: OP.heroH)
-        empty.frame = NSRect(x: OP.pad, y: y + 40, width: iw, height: 44)
-        listScroll.frame = NSRect(x: OP.pad, y: y, width: iw, height: OP.heroH + 10 + OP.tileH)
-        layoutList()
-        y += OP.heroH + 10
-        let tw = (iw - CGFloat(OP.tiles - 1) * 8) / CGFloat(OP.tiles)
-        for (i, t) in tiles.enumerated() { t.frame = NSRect(x: OP.pad + CGFloat(i) * (tw + 8), y: y, width: tw, height: OP.tileH) }
-        y += OP.tileH + OP.gap
-        foot.frame = NSRect(x: OP.pad + 4, y: y, width: iw - 110, height: OP.footH)
-        footRight.frame = NSRect(x: OP.pad + iw - 104, y: y, width: 100, height: OP.footH)
+        let rw = rightLabel.stringValue.isEmpty ? 0 : min(260, ceil(rightLabel.attributedStringValue.size().width) + 4)
+        rightLabel.frame = NSRect(x: W - 20 - rw, y: 25, width: rw, height: 14)
+        field.frame = NSRect(x: fx, y: 20, width: max(60, W - 20 - rw - 12 - fx), height: 24)
+        rootStem.frame = NSRect(x: TV.trunkX[0] - 0.75, y: rootDot.frame.maxY, width: 1.5, height: TV.headH - rootDot.frame.maxY)
+
+        let bodyH = H - TV.headH - TV.footH
+        treeScroll.frame = NSRect(x: 0, y: TV.headH, width: TV.treeW, height: bodyH)
+        if treeDoc.frame.width != treeScroll.contentSize.width { layoutTree() }
+        paneRule.frame = NSRect(x: TV.treeW, y: TV.headH, width: 1, height: bodyH)
+        footRule.frame = NSRect(x: 0, y: H - TV.footH, width: W, height: 1)
+        detail.frame = NSRect(x: TV.treeW + 1, y: TV.headH, width: W - TV.treeW - 1, height: bodyH)
+        layoutDetail()
+
+        // The footer: hints left, the two main keys right.
+        let ow = footOpen.fittedWidth, aw = footActions.isHidden ? 0 : footActions.fittedWidth
+        footActions.frame = NSRect(x: W - 16 - aw, y: H - TV.footH + 10, width: aw, height: 28)
+        footOpen.frame = NSRect(x: (footActions.isHidden ? W - 16 : footActions.frame.minX - 8) - ow, y: H - TV.footH + 10, width: ow, height: 28)
+        foot.frame = NSRect(x: 22, y: H - TV.footH + 16, width: footOpen.frame.minX - 34, height: 16)
+    }
+
+    private func layoutDetail() {
+        let w = detail.bounds.width, h = detail.bounds.height, pad: CGFloat = 26
+        dIcon.frame = NSRect(x: (w - 72) / 2, y: 28, width: 72, height: 72)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        dHalo.frame = dIcon.frame.insetBy(dx: -40, dy: -40)
+        dHalo.isHidden = dIcon.isHidden
+        CATransaction.commit()
+        dName.frame = NSRect(x: pad, y: 110, width: w - pad * 2, height: 24)
+        dBlurb.frame = NSRect(x: pad, y: 137, width: w - pad * 2, height: 32)
+        var y: CGFloat = 182
+        for f in dFacts where !f.0.isHidden {
+            f.0.frame = NSRect(x: pad, y: y + 9, width: 120, height: 16)
+            f.1.frame = NSRect(x: pad + 110, y: y + 9, width: w - pad * 2 - 110, height: 16)
+            f.2.frame = NSRect(x: pad, y: y + 34, width: w - pad * 2, height: 1)
+            y += 35
+        }
+        dSecondary.frame = NSRect(x: pad, y: h - 22 - 34, width: w - pad * 2, height: 34)
+        dPrimary.frame = NSRect(x: pad, y: dSecondary.frame.minY - 8 - 34, width: w - pad * 2, height: 34)
+        dEmpty.frame = NSRect(x: pad, y: h / 2 - 30, width: w - pad * 2, height: 60)
     }
 
     // MARK: Motion
 
-    /// She rappels down carrying the capsule: the rope pays out, she and the capsule drop in with
-    /// an overshoot, the capsule unfurls under her paws, the apps pop in one by one.
+    /// She rappels down holding the opener; the branches draw down from the root and the rows
+    /// slide in after them.
     func animateIn() {
         window?.makeFirstResponder(field)
         guard !Motion.reduced, let hl = holder.layer else { holder.alphaValue = 1; return }
         holder.alphaValue = 1
         let drop = CASpringAnimation(keyPath: "transform.translation.y")
-        drop.fromValue = -(capsuleTop + 40); drop.toValue = 0
+        drop.fromValue = -(cardTop + 40); drop.toValue = 0
         drop.stiffness = 170; drop.damping = 17; drop.mass = 1
         drop.duration = drop.settlingDuration
         hl.add(drop, forKey: "drop")
-
-        if let cl = capsule.layer {
-            // Grows out from under her paws: scaled about the capsule's top centre.
-            let sc: CGFloat = 0.25, w = capsule.bounds.width
-            let from = CATransform3DConcat(CATransform3DMakeScale(sc, sc, 1), CATransform3DMakeTranslation(w * (1 - sc) / 2, 0, 0))
-            let unfurl = CASpringAnimation(keyPath: "transform")
-            unfurl.fromValue = NSValue(caTransform3D: from); unfurl.toValue = NSValue(caTransform3D: CATransform3DIdentity)
-            unfurl.stiffness = 200; unfurl.damping = 16
-            unfurl.duration = unfurl.settlingDuration
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 0; fade.toValue = 1; fade.duration = 0.18
-            let g = CAAnimationGroup()
-            g.animations = [unfurl, fade]
-            g.duration = unfurl.duration
-            g.beginTime = CACurrentMediaTime() + 0.12
-            g.fillMode = .backwards
-            cl.add(g, forKey: "unfurl")
-        }
-
         if let rl = rope.layer {
             let grow = CABasicAnimation(keyPath: "bounds.size.height")
             grow.fromValue = 0; grow.toValue = rope.frame.height
@@ -743,26 +1546,39 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             grow.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 1.3, 0.5, 1)
             rl.add(grow, forKey: "grow")
         }
-
-        popTiles(delay: 0.24)
+        for (l, delay) in [(dimLines, 0.2), (litLines, 0.28)] {
+            let draw = CABasicAnimation(keyPath: "strokeEnd")
+            draw.fromValue = 0; draw.toValue = 1
+            draw.duration = 0.35
+            draw.beginTime = CACurrentMediaTime() + delay
+            draw.fillMode = .backwards
+            draw.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            l.add(draw, forKey: "draw")
+        }
+        popRows(delay: 0.22)
     }
 
-    /// The slots pop in one after another (on open, and when you switch tabs).
-    private func popTiles(delay: Double = 0) {
+    /// Rows slide in from their branch, one after another: on open, a new branch, a command's
+    /// list, or the actions (`leavesOnly`).
+    private func popRows(delay: Double = 0, from start: Int = 0, leavesOnly: Bool = false) {
         guard !Motion.reduced else { return }
-        for (i, t) in ([hero as NSView] + tiles).enumerated() where !t.isHidden {
-            guard let tl = t.layer else { continue }
-            let pop = CASpringAnimation(keyPath: "transform.translation.y")
-            pop.fromValue = -10; pop.toValue = 0; pop.stiffness = 280; pop.damping = 16
-            pop.duration = pop.settlingDuration
+        var n = 0
+        for (i, p) in placed.enumerated() where i >= start && n < 14 {
+            if leavesOnly, case .leaf = p.line {} else if leavesOnly { continue }
+            guard let l = p.view.layer else { continue }
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = 0; fade.toValue = 1; fade.duration = 0.18
+            let slide = CASpringAnimation(keyPath: "transform.translation.x")
+            slide.fromValue = -10; slide.toValue = 0
+            slide.stiffness = 300; slide.damping = 22
+            slide.duration = slide.settlingDuration
             let g = CAAnimationGroup()
-            g.animations = [pop, fade]
-            g.duration = pop.duration
-            g.beginTime = CACurrentMediaTime() + delay + Double(i) * 0.025
+            g.animations = [fade, slide]
+            g.duration = slide.duration
+            g.beginTime = CACurrentMediaTime() + delay + Double(n) * 0.025
             g.fillMode = .backwards
-            tl.add(g, forKey: "pop")
+            l.add(g, forKey: "pop")
+            n += 1
         }
     }
 
@@ -772,7 +1588,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         CATransaction.begin()
         CATransaction.setCompletionBlock(done)
         let up = CABasicAnimation(keyPath: "transform.translation.y")
-        up.fromValue = 0; up.toValue = -(capsuleTop + 60)
+        up.fromValue = 0; up.toValue = -(cardTop + 60)
         up.duration = 0.26
         up.timingFunction = CAMediaTimingFunction(controlPoints: 0.5, 0, 0.75, 0)
         up.fillMode = .forwards; up.isRemovedOnCompletion = false
@@ -791,7 +1607,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
 
     /// The chosen app's icon flies up into Zera's paws; she hops; then `done`.
     func toss(_ app: AppEntry, _ done: @escaping () -> Void) {
-        let source = hero.iconFrame.offsetBy(dx: capsule.frame.minX + hero.frame.minX, dy: capsule.frame.minY + hero.frame.minY)
+        let source = detail.convert(dIcon.frame, to: self)
         let flyer = NSImageView(frame: source)
         flyer.image = AppCatalog.shared.icon(app)
         flyer.wantsLayer = true
@@ -799,7 +1615,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         guard !Motion.reduced else { flyer.removeFromSuperview(); done(); return }
         let target = NSRect(x: zera.frame.midX - 14, y: zera.frame.midY - 4, width: 28, height: 28)
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.32
+            ctx.duration = 0.34
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.5, 0, 0.3, 1)
             flyer.animator().frame = target
             flyer.animator().alphaValue = 0.15
@@ -823,10 +1639,6 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             s.bounds = CGRect(x: 0, y: 0, width: 5, height: 5)
             s.cornerRadius = 2.5
             s.backgroundColor = Neon.cyan.cgColor
-            s.shadowColor = Neon.cyan.cgColor
-            s.shadowOpacity = 1
-            s.shadowRadius = 4
-            s.shadowOffset = .zero
             s.position = p
             root.addSublayer(s)
             let a = Double(k) / 10 * 2 * .pi
@@ -846,6 +1658,217 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     }
 }
 
+/// The tree's measurements, in the window.
+private enum TV {
+    static let headH: CGFloat = 64
+    static let footH: CGFloat = 48
+    static let treeW: CGFloat = 470
+    /// Where each level's trunk runs, and where its rows start.
+    static let trunkX: [CGFloat] = [35, 60, 89, 117]
+    static let rowX: [CGFloat] = [50, 68, 97, 125]
+}
+
+private extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}
+
+/// A branch's name in the tree: "YOUR USUAL", "COMMANDS · 4" when folded.
+final class TreeGroupView: NSView {
+    var onClick: (() -> Void)?
+    private let label = NSTextField(labelWithString: "")
+    private let chevron = NSImageView()
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    init(title: String, count: Int?, open: Bool) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        chevron.image = NSImage(systemSymbolName: open ? "chevron.down" : "chevron.right", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 8.5, weight: .bold).applying(.init(paletteColors: [NSColor(srgbRed: 0.33, green: 0.38, blue: 0.56, alpha: 1)])))
+        addSubview(chevron)
+        let s = NSMutableAttributedString(string: title, attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: NSColor(srgbRed: 0.49, green: 0.53, blue: 0.71, alpha: 1), .kern: 1.1])
+        if let n = count {
+            s.append(NSAttributedString(string: "  · \(n)", attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium), .foregroundColor: NSColor(srgbRed: 0.31, green: 0.35, blue: 0.53, alpha: 1)]))
+        }
+        label.attributedStringValue = s
+        addSubview(label)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(title)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        chevron.frame = NSRect(x: 2, y: (bounds.height - 10) / 2, width: 10, height: 10)
+        label.frame = NSRect(x: 18, y: (bounds.height - 14) / 2, width: bounds.width - 18, height: 14)
+    }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+}
+
+/// A row in the tree: an app, command or action (item), a command's own row (child), one of
+/// the chosen item's actions (leaf), or a quiet note.
+final class TreeRowView: NSView {
+    enum Style { case item, child, leaf, note }
+    var onClick: (() -> Void)?
+    var onHover: (() -> Void)?
+    var icon: NSImage? { didSet { iconView.image = icon; iconView.isHidden = icon == nil; needsLayout = true } }
+    var symbol: String? { didSet { restyle() } }
+    var tint: NSColor? { didSet { restyle() } }
+    var titleText = NSAttributedString() { didSet { title.attributedStringValue = titleText; needsLayout = true } }
+    var sub = "" { didSet { subLabel.stringValue = sub; needsLayout = true } }
+    var accessory = "" { didSet { acc.stringValue = accessory; needsLayout = true } }
+    var running = false { didSet { dot.isHidden = !running } }
+    var mono = false
+    /// Quit All's switch: on = this app will quit.
+    var toggle: Bool? { didSet { needsDisplay = true; needsLayout = true } }
+    var dimmed = false { didSet { alphaValue = dimmed ? 0.5 : 1 } }
+    var selected = false { didSet { restyle() } }
+    private let style: Style
+    private let iconView = NSImageView()
+    private let title = NSTextField(labelWithString: "")
+    private let subLabel = NSTextField(labelWithString: "")
+    private let acc = NSTextField(labelWithString: "")
+    private let dot = NSView()
+    private var hovered = false { didSet { restyle() } }
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    init(style: Style) {
+        self.style = style
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = style == .leaf ? 9 : 11
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 1
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.isHidden = true
+        addSubview(iconView)
+        title.lineBreakMode = .byTruncatingTail
+        addSubview(title)
+        subLabel.font = NSFont.systemFont(ofSize: 12)
+        subLabel.textColor = NSColor(srgbRed: 0.49, green: 0.53, blue: 0.71, alpha: 1)
+        subLabel.lineBreakMode = .byTruncatingTail
+        addSubview(subLabel)
+        acc.font = style == .leaf ? NSFont.monospacedSystemFont(ofSize: 11, weight: .medium) : NSFont.systemFont(ofSize: 11.5, weight: .medium)
+        acc.textColor = NSColor(srgbRed: 0.49, green: 0.53, blue: 0.71, alpha: 1)
+        acc.alignment = .right
+        addSubview(acc)
+        dot.wantsLayer = true
+        dot.layer?.cornerRadius = 3
+        dot.layer?.backgroundColor = Neon.cyan.cgColor
+        dot.isHidden = true
+        addSubview(dot)
+        setAccessibilityRole(.button)
+        restyle()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func restyle() {
+        let accent = tint ?? Neon.accent
+        let on = selected && style != .note
+        layer?.backgroundColor = (on ? accent.withAlphaComponent(0.14) : (hovered && style != .note ? Neon.chipHover.withAlphaComponent(0.55) : .clear)).cgColor
+        layer?.borderColor = (on ? accent.withAlphaComponent(0.5) : .clear).cgColor
+        if style == .leaf, let s = symbol {
+            let c = tint ?? (selected ? Neon.cyan : Neon.glyph)
+            iconView.image = NSImage(systemSymbolName: s, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold).applying(.init(paletteColors: [c])))
+            iconView.isHidden = false
+            acc.textColor = tint?.withAlphaComponent(0.8) ?? NSColor(srgbRed: 0.43, green: 0.47, blue: 0.65, alpha: 1)
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        let w = bounds.width, h = bounds.height
+        let size: CGFloat = style == .leaf ? 16 : (style == .child ? 24 : 26)
+        iconView.frame = NSRect(x: 8, y: (h - size) / 2, width: size, height: size)
+        let tx: CGFloat = iconView.isHidden ? 10 : 8 + size + (style == .leaf ? 10 : 12)
+        var right = w - 12
+        if toggle != nil { right -= 34 }
+        let aw = accessory.isEmpty ? 0 : ceil(acc.attributedStringValue.size().width) + 4
+        acc.frame = NSRect(x: right - aw, y: (h - 15) / 2, width: aw, height: 15)
+        if running { dot.frame = NSRect(x: acc.frame.minX - 11, y: (h - 6) / 2, width: 6, height: 6); right = dot.frame.minX - 8 } else { right = acc.frame.minX - 10 }
+        let tw = min(right - tx, ceil(title.attributedStringValue.size().width) + 4)
+        title.frame = NSRect(x: tx, y: (h - 18) / 2, width: max(0, tw), height: 18)
+        subLabel.frame = NSRect(x: title.frame.maxX + 8, y: (h - 15) / 2 + 1, width: max(0, right - title.frame.maxX - 8), height: 15)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let on = toggle else { return }
+        let r = NSRect(x: bounds.width - 12 - 30, y: (bounds.height - 18) / 2, width: 30, height: 18)
+        let track = NSBezierPath(roundedRect: r, xRadius: 9, yRadius: 9)
+        (on ? Neon.red.withAlphaComponent(0.85) : NSColor(srgbRed: 0.1, green: 0.14, blue: 0.25, alpha: 1)).setFill()
+        track.fill()
+        let knob = NSRect(x: on ? r.maxX - 16 : r.minX + 2, y: r.minY + 2, width: 14, height: 14)
+        (on ? NSColor.white : NSColor(srgbRed: 0.49, green: 0.53, blue: 0.71, alpha: 1)).setFill()
+        NSBezierPath(ovalIn: knob).fill()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        guard style != .note else { return }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { hovered = true; onHover?() }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
+    override func resetCursorRects() { if style != .note { addCursorRect(bounds, cursor: .pointingHand) } }
+}
+
+/// The detail pane's buttons: "Open Safari ⏎" (primary), "Actions ⌘K".
+final class TreeButton: NSView {
+    var title = "" { didSet { needsDisplay = true } }
+    var key = "⏎" { didSet { needsDisplay = true } }
+    var primary = false { didSet { needsDisplay = true } }
+    /// Green for Quit All, red for destructive actions.
+    var tint: NSColor? { didSet { needsDisplay = true } }
+    var onClick: (() -> Void)?
+    private var hovered = false { didSet { needsDisplay = true } }
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10)
+        let accent = tint ?? Neon.accent
+        (primary ? accent.withAlphaComponent(hovered ? 0.24 : 0.17) : NSColor(srgbRed: 0.035, green: 0.067, blue: 0.157, alpha: hovered ? 1 : 0.9)).setFill()
+        path.fill()
+        (primary ? accent.withAlphaComponent(0.65) : Neon.chipEdge).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+        let t = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: Neon.text])
+        let k = NSAttributedString(string: key, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium), .foregroundColor: Neon.glyph])
+        let ts = t.size(), ks = k.size()
+        let total = ts.width + 10 + ks.width + 10
+        let x0 = (bounds.width - total) / 2
+        t.draw(at: NSPoint(x: x0, y: (bounds.height - ts.height) / 2))
+        let kr = NSRect(x: x0 + ts.width + 10, y: (bounds.height - ks.height - 6) / 2, width: ks.width + 10, height: ks.height + 6)
+        let kp = NSBezierPath(roundedRect: kr, xRadius: 5, yRadius: 5)
+        Neon.chipEdge.setStroke(); kp.lineWidth = 1; kp.stroke()
+        k.draw(at: NSPoint(x: kr.minX + 5, y: kr.minY + 3))
+    }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+}
+
+
 /// "Notes" with the letters you typed lit up in cyan.
 private func highlighted(_ name: String, _ hits: [Int], size: CGFloat, weight: NSFont.Weight) -> NSAttributedString {
     let s = NSMutableAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: Neon.text])
@@ -862,224 +1885,11 @@ private func highlighted(_ name: String, _ hits: [Int], size: CGFloat, weight: N
     return s
 }
 
-/// The big spot: the best (or chosen) match.
-final class OpenerHero: NSView {
-    var onOpen: (() -> Void)?
-    private let icon = NSImageView()
-    private let name = NSTextField(labelWithString: "")
-    private let sub = NSTextField(labelWithString: "")
-    private let go = OpenerPill()
-    override var isFlipped: Bool { true }
-    var iconFrame: NSRect { icon.frame }
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        if let l = layer {
-            l.cornerRadius = 18
-            l.cornerCurve = .continuous
-            let g = CAGradientLayer()
-            g.colors = [Neon.accent.withAlphaComponent(0.16).cgColor, Neon.violet.withAlphaComponent(0.08).cgColor]
-            g.startPoint = CGPoint(x: 0, y: 0.5); g.endPoint = CGPoint(x: 1, y: 0.5)
-            g.cornerRadius = 18
-            g.name = "bg"
-            l.addSublayer(g)
-            l.borderWidth = 1
-            l.borderColor = Neon.accent.withAlphaComponent(0.55).cgColor
-        }
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        addSubview(icon)
-        name.lineBreakMode = .byTruncatingTail
-        addSubview(name)
-        sub.font = NSFont.systemFont(ofSize: 12)
-        sub.textColor = Neon.textDim
-        sub.lineBreakMode = .byTruncatingMiddle
-        addSubview(sub)
-        addSubview(go)
-        setAccessibilityRole(.button)
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    func set(item: OpenerItem) {
-        icon.image = item.icon
-        name.attributedStringValue = highlighted(item.name, item.hits, size: 18, weight: .semibold)
-        sub.stringValue = item.subtitle
-        go.title = item.isApp ? "Open" : "Run"
-        setAccessibilityLabel(go.title + " " + item.name)
-    }
-
-    override func layout() {
-        super.layout()
-        layer?.sublayers?.first { $0.name == "bg" }?.frame = bounds
-        let h = bounds.height
-        icon.frame = NSRect(x: 14, y: (h - 56) / 2, width: 56, height: 56)
-        let gw = go.fittedWidth
-        go.frame = NSRect(x: bounds.width - 16 - gw, y: (h - 30) / 2, width: gw, height: 30)
-        name.frame = NSRect(x: 84, y: h / 2 - 23, width: go.frame.minX - 96, height: 24)
-        sub.frame = NSRect(x: 84, y: h / 2 + 3, width: go.frame.minX - 96, height: 16)
-    }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onOpen?() } }
-    override func accessibilityPerformPress() -> Bool { onOpen?(); return true }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-}
-
-/// One of the six slots under the big spot: icon, name, ⌘n, a cyan dot when it's running.
-final class OpenerTile: NSView {
-    var onHover: (() -> Void)?
-    var onClick: (() -> Void)?
-    var selected = false { didSet { if selected != oldValue { restyle() } } }
-    private let icon = NSImageView()
-    private let name = NSTextField(labelWithString: "")
-    private let key = NSTextField(labelWithString: "")
-    private let dot = NSView()
-    private var hovered = false { didSet { restyle() } }
-    override var isFlipped: Bool { true }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    init(index: Int) {
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = 16
-        layer?.cornerCurve = .continuous
-        layer?.borderWidth = 1
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        addSubview(icon)
-        name.alignment = .center
-        name.lineBreakMode = .byTruncatingTail
-        addSubview(name)
-        key.stringValue = "⌘\(index + 1)"
-        key.font = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .medium)
-        key.textColor = Neon.textDim
-        key.alignment = .right
-        addSubview(key)
-        dot.wantsLayer = true
-        dot.layer?.cornerRadius = 2
-        dot.layer?.backgroundColor = Neon.cyan.cgColor
-        dot.layer?.shadowColor = Neon.cyan.cgColor
-        dot.layer?.shadowOpacity = 1
-        dot.layer?.shadowRadius = 3
-        dot.layer?.shadowOffset = .zero
-        addSubview(dot)
-        setAccessibilityRole(.button)
-        restyle()
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    func set(item: OpenerItem, selected: Bool) {
-        icon.image = item.icon
-        name.attributedStringValue = highlighted(item.name, item.hits, size: 11.5, weight: .medium)
-        if let p = name.attributedStringValue.mutableCopy() as? NSMutableAttributedString {
-            let para = NSMutableParagraphStyle(); para.alignment = .center; para.lineBreakMode = .byTruncatingTail
-            p.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: p.length))
-            name.attributedStringValue = p
-        }
-        dot.isHidden = !item.running
-        self.selected = selected
-        setAccessibilityLabel(item.name)
-        restyle()
-    }
-
-    private func restyle() {
-        let on = selected
-        layer?.backgroundColor = (on ? Neon.accent.withAlphaComponent(0.14) : (hovered ? Neon.chipHover : Neon.chip.withAlphaComponent(0.55))).cgColor
-        layer?.borderColor = (on ? Neon.accent.withAlphaComponent(0.55) : (hovered ? Neon.chipEdge : .clear)).cgColor
-        layer?.shadowColor = Neon.halo.cgColor
-        layer?.shadowOpacity = on ? 0.5 : 0
-        layer?.shadowRadius = 10
-        layer?.shadowOffset = .zero
-    }
-
-    override func layout() {
-        super.layout()
-        let w = bounds.width
-        icon.frame = NSRect(x: (w - 44) / 2, y: 12, width: 44, height: 44)
-        name.frame = NSRect(x: 4, y: 62, width: w - 8, height: 16)
-        key.frame = NSRect(x: w - 36, y: 6, width: 30, height: 12)
-        dot.frame = NSRect(x: (w - 4) / 2, y: 82, width: 4, height: 4)
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
-    }
-    override func mouseEntered(with event: NSEvent) { hovered = true; onHover?() }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
-    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-}
-
 private extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
 
 final class OpenerFlipped: NSView { override var isFlipped: Bool { true } }
-
-/// A row in a command's list: "node · pid 4127 · 120 MB        3.2% CPU".
-final class OpenerRow: NSView {
-    var onHover: (() -> Void)?
-    var onClick: (() -> Void)?
-    var selected = false { didSet { if selected != oldValue { restyle() } } }
-    private let title = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
-    private let trailing = NSTextField(labelWithString: "")
-    private var hovered = false { didSet { restyle() } }
-    override var isFlipped: Bool { true }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    init(title t: String, detail d: String, trailing tr: String, mono: Bool) {
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = 11
-        layer?.borderWidth = 1
-        title.stringValue = t
-        title.font = mono ? NSFont.monospacedSystemFont(ofSize: 13.5, weight: .semibold) : NSFont.systemFont(ofSize: 13.5, weight: .semibold)
-        title.textColor = Neon.text
-        title.lineBreakMode = .byTruncatingTail
-        detail.stringValue = d
-        detail.font = NSFont.systemFont(ofSize: 12)
-        detail.textColor = Neon.textDim
-        detail.lineBreakMode = .byTruncatingTail
-        trailing.stringValue = tr
-        trailing.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
-        trailing.textColor = Neon.glyph
-        trailing.alignment = .right
-        [title, detail, trailing].forEach(addSubview)
-        setAccessibilityRole(.button)
-        setAccessibilityLabel("\(t), \(d)")
-        restyle()
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    private func restyle() {
-        layer?.backgroundColor = (selected ? Neon.accent.withAlphaComponent(0.14) : (hovered ? Neon.chipHover : Neon.chip.withAlphaComponent(0.5))).cgColor
-        layer?.borderColor = (selected ? Neon.accent.withAlphaComponent(0.55) : .clear).cgColor
-    }
-
-    override func layout() {
-        super.layout()
-        let w = bounds.width, h = bounds.height
-        let tw = min(220, ceil(title.attributedStringValue.size().width) + 6)
-        title.frame = NSRect(x: 12, y: (h - 18) / 2, width: tw, height: 18)
-        trailing.frame = NSRect(x: w - 12 - 100, y: (h - 15) / 2, width: 100, height: 15)
-        detail.frame = NSRect(x: title.frame.maxX + 10, y: (h - 16) / 2 + 1, width: max(0, trailing.frame.minX - title.frame.maxX - 20), height: 16)
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
-    }
-    override func mouseEntered(with event: NSEvent) { hovered = true; onHover?() }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
-    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-}
 
 /// A rounded panel that paints its own fill, edge and glow, so it's solid however it's layered.
 final class OpenerGlass: NSView {
@@ -1107,20 +1917,33 @@ final class OpenerGlass: NSView {
     }
 }
 
-/// "⏎ Open": the hero's pill, text centred both ways.
+/// "⏎ Open", "⌘K Actions", "‹ Quit All Apps": a key and a word, centred both ways.
 final class OpenerPill: NSView {
     var title = "Open" { didSet { needsDisplay = true; needsLayout = true } }
+    var key = "⏎" { didSet { needsDisplay = true } }
+    /// Quieter: dark fill, dim edge.
+    var ghost = false { didSet { needsDisplay = true } }
+    var onClick: (() -> Void)?
     private static let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+    private static let keyFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
     override var isFlipped: Bool { true }
-    var fittedWidth: CGFloat { ceil(("⏎  " + title as NSString).size(withAttributes: [.font: Self.font]).width) + 28 }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    private var text: NSAttributedString {
+        let s = NSMutableAttributedString(string: key, attributes: [.font: Self.keyFont, .foregroundColor: Neon.glyph])
+        s.append(NSAttributedString(string: "  " + title, attributes: [.font: Self.font, .foregroundColor: Neon.text]))
+        return s
+    }
+    var fittedWidth: CGFloat { ceil(text.size().width) + 28 }
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 0.75, dy: 0.75)
         let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        Neon.accent.withAlphaComponent(0.14).setFill(); path.fill()
-        Neon.accent.withAlphaComponent(0.65).setStroke(); path.lineWidth = 1.2; path.stroke()
-        let text = "⏎  " + title
-        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: Neon.text]
-        let sz = (text as NSString).size(withAttributes: attrs)
-        (text as NSString).draw(at: NSPoint(x: (bounds.width - sz.width) / 2, y: (bounds.height - sz.height) / 2), withAttributes: attrs)
+        (ghost ? NSColor(srgbRed: 0.035, green: 0.067, blue: 0.157, alpha: 1) : Neon.accent.withAlphaComponent(0.16)).setFill(); path.fill()
+        (ghost ? Neon.chipEdge : Neon.accent.withAlphaComponent(0.65)).setStroke(); path.lineWidth = 1.2; path.stroke()
+        let t = text, sz = t.size()
+        t.draw(at: NSPoint(x: (bounds.width - sz.width) / 2, y: (bounds.height - sz.height) / 2))
     }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
+    override func resetCursorRects() { if onClick != nil { addCursorRect(bounds, cursor: .pointingHand) } }
 }

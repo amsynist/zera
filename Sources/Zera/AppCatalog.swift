@@ -69,6 +69,20 @@ final class AppCatalog {
     }
 
     /// Rescans in the background when the list is older than a few minutes (or empty).
+    /// Apps you'd open yourself, not the helpers macOS and other apps keep in their own folders
+    /// (Spotlight finds those too: "LinkedNotesUIService", updaters…). Apple's apps live in the
+    /// System Applications folders; anything else under /System or a Library folder is a helper,
+    /// as is anything that says it only runs in the background.
+    static func isUserFacing(_ url: URL, _ bundle: Bundle?) -> Bool {
+        let path = url.path
+        let systemApps = ["/System/Applications/", "/System/Cryptexes/App/System/Applications/", "/System/Library/CoreServices/Applications/"]
+        if path == "/System/Library/CoreServices/Finder.app" || systemApps.contains(where: path.hasPrefix) { return true }
+        if path.hasPrefix("/System/") || path.hasPrefix("/Library/") || path.contains("/Library/") { return false }
+        let backgroundOnly = bundle?.object(forInfoDictionaryKey: "LSBackgroundOnly")
+        if (backgroundOnly as? Bool) == true || (backgroundOnly as? String).map({ ["1", "yes", "true"].contains($0.lowercased()) }) == true { return false }
+        return true
+    }
+
     func refreshIfNeeded(_ done: (() -> Void)? = nil) {
         if scanning {
             if let done = done { refreshCallbacks.append(done) }
@@ -77,7 +91,7 @@ final class AppCatalog {
         guard apps.isEmpty || Date().timeIntervalSince(scannedAt) > 300 else { done?(); return }
         scanning = true
         if let done = done { refreshCallbacks.append(done) }
-        let running = NSWorkspace.shared.runningApplications.compactMap(\.bundleURL)
+        let running = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }.compactMap(\.bundleURL)
         DispatchQueue.global(qos: .userInitiated).async {
             // Spotlight finds apps outside the usual folders; direct scanning still works when
             // indexing is disabled. Finder lives outside Apple's Applications folders.
@@ -105,6 +119,7 @@ final class AppCatalog {
             guard url.pathExtension.lowercased() == "app", fm.fileExists(atPath: url.path),
                   !url.deletingLastPathComponent().pathComponents.contains(where: { $0.lowercased().hasSuffix(".app") }) else { return }
             let b = Bundle(url: url)
+            guard isUserFacing(url, b) else { return }
             let canonicalURL = url.resolvingSymlinksInPath().standardizedFileURL
             let key = b?.bundleIdentifier ?? canonicalURL.path
             guard !seen.contains(key) else { return }
@@ -127,7 +142,8 @@ final class AppCatalog {
 
     func icon(_ app: AppEntry) -> NSImage {
         if let i = icons.object(forKey: app.url as NSURL) { return i }
-        let i = NSWorkspace.shared.icon(forFile: app.url.path)
+        // From where it really lives: an alias (Safari's, in /Applications) would wear an arrow badge.
+        let i = NSWorkspace.shared.icon(forFile: app.canonicalURL.path)
         icons.setObject(i, forKey: app.url as NSURL)
         return i
     }
@@ -153,6 +169,25 @@ final class AppCatalog {
         let count = (u[key]?.first ?? 0) + 1
         u[key] = [count, Date().timeIntervalSince1970]
         usage = u
+    }
+
+    /// How many times it's been opened from here.
+    func openCount(_ app: AppEntry) -> Int { Int(usage[app.url.path]?.first ?? 0) }
+
+    /// Opened from here before, so it can be taken out of Your Usual.
+    func hasUsage(_ app: AppEntry) -> Bool { usage[app.url.path] != nil }
+
+    /// Out of Your Usual: it ranks like any other app again.
+    func forgetUsage(_ app: AppEntry) {
+        var u = usage
+        u[app.url.path] = nil
+        usage = u
+    }
+
+    /// Gone (moved to the Trash): drop it now rather than at the next scan.
+    func remove(_ app: AppEntry) {
+        apps.removeAll { $0.canonicalURL == app.canonicalURL }
+        forgetUsage(app)
     }
 
     /// Results for a query: best first, with the letters that matched.

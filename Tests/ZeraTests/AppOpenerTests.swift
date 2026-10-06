@@ -68,6 +68,23 @@ final class AppOpenerTests: XCTestCase {
         XCTAssertEqual(discoveredSafari.name, "Safari")
     }
 
+    func testHelperAppsStayOutOfTheList() {
+        func ok(_ p: String) -> Bool { AppCatalog.isUserFacing(URL(fileURLWithPath: p), nil) }
+        XCTAssertTrue(ok("/Applications/Safari.app"))
+        XCTAssertTrue(ok("/Applications/Utilities/Some Tool.app"))
+        XCTAssertTrue(ok("/System/Applications/Notes.app"))
+        XCTAssertTrue(ok("/System/Applications/Utilities/Terminal.app"))
+        XCTAssertTrue(ok("/System/Cryptexes/App/System/Applications/Safari.app"))
+        XCTAssertTrue(ok("/System/Library/CoreServices/Finder.app"))
+        XCTAssertTrue(ok("/System/Library/CoreServices/Applications/Archive Utility.app"))
+        XCTAssertTrue(ok(NSHomeDirectory() + "/Applications/Mine.app"))
+        XCTAssertTrue(ok(NSHomeDirectory() + "/Code/zera/dist/Zera.app"), "an app you built yourself still shows")
+        XCTAssertFalse(ok("/System/Library/PrivateFrameworks/Notes.framework/LinkedNotesUIService.app"))
+        XCTAssertFalse(ok("/System/Library/CoreServices/iCloudUserNotificationsd.app"))
+        XCTAssertFalse(ok("/Library/Application Support/Vendor/Updater.app"))
+        XCTAssertFalse(ok(NSHomeDirectory() + "/Library/Application Support/Vendor/Helper.app"))
+    }
+
     func testProcessAndPortParsersKeepAllEntriesAndExecutablePaths() {
         let processes = (2...102).map { "\($0)\t1.5 2048 /Applications/My App.app/Contents/MacOS/Worker\($0)" }.joined(separator: "\n")
         let parsed = ProcessTools.parseProcesses(processes)
@@ -79,15 +96,25 @@ final class AppOpenerTests: XCTestCase {
         XCTAssertEqual(listening.last?.port, 3100)
     }
 
-    func testEmptyCommandArrowNavigationAndReopeningRestoreAppPlaceholder() throws {
-        let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 720, height: 600))
+    private func opener() throws -> (AppOpenerView, NSTextField) {
+        let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 860, height: 760))
         func descendants(_ parent: NSView) -> [NSView] { parent.subviews.flatMap { [$0] + descendants($0) } }
         let field = try XCTUnwrap(descendants(view).compactMap { $0 as? NSTextField }.first { $0.isEditable })
         view.prepare()
-        field.stringValue = "Custom Commands"
+        return (view, field)
+    }
+
+    private func type(_ text: String, _ view: AppOpenerView, _ field: NSTextField) {
+        field.stringValue = text
         view.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
-        let tile = try XCTUnwrap(descendants(view).compactMap { $0 as? OpenerTile }.first { $0.accessibilityLabel() == "Custom Commands" })
-        tile.onClick?()
+    }
+
+    func testEmptyCommandArrowNavigationAndReopeningRestoreAppPlaceholder() throws {
+        let (view, field) = try opener()
+        type("Custom Commands", view, field)
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        XCTAssertEqual(field.placeholderAttributedString?.string, "Coming soon")
+        XCTAssertTrue(view.visibleRowTitles.contains("Custom Commands"))
         XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:))))
         XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveUp(_:))))
         view.prepare()
@@ -95,26 +122,126 @@ final class AppOpenerTests: XCTestCase {
         XCTAssertEqual(field.stringValue, "")
     }
 
-    func testArrowsReachActionsBeyondSixTilesAndQuickOpenUsesTheVisiblePage() throws {
-        let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 720, height: 600))
-        func descendants(_ parent: NSView) -> [NSView] { parent.subviews.flatMap { [$0] + descendants($0) } }
-        let field = try XCTUnwrap(descendants(view).compactMap { $0 as? NSTextField }.first { $0.isEditable })
-        view.prepare()
+    func testTabOpensTheNextBranchAndQuickOpenUsesWhatShows() throws {
+        let (view, field) = try opener()
+        var seen: [String] = []
         for _ in 0..<3 {
+            seen.append(view.openBranchTitle)
+            if view.openBranchTitle == "ACTIONS" { break }
             XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertTab(_:))))
         }
-        for _ in 0..<6 {
-            XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:))))
-        }
-        let visible = descendants(view).compactMap { $0 as? OpenerTile }.filter { !$0.isHidden }
-        XCTAssertEqual(visible.count, 2)
-        XCTAssertEqual(visible.first?.accessibilityLabel(), OpenerActions.title(.takeBreak))
+        XCTAssertEqual(view.openBranchTitle, "ACTIONS")
+        XCTAssertEqual(Set(seen).count, seen.count, "each ⇥ opens a different branch")
+        for a in OpenerActions.all { XCTAssertTrue(view.visibleRowTitles.contains(OpenerActions.title(a))) }
+        XCTAssertFalse(view.visibleRowTitles.contains("Kill Port"), "other branches stay folded")
         var opened: QuickAction?
         view.onAction = { opened = $0 }
         let key = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command],
             timestamp: 0, windowNumber: 0, context: nil, characters: "2", charactersIgnoringModifiers: "2",
             isARepeat: false, keyCode: 19))
         XCTAssertTrue(view.performKeyEquivalent(with: key))
-        guard case .searchFiles? = opened else { return XCTFail("Quick-open should use the second slot on the visible page") }
+        guard case .screenshot? = opened else { return XCTFail("⌘2 opens the second item showing") }
     }
+
+    func testTypingOpensEveryBranchWithItsMatches() throws {
+        let (view, field) = try opener()
+        type("kill", view, field)
+        XCTAssertTrue(view.visibleRowTitles.contains("Kill Process"))
+        XCTAssertTrue(view.visibleRowTitles.contains("Kill Port"))
+        XCTAssertFalse(view.visibleRowTitles.contains("Clipboard History"))
+    }
+
+    func testShortcutLabelsAndMatching() throws {
+        XCTAssertEqual(KeyCombo.cmd("c", .shift).label, "⇧⌘C")
+        XCTAssertEqual(KeyCombo.code(KeyCombo.deleteKey, [.command, .control]).label, "⌃⌘⌫")
+        XCTAssertEqual(KeyCombo.code(KeyCombo.returnKey, .command).label, "⌘⏎")
+        func key(_ c: String, _ mods: NSEvent.ModifierFlags, code: UInt16 = 0) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0, windowNumber: 0,
+                                           context: nil, characters: c, charactersIgnoringModifiers: c, isARepeat: false, keyCode: code))
+        }
+        XCTAssertTrue(KeyCombo.cmd("c", .shift).matches(try key("C", [.command, .shift], code: 8)))
+        XCTAssertFalse(KeyCombo.cmd("c", .shift).matches(try key("c", [.command], code: 8)), "plain ⌘C stays copy")
+        XCTAssertTrue(KeyCombo.cmd("q", .option).matches(try key("q", [.command, .option], code: 12)))
+        XCTAssertFalse(KeyCombo.cmd("q").matches(try key("q", [.command, .option], code: 12)))
+    }
+
+    func testQuitAllIsACommandAndNeverQuitsZeraOrFinder() {
+        XCTAssertTrue(OpenerCommand.allCases.contains(.quitAll))
+        XCTAssertNotNil(OpenerCommand.quitAll.match("quit"))
+        XCTAssertNotNil(OpenerCommand.quitAll.match("clean"))
+        XCTAssertFalse(OpenerCommand.quitAll.loadsInBackground)
+        let candidates = AppTools.quitCandidates()
+        XCTAssertFalse(candidates.contains { $0.processIdentifier == getpid() })
+        XCTAssertFalse(candidates.contains { $0.bundleIdentifier == "com.apple.finder" })
+        XCTAssertTrue(candidates.allSatisfy { $0.activationPolicy == .regular })
+    }
+
+    func testSystemAppsCantBeUninstalled() {
+        let mail = URL(fileURLWithPath: "/System/Applications/Mail.app")
+        XCTAssertNotNil(AppTools.uninstallBlocker(AppEntry(name: "Mail", url: mail, bundleID: "com.apple.mail", canonicalURL: mail)))
+        let other = URL(fileURLWithPath: "/Applications/Some Editor.app")
+        XCTAssertNil(AppTools.uninstallBlocker(AppEntry(name: "Some Editor", url: other, bundleID: "test.editor", canonicalURL: other)))
+    }
+
+    func testCommandKGrowsActionsUnderTheChosenItemAndEscFoldsThem() throws {
+        let (view, field) = try opener()
+        type("Kill Port", view, field)
+        let cmdK = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
+            windowNumber: 0, context: nil, characters: "k", charactersIgnoringModifiers: "k", isARepeat: false, keyCode: 40))
+        XCTAssertTrue(view.performKeyEquivalent(with: cmdK))
+        XCTAssertTrue(view.isShowingActions)
+        let titles = view.visibleRowTitles
+        let i = try XCTUnwrap(titles.firstIndex(of: "Kill Port"))
+        XCTAssertEqual(titles[safe: i + 1], "Open Command", "the action hangs right under its item")
+        XCTAssertEqual(field.stringValue, "", "the field now searches the actions")
+        XCTAssertEqual(view.chosenActionTitle, "Open Command")
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:))))
+        XCTAssertFalse(view.isShowingActions)
+        XCTAssertEqual(field.stringValue, "Kill Port", "folding them brings your search back")
+        XCTAssertTrue(view.performKeyEquivalent(with: cmdK))
+        XCTAssertTrue(view.performKeyEquivalent(with: cmdK), "⌘K again folds them")
+        XCTAssertFalse(view.isShowingActions)
+    }
+
+    func testArrowsMoveThroughTheActionsAndEnterRunsTheChosenOne() throws {
+        let (view, field) = try opener()
+        type("Kill Process", view, field)
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        XCTAssertEqual(field.placeholderAttributedString?.string, "Search processes…")
+        // Wait for the process list, then open the first process's actions.
+        let deadline = Date().addingTimeInterval(5)
+        while !view.visibleRowTitles.contains(where: { $0 != "COMMANDS" && !OpenerCommand.allCases.map(\.title).contains($0) }), Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        let cmdK = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
+            windowNumber: 0, context: nil, characters: "k", charactersIgnoringModifiers: "k", isARepeat: false, keyCode: 40))
+        XCTAssertTrue(view.performKeyEquivalent(with: cmdK))
+        XCTAssertEqual(view.chosenActionTitle, "Quit Process")
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:))))
+        XCTAssertEqual(view.chosenActionTitle, "Force Quit Process")
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:))))
+        XCTAssertEqual(view.chosenActionTitle, "Copy Process ID")
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveUp(_:))))
+        XCTAssertEqual(view.chosenActionTitle, "Force Quit Process")
+        // Typing narrows them; ⏎ runs the chosen one (copying the PID here) and folds them away.
+        type("copy process", view, field)
+        XCTAssertEqual(view.chosenActionTitle, "Copy Process ID")
+        let before = NSPasteboard.general.string(forType: .string)
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        XCTAssertFalse(view.isShowingActions)
+        XCTAssertNotNil(Int32(NSPasteboard.general.string(forType: .string) ?? ""), "the PID was copied")
+        if let before = before { AppTools.copy(before) }
+    }
+
+    func testCommandQNeverQuitsZera() throws {
+        let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 720, height: 600))
+        view.prepare()
+        let cmdQ = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
+            windowNumber: 0, context: nil, characters: "q", charactersIgnoringModifiers: "q", isARepeat: false, keyCode: 12))
+        XCTAssertTrue(view.performKeyEquivalent(with: cmdQ), "swallowed, not passed on to the Quit Zera item")
+    }
+}
+
+private extension Array {
+    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
