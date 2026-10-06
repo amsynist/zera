@@ -24,14 +24,18 @@ struct PortEntry: Equatable {
 enum ProcessTools {
     /// Every process you can see, busiest first. Runs `ps`; call off the main thread.
     static func processes() -> [ProcessEntry] {
-        guard let out = run("/bin/ps", ["-axco", "pid=,pcpu=,rss=,comm="]) else { return [] }
-        let me = getpid()
+        guard let out = run("/bin/ps", ["-axo", "pid=,pcpu=,rss=,comm="]) else { return [] }
+        return parseProcesses(out)
+    }
+
+    static func parseProcesses(_ out: String) -> [ProcessEntry] {
         var list: [ProcessEntry] = []
         for line in out.split(separator: "\n") {
-            let parts = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
-            guard parts.count == 4, let pid = Int32(parts[0]), pid != me, pid > 1 else { continue }
-            let name = String(parts[3]).trimmingCharacters(in: .whitespaces)
-            list.append(ProcessEntry(pid: pid, name: name, cpu: Double(parts[1]) ?? 0, memoryKB: Int(parts[2]) ?? 0, path: name))
+            let parts = line.split(maxSplits: 3, omittingEmptySubsequences: true, whereSeparator: { $0.isWhitespace })
+            guard parts.count == 4, let pid = Int32(parts[0]), pid > 0 else { continue }
+            let path = String(parts[3]).trimmingCharacters(in: .whitespaces)
+            list.append(ProcessEntry(pid: pid, name: (path as NSString).lastPathComponent,
+                                     cpu: Double(parts[1]) ?? 0, memoryKB: Int(parts[2]) ?? 0, path: path))
         }
         return list.sorted { $0.cpu != $1.cpu ? $0.cpu > $1.cpu : $0.memoryKB > $1.memoryKB }
     }
@@ -39,6 +43,10 @@ enum ProcessTools {
     /// Everything listening on a TCP port. Runs `lsof`; call off the main thread.
     static func listeningPorts() -> [PortEntry] {
         guard let out = run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-F", "pcn"]) else { return [] }
+        return parseListeningPorts(out)
+    }
+
+    static func parseListeningPorts(_ out: String) -> [PortEntry] {
         var list: [PortEntry] = []
         var pid: Int32 = 0, command = ""
         var seen = Set<String>()
@@ -65,6 +73,7 @@ enum ProcessTools {
 
     /// Asks the process to quit (SIGTERM), or forces it (SIGKILL).
     static func kill(_ pid: Int32, force: Bool) -> KillResult {
+        guard pid > 1 else { return .notAllowed }
         if Darwin.kill(pid, force ? SIGKILL : SIGTERM) == 0 { return .done }
         return errno == EPERM ? .notAllowed : .gone
     }
@@ -74,7 +83,7 @@ enum ProcessTools {
         ByteCountFormatter.string(fromByteCount: Int64(kb) * 1024, countStyle: .memory)
     }
 
-    private static func run(_ path: String, _ args: [String]) -> String? {
+    static func run(_ path: String, _ args: [String]) -> String? {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = args

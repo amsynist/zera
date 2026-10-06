@@ -1551,11 +1551,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     // MARK: - External entry points
 
-    func pasteFromClipboard() {
-        if !(cardVisible && currentCard == .shelf) { show(.shelf) }
-        (cards[.shelf] as? DropFilesView)?.paste()
-    }
-
     func add(urls: [URL]) {
         let n = ShelfStore.shared.add(urls: urls)
         if n > 0 {

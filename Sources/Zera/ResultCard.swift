@@ -147,14 +147,10 @@ final class ThreadBlock: NSView {
     let kind: Kind
     override var isFlipped: Bool { true }
     private let text = NSTextField(wrappingLabelWithString: "")
-    private let spinner = NSProgressIndicator()
-    private let status = NSTextField(labelWithString: "")
     private let icon = NSImageView()
     private(set) var button: CardButton?
-    private var showsStatus = false
 
     static let pad = Space.m
-    static let statusHeight: CGFloat = 18
 
     init(kind: Kind) {
         self.kind = kind
@@ -173,15 +169,6 @@ final class ThreadBlock: NSView {
         text.cell?.isScrollable = false
         text.setAccessibilityLabel(kind == .question ? "Your question" : (kind == .problem ? "Problem" : "Zera's answer"))
         addSubview(text)
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
-        spinner.appearance = p.nsAppearance
-        addSubview(spinner)
-        status.font = Typo.caption
-        status.textColor = p.textSecondary
-        status.lineBreakMode = .byTruncatingTail
-        addSubview(status)
         icon.isHidden = kind != .problem
         if kind == .problem {
             icon.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Problem")
@@ -196,14 +183,6 @@ final class ThreadBlock: NSView {
 
     /// Width the text wants on one line (short questions get short bubbles).
     var naturalTextWidth: CGFloat { text.attributedStringValue.size().width }
-
-    /// A spinner + line above the text while Claude is still working on this block.
-    func setStatus(_ line: String?) {
-        showsStatus = line != nil
-        status.stringValue = line ?? ""
-        status.isHidden = !showsStatus
-        if showsStatus { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
-    }
 
     func setButton(_ title: String?, target: AnyObject, action: Selector) {
         button?.removeFromSuperview(); button = nil
@@ -222,7 +201,6 @@ final class ThreadBlock: NSView {
         let bound = text.attributedStringValue.boundingRect(with: NSSize(width: tw, height: .greatestFiniteMagnitude),
                                                              options: [.usesLineFragmentOrigin, .usesFontLeading])
         var h = ceil(bound.height) + 2
-        if showsStatus { h += Self.statusHeight + Space.xs }
         if button != nil { h = max(h, Metrics.control) }
         return h + Self.pad * 2
     }
@@ -230,12 +208,7 @@ final class ThreadBlock: NSView {
     override func layout() {
         super.layout()
         let w = bounds.width, h = bounds.height
-        var y = Self.pad
-        if showsStatus {
-            spinner.frame = NSRect(x: textInsetLeft, y: y, width: 16, height: 16)
-            status.frame = NSRect(x: textInsetLeft + 22, y: y + 1, width: w - textInsetLeft - 22 - Self.pad, height: 16)
-            y += Self.statusHeight + Space.xs
-        }
+        let y = Self.pad
         icon.frame = NSRect(x: Self.pad, y: Self.pad - 1, width: 18, height: 18)
         if let b = button {
             let bw = b.fittedWidth

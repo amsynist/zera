@@ -132,6 +132,7 @@ final class ClipboardStore {
     private var lastChange = 0
     private var timer: Timer?
     private var saveWork: DispatchWorkItem?
+    private let saveQueue = DispatchQueue(label: "ai.zera.clipboard-save", qos: .utility)
     private let fm = FileManager.default
     private var thumbs = NSCache<NSString, NSImage>()
 
@@ -158,6 +159,7 @@ final class ClipboardStore {
     }
 
     private init() {
+        thumbs.countLimit = 100
         load()
         prune()
         lastChange = pasteboard.changeCount
@@ -339,7 +341,7 @@ final class ClipboardStore {
     // MARK: Lists
 
     func items(_ filter: Filter, matching query: String = "") -> [ClipItem] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return ordered.filter { item in
             let inFilter: Bool
             switch filter {
@@ -349,12 +351,18 @@ final class ClipboardStore {
             }
             guard inFilter else { return false }
             guard !q.isEmpty else { return true }
-            return item.text.lowercased().contains(q) || item.title.lowercased().contains(q)
-                || (item.sourceApp?.lowercased().contains(q) ?? false)
+            return item.text.localizedCaseInsensitiveContains(q) || item.title.localizedCaseInsensitiveContains(q)
+                || (item.sourceApp?.localizedCaseInsensitiveContains(q) ?? false)
         }
     }
 
-    func count(_ filter: Filter) -> Int { items(filter).count }
+    func count(_ filter: Filter) -> Int {
+        switch filter {
+        case .all: return items.count
+        case .pinned: return items.lazy.filter(\.pinned).count
+        default: return items.lazy.filter { $0.filterGroup == filter }.count
+        }
+    }
 
     /// Pinned first, then newest.
     var ordered: [ClipItem] { items.filter(\.pinned) + items.filter { !$0.pinned } }
@@ -389,7 +397,8 @@ final class ClipboardStore {
             keep.removeAll { drop.contains($0.id) }
         }
         guard keep.count != items.count else { return }
-        let gone = items.filter { old in !keep.contains { $0.id == old.id } }
+        let keptIDs = Set(keep.map(\.id))
+        let gone = items.filter { !keptIDs.contains($0.id) }
         items = keep
         gone.forEach(removeImageIfUnused)
         scheduleSave()
@@ -422,6 +431,6 @@ final class ClipboardStore {
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         }
         saveWork = work
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.4, execute: work)
+        saveQueue.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 }
