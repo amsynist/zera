@@ -176,14 +176,19 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
 
     /// Each time the island opens: back to the list, search cleared, first item ready for ⏎.
     func willShow() {
+        filter = .all
         search.field.stringValue = ""
         if case .detail = mode { mode = .list }
         cursor = 0
+        resetTitle()
         reload()
         scroll.contentView.scroll(to: .zero)
     }
 
-    @objc private func storeChanged() { reload() }
+    @objc private func storeChanged() {
+        guard window?.isVisible == true else { return }
+        reload()
+    }
 
     // MARK: Data
 
@@ -218,14 +223,12 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     private func rebuildList() {
-        rows.forEach { $0.removeFromSuperview() }
-        thumbs.forEach { $0.removeFromSuperview() }
         doc.subviews.forEach { $0.removeFromSuperview() }
         rows = []; thumbs = []
         if filter == .images {
             for (i, item) in shown.enumerated() {
                 let t = ClipThumb(item: item)
-                t.onCopy = { [weak self] in self?.copy(item, row: nil, thumb: t) }
+                t.onCopy = { [weak self, weak t] in self?.copy(item, row: nil, thumb: t) }
                 t.onPreview = { [weak self] in self?.open(item) }
                 t.selected = i == cursor
                 doc.addSubview(t)

@@ -203,13 +203,6 @@ final class ZeraView: NSView {
         needsDisplay = true
     }
 
-    /// For static renders (the icon) where `tick` never runs.
-    func snapPose() {
-        raise = [.excited, .happy, .celebrate, .surprised].contains(mood) ? 1 : 0
-        wave = mood == .hello ? 1 : 0
-        droop = mood == .sleepy ? 1 : 0
-    }
-
     // MARK: - Which picture
 
     func spriteName(for mood: ZeraMood) -> String {

@@ -155,7 +155,6 @@ final class ReminderService {
     private static let calendarWantedPref = "zera.reminders.calendarWanted"
 
     nonisolated static var timeFormatter: DateFormatter { ReminderFormat.time }
-    nonisolated static func dayKey(_ d: Date) -> String { ReminderFormat.day.string(from: d) }
 
     private init() {
         fired = Set(UserDefaults.standard.stringArray(forKey: Self.firedPref) ?? [])

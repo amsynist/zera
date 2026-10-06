@@ -21,34 +21,14 @@ enum Theme {
     /// How long the pointer may be away from her / the widened notch before it folds back.
     static let pillLinger: TimeInterval = 0.5
 
-    // MARK: Shelf grid
+    // MARK: Window & thumbnails
 
     static let panelWidth: CGFloat = 360
-    static let corner: CGFloat = Radius.card
-    static let tileWidth: CGFloat = 104
-    static let tileHeight: CGFloat = 84
-    static let tileGap: CGFloat = 8
-    static let tileCorner: CGFloat = Radius.l
     static let thumbSize: CGFloat = 42
-    static let gridColumns: Int = 3
-    static let pad: CGFloat = 16
-    static let maxVisibleGridRows: Int = 3
 
     // MARK: Colours
 
     static let purple = NSColor(srgbRed: 0.561, green: 0.482, blue: 1.000, alpha: 1.0)
-    /// Selection / highlight colour used by the shelf tiles.
-    static var accent: NSColor { Pal.accent }
-    static let bubbleFill = NSColor(srgbRed: 0.120, green: 0.105, blue: 0.180, alpha: 0.94)
-    static let bubbleText = NSColor(srgbRed: 0.965, green: 0.955, blue: 1.000, alpha: 1.0)
-
-    static func tileFill(_ selected: Bool, _ hovered: Bool) -> NSColor {
-        let p = Pal
-        if selected { return p.accentSoft }
-        if hovered { return p.surfaceHover }
-        return p.surface
-    }
-
     static func font(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
         NSFont.systemFont(ofSize: size, weight: weight)
     }

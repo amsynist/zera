@@ -203,6 +203,10 @@ final class RemindersView: NSView, CardContent {
     /// Each time the screen opens: the overview on its own (or the reminder asked for).
     func willShow() {
         ZeraDropdown.shared.dismiss()
+        // A form is work in progress; list filters are temporary navigation.
+        if form != nil, focusOnShow == nil { reload(); return }
+        Self.tab = 0
+        Self.filter = .all
         side = .none
         formReturn = .none
         form?.removeFromSuperview()
@@ -216,6 +220,7 @@ final class RemindersView: NSView, CardContent {
         }
         focusOnShow = nil
         reload()
+        scroll.contentView.scroll(to: .zero)
     }
 
     // MARK: Init
