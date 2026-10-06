@@ -22,6 +22,11 @@ final class LiveActivityView: NSView {
     var onMinimize: (() -> Void)?
     /// Approve (true) / Reject (false) on the right wing.
     var onDecide: ((HookRequest, Bool) -> Void)?
+    /// Reply on a finished session's wing: you started typing (hold the session open), sent the
+    /// reply, or cancelled it.
+    var onReplyStart: (() -> Void)?
+    var onReplySend: ((String) -> Void)?
+    var onReplyCancel: (() -> Void)?
 
     /// The widest the panel gets; the controller narrows it to the screen.
     static let panelSize = NSSize(width: 1520, height: 92)
@@ -30,6 +35,9 @@ final class LiveActivityView: NSView {
     var centerX: CGFloat = LiveActivityView.panelSize.width / 2 { didSet { needsLayout = true; needsDisplay = true } }
     private(set) var mode: Mode = .idle
     private(set) var request: HookRequest?
+
+    /// How long a finished session waits for a reply (for the draining bar).
+    var replyWindow: Double = 20
 
     /// Wide enough for the command and both buttons; otherwise the approval card takes over.
     var canShowApproval: Bool { room(for: M.rightAsk) >= M.approvalMin }
@@ -66,6 +74,13 @@ final class LiveActivityView: NSView {
     private let reject = GlowPillButton(title: "Reject", symbol: "xmark", tint: .red)
     private let approve = GlowPillButton(title: "Approve", symbol: "checkmark", tint: .green)
     private let minimize = GlowIconButton(symbol: "minus")
+    /// Done: "Reply" while the session still waits for one; then a field and Send in its place.
+    private let replyButton = GlowPillButton(title: "Reply", symbol: "arrowshape.turn.up.left.fill", tint: .blue)
+    private let replyBox = NSView()
+    private let replyField = NSTextField()
+    private let sendButton = GlowPillButton(title: "Send", symbol: "paperplane.fill", tint: .green)
+    /// Typing a reply on the right wing.
+    private(set) var composing = false
 
     /// A soft glow behind her in the state's colour. It lives here rather than in her window so
     /// her window's shadow never traces it.
@@ -90,7 +105,29 @@ final class LiveActivityView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         layer?.masksToBounds = false
-        [ring, leftTitle, leftSub, expand, status, clock, bar, orb, prompt, command, reject, approve, minimize].forEach { addSubview($0) }
+        [ring, leftTitle, leftSub, expand, status, clock, bar, orb, prompt, command, reject, approve, minimize,
+         replyButton, replyBox, sendButton].forEach { addSubview($0) }
+        replyBox.wantsLayer = true
+        replyBox.layer?.cornerRadius = 17
+        replyBox.layer?.borderWidth = 1
+        replyBox.layer?.borderColor = Neon.chipEdge.cgColor
+        replyBox.layer?.backgroundColor = NSColor(srgbRed: 0.012, green: 0.024, blue: 0.065, alpha: 1).cgColor
+        replyField.isBordered = false
+        replyField.drawsBackground = false
+        replyField.focusRingType = .none
+        replyField.font = NSFont.systemFont(ofSize: 14, weight: .medium)
+        replyField.textColor = Neon.text
+        replyField.cell?.usesSingleLineMode = true
+        replyField.cell?.isScrollable = true
+        replyField.placeholderAttributedString = NSAttributedString(string: "Reply to Claude…", attributes: [
+            .foregroundColor: NSColor(srgbRed: 0.37, green: 0.41, blue: 0.59, alpha: 1), .font: NSFont.systemFont(ofSize: 14, weight: .medium)])
+        replyField.delegate = self
+        replyField.setAccessibilityLabel("Reply to Claude")
+        replyBox.addSubview(replyField)
+        replyButton.onTap = { [weak self] in self?.startReply() }
+        replyButton.toolTip = "Reply: Claude carries on in this session"
+        sendButton.onTap = { [weak self] in self?.sendReply() }
+        [replyButton, replyBox, sendButton].forEach { $0.isHidden = true }
         expand.onTap = { [weak self] in self?.onTap?() }
         expand.setAccessibilityLabel("Open the Claude session")
         expand.toolTip = "Open the session"
@@ -146,6 +183,35 @@ final class LiveActivityView: NSView {
         NSPasteboard.general.setString(fullCommand, forType: .string)
         prompt.flashCopied()
         SoundService.shared.play(.button)
+    }
+
+    private func startReply() {
+        guard !composing else { return }
+        composing = true
+        onReplyStart?()
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        window?.makeFirstResponder(replyField)
+        SoundService.shared.play(.button)
+    }
+
+    private func sendReply() {
+        let text = replyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard composing, !text.isEmpty else { NSSound.beep(); return }
+        composing = false
+        replyField.stringValue = ""
+        window?.makeFirstResponder(nil)
+        onReplySend?(text)
+    }
+
+    /// Esc, or the session moved on: fold the field away.
+    func cancelReply(notify: Bool = true) {
+        guard composing else { return }
+        composing = false
+        replyField.stringValue = ""
+        window?.makeFirstResponder(nil)
+        if notify { onReplyCancel?() }
+        needsLayout = true
     }
 
     private func decide(_ allow: Bool) {
@@ -221,13 +287,21 @@ final class LiveActivityView: NSView {
             set(leftSub, task.isEmpty ? "All finished" : task)
         }
 
+        // A finished session still waiting for a reply shows Reply (and the field once you tap it).
+        let offering = mode == .done && (s?.canReply ?? false)
+        if composing, mode != .done || !(s?.replyHeld ?? false) { cancelReply(notify: false) }
+        let typing = composing && mode == .done
+
         // Right wing: status line, time and bar — or the command with its two buttons.
         // The orb and minimize stay in both.
         let asking = mode == .approval
         let runGroup: [NSView] = [status, clock, bar]
         let askGroup: [NSView] = [prompt, command, reject, approve]
-        runGroup.forEach { $0.isHidden = asking }
+        runGroup.forEach { $0.isHidden = asking || typing }
         askGroup.forEach { $0.isHidden = !asking }
+        replyButton.isHidden = !offering || typing
+        replyBox.isHidden = !typing
+        sendButton.isHidden = !typing
         if asking != wasAsking { fadeIn(asking ? askGroup : runGroup) }
 
         let p = s?.progress ?? 0
@@ -253,8 +327,15 @@ final class LiveActivityView: NSView {
             bar.set(progress: p, tint: .warning)
             orb.set(.waiting)
         case .done:
-            status.attributedStringValue = Self.statusLine("Done", detail: "100%", strong: true, good: true)
-            bar.set(progress: 1, tint: .success)
+            if offering, let until = s?.replyUntil, !(s?.replyHeld ?? false) {
+                // The green bar drains while the session waits for a reply.
+                let left = max(0, until.timeIntervalSinceNow)
+                status.attributedStringValue = Self.statusLine("Done", detail: "reply · \(Int(left.rounded(.up)))s", strong: true, good: true)
+                bar.set(progress: min(1, left / max(1, replyWindow)), tint: .success)
+            } else {
+                status.attributedStringValue = Self.statusLine("Done", detail: "100%", strong: true, good: true)
+                bar.set(progress: 1, tint: .success)
+            }
             orb.set(.done)
         }
 
@@ -269,7 +350,7 @@ final class LiveActivityView: NSView {
         case .idle, .running: tint = NSColor(srgbRed: 0.43, green: 0.43, blue: 1, alpha: 0.42)
         }
         glow.colors = [tint.cgColor, tint.withAlphaComponent(0).cgColor]
-        springRight(to: asking ? M.rightAsk : M.rightRun)
+        springRight(to: asking || typing ? M.rightAsk : M.rightRun)
         needsLayout = true
         if modeChanged { needsDisplay = true }
     }
@@ -392,7 +473,7 @@ final class LiveActivityView: NSView {
     private func layoutRight(mid: CGFloat) {
         let b = rightBody
         let show = b.width >= M.minWing
-        let all: [NSView] = [status, clock, bar, orb, prompt, command, reject, approve]
+        let all: [NSView] = [status, clock, bar, orb, prompt, command, reject, approve, replyButton, replyBox, sendButton]
         if !show {
             all.forEach { $0.isHidden = true }
             minimize.isHidden = leftBody.width < M.minWing
@@ -413,9 +494,20 @@ final class LiveActivityView: NSView {
             let lines = command.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: cw, height: 100)).height ?? 17
             let ch = min(36, max(17, ceil(lines)))
             command.frame = NSRect(x: cx, y: (mid - ch / 2).rounded(), width: cw, height: ch)
+        } else if composing, mode == .done {
+            let sw = sendButton.fittedWidth
+            sendButton.frame = NSRect(x: orb.frame.minX - 6 - sw, y: mid - 22, width: sw, height: 44)
+            replyBox.frame = NSRect(x: b.minX + 30, y: mid - 17, width: max(0, sendButton.frame.minX - 10 - b.minX - 30), height: 34)
+            replyField.frame = NSRect(x: 14, y: 7, width: max(0, replyBox.frame.width - 28), height: 20)
         } else {
             let sx = b.minX + 36
-            let sw = max(0, orb.frame.minX - 14 - sx)
+            var right = orb.frame.minX
+            if !replyButton.isHidden {
+                let rw = replyButton.fittedWidth
+                replyButton.frame = NSRect(x: orb.frame.minX - 6 - rw, y: mid - 22, width: rw, height: 44)
+                right = replyButton.frame.minX
+            }
+            let sw = max(0, right - 14 - sx)
             clock.frame = NSRect(x: sx + sw - 56, y: mid - 19, width: 56, height: 17)
             status.frame = NSRect(x: sx, y: mid - 22, width: max(0, sw - 60), height: 21)
             bar.frame = NSRect(x: sx, y: mid + 8, width: sw, height: 6)
@@ -510,6 +602,7 @@ final class LiveActivityView: NSView {
         // Buttons (and the command, which copies) take their own clicks; the rest of the wing
         // only holds the pointer so clicks don't fall through to the window behind.
         let v = super.hitTest(point)
+        if let v = v, !replyBox.isHidden, v === replyBox || v.isDescendant(of: replyBox) { return v }
         return (v is GlowIconButton || v is GlowPillButton || v is CommandCopyButton || v === command) ? v : self
     }
 
@@ -518,6 +611,17 @@ final class LiveActivityView: NSView {
     override func rightMouseDown(with event: NSEvent) { onMinimize?() }
     override func resetCursorRects() {
         if !command.isHidden { addCursorRect(command.frame, cursor: .pointingHand) }
+    }
+}
+
+extension LiveActivityView: NSTextFieldDelegate {
+    /// ⏎ sends the reply, Esc cancels it.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        switch sel {
+        case #selector(NSResponder.insertNewline(_:)): sendReply(); return true
+        case #selector(NSResponder.cancelOperation(_:)): cancelReply(); return true
+        default: return false
+        }
     }
 }
 
@@ -1006,7 +1110,7 @@ final class GlowIconButton: NSView {
 
 /// Outlined, softly glowing "✕ Reject" / "✓ Approve".
 final class GlowPillButton: NSView {
-    enum Tint { case red, green }
+    enum Tint { case red, green, blue }
     var onTap: (() -> Void)?
     private let title: String
     private let symbol: String
@@ -1032,7 +1136,7 @@ final class GlowPillButton: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let color = tint == .red ? Neon.red : Neon.green
+        let color = tint == .red ? Neon.red : (tint == .blue ? Neon.cyan : Neon.green)
         let r = bounds.insetBy(dx: 4, dy: 4)
         let shape = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
         Neon.glowing(color.withAlphaComponent(hovered ? 0.5 : 0.25), blur: hovered ? 12 : 7) {

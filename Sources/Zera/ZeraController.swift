@@ -224,6 +224,38 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             self.react(allow ? .happy : .thinking, for: 1.8)
             self.updateLive()
         }
+        // Reply from a finished session's wing: Claude carries on in that same session.
+        live.onReplyStart = { [weak self] in
+            guard let self = self else { return }
+            MainActor.assumeIsolated { if let s = ClaudeActivityService.shared.current { ClaudeActivityService.shared.holdReply(s) } }
+            // The wings take keyboard focus only while you type a reply.
+            self.livePanel.keyable = true
+            self.livePanel.makeKey()
+        }
+        live.onReplySend = { [weak self] text in
+            guard let self = self else { return }
+            self.livePanel.keyable = false
+            MainActor.assumeIsolated {
+                guard let s = ClaudeActivityService.shared.current else { return }
+                ClaudeActivityService.shared.sendReply(s, text) { [weak self] sent in
+                    guard let self = self else { return }
+                    if sent {
+                        self.sound(.claudeStart)
+                        self.say("sent ✨ Claude's on it", mood: .happy, for: 2.2)
+                    } else {
+                        NSSound.beep()
+                        self.say("too late, that session already finished", mood: .thinking, for: 2.6)
+                    }
+                    self.updateLive()
+                }
+            }
+        }
+        live.onReplyCancel = { [weak self] in
+            guard let self = self else { return }
+            self.livePanel.keyable = false
+            MainActor.assumeIsolated { if let s = ClaudeActivityService.shared.current { ClaudeActivityService.shared.releaseReply(s) } }
+            self.updateLive()
+        }
         live.onMinimize = { [weak self] in
             guard let self = self else { return }
             self.liveDismissed = true
@@ -398,15 +430,18 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     /// Shows / updates / hides the wings from the current Claude session and pending approvals.
     private func updateLive() {
-        let (show, done): (Bool, Bool) = MainActor.assumeIsolated {
+        let (show, done, offering): (Bool, Bool, ClaudeSession?) = MainActor.assumeIsolated {
             let s = ClaudeActivityService.shared.current
             let hooks = ClaudeHookService.shared.pending
             let pending = s.flatMap { s in hooks.first { $0.sessionID == s.id } } ?? hooks.first
             // Idle sessions stay visible for a few minutes after their last activity.
             let stale = s.map { $0.status == .ended || ($0.status == .idle && Date().timeIntervalSince($0.lastEventAt) > 600) } ?? true
-            if stale && pending == nil { return (false, false) }
+            let offer = s.flatMap { $0.replyUntil != nil || $0.replyHeld ? $0 : nil }
+            if stale && pending == nil { return (false, false, offer) }
+            self.live.replyWindow = Double(ClaudeActivityService.shared.replyWindow)
             self.live.update(session: stale ? nil : s, pending: pending)
-            return (true, pending == nil && s?.status == .done)
+            // While it can still take a reply, a finished session's wings stay up.
+            return (true, pending == nil && s?.status == .done && !(s?.canReply ?? false), offer)
         }
         // She hugs her rope and acts out what Claude is doing: working, waiting on you, done.
         switch show ? live.mode : .idle {
@@ -423,7 +458,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         // Folded away while a card is open (the card carries the same information), while the
         // notch has widened to show the tabs, and until Zera is tapped after minimizing.
         // Also folded away while she's down with the app opener.
-        guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed, !finishedLiveHidden, !openerOpen else { hideLive(); return }
+        guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed, !finishedLiveHidden, !openerOpen else {
+            // Nobody can see the Reply button: let the waiting session finish now.
+            if let s = offering, !s.replyHeld { MainActor.assumeIsolated { ClaudeActivityService.shared.releaseReply(s) } }
+            hideLive()
+            return
+        }
         showLive()
         if done, liveHideWork == nil {
             // Let the green bar be seen, then tidy away.
