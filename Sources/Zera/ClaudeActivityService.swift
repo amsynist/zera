@@ -101,6 +101,12 @@ final class ClaudeSession {
     var transcriptPath: String?
     /// You pressed Stop in Zera; the hook blocks Claude's next tool call until the turn ends.
     var stopRequested = false
+    /// Just finished, and the hook is holding the session open for a reply from the wings
+    /// until then. `replyHeld` while you're typing one (no deadline).
+    var replyUntil: Date?
+    var replyHeld = false
+    /// Can a reply still reach Claude in this session right now?
+    var canReply: Bool { status == .done && (replyHeld || (replyUntil.map { $0 > Date() } ?? false)) }
     /// Files Claude looked at / changed for the current prompt (full paths, first-seen order).
     var filesTouched: [String] = []
     var filesChanged: [String] = []
@@ -202,8 +208,12 @@ final class ClaudeActivityService {
 
     func start() {
         refreshScriptIfNeeded()
-        // Stop requests never outlive a launch.
+        // Stop requests (and reply files) never outlive a launch.
         try? fm.removeItem(at: stopDir)
+        try? fm.removeItem(at: repliesDir)
+        try? fm.createDirectory(at: repliesDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        writeReplyWindow()
+        ensureStopTimeout()
         // History before launch is not "current" activity — and hook payloads can contain prompts,
         // code and command output, so nothing is kept: drop whatever is left from earlier runs.
         try? fm.removeItem(at: logURL)
@@ -221,6 +231,7 @@ final class ClaudeActivityService {
     /// Claims what the hook wrote (rename → read → delete), so events live on disk for at most
     /// half a second while Zera is running. The hook starts a fresh file on its next event.
     private func poll() {
+        expireReplies()
         guard fm.fileExists(atPath: logURL.path) else { return }
         try? fm.removeItem(at: claimedURL)
         guard (try? fm.moveItem(at: logURL, to: claimedURL)) != nil else { return }
@@ -269,6 +280,8 @@ final class ClaudeActivityService {
         let input = e["tool_input"] as? [String: Any] ?? [:]
         let useID = (e["tool_use_id"] as? String) ?? ""
 
+        // Anything new from the session means it moved on: no reply is pending any more.
+        if event != "Stop", event != "Notification", s.replyUntil != nil || s.replyHeld { clearReply(s) }
         switch event {
         case "SessionStart":
             s.status = .idle
@@ -344,11 +357,20 @@ final class ClaudeActivityService {
         case "Stop", "SubagentStop":
             guard event == "Stop" else { break }
             finishOpenSteps(s, at: now)
+            let stoppedByYou = s.stopRequested
             if s.stopRequested {
                 s.steps.append(ActivityStep(id: "stop-\(now.timeIntervalSince1970)", kind: .done, verb: "Stopped", target: "from Zera",
                                             detail: nil, at: now, finished: true, endedAt: now, result: "Stopped"))
             }
             clearStop(s)
+            // The hook now waits a moment for a reply. Only the session the wings show can get
+            // one; any other (or one you stopped) is let go as soon as its hook starts waiting.
+            if replyWindow > 0, !stoppedByYou, current?.id == sid || current == nil {
+                s.replyUntil = now.addingTimeInterval(TimeInterval(replyWindow))
+                s.replyHeld = false
+            } else {
+                releaseReply(s)
+            }
             s.status = .done
             if s.model == nil { lookupModel(for: s) }
             if let p = s.promptAt {
@@ -367,6 +389,159 @@ final class ClaudeActivityService {
         default:
             break
         }
+    }
+
+    // MARK: Replies
+    //
+    // When a turn ends, the activity hook drops `<session>.<token>.waiting` into `replies/` and
+    // waits. Zera answers by writing a file with the same name ending `.reply` (a Stop-hook
+    // "block" decision carrying your text, so Claude carries on), `.hold` (you're typing: no
+    // deadline) or `.release` (let it finish now). The hook marks `.over` when it's done and
+    // never deletes anything; Zera tidies the files away. Tokens keep one wait's files from
+    // ever answering the next.
+
+    private static let replyWindowKey = "claude.replyWindow"
+    /// Seconds a finished session waits for a reply from the wings; 0 turns replies off.
+    var replyWindow: Int {
+        get { UserDefaults.standard.object(forKey: Self.replyWindowKey) as? Int ?? 20 }
+        set {
+            UserDefaults.standard.set(max(0, newValue), forKey: Self.replyWindowKey)
+            writeReplyWindow()
+            NotificationCenter.default.post(name: Self.changed, object: nil)
+        }
+    }
+
+    private var repliesDir: URL { activityDir.appendingPathComponent("replies", isDirectory: true) }
+
+    /// The hook reads this on every Stop, so the setting applies to sessions already running.
+    private func writeReplyWindow() {
+        try? fm.createDirectory(at: activityDir, withIntermediateDirectories: true)
+        try? Data(String(replyWindow).utf8).write(to: activityDir.appendingPathComponent("reply-window"), options: .atomic)
+    }
+
+    /// The token of the wait the hook is in for this session, if it's still waiting.
+    private func waitingToken(_ s: ClaudeSession) -> String? {
+        guard stopFlag(s.id) != nil, let names = try? fm.contentsOfDirectory(atPath: repliesDir.path) else { return nil }
+        let prefix = s.id + "."
+        let tokens = names.filter { $0.hasPrefix(prefix) && $0.hasSuffix(".waiting") }
+            .map { String($0.dropFirst(prefix.count).dropLast(".waiting".count)) }
+            .filter { t in !t.isEmpty && t.allSatisfy({ $0.isNumber || $0 == "-" }) && !names.contains(prefix + t + ".over") }
+            // The hook gives up after ~10 minutes (or Claude Code stops it sooner).
+            .filter { t in (t.split(separator: "-").first.flatMap { Double($0) }).map { Date().timeIntervalSince1970 - $0 < 600 } ?? false }
+        return tokens.max()
+    }
+
+    private func replyFile(_ s: ClaudeSession, _ token: String, _ ext: String) -> URL {
+        repliesDir.appendingPathComponent("\(s.id).\(token).\(ext)")
+    }
+
+    /// Is the hook still waiting in this session (so a reply would reach Claude)?
+    func isWaitingForReply(_ s: ClaudeSession) -> Bool { waitingToken(s) != nil }
+
+    /// You started typing a reply: no deadline until you send or cancel.
+    func holdReply(_ s: ClaudeSession) {
+        guard let t = waitingToken(s) else { return }
+        fm.createFile(atPath: replyFile(s, t, "hold").path, contents: Data())
+        s.replyHeld = true
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+
+    /// Sends `text` to Claude in this session: the waiting hook tells Claude Code not to stop
+    /// yet, with your reply as what to do next. `done(false)` if the session had already
+    /// finished: nothing picked the reply up within a second and a half.
+    func sendReply(_ s: ClaudeSession, _ text: String, done: @escaping @MainActor (Bool) -> Void) {
+        let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty, let t = waitingToken(s) else { clearReply(s); done(false); return }
+        let out: [String: Any] = ["decision": "block",
+                                  "reason": "The user replied from Zera (a notch app showing this session): \(message)"]
+        let tmp = replyFile(s, t, "reply.tmp"), reply = replyFile(s, t, "reply"), over = replyFile(s, t, "over")
+        guard let data = try? JSONSerialization.data(withJSONObject: out), (try? data.write(to: tmp)) != nil,
+              (try? fm.moveItem(at: tmp, to: reply)) != nil else { done(false); return }
+        // The hook checks five times a second; once it has taken the reply it marks the wait over.
+        func check(_ tries: Int) {
+            if fm.fileExists(atPath: over.path) { began(s, message); done(true); return }
+            guard tries > 0 else {
+                try? fm.removeItem(at: reply)
+                clearReply(s)
+                NotificationCenter.default.post(name: Self.changed, object: nil)
+                done(false)
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { MainActor.assumeIsolated { check(tries - 1) } }
+        }
+        check(10)
+    }
+
+    /// Your reply is the session's new task.
+    private func began(_ s: ClaudeSession, _ message: String) {
+        let now = Date()
+        s.replyUntil = nil
+        s.replyHeld = false
+        s.title = Self.oneLine(message, max: 90)
+        s.fullPrompt = message
+        s.promptCount += 1
+        s.promptAt = now
+        s.stepsThisPrompt = 0
+        s.plan.removeAll()
+        s.planStartedAt = nil
+        s.filesTouched.removeAll()
+        s.filesChanged.removeAll()
+        s.toolUse.removeAll()
+        s.steps.removeAll()
+        s.status = .running
+        s.lastEventAt = now
+        post(milestone: "prompt", s)
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+
+    /// No reply after all: the hook lets the session finish now. The hook may not have started
+    /// waiting yet when the Stop event arrives, so a release is retried for a few seconds.
+    func releaseReply(_ s: ClaudeSession) {
+        clearReply(s)
+        pendingRelease[s.id] = Date().addingTimeInterval(5)
+        applyReleases()
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+
+    private var pendingRelease: [String: Date] = [:]
+
+    private func applyReleases() {
+        let now = Date()
+        for (id, until) in pendingRelease {
+            guard until > now, let s = sessions[id] else { pendingRelease[id] = nil; continue }
+            if let t = waitingToken(s) {
+                fm.createFile(atPath: replyFile(s, t, "release").path, contents: Data())
+                pendingRelease[id] = nil
+            }
+        }
+    }
+
+    private func clearReply(_ s: ClaudeSession) {
+        s.replyUntil = nil
+        s.replyHeld = false
+        if let t = waitingToken(s) { try? fm.removeItem(at: replyFile(s, t, "hold")) }
+    }
+
+    /// Offers whose time ran out (and nobody is typing) fold away; the hook has let go too.
+    /// Files of finished waits are tidied away.
+    private func expireReplies() {
+        applyReleases()
+        let now = Date()
+        var changed = false
+        for s in sessions.values where !s.replyHeld {
+            if let until = s.replyUntil, until <= now { clearReply(s); changed = true }
+        }
+        if let names = try? fm.contentsOfDirectory(atPath: repliesDir.path) {
+            for over in names where over.hasSuffix(".over") {
+                // Left a few seconds, so a reply being sent can see the hook took it.
+                let age = (try? fm.attributesOfItem(atPath: repliesDir.appendingPathComponent(over).path)[.modificationDate] as? Date)
+                    .map { Date().timeIntervalSince($0) } ?? 0
+                guard age > 5 else { continue }
+                let stem = String(over.dropLast(".over".count))
+                for n in names where n.hasPrefix(stem + ".") { try? fm.removeItem(at: repliesDir.appendingPathComponent(n)) }
+            }
+        }
+        if changed { NotificationCenter.default.post(name: Self.changed, object: nil) }
     }
 
     // MARK: Stop / remove
@@ -585,7 +760,10 @@ final class ClaudeActivityService {
     # Zera — Claude Code activity hook. Hands the event to Zera (which reads and deletes it within
     # a second) and exits at once. Nothing is written when Zera isn't running. It changes nothing
     # Claude does — except when you press Stop in Zera for this session: then the next tool call
-    # is blocked with a short message, so Claude ends its turn.
+    # is blocked with a short message, so Claude ends its turn. And when a turn finishes (Stop),
+    # it waits a few seconds (reply-window) for a reply typed on Zera's wings; Zera writes it as
+    # a Stop-hook "block" decision, so Claude carries on in the same session. Zera lets go at
+    # once of any session the wings aren't showing. This script never deletes files.
     if [ -n "$ZERA_ASSISTANT" ]; then exit 0; fi
     pgrep -x Zera >/dev/null 2>&1 || exit 0
     umask 077
@@ -600,6 +778,28 @@ final class ClaudeActivityService {
           echo "Stopped from Zera: the user asked to stop this task. Don't run more tools; briefly say where you stopped." >&2
           exit 2
         fi ;;
+      *'"hook_event_name":"Stop"'*|*'"hook_event_name": "Stop"'*)
+        SID="$(printf '%s' "$INPUT" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\\([A-Za-z0-9_-]*\\)".*/\\1/p' | head -n 1)"
+        WIN="$(cat "$BASE/reply-window" 2>/dev/null)"
+        case "$WIN" in ''|*[!0-9]*) WIN=0 ;; esac
+        if [ -z "$SID" ] || [ "$WIN" -le 0 ]; then exit 0; fi
+        mkdir -p -m 700 "$BASE/replies"
+        START=$(date +%s)
+        W="$BASE/replies/$SID.$START-$$"
+        : > "$W.waiting"
+        END=$((START + WIN)); CAP=$((START + 590)); i=0
+        while :; do
+          if [ -f "$W.reply" ]; then cat "$W.reply"; : > "$W.over"; exit 0; fi
+          [ -f "$W.release" ] && break
+          NOW=$(date +%s)
+          [ "$NOW" -ge "$CAP" ] && break
+          if [ ! -f "$W.hold" ] && [ "$NOW" -ge "$END" ]; then break; fi
+          i=$((i+1))
+          if [ $((i % 10)) -eq 0 ] && ! pgrep -x Zera >/dev/null 2>&1; then break; fi
+          sleep 0.2
+        done
+        : > "$W.over"
+        ;;
     esac
     exit 0
     """
@@ -609,6 +809,32 @@ final class ClaudeActivityService {
     private static func entryIsOurs(_ entry: [String: Any]) -> Bool {
         let inner = entry["hooks"] as? [[String: Any]] ?? []
         return inner.contains { ($0["command"] as? String ?? "").contains("zera-activity") }
+    }
+
+    /// Stop waits for a reply (while you type one, up to ~10 minutes), so it needs more than 5 s.
+    private static let stopTimeout = 600
+
+    /// Installs from before replies gave Stop the same 5 s as every other event; raise it once.
+    private func ensureStopTimeout() {
+        guard let data = try? Data(contentsOf: settingsURL),
+              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var hooks = json["hooks"] as? [String: Any],
+              var list = hooks["Stop"] as? [[String: Any]] else { return }
+        var changed = false
+        for (i, entry) in list.enumerated() where Self.entryIsOurs(entry) {
+            var inner = entry["hooks"] as? [[String: Any]] ?? []
+            for (k, h) in inner.enumerated() where (h["command"] as? String ?? "").contains("zera-activity") && (h["timeout"] as? Int ?? 0) < Self.stopTimeout {
+                inner[k]["timeout"] = Self.stopTimeout
+                changed = true
+            }
+            list[i]["hooks"] = inner
+        }
+        guard changed else { return }
+        hooks["Stop"] = list
+        json["hooks"] = hooks
+        if let out = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) {
+            try? out.write(to: settingsURL, options: .atomic)
+        }
     }
 
     private var settingsHasEntry: Bool {
@@ -639,7 +865,7 @@ final class ClaudeActivityService {
         for ev in Self.events {
             var list = hooks[ev] as? [[String: Any]] ?? []
             list.removeAll { Self.entryIsOurs($0) }
-            var entry: [String: Any] = ["hooks": [["type": "command", "command": "\"\(scriptURL.path)\"", "timeout": 5]]]
+            var entry: [String: Any] = ["hooks": [["type": "command", "command": "\"\(scriptURL.path)\"", "timeout": ev == "Stop" ? Self.stopTimeout : 5]]]
             if ev == "PreToolUse" || ev == "PostToolUse" { entry["matcher"] = "*" }
             list.append(entry)
             hooks[ev] = list

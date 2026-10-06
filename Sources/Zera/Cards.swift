@@ -980,6 +980,11 @@ final class SettingsCard: CardBase, CardContent {
         }
     }
 
+    static let replyWindows = [0, 10, 20, 30, 60]
+    @objc private func replyWindowChanged(_ sender: NSPopUpButton) {
+        ClaudeActivityService.shared.replyWindow = Self.replyWindows[max(0, sender.indexOfSelectedItem)]
+    }
+
     @objc private func clipKeepChanged(_ sender: NSPopUpButton) {
         ClipboardStore.shared.keepDays = ClipboardStore.keepChoices[max(0, sender.indexOfSelectedItem)]
     }
@@ -1182,6 +1187,14 @@ final class SettingsCard: CardBase, CardContent {
                    detail: act.isInstalled ? (act.active.isEmpty ? "no session running" : "\(act.active.count) session\(act.active.count == 1 ? "" : "s") running") : "see Reading → Editing → Running → Done as it happens", &s)
         buttonRow(act.isInstalled ? "Stop following" : "Follow Claude's work", style: act.isInstalled ? .secondary : .primary,
                   status: act.isInstalled ? "Non-blocking hooks; nothing is sent anywhere" : "Adds non-blocking hooks to ~/.claude/settings.json", &s, action: #selector(activityTapped))
+        if act.isInstalled {
+            let windows = Self.replyWindows
+            let pop = popupRow("Reply when done", items: windows.map { $0 == 0 ? "Off" : "Wait \($0) s" },
+                               selected: windows.firstIndex(of: act.replyWindow) ?? 2, &s, action: #selector(replyWindowChanged(_:)))
+            pop.toolTip = "A finished session waits this long for a reply from the wings; typing one pauses the countdown"
+            hint("When Claude finishes, the wings show Reply for a few seconds: type a follow-up and Claude carries on in the "
+                 + "same session. Sessions the wings aren't showing are never held.", &s)
+        }
 
         sectionLabel("Approvals · Claude Code hook", &s)
         statusLine(hook.isInstalled ? .connected : .disconnected,
