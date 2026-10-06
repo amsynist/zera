@@ -2,7 +2,7 @@
 
 > **Superseded for screens.** These prompts made the earlier illustrated screens. Since the notch
 > island redesign, the README shows recordings of the app with sample data (`docs/zera-island.webp`,
-> `docs/zera-wings.webp`, `docs/island-screens.png`, `docs/wings-states.png`). The banner prompt still applies.
+> `docs/zera-wings.webp` and one image per screen in `docs/screens/`). The banner prompt still applies.
 
 Prompts to recreate the six README images **without** the problems the old ones had:
 no personal identifiers, no real people, no company logos (Apple, GitHub, Anthropic/Claude, React,

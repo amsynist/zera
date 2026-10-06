@@ -10,15 +10,16 @@ enum Isle {
     static let maxContentHeight: CGFloat = 470
     static let minWidth: CGFloat = 520
     static let maxWidth: CGFloat = 660
-    /// Hovering her: the notch widens to this to show the tabs.
-    static let peekWidth: CGFloat = 440
+    /// Hovering her: the peek bar hangs this far below the menu bar, framed by its blue edge.
+    static let peekDrop: CGFloat = 6
     static let corner: CGFloat = 30
     static let ear: CGFloat = 12
     /// Room around the island inside its window for the glow.
     static let margin: CGFloat = 44
 
-    /// The tabs at notch level: three on each side of the notch.
-    static let leftTabs: [CardKind] = [.home, .claude, .shelf]
+    /// The tabs at notch level: Home · Claude · Files · Clipboard left of the notch, PRs ·
+    /// Reminders · Settings right of it.
+    static let leftTabs: [CardKind] = [.home, .claude, .shelf, .clipboard]
     static let rightTabs: [CardKind] = [.github, .reminders, .settings]
 
     /// Which tab lights up for a screen that has none of its own.
@@ -40,6 +41,7 @@ enum Isle {
         case .github: return "arrow.triangle.pull"
         case .reminders: return "calendar"
         case .settings: return "gearshape"
+        case .clipboard: return "doc.on.clipboard"
         default: return tab.symbol
         }
     }
@@ -54,6 +56,7 @@ enum Isle {
         case .reminders, .reminderAlert: return "hang_smile"
         case .settings: return "hang_swing"
         case .toast: return "hang_wave"
+        case .clipboard: return "hang_upsidedown"
         }
     }
 }
@@ -200,8 +203,8 @@ final class IslandView: NSView {
         fill.locations = [0, NSNumber(value: Double(band / h)), NSNumber(value: Double((band + 44) / h)), 1]
         edge.frame = b
         edgeFade.frame = b
-        edgeFade.locations = [NSNumber(value: Double((band - 14) / h)), NSNumber(value: Double((band + 30) / h))]
         CATransaction.commit()
+        updateEdgeFade()
         host.frame = b
         layoutTabs()
         layoutWhisper()
@@ -255,14 +258,35 @@ final class IslandView: NSView {
         }
     }
 
-    private func setChrome(open: Bool) {
+    private func setChrome(_ m: Mode) {
+        let open = m == .open, peek = m == .peek
         let a = CABasicAnimation(keyPath: "opacity")
         a.duration = Motion.duration(0.3)
         CATransaction.begin()
-        edge.opacity = open ? 1 : 0
-        glow.shadowOpacity = open ? 0.55 : 0
+        // The peek bar wears the island's edge too, a touch softer: a black bar framed in blue.
+        edge.opacity = open ? 1 : (peek ? 0.9 : 0)
+        glow.shadowOpacity = open ? 0.55 : (peek ? 0.4 : 0)
+        glow.shadowRadius = open ? 16 : 10
         edge.add(a, forKey: "fade")
         CATransaction.commit()
+        updateEdgeFade()
+    }
+
+    /// The edge fades in from the top of the screen: over the band when a screen is open, and
+    /// sooner on the short peek bar so its sides and bottom show.
+    private func updateEdgeFade() {
+        let h = max(1, bounds.height)
+        let (from, to): (CGFloat, CGFloat) = mode == .peek ? (4, band * 0.6) : (band - 14, band + 30)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        edgeFade.locations = [NSNumber(value: Double(from / h)), NSNumber(value: Double(to / h))]
+        CATransaction.commit()
+    }
+
+    /// Wide enough for the longer row of tabs on either side of the notch.
+    private var peekWidth: CGFloat {
+        let w: CGFloat = 30, gap: CGFloat = 4
+        let side = CGFloat(max(Isle.leftTabs.count, Isle.rightTabs.count)) * (w + gap) - gap
+        return notchWidth + 2 * (10 + side + 14)
     }
 
     // MARK: - Modes
@@ -274,7 +298,7 @@ final class IslandView: NSView {
         whisper(nil)
         dismissContent(direction: 0)
         setTabs(visible: false)
-        setChrome(open: false)
+        setChrome(.closed)
         applyShape(shapeRect(width: notchWidth, height: band), corner: 12, animated: animated)
         let wait = animated && !Motion.reduced ? 0.42 : 0
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
@@ -289,8 +313,8 @@ final class IslandView: NSView {
         mode = .peek
         activeTab = nil
         setTabs(visible: true)
-        setChrome(open: false)
-        applyShape(shapeRect(width: Isle.peekWidth, height: band), corner: 18, animated: true)
+        setChrome(.peek)
+        applyShape(shapeRect(width: peekWidth, height: band + Isle.peekDrop), corner: 16, animated: true)
     }
 
     /// Opens (or switches to, or resizes for) a screen. `direction` is the side the new screen
@@ -299,7 +323,7 @@ final class IslandView: NSView {
         let wasOpen = mode == .open
         mode = .open
         setTabs(visible: true)
-        setChrome(open: true)
+        setChrome(.open)
         let w = size.width, h = size.height
         let target = NSRect(x: (centerX - w / 2).rounded(), y: band, width: w, height: h)
         if view !== content {

@@ -24,11 +24,12 @@
 Zera is a fluffy little puff with a blue-violet tuft who hangs from a rope out of your Mac's notch.
 Hover her and the notch widens into tabs; click one and that screen grows out of the notch as a
 compact island of navy glass. While Claude Code works, she sprouts two glowing wings that show what
-it's doing and let you approve its commands right there. **No API key and no account needed:**
+it's doing and let you approve its commands right there. She also keeps your **clipboard history**, and
+an **app opener** brings her down from the notch with a search capsule for apps and commands. **No API key and no account needed:**
 Claude runs through your existing Claude Code login, and GitHub uses a token you paste once.
 
 <p align="center">
-  <img src="docs/zera-island.webp" alt="Hovering Zera shows the tabs; Home, Claude sessions, the Shelf, pull requests, Reminders and Settings open out of the notch in turn, then a meeting banner opens its details" width="736"><br>
+  <img src="docs/zera-island.webp" alt="Hovering Zera shows the tabs; Home, Claude sessions, the Shelf, Clipboard, pull requests, Reminders and Settings open out of the notch in turn; a meeting banner opens its details; then the app opener comes down with apps, commands and actions" width="736"><br>
   <sub>Every screen opens out of the notch. Recorded from the app with sample data.</sub>
 </p>
 
@@ -52,9 +53,9 @@ Each release also has a `.zip` of the app and a `SHA256SUMS.txt`. To check the d
 Every screen lives in one island that grows out of the notch, so Zera never covers your work with a
 big window.
 
-- **Tabs at notch level.** Hover Zera and the notch widens to show six tabs on either side of it:
-  **Home · Claude · Files** on the left, **PRs · Reminders · Settings** on the right. An amber dot marks
-  a tab that needs you, and the Claude tab counts running sessions.
+- **Tabs at notch level.** Hover Zera and the notch widens into a black bar with a blue edge, with
+  **Home · Claude · Files · Clipboard** left of the notch and **PRs · Reminders · Settings** right of it.
+  An amber dot marks a tab that needs you, and the Claude tab counts running sessions.
 - **Opens, morphs, folds away.** Click a tab and the island springs open to that screen's size.
   Switching tabs resizes it in place, sliding the new screen in from the side its tab is on. Click
   outside or press <kbd>esc</kbd> and it folds back into the notch. A screen you open from somewhere
@@ -68,10 +69,9 @@ big window.
 - **Zera takes a pose for each screen:** waving on Home, hugging the rope for Claude, peeking at your
   files, thinking over PRs and file answers, smiling at Reminders, swinging in Settings.
 
-<p align="center">
-  <img src="docs/island-screens.png" alt="The hover tabs with a caption under Zera, Home, Claude sessions, the Shelf, pull requests, Reminders, Settings → Sounds, a meeting banner and an event's details, each a compact island under the notch" width="100%"><br>
-  <sub>Every screen, held open. Recorded from the app with sample data.</sub>
-</p>
+<p align="center"><img src="docs/screens/01-hover-tabs.png" alt="Hovering Zera: the tab bar with Home, Claude (one running session), Files and Clipboard on the left, PRs, Reminders and Settings on the right, and her caption below" width="540"></p>
+
+<sub>All screenshots are recorded from the app with sample data.</sub>
 
 ## Live wings
 
@@ -95,7 +95,11 @@ While a Claude Code session is active, two glass wings hang off Zera on either s
   lines when a command needs you; hops among sparkles when Claude is done. Hover her for a wiggle, tap
   her for a bounce.
 
-<p align="center"><img src="docs/wings-states.png" alt="The wings in three states: running at 43%, asking to run git commit with the command just copied, and done at 100% with a caption under Zera" width="100%"></p>
+<p align="center"><img src="docs/screens/15-wings-running.png" alt="The wings while Claude works: Running at 43% with the session time and the status orb" width="880"></p>
+
+<p align="center"><img src="docs/screens/16-wings-approval.png" alt="The right wing asking to run git commit, with Reject and Approve; the command has just been copied" width="100%"></p>
+
+<p align="center"><img src="docs/screens/17-wings-done.png" alt="The wings when Claude is done: 100% in green, with a caption under Zera" width="880"></p>
 
 ## Features
 
@@ -117,6 +121,8 @@ Code's own hooks, with no API key.
 - **Approvals** appear only when Claude Code itself would ask, so auto mode, bypass mode and your
   allow rules are respected. Answer on the wing, or in the approval island when the wing has no room.
 
+<p align="center"><img src="docs/screens/03-claude-sessions.png" alt="Claude sessions: one running with a progress bar and Stop, one completed" width="660"></p>
+
 ### Files: a Shelf that reads with Claude
 
 Drop files on Zera or on the Files tab and they wait on your **Shelf**. From there you can drag them
@@ -131,6 +137,24 @@ nothing goes to Claude until you ask.
 - **Removing never deletes the file on your Mac.** Take files off the Shelf from the row menu, or
   **Clear all** (with Undo).
 
+<p align="center"><img src="docs/screens/04-shelf.png" alt="The Shelf: a drop zone, Summarize, Explain, Extract text, Ask Zera, and the dropped files" width="640"></p>
+
+### Clipboard history
+
+Everything you copy, kept on this Mac: text, links, code, colours, images and files. Open it from the
+Clipboard tab or with **⇧⌘V** from any app (record your own shortcut in **Settings → Clipboard**).
+
+- **Click any item to copy it again.** It gets a green check, Zera says "copied ✨ press ⌘V to paste",
+  and the island folds away so you can paste straight into the app underneath.
+- **All · Text · Images · Files · Pinned** and search. Pinned items stay on top and never expire.
+  Images get a grid of thumbnails; <kbd>Space</kbd> previews any item in place.
+- **Keys:** <kbd>↑</kbd><kbd>↓</kbd> move, <kbd>⏎</kbd> copy, <kbd>⌘1</kbd>–<kbd>⌘9</kbd> quick copy, <kbd>⌫</kbd> remove.
+- **Private by design.** Off until you turn it on. Copies an app marks as private or temporary
+  (password managers do) and copies from 1Password, Bitwarden, LastPass, Dashlane, Passwords and
+  Keychain Access are never kept. History stays on this Mac for 7 days by default, up to 200 items.
+
+<p align="center"><img src="docs/screens/05-clipboard.png" alt="Clipboard: pinned notes and commands, today’s copies with the app they came from, filters and search" width="640"></p>
+
 ### Pull requests
 
 - Covers PRs opened in the **last 24 hours** across your repos (including organisation repos you belong
@@ -143,6 +167,8 @@ nothing goes to Claude until you ask.
   sending private code to an AI service.
 - Banners when you open a PR, and when someone approves, requests changes or comments on one of
   yours. **Approve** workflow runs that are waiting for you, right from the PR.
+
+<p align="center"><img src="docs/screens/06-pull-requests.png" alt="Pull requests: Open, Review, CI, Approvals, filters, and three PRs with their CI state" width="660"></p>
 
 ### Reminders & Calendar
 
@@ -163,15 +189,54 @@ nothing goes to Claude until you ask.
 - Events you create are kept by Zera on this Mac, or, if you pick one of your calendars, added to it
   through macOS Calendar. Zera never labels its own events as Google, Outlook or Apple.
 
+<p align="center"><img src="docs/screens/07-reminders.png" alt="Reminders: today’s timeline with a meeting, a water reminder, a reminder and a focus block" width="640"></p>
+
+<p align="center"><img src="docs/screens/09-reminder-banner.png" alt="A meeting banner under the notch with Snooze and Join call" width="640"></p>
+
+<p align="center"><img src="docs/screens/10-event-details.png" alt="Tapping the banner opens the event’s details: when, calendar, location, alert, and Mark complete" width="640"></p>
+
+### App opener
+
+Press **⌥Space** in any app and Zera rappels down from the notch holding a glass search capsule. It's
+its own floating panel, not a tab, and folds away once you've chosen.
+
+- **Instant.** Your app list is read in the background at launch and kept in memory, so the opener
+  shows at once and you can type straight away.
+- **All · Apps · Commands · Actions** (<kbd>⇥</kbd> to switch). Typing matches loosely: "vsc" finds
+  Visual Studio Code. The best match fills the big spot and five more sit below; running apps get a
+  dot, and the apps you open most move up.
+- **Commands:** **Kill Process** (search running processes by name; <kbd>⏎</kbd> quits, <kbd>⌘⏎</kbd>
+  force-quits) and **Kill Port** (type a port number to stop whatever listens on it). Your own
+  processes only. **Custom commands**, your own scripts, are coming soon.
+- **Actions:** Zera's own: Clipboard History, Screenshot, a 25-minute timer, a note, Open Claude, the
+  Shelf, a break and file search.
+- <kbd>⏎</kbd> opens (the icon flies up into her paws), <kbd>⌘1</kbd>–<kbd>⌘6</kbd> open a slot,
+  <kbd>⌘⏎</kbd> shows the app in Finder and <kbd>esc</kbd> sends her back up. The shortcut and
+  options are in **Settings → General**.
+
+<p align="center"><img src="docs/screens/11-app-opener.png" alt="The app opener: Zera holding the capsule, with your usual apps and the best one in the big spot" width="640"></p>
+
+<p align="center"><img src="docs/screens/12-app-opener-search.png" alt="Typing “no”: Notes is the best match, with New Note and others below" width="640"></p>
+
+<p align="center"><img src="docs/screens/13-app-opener-commands.png" alt="The Commands tab: Kill Process, Kill Port and Custom Commands" width="640"></p>
+
+<p align="center"><img src="docs/screens/14-app-opener-actions.png" alt="The Actions tab: Clipboard History, Screenshot, a timer, a note, Open Claude and the Shelf" width="640"></p>
+
+### Home
+
+<p align="center"><img src="docs/screens/02-home.png" alt="Home: a greeting, Ask Zera, three things that need you, and a row of quick actions" width="600"></p>
+
 ### And the rest
 
 | | |
 | --- | --- |
 | **At the notch** | Hangs on a rope, sways toward your pointer, says hi, dozes off when you're away. Drag her along the top edge. Tap her and she swings on her rope. Her lines appear in a small tag under her feet (or in the open island's header), never over the menu bar or the wings. |
-| **Sounds** | 32 short cues generated for Zera: boops when you tap her, glass for the island, bells and droplets for reminders, a sparkle when Claude finishes. One at a time and quiet. **Settings → Sounds** has a main switch, volume and a switch per group (GitHub starts off). |
+| **Sounds** | 37 short cues generated for Zera: boops when you tap her, glass for the island, bells and droplets for reminders, a sparkle when Claude finishes, a snap when you copy, a drop and a whoosh for the app opener. One at a time and quiet. **Settings → Sounds** has a main switch, volume and a switch per group (GitHub starts off). |
 | **Home** | A greeting, **Ask Zera**, up to three things that need you (approvals, reminders, PRs, meetings) and one row of quick actions. |
 | **Break nudges** | Optional "time for a break?" every 30 min – 2 hours, only while you're at the keyboard. |
-| **Settings** | General · Sounds · Integrations · Shortcuts · About. Diagnostics for the Claude CLI. Honours Reduce Motion: no sway, no springs. |
+| **Settings** | General (with the app opener) · Sounds · Clipboard · Integrations · Shortcuts · About. Shortcuts are recorded: click and press your keys. Diagnostics for the Claude CLI. Honours Reduce Motion: no sway, no springs. Taller panes scroll inside the island. |
+
+<p align="center"><img src="docs/screens/08-settings-clipboard.png" alt="Settings, Clipboard pane: keep history, how long, how many, the recorded shortcut, fold away after copying, and Clear history" width="600"></p>
 
 ## Setup
 
@@ -269,8 +334,11 @@ and no dependencies.
 | `Sources/Zera/Cards.swift`, `ResultCard.swift` | Home, Settings, approvals, banners, file answers |
 | `Sources/Zera/Palette.swift`, `Theme.swift` | Design tokens, the selected look and shared controls |
 | `Sources/Zera/SoundService.swift`, `Resources/Sounds`, `scripts/synth_sounds.py` | Sound cues: the player and settings, the WAVs, and the script that generates them |
+| `Sources/Zera/ClipboardStore.swift`, `ClipboardView.swift` | Clipboard history: watching, storage and privacy rules; the Clipboard island |
+| `Sources/Zera/AppOpener.swift`, `AppCatalog.swift`, `ProcessTools.swift` | The app opener: the floating capsule, the app list and matching, Kill Process and Kill Port |
+| `Sources/Zera/GlobalHotKey.swift` | Shortcuts that work from any app, and the recorder used in Settings |
 | `Resources/Sprites` | Her poses (60+ cut-outs; AI-assisted artwork, see `Resources/CARD_SPRITE_PROMPT.md`) |
-| `docs/` | README images (recorded from the app with sample data) and the privacy and network notes |
+| `docs/` | README images (`docs/screens/`, one per screen, recorded from the app with sample data) and the privacy and network notes |
 | `Tests/ZeraTests` | XCTest suite |
 | `.github/workflows`, `scripts/package.sh` | CI and releases |
 

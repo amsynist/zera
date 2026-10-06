@@ -305,6 +305,8 @@ enum CardKind: Int, CaseIterable {
     case result
     /// Live progress of your Claude Code sessions.
     case claude
+    /// Everything you copied, to copy again. Last, so saved raw values stay the same.
+    case clipboard
 
     var title: String {
         switch self {
@@ -318,6 +320,7 @@ enum CardKind: Int, CaseIterable {
         case .toast: return "Notification"
         case .result: return "Zera"
         case .claude: return "Claude"
+        case .clipboard: return "Clipboard"
         }
     }
 
@@ -331,6 +334,7 @@ enum CardKind: Int, CaseIterable {
         case .reminders, .reminderAlert, .toast: return "bell.fill"
         case .result: return "sparkles"
         case .claude: return "terminal.fill"
+        case .clipboard: return "doc.on.clipboard"
         }
     }
 }
