@@ -125,6 +125,12 @@ final class ClipboardStore {
     // MARK: State
 
     private(set) var items: [ClipItem] = []
+
+    /// Shows sample items without watching or saving anything (the screen renders).
+    func preview(_ list: [ClipItem]) {
+        items = list
+        post()
+    }
     /// Private copies skipped since launch (counted, never stored).
     private(set) var skipped = 0
 
@@ -134,7 +140,7 @@ final class ClipboardStore {
     private var saveWork: DispatchWorkItem?
     private let saveQueue = DispatchQueue(label: "ai.zera.clipboard-save", qos: .utility)
     private let fm = FileManager.default
-    private var thumbs = NSCache<NSString, NSImage>()
+    private let thumbs = NSCache<NSString, NSImage>()
 
     /// Types apps put on the clipboard to say "don't keep this" (nspasteboard.org).
     private static let privateTypes: [NSPasteboard.PasteboardType] = [
@@ -200,10 +206,60 @@ final class ClipboardStore {
             post()
             return
         }
+        let app = front?.localizedName, bundle = front?.bundleIdentifier
+        // A picture is converted, hashed and saved off the main thread (screenshots are big);
+        // its bytes are copied off the clipboard now, while they're still there.
+        if !hasFiles, let raw = rawImage(types) {
+            let dir = folder.appendingPathComponent("images")
+            Self.imageQueue.async { [weak self] in
+                guard var item = Self.imageItem(raw, in: dir) else { return }
+                DispatchQueue.main.async {
+                    item.sourceApp = app
+                    item.sourceBundle = bundle
+                    self?.add(item)
+                }
+            }
+            return
+        }
         guard var item = read(types: types) else { return }
-        item.sourceApp = front?.localizedName
-        item.sourceBundle = front?.bundleIdentifier
+        item.sourceApp = app
+        item.sourceBundle = bundle
         add(item)
+    }
+
+    private static let imageQueue = DispatchQueue(label: "ai.zera.clipboard-images", qos: .utility)
+
+    /// Files on the clipboard (Finder also adds an icon picture, which isn't what was copied).
+    private var hasFiles: Bool { pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) }
+
+    private enum RawImage { case png(Data), tiff(Data) }
+    private func rawImage(_ types: [NSPasteboard.PasteboardType]) -> RawImage? {
+        if types.contains(.png), let d = pasteboard.data(forType: .png) { return .png(d) }
+        if types.contains(.tiff), let d = pasteboard.data(forType: .tiff) { return .tiff(d) }
+        return nil
+    }
+
+    /// PNG bytes → a stored image item (any thread).
+    private static func imageItem(_ raw: RawImage, in dir: URL) -> ClipItem? {
+        let data: Data
+        switch raw {
+        case .png(let d): data = d
+        case .tiff(let t):
+            guard let png = NSBitmapImageRep(data: t)?.representation(using: .png, properties: [:]) else { return nil }
+            data = png
+        }
+        guard data.count <= maxImageBytes else { return nil }
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let name = digest.prefix(24) + ".png"
+        let url = dir.appendingPathComponent(String(name))
+        if !FileManager.default.fileExists(atPath: url.path) { try? data.write(to: url, options: .atomic) }
+        let size = CGImageSourceCreateWithData(data as CFData, nil)
+            .flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any] }
+            .flatMap { p -> CGSize? in
+                guard let w = p[kCGImagePropertyPixelWidth] as? Int, let h = p[kCGImagePropertyPixelHeight] as? Int else { return nil }
+                return CGSize(width: w, height: h)
+            }
+        return ClipItem(kind: .image, text: "", imageFile: String(name), imageSize: size, bytes: data.count, fingerprint: "image:" + digest)
     }
 
     private func read(types: [NSPasteboard.PasteboardType]) -> ClipItem? {
@@ -367,19 +423,43 @@ final class ClipboardStore {
     /// Pinned first, then newest.
     var ordered: [ClipItem] { items.filter(\.pinned) + items.filter { !$0.pinned } }
 
-    /// A small, cached thumbnail of an image item.
+    /// A small, cached thumbnail of an image item (decoded here, on the calling thread).
     func thumbnail(_ item: ClipItem, size: CGFloat) -> NSImage? {
         guard let url = imageURL(item) else { return nil }
-        let key = "\(url.lastPathComponent)@\(Int(size))" as NSString
-        if let t = thumbs.object(forKey: key) { return t }
+        if let t = cachedThumbnail(item, size: size) { return t }
+        let img = Self.decodeThumbnail(url, size: size)
+        if let img = img { thumbs.setObject(img, forKey: Self.thumbKey(url, size)) }
+        return img
+    }
+
+    /// The thumbnail if it's already decoded; nil otherwise (never touches the disk).
+    func cachedThumbnail(_ item: ClipItem, size: CGFloat) -> NSImage? {
+        guard let url = imageURL(item) else { return nil }
+        return thumbs.object(forKey: Self.thumbKey(url, size))
+    }
+
+    /// Decodes the thumbnail off the main thread and hands it back on the main thread. Rows show a
+    /// plain tile until it arrives, so a list full of screenshots opens without waiting for them.
+    func loadThumbnail(_ item: ClipItem, size: CGFloat, done: @escaping (NSImage?) -> Void) {
+        guard let url = imageURL(item) else { done(nil); return }
+        if let t = thumbs.object(forKey: Self.thumbKey(url, size)) { done(t); return }
+        let cache = thumbs
+        Self.thumbQueue.async {
+            let img = Self.decodeThumbnail(url, size: size)
+            if let img = img { cache.setObject(img, forKey: Self.thumbKey(url, size)) }
+            DispatchQueue.main.async { done(img) }
+        }
+    }
+
+    private static let thumbQueue = DispatchQueue(label: "ai.zera.clipboard-thumbs", qos: .userInitiated, attributes: .concurrent)
+    private static func thumbKey(_ url: URL, _ size: CGFloat) -> NSString { "\(url.lastPathComponent)@\(Int(size))" as NSString }
+    private static func decodeThumbnail(_ url: URL, size: CGFloat) -> NSImage? {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
               let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceThumbnailMaxPixelSize: size * 2,
                 kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return nil }
-        let img = NSImage(cgImage: cg, size: NSSize(width: CGFloat(cg.width) / 2, height: CGFloat(cg.height) / 2))
-        thumbs.setObject(img, forKey: key)
-        return img
+        return NSImage(cgImage: cg, size: NSSize(width: CGFloat(cg.width) / 2, height: CGFloat(cg.height) / 2))
     }
 
     // MARK: Housekeeping

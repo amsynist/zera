@@ -429,10 +429,10 @@ final class TasksController: NSObject, NSWindowDelegate {
 
     func openExport() {
         closeCard(); closeQuick()
-        // Starts on the project you're looking at in the Tasks screen, and on the month a
-        // timesheet is for: last month in the first week, this month after that.
+        // Starts on the project you're looking at in the Tasks screen, and on today: what you did
+        // today is the usual copy. Week and month are one click (or ↓) away.
         exportView.project = store.shownProject
-        exportView.span = store.calendar.component(.day, from: store.now()) <= 7 ? .lastMonth : .month
+        exportView.span = .today
         // A timesheet wants everything: linked folders catch up first, then the preview refreshes.
         syncCommits(quiet: true) { [weak self] in
             self?.exportView.refresh()

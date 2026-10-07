@@ -142,19 +142,27 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         }
         buddy.onDrop = { [weak self] pb in
             guard let self = self else { return false }
-            let n = ShelfStore.shared.ingest(pasteboard: pb)
-            let ok = n > 0 || ShelfStore.shared.alreadyHas(pasteboard: pb)
-            if ok {
-                self.sound(.fileCatch)
-                self.suppressUntil = .distantPast
-                self.show(.shelf, instant: true)
-                self.say(n == 1 ? "got it! ✨" : (n > 1 ? "got all \(n)! ✨" : "already have that one 😊"), mood: .happy, for: 1.6)
-                self.shelfDidAcceptDrop()
-            } else {
+            // One motion: she catches it and the Shelf is there in the same frame. The drop's
+            // contents are read now; a picture or text is written to disk after, off the main thread.
+            guard let payload = ShelfStore.payload(from: pb) else {
                 self.sound(.fileReject)
                 self.say("hmm, can't hold that", mood: .thinking, for: 1.6)
+                return false
             }
-            return ok
+            let already = ShelfStore.shared.alreadyHas(pasteboard: pb)
+            self.sound(.fileCatch)
+            self.suppressUntil = .distantPast
+            self.show(.shelf, instant: true)
+            ShelfStore.shared.ingest(payload) { [weak self] n in
+                guard let self = self else { return }
+                if n == 0 && !already {
+                    self.say("hmm, can't hold that", mood: .thinking, for: 1.6)
+                    return
+                }
+                self.say(n == 1 ? "got it! ✨" : (n > 1 ? "got all \(n)! ✨" : "already have that one 😊"), mood: .happy, for: 1.6)
+                self.shelfDidAcceptDrop()
+            }
+            return true
         }
         buddy.onDragStateChange = { [weak self] active in
             guard let self = self else { return }
@@ -1053,10 +1061,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let mood: ZeraMood
         switch a.kind {
         case .breakTime: mood = .cozy
+        case .battery: mood = .worried
         case .calendarHeadsUp, .headsUp: mood = .hello
         case .calendarNow, .now, .snoozed: mood = .excited
         }
         if a.hydration { sound(.water) }
+        else if a.kind == .battery { sound(.batteryLow) }
         else if a.kind == .breakTime { sound(.breakTime) }
         else if a.isEvent { sound(.calendar) }
         else { sound(.reminder) }
@@ -1070,6 +1080,22 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         refreshBadges()
         if cardVisible, currentCard == .reminderAlert { (cards[.reminderAlert] as? ReminderAlertCard)?.reload() }
         if cardVisible, currentCard == .reminders { (cards[.reminders] as? RemindersView)?.reload() }
+    }
+
+    /// Builds the island's screens a moment after launch (and after a theme change), one per turn
+    /// of the run loop, so the first tap on a tab only has to show it. Clipboard goes first: with a
+    /// full history it's the one that takes a while to build.
+    func prewarmScreens() {
+        let order: [CardKind] = [.clipboard, .home, .shelf, .tasks, .claude, .github, .reminders]
+        func step(_ i: Int) {
+            guard i < order.count else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                guard let self = self else { return }
+                if self.cards[order[i]] == nil { _ = self.content(for: order[i]) }
+                step(i + 1)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { step(0) }
     }
 
     /// Light ↔ dark: throw the cards away and rebuild the visible one in the new colours.
@@ -1087,6 +1113,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             show(k, instant: true)
             if k == .settings, let pane = settingsPane { (cards[.settings] as? SettingsCard)?.select(pane) }
         }
+        prewarmScreens()
     }
 
     // MARK: - Quick actions & Claude
@@ -1461,7 +1488,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             }
             // The screen shows the counts; her face follows them.
             if swapping, connected { react(reviews > 0 ? .thinking : (open > 0 ? .hello : .happy), for: 2.5) }
-        case .home: (cards[.home] as? HomeCard)?.refresh()
+        case .home: (cards[.home] as? HomeCard)?.willShow()
         case .approval: (cards[.approval] as? ApprovalCard)?.reload()
         case .reminders: (cards[.reminders] as? RemindersView)?.willShow()
         case .reminderAlert: (cards[.reminderAlert] as? ReminderAlertCard)?.reload()

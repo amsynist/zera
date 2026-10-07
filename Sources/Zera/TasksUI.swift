@@ -471,6 +471,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         orbButton.key = "⌘O"
         orbButton.onClick = { [weak self] in self?.onToggleOrb?() }
         exportButton.title = "Export…"
+        exportButton.symbol = "square.and.arrow.up"
         exportButton.key = "⌘E"
         exportButton.primary = true
         exportButton.onClick = { [weak self] in self?.onExport?() }
@@ -576,7 +577,8 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
             let l = TaskPaint(frame: NSRect(x: 0, y: y, width: w, height: 30))
             l.paint = { r in
                 drawText(t, sectionFont, Neon.textDim, in: NSRect(x: 10, y: 10, width: r.width - 20, height: 18), kern: Typo.sectionKern)
-                if let right = right { drawText(right, sectionFont, Neon.cyan.withAlphaComponent(0.85), in: NSRect(x: 10, y: 10, width: r.width - 22, height: 18), align: .right, kern: Typo.sectionKern) }
+                // A day's total reads as a time ("2h 00m"), not as part of the label.
+                if let right = right { drawText(right, monoFont(11.5, .medium), Pal.textSecondary, in: NSRect(x: 10, y: 10, width: r.width - 22, height: 18), align: .right) }
             }
             doc.addSubview(l)
             y += 30
@@ -627,7 +629,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
                 let list = byDay[day]!.sorted { $0.doneAt! < $1.doneAt! }
                 let key = store.dayKey(day)
                 let secs = list.reduce(0) { $0 + ($1.log[key] ?? $1.spent) }
-                section(f.string(from: day).uppercased() + " · \(list.count) TASK\(list.count == 1 ? "" : "S")", TaskTime.short(secs).uppercased())
+                section(f.string(from: day).uppercased() + " · \(list.count) TASK\(list.count == 1 ? "" : "S")", TaskTime.short(secs))
                 for t in list { add(t, w, &y) }
             }
         }
@@ -713,7 +715,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         scroll.frame = NSRect(x: pad - 4, y: listTop, width: w - pad * 2 + 8, height: min(listHeight, maxList))
         let fy = bounds.height - footH
         footLine.frame = NSRect(x: pad, y: fy, width: w - pad * 2, height: 1)
-        let ow = orbButton.fittedWidth + 8, ew = exportButton.fittedWidth + 16
+        let ow = orbButton.fittedWidth, ew = exportButton.fittedWidth
         let by = fy + (footH - Metrics.segment) / 2
         orbButton.frame = NSRect(x: pad, y: by, width: ow, height: Metrics.segment)
         exportButton.frame = NSRect(x: w - pad - ew, y: by, width: ew, height: Metrics.segment)
@@ -1148,7 +1150,7 @@ private func drawTrackIndicator(_ ind: SlidingIndicator, under segment: TaskChoi
 final class TaskExportView: NSView {
     static let size = NSSize(width: 660 + TaskGlow.margin * 2, height: 700 + TaskGlow.margin * 2)
     private let store: TaskStore
-    var span: TaskExport.Span = .week { didSet { refresh(); showNewest() } }
+    var span: TaskExport.Span = .today { didSet { refresh(); showNewest() } }
     var format: TaskExport.Format = .timesheet { didSet { refresh(); showNewest() } }
     /// nil: every project.
     var project: String? { didSet { refresh(); showNewest() } }
@@ -1165,6 +1167,9 @@ final class TaskExportView: NSView {
     private var formatTiles: [TaskChoice] = []
     private let previewScroll = NSScrollView()
     private let preview = NSTextView()
+    /// Excel and CSV: the rows as a table.
+    private let tableScroll = NSScrollView()
+    private let table = TaskTableView()
     /// Timesheet: the days as cards, and what a copy holds.
     private let sheetScroll = NSScrollView()
     private let sheet = TimesheetView()
@@ -1204,8 +1209,11 @@ final class TaskExportView: NSView {
         preview.isSelectable = true
         preview.drawsBackground = false
         preview.textContainerInset = NSSize(width: 10, height: 10)
-        preview.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        preview.textColor = Neon.text.withAlphaComponent(0.85)
+        let lines = NSMutableParagraphStyle()
+        lines.lineSpacing = 4
+        preview.defaultParagraphStyle = lines
+        preview.font = Typo.body
+        preview.textColor = Neon.text.withAlphaComponent(0.9)
         preview.isHorizontallyResizable = true
         preview.textContainer?.widthTracksTextView = false
         preview.textContainer?.containerSize = NSSize(width: 4000, height: CGFloat.greatestFiniteMagnitude)
@@ -1216,6 +1224,14 @@ final class TaskExportView: NSView {
         previewScroll.hasHorizontalScroller = false
         previewScroll.borderType = .noBorder
         glass.addSubview(previewScroll)
+        tableScroll.documentView = table
+        tableScroll.drawsBackground = false
+        tableScroll.hasVerticalScroller = false
+        tableScroll.hasHorizontalScroller = false
+        tableScroll.borderType = .noBorder
+        tableScroll.contentView.drawsBackground = false
+        glass.addSubview(tableScroll)
+        glass.addSubview(table.header)
         sheetScroll.documentView = sheet
         sheetScroll.drawsBackground = false
         sheetScroll.hasVerticalScroller = false
@@ -1269,10 +1285,14 @@ final class TaskExportView: NSView {
         for (i, c) in spanChips.enumerated() { c.selected = TaskExport.Span.allCases[i] == span }
         if let c = spanChips.first(where: { $0.selected }), c.frame.width > 0 { spanIndicator.move(to: c.frame, animated: true) }
         for (i, c) in formatTiles.enumerated() { c.selected = TaskExport.Format.allCases[i] == format }
-        preview.string = rows.isEmpty ? "No tasks in this range yet." : (format == .text ? TaskExport.text(rows, project: project) : Self.table(rows))
+        preview.string = rows.isEmpty ? "No tasks in this range yet." : (format == .text ? TaskExport.text(rows, project: project) : "")
         let isSheet = format == .timesheet
-        previewScroll.isHidden = isSheet && !rows.isEmpty
+        let isTable = (format == .xlsx || format == .csv) && !rows.isEmpty
+        previewScroll.isHidden = (isSheet || isTable) && !rows.isEmpty
         sheetScroll.isHidden = !isSheet || rows.isEmpty
+        tableScroll.isHidden = !isTable
+        table.header.isHidden = !isTable
+        if isTable { table.show(rows, width: max(200, tableScroll.frame.width)) }
         optionChips.forEach { $0.isHidden = !isSheet }
         if isSheet { sheet.show(rows, width: max(200, sheetScroll.frame.width)) }
         refreshOptions()
@@ -1290,6 +1310,7 @@ final class TaskExportView: NSView {
         layoutSubtreeIfNeeded()
         sheet.scrollToVisible(NSRect(x: 0, y: 0, width: 1, height: 1))
         preview.scrollToVisible(NSRect(x: 0, y: 0, width: 1, height: 1))
+        table.scrollToVisible(NSRect(x: 0, y: 0, width: 1, height: 1))
     }
 
     static let optionTitles = ["Times", "Repos", "Round to 15m"]
@@ -1304,20 +1325,6 @@ final class TaskExportView: NSView {
         // Rounding only means something with times showing.
         optionChips[2].isHidden = format != .timesheet || !options.times
         paint.needsDisplay = true
-    }
-
-    /// The rows as an aligned table, for the preview.
-    static func table(_ rows: [TaskExport.Row]) -> String {
-        // Short headings here so every column fits; the saved files keep the full names.
-        let all = [["Date", "#", "Project", "Repo", "Task", "Status", "Min", "Est"]] + rows.map(TaskExport.cells)
-        let cut = all.map { $0.enumerated().map {
-            let limit = $0.offset == 4 ? 26 : ($0.offset == 2 || $0.offset == 3 ? 12 : 99)
-            return $0.element.count > limit ? String($0.element.prefix(limit - 1)) + "…" : $0.element
-        } }
-        let widths = (0..<TaskExport.header.count).map { c in cut.map { $0[c].count }.max() ?? 0 }
-        return cut.map { line in
-            line.enumerated().map { $0.element.padding(toLength: widths[$0.offset], withPad: " ", startingAt: 0) }.joined(separator: "  ")
-        }.joined(separator: "\n")
     }
 
     override func layout() {
@@ -1342,6 +1349,14 @@ final class TaskExportView: NSView {
             sheet.scrollToVisible(NSRect(x: 0, y: 0, width: 1, height: 1))
         }
         sheetScroll.frame = sheetFrame
+        let headerFrame = NSRect(x: pad + 1, y: 252 + po, width: w - pad * 2 - 2, height: TaskTableView.headH)
+        let tableFrame = NSRect(x: pad + 1, y: headerFrame.maxY, width: headerFrame.width, height: sheetFrame.maxY - headerFrame.maxY)
+        if tableScroll.frame.width != tableFrame.width, !tableScroll.isHidden {
+            tableScroll.frame = tableFrame
+            table.show(rows, width: tableFrame.width)
+        }
+        table.header.frame = headerFrame
+        tableScroll.frame = tableFrame
         // The options sit in the preview's top bar, on the right.
         var ox = w - pad - 10
         for c in optionChips.reversed() where !c.isHidden {
@@ -1350,9 +1365,11 @@ final class TaskExportView: NSView {
             c.frame = NSRect(x: ox, y: 218 + po + 5, width: cw, height: 24)
             ox -= 6
         }
-        let by = glass.bounds.height - 58
-        saveButton.frame = NSRect(x: w - pad - 170, y: by, width: 170, height: 36)
-        cancelButton.frame = NSRect(x: w - pad - 170 - 10 - 110, y: by, width: 110, height: 36)
+        // The shared button size; the main action keeps one width as its count changes.
+        let bh = Metrics.segment, by = glass.bounds.height - 22 - bh
+        let saveW = max(160, saveButton.fittedWidth), cancelW = cancelButton.fittedWidth
+        saveButton.frame = NSRect(x: w - pad - saveW, y: by, width: saveW, height: bh)
+        cancelButton.frame = NSRect(x: saveButton.frame.minX - 8 - cancelW, y: by, width: cancelW, height: bh)
     }
 
     private var projectOffset: CGFloat { projectBar.isHidden ? 0 : 44 }
@@ -1377,11 +1394,13 @@ final class TaskExportView: NSView {
         Neon.field.withAlphaComponent(0.9).setFill(); bp.fill()
         Neon.chipEdge.withAlphaComponent(0.45).setStroke(); bp.lineWidth = 1; bp.stroke()
         if format == .timesheet {
-            drawText("CLICK A DAY TO COPY IT", TaskFont.clock(11), Neon.textDim, in: NSRect(x: box.minX + 14, y: box.minY + 9, width: 240, height: 16), kern: 1.1)
+            let label = Typo.sectionText("Click a day to copy it")
+            label.draw(at: NSPoint(x: box.minX + 14, y: box.minY + (33 - label.size().height) / 2))
         } else {
-            drawText("PREVIEW", .monospacedSystemFont(ofSize: 10.5, weight: .medium), Neon.textDim, in: NSRect(x: box.minX + 14, y: box.minY + 9, width: 100, height: 16), kern: 1)
+            let label = Typo.sectionText("Preview")
+            label.draw(at: NSPoint(x: box.minX + 14, y: box.minY + (33 - label.size().height) / 2))
             let name = "Downloads / " + TaskExport.fileName(span, format, project: project, now: store.now(), calendar: store.calendar)
-            drawText(name, .monospacedSystemFont(ofSize: 10.5, weight: .medium), Neon.textDim, in: NSRect(x: box.minX + 120, y: box.minY + 9, width: box.width - 134, height: 16), align: .right)
+            drawText(name, Typo.meta, Pal.textTertiary, in: NSRect(x: box.minX + 120, y: box.minY + 9, width: box.width - 134, height: 16), align: .right)
         }
         Neon.divider.setFill()
         NSRect(x: box.minX, y: box.minY + 33, width: box.width, height: 1).fill()
@@ -1966,3 +1985,105 @@ final class TimesheetView: NSView {
         frame = NSRect(x: 0, y: 0, width: width, height: y + 2)
     }
 }
+
+// MARK: - Export preview table
+
+/// Excel and CSV previewed as a table that fits its box: short columns at their content width,
+/// the task taking the rest, each day's date on its first row and days banded. Columns that would
+/// say nothing (one project, no repos, no estimates) step aside; the saved file keeps them all.
+final class TaskTableView: NSView {
+    static let rowH: CGFloat = 26
+    static let headH: CGFloat = 30
+    private static let gap: CGFloat = 14, side: CGFloat = 14
+    private static let cellFont = NSFont.systemFont(ofSize: 12.5)
+    private static let digitFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+
+    struct Column { let title: String; let cell: (TaskExport.Row) -> String; let right: Bool; var x: CGFloat = 0; var w: CGFloat = 0 }
+    private var rows: [TaskExport.Row] = []
+    private var cols: [Column] = []
+    /// The column titles, pinned above the scrolling rows.
+    let header = TaskPaint()
+    override var isFlipped: Bool { true }
+
+    func show(_ rows: [TaskExport.Row], width: CGFloat) {
+        self.rows = rows
+        cols = Self.columns(rows, width: width)
+        frame = NSRect(x: 0, y: 0, width: width, height: CGFloat(rows.count) * Self.rowH + 8)
+        header.paint = { [weak self] r in self?.paintHeader(r) }
+        needsDisplay = true
+        header.needsDisplay = true
+    }
+
+    static func columns(_ rows: [TaskExport.Row], width: CGFloat) -> [Column] {
+        var cs: [Column] = [Column(title: "Date", cell: { $0.day }, right: false)]
+        if Set(rows.map(\.project)).count > 1 { cs.append(Column(title: "Project", cell: { $0.project }, right: false)) }
+        if rows.contains(where: { !$0.repo.isEmpty }) { cs.append(Column(title: "Repo", cell: { $0.repo }, right: false)) }
+        cs.append(Column(title: "Task", cell: { $0.title }, right: false))
+        cs.append(Column(title: "Status", cell: { $0.status }, right: false))
+        cs.append(Column(title: "Min", cell: { String($0.minutes) }, right: true))
+        if rows.contains(where: { $0.estimate > 0 }) { cs.append(Column(title: "Est", cell: { $0.estimate > 0 ? String($0.estimate) : "" }, right: true)) }
+
+        func natural(_ c: Column) -> CGFloat {
+            let head = ceil(Typo.sectionText(c.title).size().width)
+            let font = c.right || c.title == "Date" ? digitFont : cellFont
+            let cell = rows.prefix(400).map { ceil((c.cell($0) as NSString).size(withAttributes: [.font: font]).width) }.max() ?? 0
+            return max(head, cell)
+        }
+        let task = cs.firstIndex { $0.title == "Task" }!
+        for i in cs.indices where i != task { cs[i].w = natural(cs[i]) }
+        // Project and repo give way (down to a readable stub) before the task gets cramped.
+        let caps: [String: CGFloat] = ["Project": 96, "Repo": 140]
+        for i in cs.indices { if let cap = caps[cs[i].title] { cs[i].w = min(cs[i].w, cap) } }
+        let room = width - side * 2 - gap * CGFloat(cs.count - 1)
+        var fixed = cs.indices.filter { $0 != task }.reduce(0) { $0 + cs[$1].w }
+        for name in ["Repo", "Project"] where room - fixed < 180 {
+            if let i = cs.firstIndex(where: { $0.title == name }) {
+                let cut = min(cs[i].w - 56, 180 - (room - fixed))
+                if cut > 0 { cs[i].w -= cut; fixed -= cut }
+            }
+        }
+        cs[task].w = max(80, room - fixed)
+        var x = side
+        for i in cs.indices { cs[i].x = x; x += cs[i].w + gap }
+        return cs
+    }
+
+    private func paintHeader(_ r: NSRect) {
+        for c in cols {
+            let s = Typo.sectionText(c.title)
+            let w = s.size().width
+            s.draw(at: NSPoint(x: c.right ? c.x + c.w - w : c.x, y: (r.height - s.size().height) / 2))
+        }
+        Neon.divider.setFill()
+        NSRect(x: 0, y: r.height - 1, width: r.width, height: 1).fill()
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let p = Pal
+        var dayIndex = -1, lastDay = ""
+        for (i, row) in rows.enumerated() {
+            let y = CGFloat(i) * Self.rowH
+            guard y + Self.rowH >= dirtyRect.minY, y <= dirtyRect.maxY else {
+                if row.day != lastDay { dayIndex += 1; lastDay = row.day }
+                continue
+            }
+            let first = row.day != lastDay
+            if first { dayIndex += 1; lastDay = row.day }
+            // Every other day is banded, so a day's tasks read as one group.
+            if dayIndex % 2 == 1 { p.text.withAlphaComponent(0.035).setFill(); NSRect(x: 0, y: y, width: bounds.width, height: Self.rowH).fill() }
+            if first && i > 0 { Neon.divider.setFill(); NSRect(x: Self.side, y: y, width: bounds.width - Self.side * 2, height: 1).fill() }
+            for c in cols {
+                let text = c.cell(row)
+                let rect = NSRect(x: c.x, y: y, width: c.w, height: Self.rowH)
+                switch c.title {
+                case "Date": if first { drawText(text, Self.digitFont, p.textSecondary, in: rect) }
+                case "Task": drawText(text, Self.cellFont, p.text, in: rect)
+                case "Status": drawText(text, Self.cellFont, row.done ? p.success.withAlphaComponent(0.85) : p.textTertiary, in: rect)
+                case "Min", "Est": drawText(text, Self.digitFont, p.textSecondary, in: rect, align: .right)
+                default: drawText(text, Self.cellFont, p.textSecondary, in: rect)
+                }
+            }
+        }
+    }
+}
+

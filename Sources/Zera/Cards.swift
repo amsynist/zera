@@ -432,12 +432,25 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     private let quickHeader = SectionHeader("Quick actions")
     private var tiles: [ActionTile] = []
     private var query = ""
+    /// The Mac's vitals: a strip under the search box that opens the This Mac page.
+    private let vitalsStrip = VitalsStrip()
+    private let vitalsPage = VitalsPage()
+    private var backButton: GHSquareButton!
+    private var showingVitals = false
+    private var watchingVitals = false
 
     init() {
         super.init(width: 540, title: "")
         let p = Pal
         search.field.delegate = self
         addSubview(search)
+        vitalsStrip.onOpen = { [weak self] in self?.setVitals(true) }
+        addSubview(vitalsStrip)
+        vitalsPage.isHidden = true
+        addSubview(vitalsPage)
+        backButton = GHSquareButton(symbol: "chevron.left", label: "Back", target: self, action: #selector(backTapped))
+        backButton.isHidden = true
+        addSubview(backButton)
         addSubview(attentionHeader)
         allClear.font = Typo.body; allClear.textColor = p.textSecondary
         addSubview(allClear)
@@ -462,14 +475,50 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 
     func focusSearch() { window?.makeKey(); window?.makeFirstResponder(search.field) }
 
+    /// Each time the island opens on Home: back to the main page.
+    func willShow() {
+        if showingVitals { setVitals(false, animated: false) }
+        refresh()
+    }
+
+    @objc private func backTapped() { setVitals(false) }
+
+    /// Opens or closes the This Mac page, sliding like any other page.
+    func setVitals(_ on: Bool, animated: Bool = true) {
+        guard on != showingVitals else { return }
+        showingVitals = on
+        [search, vitalsStrip, attentionHeader, allClear, quickHeader].forEach { $0.isHidden = on }
+        (attentionRows + recentRows + tiles).forEach { $0.isHidden = on }
+        vitalsPage.isHidden = !on
+        backButton.isHidden = !on
+        if animated { Motion.page(on ? vitalsPage : search, forward: on) }
+        refresh()
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if showingVitals { setVitals(false) } else { onEscape?() }
+    }
+
+    // Readings run only while Home is on screen.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        let on = window != nil
+        guard on != watchingVitals else { return }
+        watchingVitals = on
+        if on { SystemVitals.shared.watch() } else { SystemVitals.shared.unwatch() }
+    }
+    deinit { if watchingVitals { SystemVitals.shared.unwatch() } }
+
     private let tileHeight: CGFloat = 54
     private let rowH: CGFloat = RowTier.standard.height
-    private static let maxAttention = 3
+    /// Two rows fit under the vitals strip; the subtitle still counts everything waiting.
+    private static let maxAttention = 2
 
     private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (rowH + Metrics.rowGap) - Metrics.rowGap }
 
     var desiredHeight: CGFloat {
-        var h = headerBottom + Metrics.field + Space.l
+        if showingVitals { return headerBottom + VitalsPage.height + Metrics.cardPad }
+        var h = headerBottom + Metrics.field + Space.l + VitalsStrip.height + Space.l
         h += 18 + Space.s + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.l
         h += 18 + Space.s + tileHeight + Metrics.cardPad
         return h
@@ -478,7 +527,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     @objc func refresh() {
         let p = Pal
         let hour = Calendar.current.component(.hour, from: Date())
-        titleLabel.stringValue = hour < 12 ? "Good morning" : (hour < 17 ? "Good afternoon" : "Good evening")
+        titleLabel.stringValue = showingVitals ? "This Mac" : (hour < 12 ? "Good morning" : (hour < 17 ? "Good afternoon" : "Good evening"))
 
         // Needs attention: Claude approvals, alerts, unseen GitHub, overdue reminders, a meeting soon.
         attentionRows.forEach { $0.removeFromSuperview() }
@@ -530,11 +579,12 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         }
         let needs = attentionRows.count
         attentionRows = Array(attentionRows.prefix(Self.maxAttention))
-        for r in attentionRows { addSubview(r) }
-        allClear.isHidden = !attentionRows.isEmpty
+        for r in attentionRows { r.isHidden = showingVitals; addSubview(r) }
+        allClear.isHidden = showingVitals || !attentionRows.isEmpty
         allClear.stringValue = "All clear — nothing needs you right now ✨"
         let day = Date().formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
-        setSubtitle(needs == 0 ? "\(day) · all clear" : "\(day) · \(needs) thing\(needs == 1 ? "" : "s") need\(needs == 1 ? "s" : "") you")
+        setSubtitle(showingVitals ? VitalsPage.subtitle
+                    : (needs == 0 ? "\(day) · all clear" : "\(day) · \(needs) thing\(needs == 1 ? "" : "s") need\(needs == 1 ? "s" : "") you"))
 
         // Recent: shelf items and PR activity, newest first, filtered by the search box.
         recentRows.forEach { $0.removeFromSuperview() }
@@ -555,6 +605,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         entries.sort { $0.0 > $1.0 }
         // Recent shows only while you search: the matches, so Return can still ask Zera instead.
         for (_, text, r) in entries where !query.isEmpty && text.localizedCaseInsensitiveContains(query) {
+            r.isHidden = showingVitals
             addSubview(r)
             recentRows.append(r)
             if recentRows.count == Self.maxAttention { break }
@@ -589,8 +640,20 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         layoutHeader()
         let x = Metrics.cardPad, w = bounds.width - x * 2
         var y = headerBottom
+        if showingVitals {
+            // Back button first; the title and subtitle move over for it.
+            let mid = headerTrailingRect.midY
+            backButton.frame = NSRect(x: x, y: mid - Metrics.headerButton / 2, width: Metrics.headerButton, height: Metrics.headerButton)
+            let shift = Metrics.headerButton + Space.m
+            titleLabel.frame.origin.x += shift - 4; titleLabel.frame.size.width -= shift
+            subtitleLabel.frame.origin.x += shift - 4; subtitleLabel.frame.size.width -= shift
+            vitalsPage.frame = NSRect(x: x, y: y, width: w, height: VitalsPage.height)
+            return
+        }
         search.frame = NSRect(x: x, y: y, width: w, height: Metrics.field)
         y += Metrics.field + Space.l
+        vitalsStrip.frame = NSRect(x: x, y: y, width: w, height: VitalsStrip.height)
+        y += VitalsStrip.height + Space.l
 
         // While searching, the matches take the place of "Needs you".
         let searching = !query.isEmpty
@@ -687,8 +750,8 @@ final class SettingsCard: CardBase, CardContent {
         }
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
-        var isDetail: Bool { rawValue >= Pane.claude.rawValue }
-        static let nav: [Pane] = [.general, .appearance, .sounds, .clipboard, .integrations, .shortcuts, .about]
+        var isDetail: Bool { rawValue >= Pane.claude.rawValue && self != .shelf }
+        static let nav: [Pane] = [.general, .appearance, .sounds, .clipboard, .shelf, .integrations, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
@@ -908,6 +971,27 @@ final class SettingsCard: CardBase, CardContent {
                               selected: Self.breakChoices.firstIndex(of: rs.breakInterval) ?? 0, &s, action: #selector(breakChanged))
         hint("Breaks are only suggested while you're actually at the keyboard.", &s)
 
+        // Battery: a banner when it runs low, and (if you like) when its health drops.
+        let battery = BatteryAlerts.shared
+        if battery.hasBattery {
+            toggleRow("Warn when the battery is low", on: battery.lowEnabled, &s) { [weak self] on in
+                battery.lowEnabled = on
+                self?.rebuildPane()
+            }
+            let low = popupRow("Warn at", items: BatteryAlerts.lowChoices.map { "\($0)%" },
+                               selected: BatteryAlerts.lowChoices.firstIndex(of: battery.lowThreshold) ?? 2, &s, action: #selector(batteryLowChanged(_:)))
+            low.isEnabled = battery.lowEnabled
+            toggleRow("Warn when battery health drops", on: battery.healthEnabled, &s) { [weak self] on in
+                battery.healthEnabled = on
+                self?.rebuildPane()
+            }
+            let health = popupRow("Health below", items: BatteryAlerts.healthChoices.map { "\($0)%" },
+                                  selected: BatteryAlerts.healthChoices.firstIndex(of: battery.healthThreshold) ?? 2, &s, action: #selector(batteryHealthChanged(_:)))
+            health.isEnabled = battery.healthEnabled
+            hint("Low battery: once when it crosses your mark, once more at \(BatteryAlerts.critical)%, and not again until you've plugged in. "
+                 + "Health: once when it drops below your mark.", &s)
+        }
+
         // The app opener has no tab: Zera brings it down from the notch when you press its shortcut.
         toggleRow("App opener", on: AppOpenerSettings.enabled, &s) { [weak self] on in
             AppOpenerSettings.enabled = on
@@ -945,6 +1029,18 @@ final class SettingsCard: CardBase, CardContent {
         hint("Drag the orb along either edge. Its outer ring is today's tasks, the inner one your time against the estimate (type 30m after a task to set one; without, it goes round hourly); "
              + "the timer pauses itself after 5 minutes away. Right-click a project → Link Code Folder… and your commits there "
              + "become its done tasks (only commit messages go to Claude, through your Claude Code login).", &s)
+    }
+
+    @objc private func batteryLowChanged(_ sender: NSPopUpButton) {
+        let i = sender.indexOfSelectedItem
+        guard BatteryAlerts.lowChoices.indices.contains(i) else { return }
+        BatteryAlerts.shared.lowThreshold = BatteryAlerts.lowChoices[i]
+    }
+
+    @objc private func batteryHealthChanged(_ sender: NSPopUpButton) {
+        let i = sender.indexOfSelectedItem
+        guard BatteryAlerts.healthChoices.indices.contains(i) else { return }
+        BatteryAlerts.shared.healthThreshold = BatteryAlerts.healthChoices[i]
     }
 
     private func buildSounds(_ s: inout Stack) {
@@ -1373,6 +1469,45 @@ final class SettingsCard: CardBase, CardContent {
         hint("Files are referenced, not copied. Pasted text and images live in a staging folder until you remove them.", &s)
         buttonRow("Open staging folder", style: .secondary, status: "~/Library/Application Support/Zera/Staged", &s, action: #selector(openStagingTapped))
         buttonRow("Clear shelf", style: .destructive, status: "Takes everything off the Shelf — your files stay on your Mac", &s, action: #selector(clearShelfTapped))
+
+        // Fresh: new files in the folders you watch, one tab over from the Shelf.
+        let fresh = FreshFiles.shared
+        s.y += Space.s
+        sectionLabel("Fresh files", &s)
+        toggleRow("Show what's new in your folders", on: fresh.enabled, &s) { [weak self] on in
+            fresh.enabled = on
+            self?.rebuildPane()
+        }
+        let look = popupRow("Look back", items: FreshFiles.windows.map(\.0),
+                            selected: FreshFiles.windows.firstIndex { $0.1 == fresh.window } ?? 1, &s, action: #selector(freshWindowChanged(_:)))
+        look.isEnabled = fresh.enabled
+        for f in fresh.folders {
+            toggleRow(f.isDefault ? f.name : "\(f.name)  ·  \((f.path as NSString).abbreviatingWithTildeInPath)", on: f.on, &s, enabled: fresh.enabled) { on in
+                fresh.setFolder(f.path, on: on)
+            }
+        }
+        buttonRow("Add folder…", style: .secondary, status: "New files there show up in Fresh", &s, action: #selector(freshAddFolderTapped))
+        hint("Only names, sizes and dates are read. Half-finished downloads (.crdownload, .download, .part) show once they finish.", &s)
+    }
+
+    @objc private func freshWindowChanged(_ sender: NSPopUpButton) {
+        let i = sender.indexOfSelectedItem
+        guard FreshFiles.windows.indices.contains(i) else { return }
+        FreshFiles.shared.window = FreshFiles.windows[i].1
+    }
+
+    @objc private func freshAddFolderTapped() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Watch Folder"
+        panel.message = "New files in this folder show up in the Shelf's Fresh tab."
+        NSApp.activate(ignoringOtherApps: true)
+        panel.begin { [weak self] r in
+            guard r == .OK, let u = panel.url else { return }
+            FreshFiles.shared.addFolder(u)
+            self?.rebuildPane()
+        }
     }
 
     private func buildShortcuts(_ s: inout Stack) {
@@ -1754,8 +1889,8 @@ final class ApprovalCard: CardBase, CardContent {
 
 /// Compact: "New PR opened · repo #125 · 2 min ago" with Review Now / Later.
 final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
-    /// The same width as the reminder banner, so both have room for a full title.
-    var cardWidth: CGFloat { 620 }
+    /// Sized like the reminder banner, so both have room for a full title.
+    var cardWidth: CGFloat { Isle.bannerWidth(buttons: max(84, primary.fittedWidth) + Space.s + Metrics.rowButton) }
     let countdownLine = BannerCountdownLine()
     var onDismiss: (() -> Void)?
     var onOpenURL: ((URL) -> Void)?

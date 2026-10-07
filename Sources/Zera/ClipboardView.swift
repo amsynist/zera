@@ -47,6 +47,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
     private let doc = FlippedView()
     private var rows: [ClipRow] = []
     private var thumbs: [ClipThumb] = []
+    private var headers: [String: ClipGroupHeader] = [:]
     private let empty = NSTextField(wrappingLabelWithString: "")
     private let foot = NSTextField(labelWithString: "↑↓ move · ⏎ copy · Space preview · ⌘1–⌘9 quick copy")
     private let local = NSTextField(labelWithString: "Stays on this Mac")
@@ -223,27 +224,43 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     private func rebuildList() {
-        doc.subviews.forEach { $0.removeFromSuperview() }
-        rows = []; thumbs = []
+        // Views for items that haven't changed are kept and moved; only new or changed items get
+        // new views. Opening the tab with nothing new builds nothing.
         if filter == .images {
-            for (i, item) in shown.enumerated() {
-                let t = ClipThumb(item: item)
-                t.onCopy = { [weak self, weak t] in self?.copy(item, row: nil, thumb: t) }
-                t.onPreview = { [weak self] in self?.open(item) }
+            rows.forEach { $0.removeFromSuperview() }
+            var pool = Dictionary(thumbs.map { ($0.item.id, $0) }, uniquingKeysWith: { a, _ in a })
+            thumbs = shown.enumerated().map { i, item in
+                let t: ClipThumb
+                if let old = pool.removeValue(forKey: item.id), old.item == item { t = old } else {
+                    t = ClipThumb(item: item)
+                    t.onCopy = { [weak self, weak t] in self?.copy(item, row: nil, thumb: t) }
+                    t.onPreview = { [weak self] in self?.open(item) }
+                }
                 t.selected = i == cursor
-                doc.addSubview(t)
-                thumbs.append(t)
+                if t.superview !== doc { doc.addSubview(t) }
+                return t
             }
+            pool.values.forEach { $0.removeFromSuperview() }
         } else {
-            for (i, item) in shown.enumerated() {
-                let r = ClipRow(item: item, index: i)
-                r.onCopy = { [weak self, weak r] in self?.copy(item, row: r, thumb: nil) }
-                r.onPin = { [weak self] in self?.store.togglePin(item.id) }
-                r.onPreview = { [weak self] in self?.open(item) }
+            thumbs.forEach { $0.removeFromSuperview() }
+            var pool = Dictionary(rows.map { ($0.item.id, $0) }, uniquingKeysWith: { a, _ in a })
+            rows = shown.enumerated().map { i, item in
+                let r: ClipRow
+                if let old = pool.removeValue(forKey: item.id), old.item == item {
+                    r = old
+                    r.index = i
+                    r.refreshMeta()
+                } else {
+                    r = ClipRow(item: item, index: i)
+                    r.onCopy = { [weak self, weak r] in self?.copy(item, row: r, thumb: nil) }
+                    r.onPin = { [weak self] in self?.store.togglePin(item.id) }
+                    r.onPreview = { [weak self] in self?.open(item) }
+                }
                 r.selected = i == cursor
-                doc.addSubview(r)
-                rows.append(r)
+                if r.superview !== doc { doc.addSubview(r) }
+                return r
             }
+            pool.values.forEach { $0.removeFromSuperview() }
         }
         if shown.isEmpty {
             let q = search.field.stringValue
@@ -553,7 +570,10 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     private func layoutList(width iw: CGFloat) {
-        doc.subviews.filter { $0 is ClipGroupHeader }.forEach { $0.removeFromSuperview() }
+        // Headers are kept between layouts and only rebuilt when their text changes.
+        var unusedHeaders = headers
+        headers = [:]
+        defer { unusedHeaders.values.forEach { $0.removeFromSuperview() } }
         var y: CGFloat = 0
         if filter == .images {
             let tw = (iw - CGFloat(CL.thumbCols - 1) * 8) / CGFloat(CL.thumbCols)
@@ -570,9 +590,11 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
                 if g != last {
                     let note = first && store.skipped > 0
                         ? "\(store.skipped) private cop\(store.skipped == 1 ? "y" : "ies") skipped" : nil
-                    let h = ClipGroupHeader(title: g, note: note)
+                    let key = g + "|" + (note ?? "")
+                    let h = unusedHeaders.removeValue(forKey: key) ?? ClipGroupHeader(title: g, note: note)
+                    headers[key] = h
                     h.frame = NSRect(x: 6, y: y, width: iw - 4, height: CL.groupH)
-                    doc.addSubview(h)
+                    if h.superview !== doc { doc.addSubview(h) }
                     y += CL.groupH
                     last = g
                     first = false
@@ -626,7 +648,9 @@ final class ClipRow: NSView {
     var onPin: (() -> Void)?
     var onPreview: (() -> Void)?
     var selected = false { didSet { if selected != oldValue { needsDisplay = true } } }
-    private let item: ClipItem
+    let item: ClipItem
+    /// Position in the list: ⌘1–⌘9 for the first nine.
+    var index: Int { didSet { if index != oldValue { key.stringValue = index < 9 ? "⌘\(index + 1)" : "" } } }
     private let tile = NSImageView()
     private let title = NSTextField(labelWithString: "")
     private let meta = NSTextField(labelWithString: "")
@@ -650,6 +674,7 @@ final class ClipRow: NSView {
 
     init(item: ClipItem, index: Int) {
         self.item = item
+        self.index = index
         super.init(frame: .zero)
         let p = Pal
         wantsLayer = true
@@ -666,7 +691,8 @@ final class ClipRow: NSView {
         title.textColor = p.text
         title.lineBreakMode = .byTruncatingTail
         addSubview(title)
-        meta.stringValue = ClipRow.meta(item)
+        lineCount = item.kind == .code ? item.text.split(separator: "\n").count : 0
+        meta.stringValue = ClipRow.meta(item, lines: lineCount)
         meta.font = Typo.caption
         meta.textColor = p.textSecondary
         meta.lineBreakMode = .byTruncatingTail
@@ -699,14 +725,22 @@ final class ClipRow: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    static func meta(_ item: ClipItem) -> String {
+    /// Counted once: code can be long, and the row's age line is redone every time the list shows.
+    private var lineCount = 0
+    /// "5 min ago" moves on; a reused row brings it up to date.
+    func refreshMeta() {
+        let m = ClipRow.meta(item, lines: lineCount)
+        if meta.stringValue != m { meta.stringValue = m }
+    }
+
+    static func meta(_ item: ClipItem, lines: Int? = nil) -> String {
         var parts: [String] = []
         if let app = item.sourceApp { parts.append(app) }
         parts.append(relativeTime(item.lastCopied))
         switch item.kind {
         case .image, .files: if item.bytes > 0 { parts.append(ByteCountFormatter.string(fromByteCount: Int64(item.bytes), countStyle: .file)) }
         case .code:
-            let n = item.text.split(separator: "\n").count
+            let n = lines ?? item.text.split(separator: "\n").count
             if n > 1 { parts.append("\(n) lines") }
         default: break
         }
@@ -720,7 +754,10 @@ final class ClipRow: NSView {
         tile.layer?.borderColor = p.border.cgColor
         switch item.kind {
         case .image:
-            tile.image = ClipboardStore.shared.thumbnail(item, size: 40)
+            // Decoded off the main thread unless it's already cached; the tile is black till then.
+            let store = ClipboardStore.shared
+            tile.image = store.cachedThumbnail(item, size: 40)
+            if tile.image == nil { store.loadThumbnail(item, size: 40) { [weak self] img in self?.tile.image = img } }
             tile.imageScaling = .scaleProportionallyUpOrDown
             tile.layer?.backgroundColor = NSColor.black.cgColor
         case .color:
@@ -826,6 +863,7 @@ final class ClipThumb: NSView {
     var onCopy: (() -> Void)?
     var onPreview: (() -> Void)?
     var selected = false { didSet { if selected != oldValue { updateEdge() } } }
+    let item: ClipItem
     private let image = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private var hovered = false { didSet { updateEdge() } }
@@ -834,6 +872,7 @@ final class ClipThumb: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     init(item: ClipItem) {
+        self.item = item
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 12
@@ -841,7 +880,8 @@ final class ClipThumb: NSView {
         layer?.masksToBounds = true
         layer?.backgroundColor = NSColor.black.cgColor
         layer?.borderWidth = 1
-        image.image = ClipboardStore.shared.thumbnail(item, size: 140)
+        image.image = ClipboardStore.shared.cachedThumbnail(item, size: 140)
+        if image.image == nil { ClipboardStore.shared.loadThumbnail(item, size: 140) { [weak self] img in self?.image.image = img } }
         image.imageScaling = .scaleProportionallyUpOrDown
         addSubview(image)
         if let s = item.imageSize { label.stringValue = "\(Int(s.width))×\(Int(s.height))" }

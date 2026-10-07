@@ -439,14 +439,9 @@ class PRActionButton: NSButton {
     override func becomeFirstResponder() -> Bool { needsDisplay = true; return super.becomeFirstResponder() }
     override func resignFirstResponder() -> Bool { needsDisplay = true; return super.resignFirstResponder() }
 
-    private func updateGlow() {
-        // The pill draws its own hover glow; a row's emphasis adds a faint one to the main action.
-        guard style == .primary, emphasized, isEnabled else { layer?.shadowOpacity = 0; return }
-        layer?.shadowColor = Pal.accent.cgColor
-        layer?.shadowOffset = .zero
-        layer?.shadowRadius = 8
-        layer?.shadowOpacity = 0.35
-    }
+    /// Filled buttons carry their own soft drop shadow (`Palette.drawButton`); no coloured glow,
+    /// which rows' scroll views would clip square.
+    private func updateGlow() { layer?.shadowOpacity = 0 }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal

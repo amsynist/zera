@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Regular (not accessory) so files can still be dropped on the Dock icon.
         NSApp.setActivationPolicy(.regular)
         controller = ZeraController()
+        controller.prewarmScreens()
+        BatteryAlerts.shared.start()
         buildStatusItem()
         refreshBadge()
         NotificationCenter.default.addObserver(self, selector: #selector(refreshBadge),
