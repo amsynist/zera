@@ -749,6 +749,11 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     func select(_ p: Pane) {
+        // A detail pane (Claude, GitHub…) comes in like a page and Back reverses it; switching
+        // between sidebar panes just settles the new one in.
+        if p != current, window != nil {
+            if p.isDetail != current.isDetail { Motion.page(paneScroll, forward: p.isDetail) } else { Motion.refresh(paneScroll) }
+        }
         current = p
         paneScroll.contentView.scroll(to: .zero)
         let highlight: Pane = p.isDetail ? .integrations : p

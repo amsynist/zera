@@ -301,6 +301,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
         fillDetail(item)
         reload()
         window?.makeFirstResponder(self)
+        Motion.page(self, forward: true)
     }
 
     private func fillDetail(_ item: ClipItem) {
@@ -364,6 +365,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
         mode = .list
         resetTitle()
         reload()
+        Motion.page(self, forward: false)
     }
     private func resetTitle() { titleLabel.stringValue = "Clipboard" }
 

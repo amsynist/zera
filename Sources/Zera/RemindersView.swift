@@ -500,6 +500,8 @@ final class RemindersView: NSView, CardContent {
             layoutSubtreeIfNeeded()
             onHeightChange?()
         }
+        // Opening an item (or a form) slides it in like a page; closing slides the list back.
+        if wasExpanded != expanded { Motion.page(expanded ? sidePanel : main, forward: expanded) }
     }
 
     @objc private func closeSide() {

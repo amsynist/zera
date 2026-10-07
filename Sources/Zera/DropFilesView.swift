@@ -864,6 +864,8 @@ final class DropFilesView: NSView, CardContent {
         layoutSubtreeIfNeeded()
         onHeightChange?()
         delegate?.shelfHeightChanged()
+        // The file's page slides in; Back slides the Shelf back from the left.
+        Motion.page(on ? center : left, forward: on)
     }
 
     /// Called each time the card is shown: tapping Zera opens just Drop Files; a fresh drop or
