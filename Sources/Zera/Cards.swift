@@ -1750,7 +1750,8 @@ final class ApprovalCard: CardBase, CardContent {
 
 /// Compact: "New PR opened · repo #125 · 2 min ago" with Review Now / Later.
 final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
-    var cardWidth: CGFloat { 520 }
+    /// The same width as the reminder banner, so both have room for a full title.
+    var cardWidth: CGFloat { 620 }
     let countdownLine = BannerCountdownLine()
     var onDismiss: (() -> Void)?
     var onOpenURL: ((URL) -> Void)?
@@ -1825,12 +1826,12 @@ final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
         zera.isHidden = true
         when.isHidden = true
         tile.frame = NSRect(x: x, y: 26, width: 36, height: 36)
-        let half = bounds.width / 2 - Isle.zeraGap / 2
-        titleLabel.frame = NSRect(x: x + 46, y: 25, width: max(0, half - x - 46), height: 20)
-        subtitleLabel.frame = NSRect(x: x + 46, y: 46, width: max(0, half - x - 46), height: 16)
-        let pw = primary.fittedWidth
-        dismiss.frame = NSRect(x: bounds.width - x - Metrics.control, y: 30, width: Metrics.control, height: Metrics.control)
-        primary.frame = NSRect(x: dismiss.frame.minX - Space.s - pw, y: 29, width: pw, height: 30)
+        let half = bounds.width / 2 - Isle.zeraGap / 2 - 8, tx = x + 36 + 12
+        titleLabel.frame = NSRect(x: tx, y: 25, width: max(0, half - tx), height: 18)
+        subtitleLabel.frame = NSRect(x: tx, y: 45, width: max(0, half - tx), height: 16)
+        let pw = max(84, primary.fittedWidth), bh = Metrics.button, db = Metrics.rowButton
+        dismiss.frame = NSRect(x: bounds.width - x - db, y: 28 + (bh - db) / 2, width: db, height: db)
+        primary.frame = NSRect(x: dismiss.frame.minX - Space.s - pw, y: 28, width: pw, height: bh)
         countdownLine.frame = NSRect(x: 18, y: bounds.height - 8, width: max(0, bounds.width - 36), height: 2)
     }
 }
