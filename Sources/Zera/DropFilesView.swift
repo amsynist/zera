@@ -401,14 +401,15 @@ final class ShelfFileRow: NSView, NSDraggingSource {
         let p = Pal
         let kind = ShelfKind(path: path)
         let exists = FileManager.default.fileExists(atPath: path)
-        let base = [kind.label, fileSize(path)].compactMap { $0 }.joined(separator: " · ")
-        if !exists {
-            meta.stringValue = "No longer available"; meta.textColor = p.warning
-        } else if let s = status {
-            meta.stringValue = "\(base) · \(s.0)"; meta.textColor = s.1
-        } else {
-            meta.stringValue = "\(base) · \(relativeTime(addedAt))"; meta.textColor = p.textSecondary
-        }
+        let base = [kind.label, exists ? fileSize(path) : nil].compactMap { $0 }.joined(separator: " · ")
+        let text: String, color: NSColor
+        if !exists { text = "No longer available"; color = p.warning }
+        else if let s = status { text = "\(base) · \(s.0)"; color = s.1 }
+        else { text = "\(base) · \(relativeTime(addedAt))"; color = p.textSecondary }
+        // A shelf refresh touches every row: only what actually changed is redrawn and relaid.
+        guard text != meta.stringValue || color != meta.textColor || exists != copyButton.isEnabled else { return }
+        meta.stringValue = text
+        meta.textColor = color
         action?.isEnabled = exists
         copyButton.isEnabled = exists
         name.textColor = exists ? p.text : p.textSecondary
@@ -1947,11 +1948,15 @@ final class DropFilesView: NSView, CardContent {
         guard !isInternal(sender) else { return false }
         let pb = sender.draggingPasteboard
         let before = Set(store.items.map { $0.path })
-        let added = store.ingest(pasteboard: pb)
-        if added > 0 {
-            selectNewest(excluding: before)
-            delegate?.shelfSays(added == 1 ? "got it! drag it wherever you need it 💜" : "got all \(added)! ✨", mood: .happy, for: 2)
-            delegate?.shelfDidAcceptDrop()
+        // Files land at once; a picture or text is written off the main thread and lands after.
+        if let payload = ShelfStore.payload(from: pb), !store.alreadyHas(pasteboard: pb) {
+            store.ingest(payload) { [weak self] added in
+                guard let self = self else { return }
+                guard added > 0 else { self.delegate?.shelfSays("hmm, I can't hold that", mood: .thinking, for: 1.6); return }
+                self.selectNewest(excluding: before)
+                self.delegate?.shelfSays(added == 1 ? "got it! drag it wherever you need it 💜" : "got all \(added)! ✨", mood: .happy, for: 2)
+                self.delegate?.shelfDidAcceptDrop()
+            }
             return true
         }
         if store.alreadyHas(pasteboard: pb) {

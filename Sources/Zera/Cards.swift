@@ -1754,8 +1754,8 @@ final class ApprovalCard: CardBase, CardContent {
 
 /// Compact: "New PR opened · repo #125 · 2 min ago" with Review Now / Later.
 final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
-    /// The same width as the reminder banner, so both have room for a full title.
-    var cardWidth: CGFloat { 620 }
+    /// Sized like the reminder banner, so both have room for a full title.
+    var cardWidth: CGFloat { Isle.bannerWidth(buttons: max(84, primary.fittedWidth) + Space.s + Metrics.rowButton) }
     let countdownLine = BannerCountdownLine()
     var onDismiss: (() -> Void)?
     var onOpenURL: ((URL) -> Void)?

@@ -1901,6 +1901,8 @@ final class TreeRowView: NSView {
 final class TreeButton: NSView {
     var title = "" { didSet { needsDisplay = true } }
     var key = "⏎" { didSet { needsDisplay = true } }
+    /// An optional SF Symbol before the title.
+    var symbol: String? { didSet { needsDisplay = true } }
     var primary = false { didSet { needsDisplay = true } }
     /// Green for Quit All, red for destructive actions.
     var tint: NSColor? { didSet { needsDisplay = true } }
@@ -1928,27 +1930,31 @@ final class TreeButton: NSView {
         let ink = Pal.drawButton(path, tone: tone, hovered: hovered, pressed: pressed)
         let filled = tone == .accent || tone == .success
         let t = NSAttributedString(string: title, attributes: [.font: Typo.button, .foregroundColor: ink])
-        let k = NSAttributedString(string: key, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium),
-                                                              .foregroundColor: filled ? ink.withAlphaComponent(0.75) : Neon.glyph])
+        // The shortcut reads like a menu's: the same line, quieter, no box of its own.
+        let k = NSAttributedString(string: key, attributes: [.font: Self.keyFont,
+                                                              .foregroundColor: filled ? ink.withAlphaComponent(0.6) : Pal.textTertiary])
         let ts = t.size(), ks = k.size()
-        // Too narrow for the key as well: the word alone, so nothing spills over the edge.
-        guard ts.width + 10 + ks.width + 10 <= bounds.width - 16 else {
-            t.draw(at: NSPoint(x: (bounds.width - ts.width) / 2, y: (bounds.height - ts.height) / 2))
-            return
+        let iw = symbol == nil ? 0 : Self.iconBox + Self.iconGap
+        // Too narrow for the key as well: the icon and word alone, so nothing spills over the edge.
+        let showKey = !key.isEmpty && iw + ts.width + Self.keyGap + ks.width <= bounds.width - 24
+        let x0 = (bounds.width - (iw + ts.width + (showKey ? Self.keyGap + ks.width : 0))) / 2
+        if let s = symbol {
+            Neon.symbol(s, in: NSRect(x: x0, y: (bounds.height - Self.iconBox) / 2, width: Self.iconBox, height: Self.iconBox),
+                        size: 11.5, weight: .semibold, color: ink)
         }
-        let total = ts.width + 10 + ks.width + 10
-        let x0 = (bounds.width - total) / 2
-        t.draw(at: NSPoint(x: x0, y: (bounds.height - ts.height) / 2))
-        let kr = NSRect(x: x0 + ts.width + 10, y: (bounds.height - ks.height - 6) / 2, width: ks.width + 10, height: ks.height + 6)
-        let kp = NSBezierPath(roundedRect: kr, xRadius: 5, yRadius: 5)
-        (filled ? ink.withAlphaComponent(0.3) : Neon.chipEdge).setStroke(); kp.lineWidth = 1; kp.stroke()
-        k.draw(at: NSPoint(x: kr.minX + 5, y: kr.minY + 3))
+        t.draw(at: NSPoint(x: x0 + iw, y: (bounds.height - ts.height) / 2))
+        if showKey { k.draw(at: NSPoint(x: x0 + iw + ts.width + Self.keyGap, y: (bounds.height - ks.height) / 2)) }
     }
-    /// The width that fits the word and its key with comfortable room either side.
+    private static let keyFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    private static let keyGap: CGFloat = 8
+    private static let iconBox: CGFloat = 14
+    private static let iconGap: CGFloat = 6
+    /// The width that fits the icon, word and key with comfortable room either side.
     var fittedWidth: CGFloat {
         let t = (title as NSString).size(withAttributes: [.font: Typo.button]).width
-        let k = (key as NSString).size(withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)]).width
-        return ceil(t + 10 + k + 10) + 28
+        let k = key.isEmpty ? 0 : (key as NSString).size(withAttributes: [.font: Self.keyFont]).width + Self.keyGap
+        let i = symbol == nil ? 0 : Self.iconBox + Self.iconGap
+        return ceil(i + t + k) + Space.l * 2
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

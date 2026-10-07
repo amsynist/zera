@@ -10,8 +10,8 @@ import AppKit
 /// is a call link) or Got it; break nudges get Taking it.
 final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
     var cardWidth: CGFloat {
-        // Wide enough that a meeting's title isn't cut off left of Zera (540 left it ~144 pt).
-        max(620, ceil((max(84, primary.fittedWidth) + snooze.fittedWidth + Metrics.rowButton + 16 + Metrics.sidePad + Isle.zeraGap / 2) * 2))
+        // Wide enough that a meeting's title and detail aren't cut off left of Zera.
+        Isle.bannerWidth(buttons: max(84, primary.fittedWidth) + snooze.fittedWidth + Metrics.rowButton + 16)
     }
     let countdownLine = BannerCountdownLine()
     var say: ((String, ZeraMood) -> Void)?

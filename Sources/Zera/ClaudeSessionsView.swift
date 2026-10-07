@@ -226,7 +226,7 @@ final class ClaudeSessionRow: NSView {
     var selected = false { didSet { if selected != oldValue { restyle() } } }
 
     private let tile = SessionIconTile()
-    private let title = label(NSFont.systemFont(ofSize: 15, weight: .semibold), Pal.text)
+    private let title = label(Typo.rowTitleStrong, Pal.text)
     private let meta = label(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
     private let chip = PRStatusChip()
     private let time = label(NSFont.systemFont(ofSize: 12, weight: .medium), Pal.textSecondary)
@@ -329,7 +329,7 @@ final class ClaudeSessionRow: NSView {
         // Chip and time side by side; the column grows so the time is never cut off.
         let cw = min(112, chip.fittedWidth)
         let timeW = ceil(time.attributedStringValue.size().width) + 4
-        let statusW = max(156, cw + 8 + timeW)
+        let statusW = max(128, cw + 8 + timeW)
         let sx = actionsLeft - 14 - statusW
 
         // Title and folder, plus a third line (progress or a note) when there is one, centred

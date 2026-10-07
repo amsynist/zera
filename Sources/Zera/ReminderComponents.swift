@@ -157,7 +157,7 @@ final class AgendaRow: NSView {
     private let timeLabel = rlabel(NSFont.systemFont(ofSize: 13.5, weight: .semibold), Pal.text)
     private let subTimeLabel = rlabel(NSFont.systemFont(ofSize: 11.5, weight: .medium), Pal.textTertiary)
     private let tile = AgendaTile()
-    private let titleLabel = rlabel(NSFont.systemFont(ofSize: 14, weight: .semibold), Pal.text)
+    private let titleLabel = rlabel(Typo.rowTitleStrong, Pal.text)
     private let detailLabel = rlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
     private let chip = PRStatusChip()
     private var check: GHSquareButton!

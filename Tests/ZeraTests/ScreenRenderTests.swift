@@ -146,7 +146,10 @@ final class ScreenRenderTests: XCTestCase {
         let export = TaskExportView(store: tasks)
         export.frame = NSRect(origin: .zero, size: TaskExportView.size)
         panel(export, "18-export")
-        panel(FocusCardView(store: tasks), "19-focus-card")
+        // Sized the way TasksController sizes its panel.
+        let focus = FocusCardView(store: tasks)
+        focus.setFrameSize(NSSize(width: focus.frame.width, height: focus.desiredHeight))
+        panel(focus, "19-focus-card")
         let opener = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 860, height: 760))
         opener.prepare()
         panel(opener, "20-app-opener")
@@ -158,5 +161,105 @@ final class ScreenRenderTests: XCTestCase {
             island(TasksCard(store: tasks), tab: .tasks, "theme-\(t.id)-tasks")
         }
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
+    }
+
+    // MARK: Populated states
+
+    /// A month of commit-made tasks across two projects, with the long repo names real work has.
+    private func sampleMonth() -> TaskStore {
+        let s = TaskStore(url: nil)
+        let cal = Calendar.current
+        let repos = ["portal-web-solutions", "portal-infrastructure", "database-migrations", "aurora-app"]
+        let subjects = ["Fix the nightly export timing out on large studies", "Bump Datadog lambda extension and log sampling",
+                        "Add CSV bill-of-materials endpoint", "Optimize Lambda images and cold starts",
+                        "Restore sign-off flow after the auth refactor", "Normalize artifact spelling in the downloader"]
+        for (n, name) in ["Aurora", "Website"].enumerated() {
+            let p = s.addProject(name)
+            s.link(p, to: "/tmp")
+            var commits: [GitCommit] = []
+            for d in 0..<12 {
+                guard let day = cal.date(byAdding: .day, value: -(d * 2 + n), to: Date()) else { continue }
+                for k in 0..<(1 + d % 3) {
+                    let at = cal.date(bySettingHour: 10 + k * 2, minute: 0, second: 0, of: day) ?? day
+                    commits.append(GitCommit(hash: String(format: "%010x", d * 10 + k + n * 1000), date: at,
+                                             subject: subjects[(d + k + n) % subjects.count], body: "", repo: repos[(d + k + n) % repos.count]))
+                }
+            }
+            s.importCommits(p, tasks: TaskGitSync.tasks(from: commits, project: p, calendar: cal, claude: false),
+                            seen: commits.map(\.hash), through: Date())
+        }
+        s.add("Plan next sprint #Aurora 30m")
+        return s
+    }
+
+    private func samplePRs() -> [GHPullRequest] {
+        let now = Date()
+        func person(_ l: String) -> GHPullRequest.Person { .init(login: l, avatar: nil) }
+        var a = GHPullRequest(id: "acme/portal-web#6327", owner: "acme", repo: "portal-web", number: 6327,
+            title: "Follow-up: direction-aware status axis in validateSubUploadStatusForm",
+            author: person("rraj"), created: now.addingTimeInterval(-47 * 60), updated: now.addingTimeInterval(-5 * 60),
+            url: URL(string: "https://github.com/acme/portal-web/pull/6327")!)
+        a.branch = "fix-qa-shared-status-direction"; a.base = "dev"
+        a.reviewers = [person("lbhatt"), person("theo")]; a.comments = 4
+        a.additions = 13; a.deletions = 2; a.changedFiles = 1
+        a.ci = .failed; a.checksTotal = 6
+        a.failing = [.init(name: "PR Risk Assessment", title: "2 high-risk files changed", summary: "", url: nil),
+                     .init(name: "unit-tests", title: "3 failed", summary: "", url: nil)]
+        a.labels = ["qa", "follow-up"]; a.reviewRequested = true
+        var b = GHPullRequest(id: "acme/aurora#412", owner: "acme", repo: "aurora", number: 412, title: "Add themes: seven built in, plus your own",
+            author: person("you"), created: now.addingTimeInterval(-3 * 3600), updated: now.addingTimeInterval(-20 * 60),
+            url: URL(string: "https://github.com/acme/aurora/pull/412")!)
+        b.ci = .passed; b.review = .approved; b.approvedBy = ["theo"]; b.reviewers = [person("theo")]; b.mine = true
+        b.additions = 812; b.deletions = 140; b.changedFiles = 22
+        var c = GHPullRequest(id: "acme/infra#88", owner: "acme", repo: "infra", number: 88, title: "Bump strawberry-graphql and aiohttp",
+            author: person("dependabot"), created: now.addingTimeInterval(-6 * 3600), updated: now.addingTimeInterval(-2 * 3600),
+            url: URL(string: "https://github.com/acme/infra/pull/88")!)
+        c.ci = .running; c.approvalsWaiting = 1
+        return [a, b, c]
+    }
+
+    func testRenderPopulatedStates() throws {
+        ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
+
+        // Pull requests: the list, and a PR's page.
+        let prs = samplePRs()
+        GitHubService.shared.preview(login: "you", pulls: prs)
+        island(GitHubCard(), tab: .github, "21-pull-requests-list")
+        let detail = GitHubCard()
+        detail.openDetail(prs[0])
+        island(detail, tab: .github, "22-pr-detail")
+
+        // Claude sessions: running, waiting, done.
+        func session(_ id: String, _ title: String, _ status: ClaudeSession.Status, _ ago: TimeInterval) -> ClaudeSession {
+            let s = ClaudeSession(id: id, cwd: "/Users/you/\(id)", at: Date().addingTimeInterval(-ago))
+            s.title = title; s.status = status; s.promptAt = Date().addingTimeInterval(-ago); s.branch = "main"
+            return s
+        }
+        ClaudeActivityService.shared.preview([session("aurora", "Fix the theme picker", .running, 90),
+                                              session("portal", "Why does the nightly export time out?", .waiting, 400),
+                                              session("zera", "Write release notes for v0.1.4", .done, 3000)])
+        island(ClaudeSessionsView(), tab: .claude, "23-claude-sessions")
+
+        // Clipboard with a few kinds of copies.
+        ClipboardStore.shared.preview([
+            ClipItem(kind: .text, text: "Ship the theme picker before Friday — Theo has the review.", bytes: 60, sourceApp: "Slack", fingerprint: "a"),
+            ClipItem(kind: .link, text: "https://github.com/amsynist/zera/pull/11", bytes: 40, sourceApp: "Safari", fingerprint: "b"),
+            ClipItem(kind: .code, text: "swift test --filter ScreenRenderTests", bytes: 38, sourceApp: "Terminal", fingerprint: "c"),
+            ClipItem(kind: .color, text: "#7AA2F7", bytes: 7, sourceApp: "Figma", fingerprint: "d")])
+        island(ClipboardView(), tab: .clipboard, "24-clipboard")
+
+        // Export, every format, on a month of commit work.
+        let month = sampleMonth()
+        for (i, f) in TaskExport.Format.allCases.enumerated() {
+            let v = TaskExportView(store: month)
+            v.frame = NSRect(origin: .zero, size: TaskExportView.size)
+            v.span = .all
+            v.format = f
+            panel(v, "2\(5 + i)-export-\(f.title.lowercased())")
+        }
+        // Tasks, the week view.
+        UserDefaults.standard.set(1, forKey: "tasks.viewSpan")
+        island(TasksCard(store: month), tab: .tasks, "29-tasks-week")
+        UserDefaults.standard.set(0, forKey: "tasks.viewSpan")
     }
 }

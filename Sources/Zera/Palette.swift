@@ -255,23 +255,33 @@ extension Palette {
             path.lineWidth = 1; path.stroke()
             return text.withAlphaComponent(enabled ? 1 : 0.55)
         case .accent, .success:
-            let c = t == .accent ? accent : success
-            let end = t == .accent ? accentDeep : (success.blended(withFraction: 0.18, of: .black) ?? success)
-            let lift: NSColor = pressed ? .black : .white
-            let top = lit || pressed ? (c.blended(withFraction: pressed ? 0.14 : 0.1, of: lift) ?? c) : c
-            if enabled {
+            // One hue, shaded like a macOS push button: a touch lighter at the top, a hairline of
+            // light along the top edge, a soft neutral shadow under it. Hover lifts, press sinks.
+            let c0 = t == .accent ? accent : success
+            let c = pressed && enabled ? (c0.blended(withFraction: 0.14, of: .black) ?? c0)
+                : (lit ? (c0.blended(withFraction: 0.08, of: .white) ?? c0) : c0)
+            let top = (c.blended(withFraction: 0.07, of: .white) ?? c).withAlphaComponent(dim)
+            let bottom = (c.blended(withFraction: 0.07, of: .black) ?? c).withAlphaComponent(dim)
+            // Visual top → bottom whichever way the view is flipped.
+            let down: CGFloat = (NSGraphicsContext.current?.isFlipped ?? false) ? 90 : -90
+            if enabled && !pressed {
                 NSGraphicsContext.saveGraphicsState()
-                let glow = NSShadow()
-                glow.shadowColor = c.withAlphaComponent(lit ? 0.42 : 0.2)
-                glow.shadowBlurRadius = lit ? 12 : 7
-                glow.shadowOffset = NSSize(width: 0, height: -2)
-                glow.set()
-                top.setFill(); path.fill()
+                let drop = NSShadow()
+                drop.shadowColor = NSColor.black.withAlphaComponent(lit ? 0.32 : 0.24)
+                drop.shadowBlurRadius = lit ? 4 : 3
+                drop.shadowOffset = NSSize(width: 0, height: -1)
+                drop.set()
+                bottom.setFill(); path.fill()
                 NSGraphicsContext.restoreGraphicsState()
             }
-            NSGradient(starting: top.withAlphaComponent(dim), ending: end.withAlphaComponent(dim))?.draw(in: path, angle: 0)
-            // A faint sheen on the edge so it reads as glass rather than flat paint.
-            NSColor.white.withAlphaComponent(lit ? 0.2 : 0.12).setStroke(); path.lineWidth = 1; path.stroke()
+            NSGradient(starting: top, ending: bottom)?.draw(in: path, angle: down)
+            NSGraphicsContext.saveGraphicsState()
+            path.addClip()
+            NSGradient(colors: [NSColor.white.withAlphaComponent(pressed ? 0.06 : 0.2), NSColor.white.withAlphaComponent(0)],
+                       atLocations: [0, 0.14], colorSpace: .sRGB)?.draw(in: path.bounds, angle: down)
+            NSGraphicsContext.restoreGraphicsState()
+            (c.blended(withFraction: 0.3, of: .black) ?? c).withAlphaComponent(0.55 * dim).setStroke()
+            path.lineWidth = 1; path.stroke()
             let label = t == .accent ? onAccent : ink(on: c)
             return label.withAlphaComponent(enabled ? 1 : 0.7)
         case .danger, .warning:
