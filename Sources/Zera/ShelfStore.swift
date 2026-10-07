@@ -213,36 +213,63 @@ final class ShelfStore {
 
     // MARK: - Pasteboard ingestion
 
-    /// Pulls everything usable out of a pasteboard. Real files are referenced in place;
-    /// raw content (images, text, snippets) is written into the staging folder.
-    func ingest(pasteboard pb: NSPasteboard) -> Int {
-        if let objs = pb.readObjects(forClasses: [NSURL.self],
-                                     options: [.urlReadingFileURLsOnly: true]) as? [URL],
-           !objs.isEmpty {
-            return add(urls: objs)
-        }
-        var staged: [URL] = []
-        let stamp = Self.stampFormatter.string(from: Date())
+    /// What a drop or paste carries, read straight away (a drag's pasteboard doesn't outlive
+    /// the drop). Real files are referenced in place; raw content becomes a file in staging.
+    enum Payload {
+        case files([URL])
+        case png(Data), tiff(Data), pdf(Data), rtf(Data), link(URL), text(String)
+    }
 
-        if let data = pb.data(forType: .png) {
-            staged.append(write(data, "Image \(stamp).png"))
-        } else if let data = pb.data(forType: .tiff),
-                  let rep = NSBitmapImageRep(data: data),
-                  let png = rep.representation(using: .png, properties: [:]) {
-            staged.append(write(png, "Image \(stamp).png"))
-        } else if let data = pb.data(forType: .pdf) {
-            staged.append(write(data, "Document \(stamp).pdf"))
-        } else if let data = pb.data(forType: .rtf) {
-            staged.append(write(data, "Note \(stamp).rtf"))
-        } else if let str = pb.string(forType: .string), !str.isEmpty {
-            if let u = URL(string: str.trimmingCharacters(in: .whitespacesAndNewlines)),
-               let scheme = u.scheme, scheme == "http" || scheme == "https" {
-                staged.append(writeWebloc(u, "\(u.host ?? "Link") \(stamp).webloc"))
-            } else {
-                staged.append(write(Data(str.utf8), "Note \(stamp).txt"))
-            }
+    /// Cheap: copies the bytes out, converts and writes nothing.
+    static func payload(from pb: NSPasteboard) -> Payload? {
+        if let objs = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !objs.isEmpty {
+            return .files(objs)
         }
-        return add(urls: staged)
+        if let d = pb.data(forType: .png) { return .png(d) }
+        if let d = pb.data(forType: .tiff) { return .tiff(d) }
+        if let d = pb.data(forType: .pdf) { return .pdf(d) }
+        if let d = pb.data(forType: .rtf) { return .rtf(d) }
+        if let str = pb.string(forType: .string), !str.isEmpty {
+            if let u = URL(string: str.trimmingCharacters(in: .whitespacesAndNewlines)), let scheme = u.scheme, scheme == "http" || scheme == "https" {
+                return .link(u)
+            }
+            return .text(str)
+        }
+        return nil
+    }
+
+    /// Pulls everything usable out of a pasteboard, right now.
+    func ingest(pasteboard pb: NSPasteboard) -> Int {
+        guard let p = Self.payload(from: pb) else { return 0 }
+        if case .files(let urls) = p { return add(urls: urls) }
+        return add(urls: stage(p))
+    }
+
+    /// The same, without holding up the screen: files are added at once (and `done` runs before
+    /// this returns); pictures, PDFs and text are converted and written off the main thread,
+    /// then added. `done` gets how many were added, on the main thread.
+    func ingest(_ p: Payload, done: @escaping (Int) -> Void) {
+        if case .files(let urls) = p { done(add(urls: urls)); return }
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let urls = stage(p)
+            DispatchQueue.main.async { done(self.add(urls: urls)) }
+        }
+    }
+
+    /// Writes raw content into the staging folder (any thread).
+    private func stage(_ p: Payload) -> [URL] {
+        let stamp = Self.stampFormatter.string(from: Date())
+        switch p {
+        case .files(let urls): return urls
+        case .png(let d): return [write(d, "Image \(stamp).png")]
+        case .tiff(let d):
+            guard let png = NSBitmapImageRep(data: d)?.representation(using: .png, properties: [:]) else { return [] }
+            return [write(png, "Image \(stamp).png")]
+        case .pdf(let d): return [write(d, "Document \(stamp).pdf")]
+        case .rtf(let d): return [write(d, "Note \(stamp).rtf")]
+        case .link(let u): return [writeWebloc(u, "\(u.host ?? "Link") \(stamp).webloc")]
+        case .text(let s): return [write(Data(s.utf8), "Note \(stamp).txt")]
+        }
     }
 
     /// True when the pasteboard holds only files the shelf already has. Lets a repeat drop
@@ -255,6 +282,7 @@ final class ShelfStore {
         return urls.allSatisfy { known.contains($0.standardizedFileURL.path) }
     }
 
+    // DateFormatter is safe to use from several threads (macOS 10.9+).
     private static let stampFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
@@ -312,36 +340,47 @@ enum ShelfCopier {
     static let maxTextBytes = 256 * 1024
 
     /// What copying `path` would put on the clipboard; nil when the file is gone.
-    static func plan(for path: String) -> Copied? {
+    static func plan(for path: String) -> Copied? { resolve(path)?.how }
+
+    /// The plan, plus the note's text when it pastes as text (read once, for plan and copy both).
+    private static func resolve(_ path: String) -> (how: Copied, text: String?)? {
         guard FileManager.default.fileExists(atPath: path) else { return nil }
         switch ShelfKind(path: path) {
-        case .image: return .image
-        case .link: return linkURL(path) == nil ? .file : .link
+        case .image: return (.image, nil)
+        case .link: return (linkURL(path) == nil ? .file : .link, nil)
         case .text:
             let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? Int.max
-            return size <= maxTextBytes && text(path) != nil ? .text : .file
-        default: return .file
+            if size <= maxTextBytes, let t = text(path) { return (.text, t) }
+            return (.file, nil)
+        default: return (.file, nil)
         }
     }
 
     /// Copies `path` onto `pasteboard` and says how; nil (and nothing changed) when it's gone.
+    /// Instant whatever the size: a picture's pixels are only produced if an app pastes them.
     @discardableResult
     static func copy(_ path: String, to pasteboard: NSPasteboard = .general) -> Copied? {
-        guard let how = plan(for: path) else { return nil }
+        guard let (how, noteText) = resolve(path) else { return nil }
         let fileURL = URL(fileURLWithPath: path)
         pasteboard.clearContents()
         switch how {
         case .image:
             // One item carrying both: apps that take pictures paste the image, Finder the file.
+            // The image data is promised, not made: a PNG goes over as its own bytes, anything
+            // else is converted only when it's asked for.
             let item = NSPasteboardItem()
-            if let img = NSImage(contentsOf: fileURL), let tiff = img.tiffRepresentation {
-                item.setData(tiff, forType: .tiff)
-                if let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) { item.setData(png, forType: .png) }
-            }
             item.setString(fileURL.absoluteString, forType: .fileURL)
+            let provider = ShelfImageProvider(url: fileURL)
+            var types: [NSPasteboard.PasteboardType] = [.png, .tiff]
+            // Its own format too (JPEG, HEIC…): apps that take it paste the file's bytes as they are.
+            if let own = UTType(filenameExtension: fileURL.pathExtension), own.conforms(to: .image), own != .png, own != .tiff {
+                types.insert(NSPasteboard.PasteboardType(own.identifier), at: 0)
+            }
+            item.setDataProvider(provider, forTypes: types)
+            ShelfImageProvider.current = provider
             pasteboard.writeObjects([item])
         case .text:
-            pasteboard.setString(text(path) ?? "", forType: .string)
+            pasteboard.setString(noteText ?? "", forType: .string)
         case .link:
             let u = linkURL(path)!
             pasteboard.writeObjects([u as NSURL])
@@ -372,5 +411,34 @@ enum ShelfCopier {
             if let u = URL(string: String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces)) { return u }
         }
         return nil
+    }
+}
+
+/// Hands a shelf picture to whichever app pastes it, in the form it asks for, at that moment.
+final class ShelfImageProvider: NSObject, NSPasteboardItemDataProvider {
+    /// The pasteboard doesn't keep its provider alive; the latest copy's is kept here until replaced.
+    static var current: ShelfImageProvider?
+    let url: URL
+    init(url: URL) { self.url = url }
+
+    func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType) {
+        if let data = Self.data(url, as: type) { item.setData(data, forType: type) }
+    }
+
+    func pasteboardFinishedWithDataProvider(_ pasteboard: NSPasteboard) {
+        if Self.current === self { Self.current = nil }
+    }
+
+    /// The file's own bytes when it's already in the asked-for format; otherwise converted with ImageIO.
+    static func data(_ url: URL, as type: NSPasteboard.PasteboardType) -> Data? {
+        if let own = UTType(filenameExtension: url.pathExtension), own.identifier == type.rawValue {
+            return try? Data(contentsOf: url, options: .mappedIfSafe)
+        }
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let uti = (type == .png ? UTType.png : UTType.tiff).identifier as CFString
+        let out = NSMutableData()
+        guard let dst = CGImageDestinationCreateWithData(out, uti, 1, nil) else { return nil }
+        CGImageDestinationAddImageFromSource(dst, src, 0, nil)
+        return CGImageDestinationFinalize(dst) ? out as Data : nil
     }
 }

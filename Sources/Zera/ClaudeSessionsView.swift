@@ -226,7 +226,7 @@ final class ClaudeSessionRow: NSView {
     var selected = false { didSet { if selected != oldValue { restyle() } } }
 
     private let tile = SessionIconTile()
-    private let title = label(NSFont.systemFont(ofSize: 15, weight: .semibold), Pal.text)
+    private let title = label(Typo.rowTitleStrong, Pal.text)
     private let meta = label(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
     private let chip = PRStatusChip()
     private let time = label(NSFont.systemFont(ofSize: 12, weight: .medium), Pal.textSecondary)
@@ -307,14 +307,9 @@ final class ClaudeSessionRow: NSView {
         needsLayout = true
     }
 
-    private func restyle() {
-        let p = Pal
-        needsDisplay = true
-        layer?.shadowColor = p.accent.cgColor
-        layer?.shadowOffset = .zero
-        layer?.shadowRadius = 12
-        layer?.shadowOpacity = selected ? 0.35 : 0
-    }
+    /// The shared selected look (accent wash and edge, drawn in `draw`). No glow: inside the
+    /// list's scroll view a glow is clipped to a hard box around the row.
+    private func restyle() { needsDisplay = true }
 
     override func layout() {
         super.layout()
@@ -329,28 +324,33 @@ final class ClaudeSessionRow: NSView {
         // Chip and time side by side; the column grows so the time is never cut off.
         let cw = min(112, chip.fittedWidth)
         let timeW = ceil(time.attributedStringValue.size().width) + 4
-        let statusW = max(156, cw + 8 + timeW)
+        let statusW = max(128, cw + 8 + timeW)
         let sx = actionsLeft - 14 - statusW
 
         // Title and folder, plus a third line (progress or a note) when there is one, centred
         // as a block on the row so the text lines up with the tile and the buttons.
-        let third = (kind == .running && !bar.isHidden) || kind == .waiting
-        let top = (mid - (third ? 30 : 19)).rounded()
+        // Title (18) and folder (16) are one block; a progress bar or a note adds a third line.
+        // The block is centred on the row, so the space above and below it is the same.
+        let running = kind == .running && !bar.isHidden, waiting = kind == .waiting
+        let block: CGFloat = 18 + 3 + 16 + (running ? 8 + 6 : (waiting ? 3 + 16 : 0))
+        let top = (mid - block / 2).rounded()
         let tx: CGFloat = tile.frame.maxX + 12, tw = max(60, sx - 12 - tx)
-        title.frame = NSRect(x: tx, y: top, width: tw, height: 20)
-        meta.frame = NSRect(x: tx, y: top + 22, width: tw, height: 16)
-        // The chip sits on the title's line; completed rows put the note under it.
-        let chipY = kind == .completed && !note.isHidden ? top - 3 : (third ? top - 2 : mid - 12)
+        title.frame = NSRect(x: tx, y: top - 1, width: tw, height: 20)
+        meta.frame = NSRect(x: tx, y: top + 21, width: tw, height: 16)
+        // The chip sits on the title's line (two-line rows: on the row's middle); completed rows
+        // put the note under it.
+        let chipY = kind == .completed && !note.isHidden ? (mid - (24 + 6 + 16) / 2).rounded()
+            : (running || waiting ? top + 9 - 12 : mid - 12)
         chip.frame = NSRect(x: sx, y: chipY, width: cw, height: 24)
         time.frame = NSRect(x: chip.frame.maxX + 8, y: chipY + 4, width: max(0, sx + statusW - chip.frame.maxX - 8), height: 16)
         switch kind {
         case .running:
             let pw: CGFloat = percent.stringValue.isEmpty ? 0 : 40
             let barRight = actionsLeft - 14 - pw
-            bar.frame = NSRect(x: tx, y: top + 50, width: max(40, barRight - tx), height: 6)
-            percent.frame = NSRect(x: barRight + 4, y: top + 45, width: pw - 4, height: 16)
+            bar.frame = NSRect(x: tx, y: top + 45, width: max(40, barRight - tx), height: 6)
+            percent.frame = NSRect(x: barRight + 4, y: top + 40, width: pw - 4, height: 16)
         case .waiting:
-            note.frame = NSRect(x: tx, y: top + 44, width: actionsLeft - 14 - tx, height: 16)
+            note.frame = NSRect(x: tx, y: top + 40, width: actionsLeft - 14 - tx, height: 16)
         case .completed:
             note.frame = NSRect(x: sx, y: chip.frame.maxY + 6, width: statusW, height: 16)
         }

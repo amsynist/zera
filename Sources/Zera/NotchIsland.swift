@@ -17,6 +17,15 @@ enum Isle {
     /// Room around the island inside its window for the glow.
     static let margin: CGFloat = 44
 
+    /// A banner's width: symmetric about Zera, with `bannerText` of room for the heading left of
+    /// her and `buttons` (their total width, gaps included) right of her.
+    static let bannerText: CGFloat = 260
+    static func bannerWidth(buttons: CGFloat) -> CGFloat {
+        let left = Metrics.sidePad + 36 + 12 + bannerText
+        let right = buttons + Metrics.sidePad
+        return ceil((max(left, right) + zeraGap / 2 + 8) * 2)
+    }
+
     /// The tabs at notch level: Home · Claude · Files · Clipboard left of the notch, Tasks ·
     /// PRs · Reminders · Settings right of it.
     static let leftTabs: [CardKind] = [.home, .claude, .shelf, .clipboard]
@@ -362,6 +371,11 @@ final class IslandView: NSView {
         let target = NSRect(x: (centerX - w / 2).rounded(), y: band, width: w, height: h)
         if view !== content {
             dismissContent(direction: direction)
+            // Back to a screen that was still fading out (a quick A → B → A): drop its exit, or
+            // the held-over fade would blank it once it has arrived.
+            view.layer?.removeAnimation(forKey: "leave")
+            view.layer?.removeAnimation(forKey: "slide")
+            view.layer?.opacity = 1
             view.frame = target
             host.addSubview(view)
             content = view

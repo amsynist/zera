@@ -844,7 +844,15 @@ final class ClaudeActivityService {
         return Self.events.contains { ((hooks[$0] as? [[String: Any]]) ?? []).contains(where: Self.entryIsOurs) }
     }
 
-    var isInstalled: Bool { fm.fileExists(atPath: scriptURL.path) && settingsHasEntry }
+    var isInstalled: Bool { previewing || (fm.fileExists(atPath: scriptURL.path) && settingsHasEntry) }
+    private var previewing = false
+
+    /// Shows sample sessions without reading any hooks (the screen renders).
+    func preview(_ list: [ClaudeSession]) {
+        previewing = true
+        sessions = Dictionary(uniqueKeysWithValues: list.map { ($0.id, $0) })
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
 
     private func refreshScriptIfNeeded() {
         guard settingsHasEntry, (try? String(contentsOf: scriptURL, encoding: .utf8)) != Self.script else { return }

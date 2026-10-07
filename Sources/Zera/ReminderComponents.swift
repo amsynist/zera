@@ -157,7 +157,7 @@ final class AgendaRow: NSView {
     private let timeLabel = rlabel(NSFont.systemFont(ofSize: 13.5, weight: .semibold), Pal.text)
     private let subTimeLabel = rlabel(NSFont.systemFont(ofSize: 11.5, weight: .medium), Pal.textTertiary)
     private let tile = AgendaTile()
-    private let titleLabel = rlabel(NSFont.systemFont(ofSize: 14, weight: .semibold), Pal.text)
+    private let titleLabel = rlabel(Typo.rowTitleStrong, Pal.text)
     private let detailLabel = rlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
     private let chip = PRStatusChip()
     private var check: GHSquareButton!
@@ -271,12 +271,8 @@ final class AgendaRow: NSView {
         needsDisplay = true
     }
 
-    private func updateGlow() {
-        layer?.shadowColor = Pal.accent.cgColor
-        layer?.shadowOffset = .zero
-        layer?.shadowRadius = 10
-        layer?.shadowOpacity = selected ? 0.35 : 0
-    }
+    /// Selection is drawn (accent wash and edge); a glow would be clipped square by the list.
+    private func updateGlow() { layer?.shadowOpacity = 0 }
 
     override func layout() {
         super.layout()

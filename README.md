@@ -1,7 +1,7 @@
 <p align="center"><img src="docs/banner.png" alt="Zera — your AI desktop buddy (illustration)" width="100%"></p>
 
 <h1 align="center">Zera</h1>
-<p align="center"><b>Your AI buddy in the notch.</b> A free, open-source macOS app that lives in your notch and helps with your Claude Code sessions, your tasks and timesheets, your files and your day.</p>
+<p align="center"><b>Your AI buddy in the notch.</b> A free, open-source macOS app that lives in your notch: your Mac's vitals, your Claude Code sessions, fresh downloads, tasks and timesheets, and your day. <a href="https://amsynist.github.io/zera/">amsynist.github.io/zera</a></p>
 
 <p align="center">
   <a href="https://github.com/amsynist/zera/releases/latest"><img src="https://img.shields.io/github/v/release/amsynist/zera?label=download&color=4dbdff" alt="Latest release"></a>
@@ -10,18 +10,28 @@
 </p>
 
 <p align="center">
-  <a href="docs/zera-tour.mp4"><img src="docs/zera-tour.webp" alt="A tour of Zera: the notch opens into Home, Claude sessions, the Shelf, Clipboard and Tasks; the work done by day; pull requests, reminders and settings; a meeting heads-up; the focus orb with quick add and its focus card; the timesheet export copying a day; the app opener with ⌘K actions; and Claude Code in the wings, approving a command and replying when it's done" width="100%"></a><br>
-  <sub>Recorded from the app with sample data. <a href="docs/zera-tour.mp4">Watch in full resolution (MP4, 1080p)</a>.</sub>
+  <a href="site/assets/zera-film.mp4"><img src="docs/zera-whats-new.webp" alt="What's new in Zera: the vitals strip on Home and the This Mac page, the Shelf's Fresh tab with a download arriving, clipboard, the week's tasks, pull request approvals and a PR's page, Claude sessions, the low-battery banner, and the Excel export" width="100%"></a><br>
+  <sub>What's new, recorded from the app with sample data. <a href="site/assets/zera-film.mp4">1080p MP4</a> · <a href="docs/zera-tour.mp4">the full tour</a></sub>
 </p>
+
+## What's new
+
+- **Your Mac at a glance:** a vitals strip on Home (CPU, memory, GPU, Wi-Fi, battery). Tap it for **This Mac**: per-core load, a minute of network and GPU, memory by kind, battery health and cycles, and an internet speed test on demand.
+- **Shelf · Fresh:** new files from Downloads, Desktop and folders you add, newest first. Tap to copy, drag straight into Slack, Mail or Finder.
+- **Battery alerts:** a banner and its own sound when the battery crosses your mark, and optionally when its health drops.
+- **Approvals:** your open PRs that someone approved now show up too, with who approved them.
+- **Themes:** Zera, Tokyo Night, Dracula, Catppuccin, Nord, Rosé Pine and Gruvbox, or your own from a JSON file.
+- **Snappier:** tabs switch in a few milliseconds, the Shelf copies pictures instantly, and drops land in the same frame.
 
 ## What it does
 
 - **Notch island** — hover Zera and the notch opens into tabs: Home, Claude, Files, Clipboard, Tasks, Pull requests, Reminders, Settings.
+- **Vitals** — CPU, memory, GPU, network and battery on Home; This Mac for the detail and a speed test.
 - **Claude Code, live** — wings beside the notch show what each session is doing; approve its commands and reply when it's done, without the terminal.
 - **Tasks and focus** — projects, a to-do list and a focus orb that times your work. Add with `Write docs #project 30m` or ⌥⌘T from anywhere.
 - **Timesheets from commits** — link a project to its repos and your commits become done tasks, grouped by Claude. Click a day to copy it, or export to Excel, CSV or text.
-- **Files** — drop files on the notch and ask Claude to summarize, explain or extract.
-- **Clipboard history**, **pull requests** (reviews, checks, approvals), **reminders and calendar** with meeting heads-ups.
+- **Files** — drop files on the notch, tap to copy, or ask Claude to summarize, explain or extract. **Fresh** lists what just landed in your Downloads and Desktop.
+- **Clipboard history**, **pull requests** (reviews, checks, approvals), **reminders and calendar** with meeting heads-ups, **battery alerts**.
 - **App opener** — ⌥Space brings down a tree of your apps and commands, with ⌘K actions.
 
 No account and no API key: Claude runs through your existing Claude Code login.
@@ -48,7 +58,8 @@ Everything is in **Settings → Integrations**:
 
 No account, analytics, telemetry or update service. Everything stays on your Mac; file contents and
 commit messages go to Claude only through your own Claude Code login, and only when you ask (or link a
-project). Tokens live in your Keychain. Details in [SECURITY.md](SECURITY.md) and
+project). Fresh reads only file names, sizes and dates, and the speed test runs only when you press it.
+Tokens live in your Keychain. Details in [SECURITY.md](SECURITY.md) and
 [docs/PRIVACY_DATA_MAP.md](docs/PRIVACY_DATA_MAP.md).
 
 ## Build from source

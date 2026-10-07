@@ -91,6 +91,10 @@ final class ScreenRenderTests: XCTestCase {
     func testRenderEveryScreen() throws {
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
         let tasks = sampleTasks()
+        // Home's vitals strip shows this machine's readings.
+        SystemVitals.shared.watch()
+        defer { SystemVitals.shared.unwatch() }
+        RunLoop.main.run(until: Date().addingTimeInterval(2.2))
 
         island(HomeCard(), tab: .home, "01-home")
         island(ClaudeSessionsView(), tab: .claude, "02-claude")
@@ -146,7 +150,10 @@ final class ScreenRenderTests: XCTestCase {
         let export = TaskExportView(store: tasks)
         export.frame = NSRect(origin: .zero, size: TaskExportView.size)
         panel(export, "18-export")
-        panel(FocusCardView(store: tasks), "19-focus-card")
+        // Sized the way TasksController sizes its panel.
+        let focus = FocusCardView(store: tasks)
+        focus.setFrameSize(NSSize(width: focus.frame.width, height: focus.desiredHeight))
+        panel(focus, "19-focus-card")
         let opener = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 860, height: 760))
         opener.prepare()
         panel(opener, "20-app-opener")
@@ -158,5 +165,324 @@ final class ScreenRenderTests: XCTestCase {
             island(TasksCard(store: tasks), tab: .tasks, "theme-\(t.id)-tasks")
         }
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
+    }
+
+    // MARK: Populated states
+
+    /// A month of commit-made tasks across two projects, with the long repo names real work has.
+    private func sampleMonth() -> TaskStore {
+        let s = TaskStore(url: nil)
+        let cal = Calendar.current
+        let repos = ["portal-web-solutions", "portal-infrastructure", "database-migrations", "aurora-app"]
+        let subjects = ["Fix the nightly export timing out on large studies", "Bump Datadog lambda extension and log sampling",
+                        "Add CSV bill-of-materials endpoint", "Optimize Lambda images and cold starts",
+                        "Restore sign-off flow after the auth refactor", "Normalize artifact spelling in the downloader"]
+        for (n, name) in ["Aurora", "Website"].enumerated() {
+            let p = s.addProject(name)
+            s.link(p, to: "/tmp")
+            var commits: [GitCommit] = []
+            for d in 0..<12 {
+                guard let day = cal.date(byAdding: .day, value: -(d * 2 + n), to: Date()) else { continue }
+                for k in 0..<(1 + d % 3) {
+                    let at = cal.date(bySettingHour: 10 + k * 2, minute: 0, second: 0, of: day) ?? day
+                    commits.append(GitCommit(hash: String(format: "%010x", d * 10 + k + n * 1000), date: at,
+                                             subject: subjects[(d + k + n) % subjects.count], body: "", repo: repos[(d + k + n) % repos.count]))
+                }
+            }
+            s.importCommits(p, tasks: TaskGitSync.tasks(from: commits, project: p, calendar: cal, claude: false),
+                            seen: commits.map(\.hash), through: Date())
+        }
+        s.add("Plan next sprint #Aurora 30m")
+        return s
+    }
+
+    private func samplePRs() -> [GHPullRequest] {
+        let now = Date()
+        func person(_ l: String) -> GHPullRequest.Person { .init(login: l, avatar: nil) }
+        var a = GHPullRequest(id: "acme/portal-web#6327", owner: "acme", repo: "portal-web", number: 6327,
+            title: "Follow-up: direction-aware status axis in validateSubUploadStatusForm",
+            author: person("rraj"), created: now.addingTimeInterval(-47 * 60), updated: now.addingTimeInterval(-5 * 60),
+            url: URL(string: "https://github.com/acme/portal-web/pull/6327")!)
+        a.branch = "fix-qa-shared-status-direction"; a.base = "dev"
+        a.reviewers = [person("lbhatt"), person("theo")]; a.comments = 4
+        a.additions = 13; a.deletions = 2; a.changedFiles = 1
+        a.ci = .failed; a.checksTotal = 6
+        a.failing = [.init(name: "PR Risk Assessment", title: "2 high-risk files changed", summary: "", url: nil),
+                     .init(name: "unit-tests", title: "3 failed", summary: "", url: nil)]
+        a.labels = ["qa", "follow-up"]; a.reviewRequested = true
+        var b = GHPullRequest(id: "acme/aurora#412", owner: "acme", repo: "aurora", number: 412, title: "Add themes: seven built in, plus your own",
+            author: person("you"), created: now.addingTimeInterval(-3 * 3600), updated: now.addingTimeInterval(-20 * 60),
+            url: URL(string: "https://github.com/acme/aurora/pull/412")!)
+        b.ci = .passed; b.review = .approved; b.approvedBy = ["theo"]; b.reviewers = [person("theo")]; b.mine = true
+        b.additions = 812; b.deletions = 140; b.changedFiles = 22
+        var c = GHPullRequest(id: "acme/infra#88", owner: "acme", repo: "infra", number: 88, title: "Bump strawberry-graphql and aiohttp",
+            author: person("dependabot"), created: now.addingTimeInterval(-6 * 3600), updated: now.addingTimeInterval(-2 * 3600),
+            url: URL(string: "https://github.com/acme/infra/pull/88")!)
+        c.ci = .running; c.approvalsWaiting = 1
+        // Yours from last week, approved since: only under Approvals.
+        var d = GHPullRequest(id: "acme/aurora#398", owner: "acme", repo: "aurora", number: 398, title: "Cache avatars on disk between launches",
+            author: person("you"), created: now.addingTimeInterval(-6 * 86400), updated: now.addingTimeInterval(-40 * 60),
+            url: URL(string: "https://github.com/acme/aurora/pull/398")!)
+        d.mine = true; d.ci = .passed; d.review = .approved; d.approvedBy = ["lbhatt", "theo"]; d.reviewers = [person("lbhatt"), person("theo")]
+        return [a, b, c, d]
+    }
+
+    func testRenderPopulatedStates() throws {
+        ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
+
+        // Pull requests: the list, and a PR's page.
+        let prs = samplePRs()
+        GitHubService.shared.preview(login: "you", pulls: prs)
+        island(GitHubCard(), tab: .github, "21-pull-requests-list")
+        let detail = GitHubCard()
+        detail.openDetail(prs[0])
+        island(detail, tab: .github, "22-pr-detail")
+        let approvals = GitHubCard()
+        approvals.selectTab(3)
+        island(approvals, tab: .github, "35-pr-approvals")
+        approvals.selectTab(0)
+
+        // Claude sessions: running, waiting, done.
+        func session(_ id: String, _ title: String, _ status: ClaudeSession.Status, _ ago: TimeInterval) -> ClaudeSession {
+            let s = ClaudeSession(id: id, cwd: "/Users/you/\(id)", at: Date().addingTimeInterval(-ago))
+            s.title = title; s.status = status; s.promptAt = Date().addingTimeInterval(-ago); s.branch = "main"
+            return s
+        }
+        ClaudeActivityService.shared.preview([session("aurora", "Fix the theme picker", .running, 90),
+                                              session("portal", "Why does the nightly export time out?", .waiting, 400),
+                                              session("zera", "Write release notes for v0.1.4", .done, 3000)])
+        island(ClaudeSessionsView(), tab: .claude, "23-claude-sessions")
+
+        // Clipboard with a few kinds of copies.
+        ClipboardStore.shared.preview([
+            ClipItem(kind: .text, text: "Ship the theme picker before Friday — Theo has the review.", bytes: 60, sourceApp: "Slack", fingerprint: "a"),
+            ClipItem(kind: .link, text: "https://github.com/amsynist/zera/pull/11", bytes: 40, sourceApp: "Safari", fingerprint: "b"),
+            ClipItem(kind: .code, text: "swift test --filter ScreenRenderTests", bytes: 38, sourceApp: "Terminal", fingerprint: "c"),
+            ClipItem(kind: .color, text: "#7AA2F7", bytes: 7, sourceApp: "Figma", fingerprint: "d")])
+        island(ClipboardView(), tab: .clipboard, "24-clipboard")
+
+        // Export, every format, on a month of commit work.
+        let month = sampleMonth()
+        for (i, f) in TaskExport.Format.allCases.enumerated() {
+            let v = TaskExportView(store: month)
+            v.frame = NSRect(origin: .zero, size: TaskExportView.size)
+            v.span = .all
+            v.format = f
+            panel(v, "2\(5 + i)-export-\(f.title.lowercased())")
+        }
+        // Home with this Mac's vitals, and the This Mac page (live readings from the machine).
+        SystemVitals.shared.watch()
+        RunLoop.main.run(until: Date().addingTimeInterval(2.2))
+        island(HomeCard(), tab: .home, "30-home-vitals")
+        let mac = HomeCard()
+        mac.setVitals(true, animated: false)
+        island(mac, tab: .home, "31-this-mac")
+        SystemVitals.shared.unwatch()
+
+        // The low-battery banner.
+        var w = false, c = false
+        if let low = BatteryAlerts.lowAlert(VitalsSample.Battery(percent: 18, charging: false, onPower: false, toEmpty: 64),
+                                            threshold: 20, enabled: true, warned: &w, warnedCritical: &c) {
+            ReminderService.shared.preview(low)
+            island(ReminderAlertCard(), tab: nil, "34-banner-battery")
+        }
+
+        // Shelf · Fresh: new files in the (render home's) Downloads and Desktop.
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        for (folder, names) in [("Downloads", ["Invoice-October.pdf", "team-offsite-photos.zip", "design-review.mov"]),
+                                ("Desktop", ["Screenshot 2026-10-07 at 20.41.12.png", "Q3 roadmap.key"])] {
+            let dir = home.appendingPathComponent(folder, isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            for n in names where !FileManager.default.fileExists(atPath: dir.appendingPathComponent(n).path) {
+                try Data(repeating: 7, count: 180_000).write(to: dir.appendingPathComponent(n))
+            }
+        }
+        UserDefaults.standard.set(true, forKey: "zera.shelf.freshTab")
+        FreshFiles.shared.start()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        let freshShelf = DropFilesView()
+        freshShelf.willShow()
+        island(freshShelf, tab: .shelf, "32-shelf-fresh")
+        UserDefaults.standard.set(false, forKey: "zera.shelf.freshTab")
+        let shelfSettings = SettingsCard(defaultKind: .shelf, showingZera: true, loginEnabled: false)
+        shelfSettings.select(.shelf)
+        island(shelfSettings, tab: .settings, "33-settings-shelf")
+
+        // Tasks, the week view.
+        UserDefaults.standard.set(1, forKey: "tasks.viewSpan")
+        island(TasksCard(store: month), tab: .tasks, "29-tasks-week")
+        UserDefaults.standard.set(0, forKey: "tasks.viewSpan")
+    }
+
+    // MARK: Tour frames
+
+    /// Records the new screens moving, for the site's film: `ZERA_TOUR_FRAMES=1` with
+    /// ZERA_RENDER_SCREENS pointing at an empty folder. Writes frames/NNNNN.jpg, times.json and
+    /// scenes.json (when each scene starts).
+    func testRecordTour() throws {
+        guard ProcessInfo.processInfo.environment["ZERA_TOUR_FRAMES"] != nil else { throw XCTSkip("set ZERA_TOUR_FRAMES to record") }
+        ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
+        let frames = out.appendingPathComponent("frames", isDirectory: true)
+        try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
+
+        // One window for everything: the island on top, room below for Export.
+        let size = NSSize(width: 900, height: 860)
+        let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 40, y: 40), size: size), styleMask: .borderless, backing: .buffered, defer: false)
+        w.backgroundColor = desk
+        w.appearance = NSAppearance(named: .darkAqua)
+        let root = FlippedView(frame: NSRect(origin: .zero, size: size))
+        w.contentView = root
+        w.orderFrontRegardless()
+        let iv = IslandView(frame: NSRect(x: 0, y: 0, width: size.width, height: band + Isle.maxContentHeight + 40))
+        iv.band = band
+        iv.notchWidth = 190
+        iv.centerX = size.width / 2
+        root.addSubview(iv)
+
+        var times: [Double] = []
+        var scenes: [[String: Any]] = []
+        let start = CACurrentMediaTime()
+        let encode = DispatchQueue(label: "tour-encode")
+        let group = DispatchGroup()
+        func capture() {
+            guard let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), .bestResolution) else { return }
+            let n = times.count
+            times.append(CACurrentMediaTime() - start)
+            group.enter()
+            encode.async {
+                let rep = NSBitmapImageRep(cgImage: cg)
+                try? rep.representation(using: .jpeg, properties: [.compressionFactor: 0.93])?
+                    .write(to: frames.appendingPathComponent(String(format: "%05d.jpg", n)))
+                group.leave()
+            }
+        }
+        func run(_ seconds: Double) {
+            let end = CACurrentMediaTime() + seconds
+            var next = CACurrentMediaTime()
+            while CACurrentMediaTime() < end {
+                next += 1.0 / 30
+                RunLoop.main.run(until: Date().addingTimeInterval(max(0.001, next - CACurrentMediaTime())))
+                capture()
+            }
+        }
+        func scene(_ name: String) { scenes.append(["name": name, "t": CACurrentMediaTime() - start]) }
+        func show(_ c: NSView & CardContent, tab: CardKind?, direction: CGFloat) {
+            c.setFrameSize(NSSize(width: c.cardWidth, height: 400))
+            c.needsLayout = true
+            c.layoutSubtreeIfNeeded()
+            iv.present(c, size: NSSize(width: c.cardWidth, height: min(c.desiredHeight, Isle.maxContentHeight)), direction: direction, animated: true)
+            iv.activeTab = tab
+        }
+
+        // Data: live vitals, sample PRs, sessions, clipboard, a month of tasks, fresh downloads.
+        SystemVitals.shared.watch()
+        GitHubService.shared.preview(login: "you", pulls: samplePRs())
+        let month = sampleMonth()
+        ClipboardStore.shared.preview([
+            ClipItem(kind: .text, text: "Ship the theme picker before Friday — Theo has the review.", bytes: 60, sourceApp: "Slack", fingerprint: "a"),
+            ClipItem(kind: .link, text: "https://github.com/amsynist/zera/pull/11", bytes: 40, sourceApp: "Safari", fingerprint: "b"),
+            ClipItem(kind: .code, text: "swift test --filter ScreenRenderTests", bytes: 38, sourceApp: "Terminal", fingerprint: "c"),
+            ClipItem(kind: .color, text: "#9D8CFF", bytes: 7, sourceApp: "Figma", fingerprint: "d")])
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let downloads = home.appendingPathComponent("Downloads", isDirectory: true)
+        for (folder, names) in [("Downloads", ["Invoice-October.pdf", "team-offsite-photos.zip", "design-review.mov"]),
+                                ("Desktop", ["Q3 roadmap.key"])] {
+            let dir = home.appendingPathComponent(folder, isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            for n in names where !FileManager.default.fileExists(atPath: dir.appendingPathComponent(n).path) {
+                try Data(repeating: 7, count: 240_000).write(to: dir.appendingPathComponent(n))
+            }
+        }
+        let arriving = downloads.appendingPathComponent("Screenshot 2026-10-08 at 09.41.12.png")
+        try? FileManager.default.removeItem(at: arriving)
+        UserDefaults.standard.set(true, forKey: "zera.shelf.freshTab")
+        FreshFiles.shared.start()
+        RunLoop.main.run(until: Date().addingTimeInterval(2.2))   // vitals have a minute to fill in a little
+
+        // 1. Home with the vitals strip.
+        let homeCard = HomeCard()
+        scene("home")
+        show(homeCard, tab: .home, direction: 0)
+        run(3.6)
+        // 2. Tap the strip: This Mac.
+        scene("thismac")
+        homeCard.setVitals(true)
+        homeCard.layoutSubtreeIfNeeded()
+        show(homeCard, tab: .home, direction: 0)
+        run(4.2)
+        // 3. Shelf · Fresh, and a download lands.
+        let shelf = DropFilesView()
+        shelf.willShow()
+        scene("fresh")
+        show(shelf, tab: .shelf, direction: 1)
+        run(1.6)
+        try Data(repeating: 9, count: 1_900_000).write(to: arriving)
+        run(2.8)
+        // 4. Clipboard.
+        let clip = ClipboardView()
+        clip.willShow()
+        scene("clipboard")
+        show(clip, tab: .clipboard, direction: 1)
+        run(2.4)
+        // 5. Tasks, the week.
+        UserDefaults.standard.set(1, forKey: "tasks.viewSpan")
+        let tasksCard = TasksCard(store: month)
+        scene("tasks")
+        show(tasksCard, tab: .tasks, direction: 1)
+        run(2.6)
+        UserDefaults.standard.set(0, forKey: "tasks.viewSpan")
+        // 6. Pull requests: Approvals, then a PR's page.
+        let gh = GitHubCard()
+        gh.selectTab(3)
+        scene("approvals")
+        show(gh, tab: .github, direction: 1)
+        run(2.4)
+        scene("prpage")
+        gh.openDetail(samplePRs()[0])
+        show(gh, tab: .github, direction: 0)
+        run(2.6)
+        gh.selectTab(0)
+        // 7. Claude sessions.
+        func session(_ id: String, _ title: String, _ status: ClaudeSession.Status, _ ago: TimeInterval) -> ClaudeSession {
+            let s = ClaudeSession(id: id, cwd: "/Users/you/\(id)", at: Date().addingTimeInterval(-ago))
+            s.title = title; s.status = status; s.promptAt = Date().addingTimeInterval(-ago); s.branch = "main"
+            return s
+        }
+        ClaudeActivityService.shared.preview([session("aurora", "Fix the theme picker", .running, 90),
+                                              session("portal", "Why does the nightly export time out?", .waiting, 400),
+                                              session("zera", "Write release notes for v0.1.4", .done, 3000)])
+        scene("claude")
+        show(ClaudeSessionsView(), tab: .claude, direction: -1)
+        run(2.6)
+        // 8. The battery banner.
+        var warned = false, critical = false
+        if let low = BatteryAlerts.lowAlert(VitalsSample.Battery(percent: 18, charging: false, onPower: false, toEmpty: 64),
+                                            threshold: 20, enabled: true, warned: &warned, warnedCritical: &critical) {
+            ReminderService.shared.preview(low)
+        }
+        scene("battery")
+        show(ReminderAlertCard(), tab: nil, direction: 0)
+        run(2.8)
+        // 9. Export: Timesheet, then Excel.
+        let export = TaskExportView(store: month)
+        export.span = .all
+        export.frame = NSRect(x: (size.width - TaskExportView.size.width) / 2, y: (size.height - TaskExportView.size.height) / 2,
+                              width: TaskExportView.size.width, height: TaskExportView.size.height)
+        iv.isHidden = true
+        root.addSubview(export)
+        scene("export")
+        run(1.8)
+        export.format = .xlsx
+        run(2.2)
+        scene("end")
+        run(0.3)
+
+        group.wait()
+        SystemVitals.shared.unwatch()
+        UserDefaults.standard.set(false, forKey: "zera.shelf.freshTab")
+        w.orderOut(nil)
+        try JSONSerialization.data(withJSONObject: times).write(to: out.appendingPathComponent("times.json"))
+        try JSONSerialization.data(withJSONObject: scenes).write(to: out.appendingPathComponent("scenes.json"))
+        print("tour: \(times.count) frames, \(String(format: "%.1f", times.last ?? 0)) s")
     }
 }

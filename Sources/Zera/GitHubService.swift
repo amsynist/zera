@@ -207,6 +207,16 @@ final class GitHubService {
 
     var isConnected: Bool { token != nil && login != nil }
 
+    /// Shows sample PRs without a token or a request (the screen renders).
+    func preview(login: String, pulls: [GHPullRequest]) {
+        cachedToken = .some("preview")
+        self.login = login
+        self.pulls = pulls
+        lastChecked = Date().addingTimeInterval(-60)
+        lastError = nil
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+
     private func save(token: String) throws {
         guard KeychainStore.write(token, to: .githubToken) else { throw GHError.badResponse }
         cachedToken = .some(token)
@@ -303,6 +313,9 @@ final class GitHubService {
             let involving = (try? await searchPRs("is:pr is:open involves:@me \(since)", token: token)) ?? []
             let mine = (try? await searchPRs("is:pr is:open user:@me \(since)", token: token)) ?? []
             let reviews = (try? await searchPRs("is:pr is:open review-requested:@me \(since)", token: token)) ?? []
+            // Your open PRs that someone approved, however old: they belong under Approvals.
+            let approvedMine = (try? await searchPRs("is:pr is:open author:@me review:approved archived:false", token: token)) ?? []
+            let approvedMineIDs = Set(approvedMine.map { $0.id })
             if live.isEmpty && involving.isEmpty && mine.isEmpty && reviews.isEmpty {
                 // Everything failed at once — surface it rather than pretending the board is clear.
                 _ = try await searchPRs("is:pr is:open involves:@me \(since)", token: token)
@@ -314,13 +327,15 @@ final class GitHubService {
             // Merge the sources; the live pull lists carry the most detail, so they win.
             var prs: [PRRef] = []
             var seenIDs = Set<String>()
-            for pr in live + involving + mine + reviews where !seenIDs.contains(pr.id) && pr.created >= openedCutoff {
+            for pr in live + involving + mine + reviews + approvedMine
+            where !seenIDs.contains(pr.id) && (pr.created >= openedCutoff || approvedMineIDs.contains(pr.id)) {
                 seenIDs.insert(pr.id)
                 prs.append(pr)
             }
             prs.sort { $0.updated > $1.updated }
 
-            for pr in prs where pr.author == login || relevantIDs.contains(pr.id) {
+            // Older approved PRs of yours are listed, not announced again.
+            for pr in prs where pr.created >= openedCutoff && (pr.author == login || relevantIDs.contains(pr.id)) {
                 let isReview = reviewIDs.contains(pr.id)
                 let kind: GHEvent.Kind = isReview ? .reviewRequested : .prOpened
                 let who = pr.author == login ? "" : " · by \(pr.author)"

@@ -10,8 +10,8 @@ import AppKit
 /// is a call link) or Got it; break nudges get Taking it.
 final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
     var cardWidth: CGFloat {
-        // Wide enough that a meeting's title isn't cut off left of Zera (540 left it ~144 pt).
-        max(620, ceil((max(84, primary.fittedWidth) + snooze.fittedWidth + Metrics.rowButton + 16 + Metrics.sidePad + Isle.zeraGap / 2) * 2))
+        // Wide enough that a meeting's title and detail aren't cut off left of Zera.
+        Isle.bannerWidth(buttons: max(84, primary.fittedWidth) + snooze.fittedWidth + Metrics.rowButton + 16)
     }
     let countdownLine = BannerCountdownLine()
     var say: ((String, ZeraMood) -> Void)?
@@ -81,6 +81,8 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         let pose: String
         if a.kind == .breakTime {
             look = .source(.custom); pose = "cozy"
+        } else if a.kind == .battery {
+            look = .reminder; pose = "worried"
         } else if a.hydration {
             look = .hydration; pose = "boba"
         } else if let eid = a.eventID {
@@ -100,9 +102,15 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         counter.stringValue = svc.pendingAlerts.count > 1 ? "1 of \(svc.pendingAlerts.count)" : ""
         setAccessibilityLabel("\(a.headline). \(a.detail)")
 
+        if a.kind != .battery { snooze.setSymbol("moon.zzz.fill") }
         if a.kind == .breakTime {
             primary.setTitleText("Taking it ☕")
             snooze.setTitleText("Later")
+        } else if a.kind == .battery {
+            primary.setTitleText("Got it")
+            primary.style = .success
+            snooze.setTitleText("Battery settings")
+            snooze.setSymbol("gearshape")
         } else if a.isEvent {
             primary.setTitleText(a.joinURL != nil ? "Join call" : "Got it")
             primary.style = a.joinURL != nil ? .primary : .success
@@ -119,6 +127,12 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
 
     @objc private func snoozeTapped() {
         guard let a = current else { return }
+        if a.kind == .battery {
+            // Low Power Mode and the battery's details live in System Settings.
+            if let u = URL(string: "x-apple.systempreferences:com.apple.Battery-Settings.extension") { NSWorkspace.shared.open(u) }
+            ReminderService.shared.dismiss(a)
+            return
+        }
         ZeraDropdown.shared.show(snoozeItems { [weak self] until, label in
             ReminderService.shared.snooze(a, until: until)
             self?.say?(a.kind == .breakTime ? "okay, a bit later ☕" : "okay — I'll remind you in \(label) 😴", .sleepy)
@@ -131,6 +145,9 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         if a.kind == .breakTime {
             svc.dismiss(a)
             say?("enjoy it! ☕", .cozy)
+        } else if a.kind == .battery {
+            svc.dismiss(a)
+            say?("I'll keep an eye on it 🔋", .happy)
         } else if a.isEvent {
             if let u = a.joinURL { NSWorkspace.shared.open(u) }
             svc.dismiss(a)

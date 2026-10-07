@@ -103,7 +103,7 @@ final class PullRequestRow: NSView {
         addSubview(repoLine)
 
         title.stringValue = pr.title
-        title.font = NSFont.systemFont(ofSize: 14.5, weight: isNew ? .bold : .semibold)
+        title.font = isNew ? NSFont.systemFont(ofSize: Typo.rowTitleStrong.pointSize, weight: .bold) : Typo.rowTitleStrong
         title.textColor = p.text
         title.lineBreakMode = .byTruncatingTail
         title.toolTip = pr.title
@@ -132,7 +132,11 @@ final class PullRequestRow: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     private func updateMeta(showStatus: Bool) {
-        var s = "@\(pr.author.login)  ·  \(longAgo(pr.updated))"
+        // Your own PR: who approved it says more than your own name.
+        let approvers = pr.mine ? pr.approvedBy.filter { $0 != pr.author.login } : []
+        var s = approvers.isEmpty ? "@\(pr.author.login)  ·  \(longAgo(pr.updated))"
+            : "approved by " + approvers.prefix(2).map { "@\($0)" }.joined(separator: ", ")
+              + (approvers.count > 2 ? " +\(approvers.count - 2)" : "") + "  ·  \(longAgo(pr.updated))"
         if pr.draft { s += "  ·  draft" }
         if showStatus { s += "  ·  \(prStatus(pr).text)" }
         meta.stringValue = s
@@ -264,7 +268,12 @@ final class PRDetailView: NSView {
 
     let pr: GHPullRequest
     private var back: PRActionButton!
-    private let panel = NSView()
+    private let panel = FlippedView()
+    /// The panel scrolls when a PR has more to say than the island has room for.
+    private let panelScroll = NSScrollView()
+    private let panelBox = FlippedView()
+    /// Height the page may take; the panel scrolls beyond it.
+    var maxHeight: CGFloat = .greatestFiniteMagnitude
     private let tile = PRRepoTile()
     private let repoLine = NSTextField(labelWithString: "")
     private let title = NSTextField(wrappingLabelWithString: "")
@@ -285,13 +294,22 @@ final class PRDetailView: NSView {
         let p = Pal
         back = PRActionButton("All PRs", style: .secondary, symbol: "chevron.left", target: self, action: #selector(backTapped))
         addSubview(back)
-        panel.wantsLayer = true
-        panel.layer?.cornerRadius = Radius.l + 2
-        panel.layer?.cornerCurve = .continuous
-        panel.layer?.backgroundColor = p.surfaceRow.cgColor
-        panel.layer?.borderWidth = 1
-        panel.layer?.borderColor = p.border.cgColor
-        addSubview(panel)
+        // The box holds the scroll view, so its edge stays whole while a long page scrolls inside it.
+        panelBox.wantsLayer = true
+        panelBox.layer?.cornerRadius = Radius.l + 2
+        panelBox.layer?.cornerCurve = .continuous
+        panelBox.layer?.masksToBounds = true
+        panelBox.layer?.backgroundColor = p.surfaceRow.cgColor
+        panelBox.layer?.borderWidth = 1
+        panelBox.layer?.borderColor = p.border.cgColor
+        panelScroll.documentView = panel
+        panelScroll.drawsBackground = false
+        panelScroll.contentView.drawsBackground = false
+        panelScroll.hasVerticalScroller = false
+        panelScroll.hasHorizontalScroller = false
+        panelScroll.borderType = .noBorder
+        panelBox.addSubview(panelScroll)
+        addSubview(panelBox)
 
         tile.set(owner: pr.owner, mine: pr.mine)
         panel.addSubview(tile)
@@ -334,8 +352,7 @@ final class PRDetailView: NSView {
         for l in pr.labels.prefix(3) { chip("tag.fill", l, p.muted) }
         if pr.comments > 0 { let c = CommentCount(); c.count = pr.comments; chips.append(c); panel.addSubview(c) }
 
-        reviewersCaption.font = NSFont.systemFont(ofSize: 10.5, weight: .bold)
-        reviewersCaption.textColor = p.textTertiary
+        reviewersCaption.attributedStringValue = Typo.sectionText("Reviewers")
         panel.addSubview(reviewersCaption)
         for r in pr.reviewers.prefix(6) {
             let v: GHPullRequest.Review = pr.approvedBy.contains(r.login) ? .approved : (pr.changesBy.contains(r.login) ? .changesRequested : .none)
@@ -344,8 +361,7 @@ final class PRDetailView: NSView {
         }
         reviewersCaption.isHidden = reviewerChips.isEmpty
 
-        checksCaption.font = reviewersCaption.font
-        checksCaption.textColor = p.textTertiary
+        checksCaption.attributedStringValue = Typo.sectionText("Failing checks")
         panel.addSubview(checksCaption)
         for c in pr.failing.prefix(3) {
             let l = NSTextField(labelWithString: "")
@@ -358,13 +374,16 @@ final class PRDetailView: NSView {
         }
         checksCaption.isHidden = checkLines.isEmpty
 
+        // Left to right, the main action last (rightmost, like a dialog's default button).
+        actions.append(PRActionButton("Open in GitHub", style: .secondary, symbol: "arrow.up.right.square", target: self, action: #selector(openTapped)))
+        actions.append(PRActionButton("Summarize", style: .secondary, symbol: "sparkles", target: self, action: #selector(summarizeTapped)))
+        // The page's one filled action: Review, unless runs are waiting on you (Approve runs is green).
+        actions.append(PRActionButton("Review", style: pr.approvalsWaiting > 0 ? .secondary : .primary, symbol: "eye", target: self, action: #selector(reviewTapped)))
         if pr.approvalsWaiting > 0 {
             actions.append(PRActionButton("Approve runs", style: .success, symbol: "hand.thumbsup.fill", target: self, action: #selector(approveTapped(_:))))
         }
-        actions.append(PRActionButton("Review", style: .secondary, symbol: "eye", target: self, action: #selector(reviewTapped)))
-        actions.append(PRActionButton("Summarize", style: .secondary, symbol: "sparkles", target: self, action: #selector(summarizeTapped)))
-        actions.append(PRActionButton("Open in GitHub", style: .secondary, symbol: "arrow.up.right.square", target: self, action: #selector(openTapped)))
-        actions.forEach { panel.addSubview($0) }
+        // In the top row beside All PRs, so they're on screen however long the PR's page is.
+        actions.forEach { addSubview($0) }
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -374,11 +393,19 @@ final class PRDetailView: NSView {
     @objc private func openTapped() { onOpen?() }
     @objc private func approveTapped(_ sender: PRActionButton) { onApprove?(sender) }
 
-    /// Lays everything out for `width` and returns the height it needs.
+    /// Lays everything out for `width` and returns the height it needs (at most `maxHeight`).
     @discardableResult
     func place(width: CGFloat) -> CGFloat {
-        let bw = back.fittedWidth
-        back.frame = NSRect(x: 0, y: 0, width: bw, height: 30)
+        // Top row: All PRs on the left, the PR's actions on the right.
+        let bh = Metrics.headerButton
+        back.frame = NSRect(x: 0, y: 0, width: back.fittedWidth, height: bh)
+        var ax = width
+        for b in actions.reversed() {
+            let w = b.fittedWidth
+            ax -= w
+            b.frame = NSRect(x: max(back.frame.maxX + 8, ax), y: 0, width: w, height: bh)
+            ax -= 8
+        }
         let pw = width, inset: CGFloat = 16
         let tx: CGFloat = inset + 44 + 12
         tile.frame = NSRect(x: inset, y: inset, width: 44, height: 44)
@@ -425,17 +452,13 @@ final class PRDetailView: NSView {
             }
             y += 10
         }
-
-        // Actions, left to right; the last one drops its label to an icon-width if space runs out.
-        x = inset
-        for b in actions {
-            let w = min(b.fittedWidth, pw - inset - x)
-            b.frame = NSRect(x: x, y: y, width: max(34, w), height: 34)
-            x += w + 8
-        }
-        y += 34 + inset
-        panel.frame = NSRect(x: 0, y: 30 + 10, width: pw, height: y)
-        return 30 + 10 + y
+        let panelH = y - 16 + inset
+        panel.frame = NSRect(x: 0, y: 0, width: pw, height: panelH)
+        let top = bh + 12
+        let shown = min(panelH, max(120, maxHeight - top))
+        panelBox.frame = NSRect(x: 0, y: top, width: pw, height: shown)
+        panelScroll.frame = panelBox.bounds
+        return top + shown
     }
 
     override func layout() {
@@ -697,18 +720,22 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
 
     private var gh: GitHubService { GitHubService.shared }
 
-    /// Every tab is a filter over the same set — the PRs opened in the last 24 hours — so no
-    /// tab needs its own request:
-    ///  Open: all of them · Review: not approved yet · CI: those with check runs ·
-    ///  Approvals: the ones you approved.
+    /// Every tab is a filter over the same set, so no tab needs its own request:
+    ///  Open: the PRs opened in the last 24 hours · Review: those not approved yet · CI: those
+    ///  with check runs · Approvals: the ones you approved, and yours that someone approved
+    ///  (however old — the service fetches those too).
     private func pulls(forTab t: Int) -> [GHPullRequest] {
-        let all = gh.pulls
         let me = gh.login ?? ""
+        let cutoff = Date().addingTimeInterval(-GitHubService.openedWindow)
+        let recent = gh.pulls.filter { $0.created >= cutoff }
         switch t {
-        case 1: return all.filter { $0.approvedBy.isEmpty && !gh.isMarkedReviewed($0) }
-        case 2: return all.filter { $0.ci != .none }
-        case 3: return all.filter { !me.isEmpty && $0.approvedBy.contains(me) }
-        default: return all
+        case 1: return recent.filter { $0.approvedBy.isEmpty && !gh.isMarkedReviewed($0) }
+        case 2: return recent.filter { $0.ci != .none }
+        case 3: return gh.pulls.filter { pr in
+            guard !me.isEmpty else { return false }
+            return pr.approvedBy.contains(me) || (pr.mine && pr.approvedBy.contains { $0 != me })
+        }
+        default: return recent
         }
     }
 
@@ -765,7 +792,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
 
         // Tabs.
         let counts = (0..<4).map { pulls(forTab: $0).count }
-        let failing = gh.pulls.filter { $0.ci == .failed }.count
+        let failing = pulls(forTab: 0).filter { $0.ci == .failed }.count
         segmented.items = [
             .init(symbol: "arrow.triangle.branch", title: "Open", count: counts[0], tint: nil),
             .init(symbol: "bubble.left", title: "Review", count: counts[1], tint: nil),
@@ -880,7 +907,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
                 switch Self.tab {
                 case 1: state.set(pose: "card_thumbs_wink", title: "Everything's approved ✨", subtitle: "Every PR opened in the last 24 hours has an approval.")
                 case 2: state.set(pose: "card_sleepy_sit", title: "No checks to show", subtitle: "None of today's PRs have run any checks yet.")
-                default: state.set(pose: "card_read_q", title: "Nothing approved yet", subtitle: "PRs from the last 24 hours that you approve show up here.")
+                default: state.set(pose: "card_read_q", title: "Nothing approved yet", subtitle: "PRs you approve, and yours once someone approves them, show up here.")
                 }
             }
         default: break
@@ -889,9 +916,9 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
 
     /// Her pose and line in the header, and her take in the insight card.
     private func configureZera(failing: Int) {
-        let n = gh.pulls.count
+        let n = pulls(forTab: 0).count
         let reviews = pulls(forTab: 1).count
-        let approvals = gh.pulls.filter { $0.approvalsWaiting > 0 }.count
+        let approvals = pulls(forTab: 0).filter { $0.approvalsWaiting > 0 }.count
         let fresh = gh.unseenPRIDs.count
         let pose: String
         switch mode {
@@ -963,7 +990,11 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         }
     }
 
-    private var detailHeight: CGFloat { detailView?.place(width: L.width - L.pad * 2) ?? 0 }
+    private var detailHeight: CGFloat {
+        guard let d = detailView else { return 0 }
+        d.maxHeight = Isle.maxContentHeight - L.filterY - L.pad
+        return d.place(width: L.width - L.pad * 2)
+    }
 
     var desiredHeight: CGFloat {
         if mode == .disconnected { return L.segY + GHStateView.height + L.pad }
@@ -1016,6 +1047,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         // Body.
         var y = L.listY
         if mode == .detail, let d = detailView {
+            d.maxHeight = Isle.maxContentHeight - L.filterY - L.pad
             let dh = d.place(width: iw)
             d.frame = NSRect(x: x, y: L.filterY, width: iw, height: dh)
             y = L.filterY + dh
@@ -1040,7 +1072,14 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
 
     // MARK: Actions
 
-    private func openDetail(_ pr: GHPullRequest) {
+    /// Switches tab (0 Open … 3 Approvals), as pressing it would.
+    func selectTab(_ i: Int) {
+        Self.tab = i
+        detailID = nil
+        reload()
+    }
+
+    func openDetail(_ pr: GHPullRequest) {
         detailID = pr.id
         gh.markSeen(pr)
         reload()

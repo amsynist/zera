@@ -278,6 +278,14 @@ def _(): return mix(0.75, (marimba(N["A5"], 0.5), 0, 1), (marimba(N["D6"], 0.55)
 @sound("reminder_done", 0.3)
 def _(): return mix(0.5, (pluck(2200, 0.03, 140), 0, 0.6), (bell(N["C7"], 0.4, 10, 0.6), 0.04, 1))
 
+@sound("reminder_battery", 0.36)
+def _():
+    # Running low: three soft bells stepping down (A, E, C) over a gentle downward glide.
+    # No noise, so the other cues' random draws (and files) stay exactly as they were.
+    dip = osc(glide(N["E5"], N["C5"] * 0.75, 0.9, 0.8), 0.9, "sine") * env(0.9, 0.06, 3.5, 0.2)
+    return mix(1.4, (bell(N["A5"], 0.55, 6.5, 0.8), 0, 1), (bell(N["E5"], 0.6, 5.5, 0.8), 0.17, 0.9),
+               (bell(N["C5"], 1.0, 3.4, 0.8), 0.34, 0.95), (dip, 0.3, 0.16))
+
 # ---------------------------------------------------------------- GitHub
 
 @sound("github_ping", 0.3)
