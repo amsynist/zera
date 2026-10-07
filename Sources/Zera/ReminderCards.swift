@@ -11,7 +11,7 @@ import AppKit
 final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
     var cardWidth: CGFloat {
         // Wide enough that a meeting's title isn't cut off left of Zera (540 left it ~144 pt).
-        max(620, ceil((max(80, primary.fittedWidth) + snooze.fittedWidth + 8 + Metrics.sidePad + Isle.zeraGap / 2) * 2))
+        max(620, ceil((max(84, primary.fittedWidth) + snooze.fittedWidth + Metrics.rowButton + 16 + Metrics.sidePad + Isle.zeraGap / 2) * 2))
     }
     let countdownLine = BannerCountdownLine()
     var say: ((String, ZeraMood) -> Void)?
@@ -163,7 +163,6 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         let w = bounds.width
         figure.isHidden = true
         dismissButton.isHidden = false
-        dismissButton.frame = NSRect(x: w - 20 - 22, y: 4, width: 22, height: 22)
         counter.isHidden = true
         let x = Metrics.sidePad
         tile.frame = NSRect(x: x, y: 26, width: 36, height: 36)
@@ -176,7 +175,10 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         headline.frame = NSRect(x: tx, y: 25, width: max(60, half - tx), height: 18)
         detail.frame = NSRect(x: tx, y: 45, width: max(60, half - tx), height: 16)
         let pw = max(84, primary.fittedWidth), bh = Metrics.button
-        primary.frame = NSRect(x: w - x - pw, y: 28, width: pw, height: bh)
+        // ✕ ends the button row, centred on it, at the same margin as everything else.
+        let db = Metrics.rowButton
+        dismissButton.frame = NSRect(x: w - x - db, y: 28 + (bh - db) / 2, width: db, height: db)
+        primary.frame = NSRect(x: dismissButton.frame.minX - 8 - pw, y: 28, width: pw, height: bh)
         let sw = snooze.fittedWidth
         snooze.frame = NSRect(x: primary.frame.minX - 8 - sw, y: 28, width: sw, height: bh)
         countdownLine.frame = NSRect(x: 18, y: bounds.height - 8, width: max(0, w - 36), height: 2)
