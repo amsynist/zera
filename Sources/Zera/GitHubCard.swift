@@ -616,6 +616,8 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
     private var rows: [PullRequestRow] = []
     private let state = GHStateView()
     private var detailView: PRDetailView?
+    /// The PR whose page was showing after the last reload, so only a change animates.
+    private var shownDetailID: String?
     private var detailID: String?
     private let insight = PRInsightCard()
     private let insightZera = NSImageView()
@@ -812,7 +814,11 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
             d.onApprove = { [weak self] b in self?.approve(pr, button: b) }
             addSubview(d)
             detailView = d
+            // A PR you just opened comes in like a page (data refreshes don't replay it).
+            if shownDetailID != id { Motion.page(d, forward: true) }
         }
+        if detailView == nil, shownDetailID != nil { Motion.page(list, forward: false) }
+        shownDetailID = detailView == nil ? nil : detailID
 
         // Rows.
         let unseen = gh.unseenPRIDs

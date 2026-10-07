@@ -983,6 +983,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         reload()
         layoutSubtreeIfNeeded()
         onHeightChange?()
+        // The session comes in like a page; Back slides the list back in from the left.
+        Motion.page(on ? right : left, forward: on)
     }
 
     /// Each time the screen opens: just the list, unless it was opened from the live bar.
