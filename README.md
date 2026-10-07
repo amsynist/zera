@@ -76,8 +76,8 @@ big window.
 ## Live wings
 
 <p align="center">
-  <img src="docs/zera-wings.webp" alt="The live wings while Claude works, then asking to run git commit with Reject and Approve, the command copied, approved, then done" width="960"><br>
-  <sub>Running → approval → copy → approve → done. Recorded from the app with sample data.</sub>
+  <img src="docs/zera-wings.webp" alt="The live wings while Claude works, then asking to run git commit with Reject and Approve, the command copied, approved, done with a Reply countdown, a follow-up typed and sent, and Claude working again" width="960"><br>
+  <sub>Running → approval → copy → approve → done → reply → working again. Recorded from the app with sample data.</sub>
 </p>
 
 While a Claude Code session is active, two glass wings hang off Zera on either side of her rope.
@@ -89,17 +89,23 @@ While a Claude Code session is active, two glass wings hang off Zera on either s
 - **Approvals right on the wing.** When Claude Code would ask you for permission, the right wing
   springs wider to show the command (up to two lines of it) with **Reject** and **Approve**. Click
   the `>_` (or the command) to copy the whole command.
+- **Reply when Claude is done.** When a session finishes, the right wing shows **Reply** for a few
+  seconds while the green bar drains. Click it, type a follow-up and press **⏎**: Claude carries on in
+  the same session, as if you'd typed it in the terminal. Typing pauses the countdown; **Esc** lets the
+  session finish. Choose the wait (Off, 10–60 s; 20 s by default) in Settings → Claude → **Reply when done**.
 - **⌄** on the left wing opens the session; the wing body itself doesn't react to clicks. **–** (or a
   right-click) minimizes the wings; they stay away until you open the Claude tab.
 - **Zera acts it out.** She hugs her rope, breathes and swings while Claude works; perks up with burst
   lines when a command needs you; hops among sparkles when Claude is done. Hover her for a wiggle, tap
   her for a bounce.
 
-<p align="center"><img src="docs/screens/15-wings-running.png" alt="The wings while Claude works: Running at 43% with the session time and the status orb" width="880"></p>
+<p align="center"><img src="docs/screens/15-wings-running.png" alt="The wings while Claude works: Running at 31% with the session time and the status orb" width="880"></p>
 
 <p align="center"><img src="docs/screens/16-wings-approval.png" alt="The right wing asking to run git commit, with Reject and Approve; the command has just been copied" width="100%"></p>
 
-<p align="center"><img src="docs/screens/17-wings-done.png" alt="The wings when Claude is done: 100% in green, with a caption under Zera" width="880"></p>
+<p align="center"><img src="docs/screens/17-wings-done.png" alt="The wings when Claude is done: Done with a reply countdown and a Reply button" width="880"></p>
+
+<p align="center"><img src="docs/screens/18-wings-reply.png" alt="Typing a reply on the wing: a follow-up for Claude and Send" width="100%"></p>
 
 ## Features
 
@@ -120,6 +126,8 @@ Code's own hooks, with no API key.
   through your Claude Code login.
 - **Approvals** appear only when Claude Code itself would ask, so auto mode, bypass mode and your
   allow rules are respected. Answer on the wing, or in the approval island when the wing has no room.
+- **Reply** to a session that just finished, right from the wing, and Claude keeps going in that same
+  session (see [Live wings](#live-wings)).
 
 <p align="center"><img src="docs/screens/03-claude-sessions.png" alt="Claude sessions: one running with a progress bar and Stop, one completed" width="660"></p>
 
@@ -205,6 +213,9 @@ where it lives. It's its own floating panel, not a tab, and folds away once you'
 
 - **Instant.** Your app list is read in the background at launch and kept in memory, so the opener
   shows at once and you can type straight away.
+- **Your usual** starts with the apps you pin, in your order, then the apps you used most recently.
+  The app you're in goes to the end, so the one before it is first: ⌥Space, ⏎ switches back, like ⌘Tab.
+  Pin, unpin and reorder from <kbd>⌘K</kbd> (<kbd>⇧⌘P</kbd> pins or unpins, <kbd>⌥⌘↑</kbd> / <kbd>⌥⌘↓</kbd> move a pin).
 - **Typing** opens every branch with its best matches: "vsc" finds Visual Studio Code. Running
   apps get a dot, and the apps you open most move up.
 - **<kbd>⌘K</kbd> actions** grow as the chosen item's children in the tree, and the search field
@@ -266,7 +277,11 @@ in your login Keychain, only sent to `api.anthropic.com`, and Zera never falls b
 **Follow Claude's work** in Settings. This adds small non-blocking hooks to `~/.claude/settings.json`
 and leaves the other settings in that file alone (the file is re-saved as formatted JSON). Restart any
 open Claude Code session afterwards. **Remove** undoes it. The hooks only pass events to Zera while it
-is running; Zera reads each event and deletes it within a second.
+is running; Zera reads each event and deletes it within a second. One hook can wait: when a session the
+wings are showing finishes, its `Stop` hook waits a few seconds for a **Reply** (sessions the wings
+aren't showing are let go at once, and it never waits while Zera isn't running). Zera gives that hook a
+ten-minute time limit so a reply you're still typing isn't cut off. Set **Reply when done** to Off to
+turn the waiting off.
 
 **Claude Code approvals.** Settings → Claude → **Install hook** adds one `PermissionRequest` entry.
 Claude Code runs it only when it is about to ask you for permission, so auto mode, bypass mode and your
@@ -298,6 +313,10 @@ Zera has no account, no analytics, no telemetry, no crash reporting and no updat
   hour and on every launch.
 - Live progress: Claude Code hook events (which can include your prompts and the tools' input and
   output) are handed to Zera and deleted as soon as they're read. Nothing is written while Zera isn't running.
+- Replies from the wings go only to the waiting Claude Code session, through small files in
+  `~/Library/Application Support/Zera` (readable only by you) that Zera tidies away. As with the
+  approvals hook, any program running under your account could write there too; turn **Reply when
+  done** off if you'd rather not have that.
 - The Anthropic API key and the GitHub token are kept in your login Keychain.
 - Reminders, events and your calendar stay on your Mac (`~/Library/Application Support/Zera`, readable
   only by you) and are never sent to Claude.
