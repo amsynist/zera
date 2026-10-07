@@ -1116,10 +1116,10 @@ final class TaskChoice: NSView {
 final class TaskExportView: NSView {
     static let size = NSSize(width: 660 + TaskGlow.margin * 2, height: 700 + TaskGlow.margin * 2)
     private let store: TaskStore
-    var span: TaskExport.Span = .week { didSet { refresh() } }
-    var format: TaskExport.Format = .timesheet { didSet { refresh() } }
+    var span: TaskExport.Span = .week { didSet { refresh(); showNewest() } }
+    var format: TaskExport.Format = .timesheet { didSet { refresh(); showNewest() } }
     /// nil: every project.
-    var project: String? { didSet { refresh() } }
+    var project: String? { didSet { refresh(); showNewest() } }
     /// Linked folders are being read (the subtitle says so).
     var syncing = false { didSet { if syncing != oldValue { paint.needsDisplay = true } } }
     var onClose: (() -> Void)?
@@ -1242,6 +1242,14 @@ final class TaskExportView: NSView {
         needsLayout = true
     }
 
+    /// Back to the top, where the newest day is, so it can be copied without scrolling.
+    /// Not part of `refresh()`: a live refresh keeps wherever you scrolled to.
+    func showNewest() {
+        layoutSubtreeIfNeeded()
+        sheet.scrollToVisible(NSRect(x: 0, y: 0, width: 1, height: 1))
+        preview.scrollToVisible(NSRect(x: 0, y: 0, width: 1, height: 1))
+    }
+
     static let optionTitles = ["Times", "Repos", "Round to 15m"]
 
     private func refreshOptions() {
@@ -1284,7 +1292,11 @@ final class TaskExportView: NSView {
         for (i, c) in formatTiles.enumerated() { c.frame = NSRect(x: pad + CGFloat(i) * (tw + 10), y: 136 + po, width: tw, height: 62) }
         previewScroll.frame = NSRect(x: pad + 1, y: 252 + po, width: w - pad * 2 - 2, height: glass.bounds.height - 252 - po - 74)
         let sheetFrame = NSRect(x: pad + 1, y: 252 + po, width: w - pad * 2 - 2, height: glass.bounds.height - 252 - po - 74)
-        if sheetScroll.frame.width != sheetFrame.width, format == .timesheet { sheetScroll.frame = sheetFrame; sheet.show(rows, width: sheetFrame.width) }
+        if sheetScroll.frame.width != sheetFrame.width, format == .timesheet {
+            sheetScroll.frame = sheetFrame
+            sheet.show(rows, width: sheetFrame.width)
+            sheet.scrollToVisible(NSRect(x: 0, y: 0, width: 1, height: 1))
+        }
         sheetScroll.frame = sheetFrame
         // The options sit in the preview's top bar, on the right.
         var ox = w - pad - 10
