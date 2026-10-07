@@ -145,15 +145,26 @@ h1,h2,h3{margin:0;color:var(--ink)}
 .tick::before{content:"";flex:none;width:8px;height:8px;margin-top:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
 .strip{display:flex;height:72px;border-radius:18px;background:#201c2a;border:1px solid rgba(var(--accent-rgb),.25);position:relative;overflow:hidden;cursor:pointer;box-shadow:0 30px 60px rgba(0,0,0,.45);transition:border-color .25s,transform .25s var(--ease)}
 .strip:hover{border-color:rgba(var(--accent-rgb),.6);transform:translateY(-2px)}
+.stripbox{container-type:inline-size}
+@container (max-width:660px){.strip .seg{padding:0 7px;gap:7px}.strip .seg .n{font-size:16px}.strip .seg svg.ring{width:26px;height:26px}}
+@container (max-width:600px){.stripbox .strip{height:auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.strip .seg{min-width:0;padding:14px 12px;border-right:0;border-bottom:1px solid rgba(255,255,255,.06)}.strip .seg .n{font-size:15px}}
+@container (max-width:360px){.stripbox .strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .strip::after{content:"";position:absolute;top:0;bottom:0;width:120px;left:-140px;background:linear-gradient(90deg,transparent,rgba(var(--accent-rgb),.16),transparent);animation:scan 4.5s cubic-bezier(.45,0,.2,1) infinite}
 @keyframes scan{0%,60%{left:-140px}100%{left:110%}}
-.seg{flex:1;display:flex;align-items:center;gap:12px;padding:0 14px;border-right:1px solid rgba(255,255,255,.06);min-width:0}
+/* Each segment is as wide as its widest value (number slots are fixed in ch), so changing
+   numbers never push the others around; spare room is shared out evenly. */
+.seg{flex:1 1 auto;min-width:max-content;display:flex;align-items:center;gap:9px;padding:0 10px;border-right:1px solid rgba(255,255,255,.06)}
 .seg:last-child{border-right:0}
 .seg svg.ring{flex:none}
 .seg .ring circle.v{transition:stroke-dashoffset 1.1s cubic-bezier(.65,0,.35,1)}
 .seg .l{font:600 10.5px/1 Geist,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
-.seg .n{font:600 20px/1.1 "Geist Mono",monospace;color:var(--ink);margin-top:5px;white-space:nowrap;font-variant-numeric:tabular-nums}
-.seg .n small{font:500 11.5px/1 Geist,sans-serif;color:var(--dim)}
+.seg .n{font:600 18px/1.1 "Geist Mono",monospace;color:var(--ink);margin-top:5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.seg .n small{font:500 11px/1 Geist,sans-serif;color:var(--dim)}
+.seg [data-n]{display:inline-block;text-align:right}
+.seg [data-n="cpu"],.seg [data-n="gpu"],.seg [data-n="batt"],.seg [data-n="down"]{min-width:3ch}
+.seg [data-n="mem"]{min-width:4ch}
+.seg .l [data-n="up"]{min-width:2ch;text-align:left}
+.seg svg.ring{width:30px;height:30px}
 .batt{width:30px;height:15px;border:1.6px solid rgba(255,255,255,.32);border-radius:4px;padding:2px;position:relative;flex:none}
 .batt::after{content:"";position:absolute;right:-5px;top:4px;width:2.5px;height:5px;border-radius:1px;background:rgba(255,255,255,.32)}
 .batt i{display:block;height:100%;border-radius:2px;background:var(--teal);transition:width 1.1s var(--ease)}
@@ -230,8 +241,6 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
   .split > .copy,.split > .media{flex:none;width:100%}
   .navlinks{display:none}
   .cards{grid-template-columns:repeat(1,minmax(0,1fr))}
-  .strip{height:auto;flex-wrap:wrap}
-  .seg{flex:1 1 33%;padding:12px;border-right:0;border-bottom:1px solid rgba(255,255,255,.06)}
   .stack .back{position:relative;width:80%;right:auto;bottom:auto;margin:20px 0 0 auto}
 }
 @media (prefers-reduced-motion:reduce){
@@ -322,13 +331,13 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
         </div>
       </div>
       <div class="media rv d2">
-        <div class="strip" id="strip" role="button" tabindex="0" aria-label="A live replica of Zera's vitals strip. Click to show This Mac.">
+        <div class="stripbox"><div class="strip" id="strip" role="button" tabindex="0" aria-label="A live replica of Zera's vitals strip. Click to show This Mac.">
           <div class="seg"><svg class="ring" width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="13" fill="none" stroke="rgba(157,140,255,.16)" stroke-width="3.5"></circle><circle class="v" data-k="cpu" cx="17" cy="17" r="13" fill="none" stroke="#9d8cff" stroke-width="3.5" stroke-linecap="round" transform="rotate(-90 17 17)" stroke-dasharray="81.7" stroke-dashoffset="81.7"></circle></svg><div><div class="l">CPU</div><div class="n"><span data-n="cpu">0</span>%</div></div></div>
           <div class="seg"><svg class="ring" width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="13" fill="none" stroke="rgba(127,178,255,.16)" stroke-width="3.5"></circle><circle class="v" data-k="mem" cx="17" cy="17" r="13" fill="none" stroke="#7fb2ff" stroke-width="3.5" stroke-linecap="round" transform="rotate(-90 17 17)" stroke-dasharray="81.7" stroke-dashoffset="81.7"></circle></svg><div><div class="l">Memory</div><div class="n"><span data-n="mem">0</span><small> / 16 GB</small></div></div></div>
           <div class="seg"><svg class="ring" width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="13" fill="none" stroke="rgba(255,170,133,.16)" stroke-width="3.5"></circle><circle class="v" data-k="gpu" cx="17" cy="17" r="13" fill="none" stroke="#ffaa85" stroke-width="3.5" stroke-linecap="round" transform="rotate(-90 17 17)" stroke-dasharray="81.7" stroke-dashoffset="81.7"></circle></svg><div><div class="l">GPU</div><div class="n"><span data-n="gpu">0</span>%</div></div></div>
           <div class="seg"><svg width="34" height="24" viewBox="0 0 34 24" style="flex:none"><polyline id="spark" fill="none" stroke="#5fe0b2" stroke-width="1.8" stroke-linejoin="round" points=""></polyline></svg><div><div class="l">Wi-Fi ↑<span data-n="up">0</span></div><div class="n">↓<span data-n="down">0</span><small> Mb/s</small></div></div></div>
           <div class="seg"><div class="batt"><i id="battfill" style="width:80%"></i></div><div><div class="l">Battery</div><div class="n"><span data-n="batt">80</span>%</div></div></div>
-        </div>
+        </div></div>
         <p class="hint">↑ A live replica (simulated numbers). Click it.</p>
         <div class="thismac" id="thismac"><img class="shot" src="assets/shots/this-mac.webp" alt="This Mac: CPU and GPU rings, per-core bars, Wi-Fi graph with a speed test, memory by kind and battery health" loading="lazy" style="max-width:640px;margin:0 auto"></div>
       </div>
