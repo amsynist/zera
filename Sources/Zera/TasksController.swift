@@ -434,11 +434,15 @@ final class TasksController: NSObject, NSWindowDelegate {
         exportView.project = store.shownProject
         exportView.span = store.calendar.component(.day, from: store.now()) <= 7 ? .lastMonth : .month
         // A timesheet wants everything: linked folders catch up first, then the preview refreshes.
-        syncCommits(quiet: true) { [weak self] in self?.exportView.refresh() }
+        syncCommits(quiet: true) { [weak self] in
+            self?.exportView.refresh()
+            self?.exportView.showNewest()
+        }
         let vf = screen.visibleFrame, s = TaskExportView.size
         exportPanel.setFrame(NSRect(x: vf.midX - s.width / 2, y: vf.midY - s.height / 2, width: s.width, height: s.height), display: true)
         exportPanel.makeKeyAndOrderFront(nil)
         exportPanel.makeFirstResponder(exportView)
+        exportView.showNewest()
     }
 
     private func export(_ span: TaskExport.Span, _ format: TaskExport.Format, _ project: String?) {
