@@ -91,7 +91,7 @@ enum FocusRing {
             p.lineCapStyle = .round
             switch s {
             case .done: Neon.green.setStroke(); p.stroke()
-            case .open: NSColor(srgbRed: 0.43, green: 0.55, blue: 1, alpha: 0.32).setStroke(); p.stroke()
+            case .open: Neon.textFaint.withAlphaComponent(0.55).setStroke(); p.stroke()
             case .focus: Neon.glowing(Neon.cyan, blur: 4) { Neon.cyan.withAlphaComponent(pulse ? 0.55 : 1).setStroke(); p.stroke() }
             }
         }
@@ -232,7 +232,7 @@ final class TaskRowView: NSView {
             tick.line(to: NSPoint(x: cr.minX + 8.2, y: cr.midY + 3.6))
             tick.line(to: NSPoint(x: cr.maxX - 4.6, y: cr.midY - 3.2))
             tick.lineWidth = 2.2; tick.lineCapStyle = .round; tick.lineJoinStyle = .round
-            NSColor(srgbRed: 0.02, green: 0.15, blue: 0.11, alpha: 1).setStroke(); tick.stroke()
+            Neon.fillBottom.withAlphaComponent(1).setStroke(); tick.stroke()
         } else {
             circle.lineWidth = 1.6
             (hovered ? Neon.accent : Neon.textDim.withAlphaComponent(0.8)).setStroke(); circle.stroke()
@@ -271,7 +271,8 @@ final class TaskRowView: NSView {
             let p = NSBezierPath(roundedRect: r, xRadius: 9, yRadius: 9)
             Neon.violet.withAlphaComponent(0.14).setFill(); p.fill()
             Neon.violet.withAlphaComponent(0.4).setStroke(); p.lineWidth = 1; p.stroke()
-            drawText(tag, f, NSColor(srgbRed: 0.78, green: 0.70, blue: 1, alpha: task.done ? 0.6 : 1), in: r.insetBy(dx: 7, dy: 0), align: .center)
+            drawText(tag, f, (Neon.violet.blended(withFraction: 0.45, of: .white) ?? Neon.violet).withAlphaComponent(task.done ? 0.6 : 1),
+                     in: r.insetBy(dx: 7, dy: 0), align: .center)
             titleRight = r.minX - 8
         }
         drawText(task.title, .systemFont(ofSize: 13.5, weight: .medium), task.done && !history ? Neon.textDim.withAlphaComponent(0.75) : Neon.text,
@@ -331,7 +332,6 @@ enum TaskGlow { static let margin: CGFloat = 56 }
 private func glassRoot(_ root: NSView, margin: CGFloat, radius: CGFloat) -> OpenerGlass {
     let g = OpenerGlass(frame: root.bounds.insetBy(dx: margin, dy: margin))
     g.radius = radius
-    g.fill = NSColor(srgbRed: 0.024, green: 0.043, blue: 0.11, alpha: 0.985)
     g.glow = 0.5
     g.autoresizingMask = [.width, .height]
     root.addSubview(g)
@@ -456,7 +456,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         scroll.contentView.drawsBackground = false
         scroll.documentView = doc
         addSubview(scroll)
-        footLine.paint = { r in NSColor(srgbRed: 0.33, green: 0.5, blue: 1, alpha: 0.16).setFill(); r.fill() }
+        footLine.paint = { r in Neon.divider.setFill(); r.fill() }
         addSubview(footLine)
         orbButton.title = "Hide orb"
         orbButton.key = "⌘O"
@@ -662,7 +662,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
             let box = TaskPaint(frame: NSRect(x: 40, y: y, width: w - 52, height: h))
             box.paint = { r in
                 let p = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 8, yRadius: 8)
-                NSColor(srgbRed: 0.012, green: 0.024, blue: 0.063, alpha: 0.9).setFill(); p.fill()
+                Neon.field.withAlphaComponent(0.9).setFill(); p.fill()
                 Neon.chipEdge.withAlphaComponent(0.35).setStroke(); p.lineWidth = 1; p.stroke()
                 for (i, n) in notes.enumerated() {
                     let y = 6 + CGFloat(i) * 20
@@ -671,7 +671,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
                     let repo = repos[i]
                     let rf = NSFont.systemFont(ofSize: 11, weight: .medium)
                     let rw = repo.isEmpty ? 0 : min(170, ceil((repo as NSString).size(withAttributes: [.font: rf]).width))
-                    drawText(n, .systemFont(ofSize: 12), NSColor(srgbRed: 0.77, green: 0.80, blue: 0.94, alpha: 1),
+                    drawText(n, .systemFont(ofSize: 12), Neon.text.withAlphaComponent(0.85),
                              in: NSRect(x: 24, y: y, width: r.width - 44 - rw, height: 20))
                     if rw > 0 { drawText(repo, rf, Neon.cyan.withAlphaComponent(0.7), in: NSRect(x: r.width - 10 - rw, y: y, width: rw, height: 20), align: .right) }
                 }
@@ -784,11 +784,9 @@ final class FocusOrbView: NSView {
         let r = Self.orb / 2 * (hovered ? 1.04 : 1)
         let disc = NSBezierPath(ovalIn: NSRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
         Neon.glowing(Neon.halo.withAlphaComponent(0.5), blur: 14) {
-            NSColor(srgbRed: 0.024, green: 0.039, blue: 0.11, alpha: 1).setFill(); disc.fill()
+            Neon.fillBottom.withAlphaComponent(1).setFill(); disc.fill()
         }
-        NSGradient(colors: [NSColor(srgbRed: 0.086, green: 0.137, blue: 0.31, alpha: 1),
-                            NSColor(srgbRed: 0.039, green: 0.067, blue: 0.19, alpha: 1),
-                            NSColor(srgbRed: 0.024, green: 0.039, blue: 0.11, alpha: 1)])?
+        NSGradient(colors: [Neon.track, Neon.fillTop.withAlphaComponent(1), Neon.fillBottom.withAlphaComponent(1)])?
             .draw(in: disc, relativeCenterPosition: NSPoint(x: 0, y: 0.3))
         Neon.edge.withAlphaComponent(0.8).setStroke(); disc.lineWidth = 1; disc.stroke()
         FocusRing.draw(center: c, outer: r - 5, outerWidth: 3.5, inner: r - 12, innerWidth: 4,
@@ -963,7 +961,7 @@ final class FocusCardView: NSView {
 
         let x = 18 + dial + 18, sw = r.width - x - 16
         if let f = store.focus ?? store.open.first, store.projects.count > 1 {
-            drawText(store.project(of: f).uppercased(), sectionFont, NSColor(srgbRed: 0.78, green: 0.70, blue: 1, alpha: 1),
+            drawText(store.project(of: f).uppercased(), sectionFont, Neon.violet.blended(withFraction: 0.45, of: .white) ?? Neon.violet,
                      in: NSRect(x: x, y: titleLabel.frame.minY - 20, width: sw, height: 14), kern: 1.2)
         }
         let ty = titleLabel.frame.maxY + 10
@@ -1021,7 +1019,6 @@ final class QuickAddView: NSView, NSTextFieldDelegate {
         super.init(frame: NSRect(origin: .zero, size: Self.size))
         glass = OpenerGlass(frame: .zero)
         glass.radius = 26
-        glass.fill = NSColor(srgbRed: 0.024, green: 0.043, blue: 0.11, alpha: 0.985)
         glass.glow = 0.5
         addSubview(glass)
         deco.paint = { r in
@@ -1170,7 +1167,7 @@ final class TaskExportView: NSView {
         preview.drawsBackground = false
         preview.textContainerInset = NSSize(width: 10, height: 10)
         preview.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        preview.textColor = NSColor(srgbRed: 0.77, green: 0.80, blue: 0.94, alpha: 1)
+        preview.textColor = Neon.text.withAlphaComponent(0.85)
         preview.isHorizontallyResizable = true
         preview.textContainer?.widthTracksTextView = false
         preview.textContainer?.containerSize = NSSize(width: 4000, height: CGFloat.greatestFiniteMagnitude)
@@ -1328,7 +1325,7 @@ final class TaskExportView: NSView {
         // Preview box.
         let box = NSRect(x: pad, y: 218 + po, width: r.width - pad * 2, height: r.height - 218 - po - 72)
         let bp = NSBezierPath(roundedRect: box, xRadius: 14, yRadius: 14)
-        NSColor(srgbRed: 0.012, green: 0.024, blue: 0.063, alpha: 0.9).setFill(); bp.fill()
+        Neon.field.withAlphaComponent(0.9).setFill(); bp.fill()
         Neon.chipEdge.withAlphaComponent(0.45).setStroke(); bp.lineWidth = 1; bp.stroke()
         if format == .timesheet {
             drawText("CLICK A DAY TO COPY IT", TaskFont.clock(11), Neon.textDim, in: NSRect(x: box.minX + 14, y: box.minY + 9, width: 240, height: 16), kern: 1.1)
@@ -1337,7 +1334,7 @@ final class TaskExportView: NSView {
             let name = "Downloads / " + TaskExport.fileName(span, format, project: project, now: store.now(), calendar: store.calendar)
             drawText(name, .monospacedSystemFont(ofSize: 10.5, weight: .medium), Neon.textDim, in: NSRect(x: box.minX + 120, y: box.minY + 9, width: box.width - 134, height: 16), align: .right)
         }
-        NSColor(srgbRed: 0.33, green: 0.5, blue: 1, alpha: 0.16).setFill()
+        Neon.divider.setFill()
         NSRect(x: box.minX, y: box.minY + 33, width: box.width, height: 1).fill()
         let note: String
         switch format {
@@ -1395,7 +1392,7 @@ final class OrbPlusView: NSView {
         let r = discRect
         let disc = NSBezierPath(ovalIn: r)
         Neon.glowing(Neon.halo.withAlphaComponent(0.6), blur: hovered ? 11 : 8) {
-            (hovered ? NSColor(srgbRed: 0.07, green: 0.13, blue: 0.3, alpha: 1) : NSColor(srgbRed: 0.035, green: 0.06, blue: 0.16, alpha: 1)).setFill()
+            (hovered ? Neon.chipHover : Neon.chip).setFill()
             disc.fill()
         }
         (hovered ? Neon.cyan : Neon.edge).setStroke(); disc.lineWidth = 1.2; disc.stroke()
@@ -1819,7 +1816,7 @@ final class TimesheetDayView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let copied = (copiedUntil ?? .distantPast) > Date()
         let card = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 12, yRadius: 12)
-        (hovered ? NSColor(srgbRed: 0.05, green: 0.09, blue: 0.22, alpha: 1) : NSColor(srgbRed: 0.03, green: 0.055, blue: 0.14, alpha: 1)).setFill()
+        (hovered ? Neon.chipHover : Neon.row).setFill()
         card.fill()
         (copied ? Neon.green.withAlphaComponent(0.6) : (hovered ? Neon.accent.withAlphaComponent(0.55) : Neon.chipEdge.withAlphaComponent(0.35))).setStroke()
         card.lineWidth = 1; card.stroke()
@@ -1848,7 +1845,7 @@ final class TimesheetDayView: NSView {
             let n = "\(rows.count) task\(rows.count == 1 ? "" : "s")"
             drawText(n, .systemFont(ofSize: 12), Neon.textDim, in: NSRect(x: cb.minX - 130, y: 0, width: 120, height: Self.headH), align: .right)
         }
-        NSColor(srgbRed: 0.33, green: 0.5, blue: 1, alpha: 0.14).setFill()
+        Neon.divider.setFill()
         NSRect(x: 14, y: Self.headH - 1, width: bounds.width - 28, height: 1).fill()
 
         // Tasks: dot · title · repo · time.
@@ -1876,7 +1873,7 @@ final class TimesheetDayView: NSView {
                 drawText(label, rf, Neon.cyan.withAlphaComponent(0.9), in: pr.insetBy(dx: 7, dy: 0), align: .center)
                 right = pr.minX - 10
             }
-            drawText(r.title, .systemFont(ofSize: 13), NSColor(srgbRed: 0.86, green: 0.89, blue: 1, alpha: 1),
+            drawText(r.title, .systemFont(ofSize: 13), Neon.text.withAlphaComponent(0.92),
                      in: NSRect(x: 34, y: y, width: max(0, right - 34), height: Self.lineH))
         }
     }

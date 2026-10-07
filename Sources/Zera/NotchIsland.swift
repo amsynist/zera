@@ -121,7 +121,7 @@ final class IslandView: NSView {
         layer?.addSublayer(fill)
 
         edge.fillColor = nil
-        edge.strokeColor = Neon.edge.withAlphaComponent(0.6).cgColor
+        edge.strokeColor = Neon.edge.cgColor
         edge.lineWidth = 1.2
         edge.shadowColor = Neon.edge.cgColor
         edge.shadowRadius = 4
@@ -193,6 +193,17 @@ final class IslandView: NSView {
             CATransaction.commit()
         }
         window?.invalidateCursorRects(for: self)
+    }
+
+    /// The theme changed: recolour the glass, its edge and the tabs.
+    func themeChanged() {
+        glow.fillColor = Neon.fillBottom.cgColor
+        glow.shadowColor = Neon.halo.cgColor
+        edge.strokeColor = Neon.edge.cgColor
+        edge.shadowColor = Neon.edge.cgColor
+        tabs.forEach { $0.needsDisplay = true }
+        whisperView.needsDisplay = true
+        needsLayout = true
     }
 
     override func layout() {

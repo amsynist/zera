@@ -153,13 +153,13 @@ final class NeonMenuView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let g = NSBezierPath(roundedRect: glass, xRadius: 14, yRadius: 14)
         Neon.glowing(Neon.halo.withAlphaComponent(0.45), blur: 14) {
-            NSColor(srgbRed: 0.024, green: 0.043, blue: 0.11, alpha: 0.985).setFill(); g.fill()
+            Neon.fillBottom.withAlphaComponent(0.985).setFill(); g.fill()
         }
         Neon.edge.withAlphaComponent(0.7).setStroke(); g.lineWidth = 1; g.stroke()
         for (i, (it, r)) in zip(items, rects()).enumerated() {
             switch it.kind {
             case .separator:
-                NSColor(srgbRed: 0.33, green: 0.5, blue: 1, alpha: 0.18).setFill()
+                Neon.divider.setFill()
                 NSRect(x: r.minX + 6, y: r.midY, width: r.width - 12, height: 1).fill()
             case .header:
                 text(it.title, TaskFont.clock(10.5), Neon.textDim, NSRect(x: r.minX + 10, y: r.minY + 4, width: r.width - 20, height: r.height - 4), kern: 1.2)
