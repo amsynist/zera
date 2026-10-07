@@ -288,3 +288,89 @@ final class ShelfStore {
         return candidate
     }
 }
+
+// MARK: - Copying a shelf item
+
+/// Puts a shelf item on the clipboard in the form that pastes best where you're going:
+/// a picture as the image itself (and the file, for Finder), a note as its text, a link as its
+/// URL, anything else as the file (so Slack, Mail and Finder attach it).
+enum ShelfCopier {
+    enum Copied: Equatable {
+        case file, image, text, link
+        /// "the file", for "Copied the file ✓".
+        var phrase: String {
+            switch self {
+            case .file: return "the file"
+            case .image: return "the image"
+            case .text: return "its text"
+            case .link: return "the link"
+            }
+        }
+    }
+
+    /// Notes up to this size paste as text; bigger text files paste as the file.
+    static let maxTextBytes = 256 * 1024
+
+    /// What copying `path` would put on the clipboard; nil when the file is gone.
+    static func plan(for path: String) -> Copied? {
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        switch ShelfKind(path: path) {
+        case .image: return .image
+        case .link: return linkURL(path) == nil ? .file : .link
+        case .text:
+            let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? Int.max
+            return size <= maxTextBytes && text(path) != nil ? .text : .file
+        default: return .file
+        }
+    }
+
+    /// Copies `path` onto `pasteboard` and says how; nil (and nothing changed) when it's gone.
+    @discardableResult
+    static func copy(_ path: String, to pasteboard: NSPasteboard = .general) -> Copied? {
+        guard let how = plan(for: path) else { return nil }
+        let fileURL = URL(fileURLWithPath: path)
+        pasteboard.clearContents()
+        switch how {
+        case .image:
+            // One item carrying both: apps that take pictures paste the image, Finder the file.
+            let item = NSPasteboardItem()
+            if let img = NSImage(contentsOf: fileURL), let tiff = img.tiffRepresentation {
+                item.setData(tiff, forType: .tiff)
+                if let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) { item.setData(png, forType: .png) }
+            }
+            item.setString(fileURL.absoluteString, forType: .fileURL)
+            pasteboard.writeObjects([item])
+        case .text:
+            pasteboard.setString(text(path) ?? "", forType: .string)
+        case .link:
+            let u = linkURL(path)!
+            pasteboard.writeObjects([u as NSURL])
+            pasteboard.setString(u.absoluteString, forType: .string)
+        case .file:
+            pasteboard.writeObjects([fileURL as NSURL])
+        }
+        return how
+    }
+
+    /// A note's text (UTF-8, or whatever Foundation can read it as).
+    static func text(_ path: String) -> String? {
+        let url = URL(fileURLWithPath: path)
+        if let s = try? String(contentsOf: url, encoding: .utf8) { return s }
+        var used = String.Encoding.utf8
+        return try? String(contentsOf: url, usedEncoding: &used)
+    }
+
+    /// The address inside a .webloc (a property list) or a .url (an INI file).
+    static func linkURL(_ path: String) -> URL? {
+        guard let data = FileManager.default.contents(atPath: path) else { return nil }
+        if let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+           let s = plist["URL"] as? String, let u = URL(string: s) {
+            return u
+        }
+        let text = String(decoding: data, as: UTF8.self)
+        for line in text.split(whereSeparator: \.isNewline) where line.lowercased().hasPrefix("url=") {
+            if let u = URL(string: String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces)) { return u }
+        }
+        return nil
+    }
+}

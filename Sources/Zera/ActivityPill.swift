@@ -111,7 +111,7 @@ final class LiveActivityView: NSView {
         replyBox.layer?.cornerRadius = 17
         replyBox.layer?.borderWidth = 1
         replyBox.layer?.borderColor = Neon.chipEdge.cgColor
-        replyBox.layer?.backgroundColor = NSColor(srgbRed: 0.012, green: 0.024, blue: 0.065, alpha: 1).cgColor
+        replyBox.layer?.backgroundColor = Neon.field.cgColor
         replyField.isBordered = false
         replyField.drawsBackground = false
         replyField.focusRingType = .none
@@ -120,7 +120,7 @@ final class LiveActivityView: NSView {
         replyField.cell?.usesSingleLineMode = true
         replyField.cell?.isScrollable = true
         replyField.placeholderAttributedString = NSAttributedString(string: "Reply to Claude…", attributes: [
-            .foregroundColor: NSColor(srgbRed: 0.37, green: 0.41, blue: 0.59, alpha: 1), .font: NSFont.systemFont(ofSize: 14, weight: .medium)])
+            .foregroundColor: Neon.textFaint, .font: NSFont.systemFont(ofSize: 14, weight: .medium)])
         replyField.delegate = self
         replyField.setAccessibilityLabel("Reply to Claude")
         replyBox.addSubview(replyField)
@@ -223,7 +223,12 @@ final class LiveActivityView: NSView {
     func themeChanged() {
         restyle()
         [ring, expand, bar, orb, prompt, reject, approve, minimize].forEach { $0.needsDisplay = true }
-        ring.refresh(); bar.refresh()
+        ring.refresh(); bar.refresh(); orb.themeChanged()
+        replyBox.layer?.borderColor = Neon.chipEdge.cgColor
+        replyBox.layer?.backgroundColor = Neon.field.cgColor
+        replyField.textColor = Neon.text
+        replyField.placeholderAttributedString = NSAttributedString(string: "Reply to Claude…", attributes: [
+            .foregroundColor: Neon.textFaint, .font: NSFont.systemFont(ofSize: 14, weight: .medium)])
         needsDisplay = true
     }
 
@@ -348,7 +353,7 @@ final class LiveActivityView: NSView {
         case .approval: tint = Neon.cyan.withAlphaComponent(0.5)
         case .attention: tint = Neon.warning.withAlphaComponent(0.4)
         case .done: tint = Neon.green.withAlphaComponent(0.42)
-        case .idle, .running: tint = NSColor(srgbRed: 0.43, green: 0.43, blue: 1, alpha: 0.42)
+        case .idle, .running: tint = Neon.violet.withAlphaComponent(0.42)
         }
         glow.colors = [tint.cgColor, tint.withAlphaComponent(0).cgColor]
         springRight(to: asking || typing ? M.rightAsk : M.rightRun)
@@ -647,30 +652,39 @@ private extension NSBezierPath {
 
 // MARK: - Look
 
-/// The wings' colours: deep navy-black glass with blue neon. They keep this look in light and
-/// dark mode — they sit on the desktop under the notch, where a dark wing reads best.
+/// The wings' colours, from the chosen theme (`ThemeStore`): the theme's dark glass with its
+/// accent as the glow. Tasks and the app opener share them. They keep this look whatever macOS
+/// is set to: they sit on the desktop under the notch, where a dark wing reads best.
 enum Neon {
-    private static func c(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> NSColor {
-        NSColor(srgbRed: r, green: g, blue: b, alpha: a)
-    }
+    private static var t: ZeraTheme { ThemeStore.shared.current }
 
-    static let fillTop = c(0.039, 0.071, 0.173, 0.97)
-    static let fillBottom = c(0.016, 0.031, 0.071, 0.97)
-    static let edge = c(0.33, 0.50, 1.0, 0.75)
-    static let halo = c(0.19, 0.34, 1.0, 0.60)
-    static let cyan = c(0.30, 0.74, 1.0)
-    static let violet = c(0.58, 0.40, 1.0)
-    static let accent = c(0.38, 0.72, 1.0)
-    static let text = c(0.953, 0.961, 1.0)
-    static let textDim = c(0.545, 0.588, 0.776)
-    static let glyph = c(0.62, 0.71, 1.0)
-    static let chip = c(0.035, 0.067, 0.157)
-    static let chipHover = c(0.063, 0.106, 0.271)
-    static let chipEdge = c(0.33, 0.50, 1.0, 0.42)
-    static let track = c(0.071, 0.102, 0.212)
-    static let red = c(1.0, 0.33, 0.41)
-    static let green = c(0.21, 0.89, 0.67)
-    static let warning = c(1.0, 0.70, 0.25)
+    static var fillTop: NSColor { t.glassTop.withAlphaComponent(0.97) }
+    static var fillBottom: NSColor { t.glassBottom.withAlphaComponent(0.97) }
+    static var edge: NSColor { t.edge }
+    static var halo: NSColor { t.accent.withAlphaComponent(0.38) }
+    /// The bright end of the accent gradient (rings, bars, glows).
+    static var cyan: NSColor { t.accent }
+    /// The far end of the accent gradient.
+    static var violet: NSColor { t.accentDeep }
+    static var accent: NSColor { t.accent }
+    static var text: NSColor { t.text }
+    static var textDim: NSColor { t.textSecondary }
+    static var glyph: NSColor { t.textSecondary.blended(withFraction: 0.3, of: t.accent) ?? t.textSecondary }
+    static var chip: NSColor { t.surface }
+    static var chipHover: NSColor { t.surfaceHover }
+    static var chipEdge: NSColor { t.border.withAlphaComponent(min(1, t.border.alphaComponent * 1.8)) }
+    static var track: NSColor { t.surfaceStrong }
+    static var red: NSColor { t.danger }
+    static var green: NSColor { t.success }
+    static var warning: NSColor { t.warning }
+    /// The theme's second colour, paired with the accent.
+    static var highlight: NSColor { t.highlight }
+    /// Rows and tiles inside the panels.
+    static var row: NSColor { t.row }
+    static var field: NSColor { t.field }
+    static var divider: NSColor { t.divider }
+    static var textFaint: NSColor { t.textTertiary }
+    static var onAccent: NSColor { t.onAccent }
 
     /// Draws an SF Symbol centred in `rect`.
     static func symbol(_ name: String, in rect: NSRect, size: CGFloat, weight: NSFont.Weight = .semibold, color: NSColor) {
@@ -897,7 +911,8 @@ final class GlowProgressBar: NSView {
 }
 
 /// The status orb on the right wing: a small glass sphere with colour swirling inside.
-/// Blue-violet while Claude works, amber while it waits on you, green when done. It eases
+/// The theme's accent gradient while Claude works, its warning colour while it waits on you, its
+/// success colour when done. It eases
 /// between colours, pulses its glow and spins faster under the pointer.
 final class OrbView: NSView {
     enum Style { case working, waiting, done }
@@ -907,10 +922,22 @@ final class OrbView: NSView {
         var pulse: CGFloat
     }
     private static func colors(_ s: Style) -> Colors {
+        func v(_ c: NSColor) -> [CGFloat] {
+            let x = c.usingColorSpace(.sRGB) ?? c
+            return [x.redComponent * 255, x.greenComponent * 255, x.blueComponent * 255]
+        }
+        func mix(_ a: NSColor, _ b: NSColor, _ f: CGFloat) -> NSColor { a.blended(withFraction: f, of: b) ?? a }
         switch s {
-        case .working: return Colors(a: [77, 189, 255], b: [148, 102, 255], c: [96, 130, 255], core: [18, 14, 64], glow: [100, 120, 255], pulse: 1)
-        case .waiting: return Colors(a: [255, 179, 64], b: [255, 110, 60], c: [255, 214, 110], core: [58, 24, 4], glow: [255, 165, 60], pulse: 2.2)
-        case .done: return Colors(a: [70, 214, 140], b: [40, 190, 170], c: [160, 240, 190], core: [4, 38, 24], glow: [54, 227, 170], pulse: 0.5)
+        case .working:
+            let a = Neon.cyan, b = Neon.violet
+            return Colors(a: v(a), b: v(b), c: v(mix(a, b, 0.5)), core: v(mix(.black, b, 0.22)), glow: v(mix(a, b, 0.4)), pulse: 1)
+        case .waiting:
+            let a = Neon.warning
+            return Colors(a: v(a), b: v(mix(a, Neon.red, 0.4)), c: v(mix(a, .white, 0.3)), core: v(mix(.black, a, 0.2)), glow: v(a), pulse: 2.2)
+        case .done:
+            let a = Neon.green
+            return Colors(a: v(a), b: v(mix(a, ThemeStore.shared.current.info, 0.5)), c: v(mix(a, .white, 0.4)), core: v(mix(.black, a, 0.15)),
+                          glow: v(a), pulse: 0.5)
         }
     }
 
@@ -923,7 +950,10 @@ final class OrbView: NSView {
     private var lastTick: CFTimeInterval = 0
     override var isFlipped: Bool { true }
 
-    func set(_ s: Style) { target = Self.colors(s) }
+    private var style: Style = .working
+    func set(_ s: Style) { style = s; target = Self.colors(s) }
+    /// The theme changed: ease into its colours.
+    func themeChanged() { target = Self.colors(style) }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -1141,15 +1171,27 @@ final class GlowPillButton: NSView {
         let color = tint == .red ? Neon.red : (tint == .blue ? Neon.cyan : Neon.green)
         let r = bounds.insetBy(dx: 4, dy: 4)
         let shape = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        Neon.glowing(color.withAlphaComponent(hovered ? 0.5 : 0.25), blur: hovered ? 12 : 7) {
-            color.withAlphaComponent(hovered ? 0.16 : 0.08).setFill()
-            shape.fill()
+        var ink = color
+        if tint == .green {
+            // Approve is the one to press: filled, like every main action in the island.
+            Neon.glowing(color.withAlphaComponent(hovered ? 0.55 : 0.3), blur: hovered ? 12 : 7) {
+                (hovered ? (color.blended(withFraction: 0.1, of: .white) ?? color) : color).setFill()
+                shape.fill()
+            }
+            NSColor.white.withAlphaComponent(hovered ? 0.22 : 0.14).setStroke(); shape.lineWidth = 1; shape.stroke()
+            ink = Pal.ink(on: color)
+        } else {
+            // Reject (and the rest) stay a soft tint with an edge, so they never shout.
+            Neon.glowing(color.withAlphaComponent(hovered ? 0.4 : 0.15), blur: hovered ? 10 : 6) {
+                color.withAlphaComponent(hovered ? 0.2 : 0.12).setFill()
+                shape.fill()
+            }
+            shape.lineWidth = 1
+            color.withAlphaComponent(hovered ? 0.6 : 0.4).setStroke(); shape.stroke()
         }
-        shape.lineWidth = 1.2
-        color.withAlphaComponent(0.65).setStroke(); shape.stroke()
         let icon = NSRect(x: r.minX + 14, y: r.midY - 7.5, width: 15, height: 15)
-        Neon.symbol(symbol, in: icon, size: 13, weight: .bold, color: color)
-        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color]
+        Neon.symbol(symbol, in: icon, size: 13, weight: .bold, color: ink)
+        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: ink]
         let s = (title as NSString).size(withAttributes: attrs)
         (title as NSString).draw(at: NSPoint(x: icon.maxX + 7, y: r.midY - s.height / 2), withAttributes: attrs)
     }

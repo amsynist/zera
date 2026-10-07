@@ -301,6 +301,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
         fillDetail(item)
         reload()
         window?.makeFirstResponder(self)
+        Motion.page(self, forward: true)
     }
 
     private func fillDetail(_ item: ClipItem) {
@@ -364,6 +365,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
         mode = .list
         resetTitle()
         reload()
+        Motion.page(self, forward: false)
     }
     private func resetTitle() { titleLabel.stringValue = "Clipboard" }
 
@@ -595,9 +597,8 @@ private final class ClipGroupHeader: NSView {
     init(title: String, note: String?) {
         super.init(frame: .zero)
         let p = Pal
-        let t = NSTextField(labelWithString: title.uppercased())
-        t.font = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
-        t.textColor = p.textTertiary
+        let t = NSTextField(labelWithString: "")
+        t.attributedStringValue = Typo.sectionText(title, color: p.textTertiary)
         t.frame = NSRect(x: 0, y: 7, width: 200, height: 14)
         addSubview(t)
         if let note = note {
@@ -798,10 +799,10 @@ final class ClipRow: NSView {
             (ok ? p.success : p.danger).withAlphaComponent(0.6).setStroke(); path.lineWidth = 1.25; path.stroke()
             return
         }
-        if selected { p.selectedFill.setFill() } else { (hovered ? p.surfaceHover : p.surfaceRow).setFill() }
-        path.fill()
-        (selected ? p.selectedEdge : (hovered ? p.accentBorder : p.border)).setStroke()
-        path.lineWidth = selected ? 1.5 : 1
+        (hovered ? p.surfaceHover : p.surfaceRow).setFill(); path.fill()
+        if selected { p.selectedFill.setFill(); path.fill() }
+        (selected ? p.selectedEdge : p.divider).setStroke()
+        path.lineWidth = 1
         path.stroke()
     }
 
@@ -859,8 +860,8 @@ final class ClipThumb: NSView {
 
     private func updateEdge() {
         let p = Pal
-        layer?.borderColor = (flashing ? p.success : (selected ? p.selectedEdge : (hovered ? p.accentBorder : p.border))).cgColor
-        layer?.borderWidth = flashing || selected ? 2 : 1
+        layer?.borderColor = (flashing ? p.success : (selected ? p.selectedEdge : p.divider)).cgColor
+        layer?.borderWidth = flashing ? 1.5 : 1
     }
 
     func flash() {

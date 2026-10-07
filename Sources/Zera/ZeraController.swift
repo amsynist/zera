@@ -1081,6 +1081,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         currentContent = nil
         currentCard = nil
         live.themeChanged()
+        island.themeChanged()
+        buddy.needsDisplay = true
         if let k = showing {
             show(k, instant: true)
             if k == .settings, let pane = settingsPane { (cards[.settings] as? SettingsCard)?.select(pane) }

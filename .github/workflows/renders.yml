@@ -1,0 +1,46 @@
+name: Renders
+
+# Renders every screen (Tests/ZeraTests/ScreenRenderTests.swift) on a Mac and publishes the PNGs
+# to the branch renders/<pr branch>, so a pull request's UI can be reviewed without running it.
+on:
+  pull_request:
+    paths: ['Sources/**', 'Tests/**', 'Resources/**', '.github/workflows/renders.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: renders-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    # Only for branches in this repository: a fork's pull request never gets a write token.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: macos-15
+    permissions:
+      contents: write   # to publish renders/<branch>; nothing else is written
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app 2>/dev/null || true
+          swift --version
+
+      - name: Render screens
+        run: ZERA_RENDER_SCREENS="$RUNNER_TEMP/renders" swift test --filter ScreenRenderTests
+
+      - name: Publish to renders/<branch>
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          cd "$RUNNER_TEMP/renders"
+          ls -1
+          printf 'Screen renders of %s (%s)\n' "$BRANCH" "$SHA" > README.md
+          git init -q
+          git checkout -q -b renders
+          git -c user.name="zera-renders" -c user.email="renders@users.noreply.github.com" add -A
+          git -c user.name="zera-renders" -c user.email="renders@users.noreply.github.com" commit -qm "Renders of $SHA"
+          git push -fq "https://x-access-token:${TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/renders/${BRANCH}"

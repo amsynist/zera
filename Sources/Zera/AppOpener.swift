@@ -363,21 +363,15 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         addSubview(holder)
 
         card.radius = 24
-        card.fill = NSColor(srgbRed: 0.028, green: 0.045, blue: 0.11, alpha: 0.98)
-        card.edge = Neon.edge.withAlphaComponent(0.7)
         card.lineWidth = 1
         card.glow = 0.45
         holder.addSubview(card)
 
         // The root: a glowing node with the magnifier, then the field.
         rootDot.radius = 15
-        rootDot.fill = Neon.cyan.withAlphaComponent(0.14)
-        rootDot.edge = Neon.cyan.withAlphaComponent(0.6)
         rootDot.lineWidth = 1
         rootDot.glow = 0
         card.addSubview(rootDot)
-        searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .bold).applying(.init(paletteColors: [Neon.cyan])))
         rootDot.addSubview(searchIcon)
         chip.key = "‹"
         chip.ghost = true
@@ -388,20 +382,17 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = NSFont.systemFont(ofSize: 18, weight: .medium)
-        field.textColor = Neon.text
         field.placeholderAttributedString = NSAttributedString(string: "Open an app…", attributes: [
-            .foregroundColor: NSColor(srgbRed: 0.37, green: 0.41, blue: 0.59, alpha: 1), .font: NSFont.systemFont(ofSize: 18, weight: .medium)])
+            .foregroundColor: Neon.textFaint, .font: NSFont.systemFont(ofSize: 18, weight: .medium)])
         field.cell?.usesSingleLineMode = true
         field.cell?.isScrollable = true
         field.delegate = self
         field.setAccessibilityLabel("App name")
         card.addSubview(field)
         rightLabel.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold)
-        rightLabel.textColor = Neon.textDim
         rightLabel.alignment = .right
         card.addSubview(rightLabel)
         rootStem.wantsLayer = true
-        rootStem.layer?.backgroundColor = Neon.cyan.withAlphaComponent(0.9).cgColor
         card.addSubview(rootStem)
 
         // The tree: rows in a scroll view (no scroll bar), branches drawn under them.
@@ -411,10 +402,8 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         treeScroll.hasVerticalScroller = false
         treeScroll.documentView = treeDoc
         treeDoc.wantsLayer = true
-        for (l, color, width) in [(dimLines, NSColor(srgbRed: 0.43, green: 0.55, blue: 1, alpha: 0.3), CGFloat(1.5)),
-                                  (litLines, Neon.cyan, 1.8)] {
+        for (l, width) in [(dimLines, CGFloat(1.5)), (litLines, 1.8)] {
             l.fillColor = nil
-            l.strokeColor = color.cgColor
             l.lineWidth = width
             l.lineCap = .round
             l.lineJoin = .round
@@ -424,7 +413,6 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
 
         // The chosen item.
         dHalo.type = .radial
-        dHalo.colors = [Neon.accent.withAlphaComponent(0.45).cgColor, Neon.halo.withAlphaComponent(0.15).cgColor, NSColor.clear.cgColor]
         dHalo.locations = [0, 0.5, 1]
         dHalo.startPoint = CGPoint(x: 0.5, y: 0.5)
         dHalo.endPoint = CGPoint(x: 1, y: 1)
@@ -433,25 +421,20 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         dIcon.imageScaling = .scaleProportionallyUpOrDown
         detail.addSubview(dIcon)
         dName.font = NSFont.systemFont(ofSize: 18, weight: .semibold)
-        dName.textColor = Neon.text
         dName.alignment = .center
         dName.lineBreakMode = .byTruncatingTail
         detail.addSubview(dName)
         dBlurb.font = NSFont.systemFont(ofSize: 12)
-        dBlurb.textColor = Neon.textDim
         dBlurb.alignment = .center
         dBlurb.maximumNumberOfLines = 2
         detail.addSubview(dBlurb)
         for _ in 0..<4 {
             let k = NSTextField(labelWithString: ""), v = NSTextField(labelWithString: ""), rule = NSView()
             k.font = NSFont.systemFont(ofSize: 12.5)
-            k.textColor = Neon.textDim
             v.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
-            v.textColor = NSColor(srgbRed: 0.87, green: 0.9, blue: 1, alpha: 1)
             v.alignment = .right
             v.lineBreakMode = .byTruncatingMiddle
             rule.wantsLayer = true
-            rule.layer?.backgroundColor = Neon.chipEdge.withAlphaComponent(0.18).cgColor
             [k, v, rule].forEach(detail.addSubview)
             dFacts.append((k, v, rule))
         }
@@ -466,18 +449,15 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         dPin.onClick = { [weak self] in self?.togglePinChosen() }
         detail.addSubview(dPin)
         dEmpty.font = NSFont.systemFont(ofSize: 13.5)
-        dEmpty.textColor = Neon.textDim
         dEmpty.alignment = .center
         detail.addSubview(dEmpty)
         card.addSubview(detail)
 
         for r in [paneRule, footRule] {
             r.wantsLayer = true
-            r.layer?.backgroundColor = Neon.chipEdge.withAlphaComponent(0.25).cgColor
             card.addSubview(r)
         }
         foot.font = NSFont.systemFont(ofSize: 12)
-        foot.textColor = NSColor(srgbRed: 0.55, green: 0.59, blue: 0.78, alpha: 1)
         foot.lineBreakMode = .byTruncatingTail
         card.addSubview(foot)
         footOpen.ghost = true
@@ -495,13 +475,43 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         holder.addSubview(zera)
         setAccessibilityRole(.group)
         setAccessibilityLabel("App opener")
+        applyTheme()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Colours from the current theme. Runs each time the opener opens, so a theme picked in
+    /// Settings shows up here too.
+    private func applyTheme() {
+        card.fill = Neon.fillBottom.withAlphaComponent(0.98)
+        card.edge = Neon.edge
+        rootDot.fill = Neon.cyan.withAlphaComponent(0.14)
+        rootDot.edge = Neon.cyan.withAlphaComponent(0.6)
+        searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .bold).applying(.init(paletteColors: [Neon.cyan])))
+        field.textColor = Neon.text
+        rightLabel.textColor = Neon.textDim
+        rootStem.layer?.backgroundColor = Neon.cyan.withAlphaComponent(0.9).cgColor
+        dimLines.strokeColor = Neon.textFaint.withAlphaComponent(0.45).cgColor
+        litLines.strokeColor = Neon.cyan.cgColor
+        dHalo.colors = [Neon.accent.withAlphaComponent(0.45).cgColor, Neon.halo.withAlphaComponent(0.15).cgColor, NSColor.clear.cgColor]
+        dName.textColor = Neon.text
+        dBlurb.textColor = Neon.textDim
+        for (k, v, rule) in dFacts {
+            k.textColor = Neon.textDim
+            v.textColor = Neon.text
+            rule.layer?.backgroundColor = Neon.divider.cgColor
+        }
+        dEmpty.textColor = Neon.textDim
+        for r in [paneRule, footRule] { r.layer?.backgroundColor = Neon.divider.cgColor }
+        foot.textColor = Neon.textDim
+        ([card, rootDot, chip, dPrimary, dSecondary, dPin, footOpen, footActions] as [NSView]).forEach { $0.needsDisplay = true }
+    }
+
     // MARK: Data
 
     func prepare() {
+        applyTheme()
         actionsOpen = false
         mode = .root
         commandScan = UUID()
@@ -1748,13 +1758,13 @@ final class TreeGroupView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         chevron.image = NSImage(systemSymbolName: open ? "chevron.down" : "chevron.right", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 8.5, weight: .bold).applying(.init(paletteColors: [NSColor(srgbRed: 0.33, green: 0.38, blue: 0.56, alpha: 1)])))
+            .withSymbolConfiguration(.init(pointSize: 8.5, weight: .bold).applying(.init(paletteColors: [Neon.textFaint])))
         addSubview(chevron)
         let s = NSMutableAttributedString(string: title, attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: NSColor(srgbRed: 0.49, green: 0.53, blue: 0.71, alpha: 1), .kern: 1.1])
+            .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: Neon.textDim, .kern: 1.1])
         if let n = count {
             s.append(NSAttributedString(string: "  · \(n)", attributes: [
-                .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium), .foregroundColor: NSColor(srgbRed: 0.31, green: 0.35, blue: 0.53, alpha: 1)]))
+                .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium), .foregroundColor: Neon.textFaint]))
         }
         label.attributedStringValue = s
         addSubview(label)
@@ -1815,11 +1825,11 @@ final class TreeRowView: NSView {
         title.lineBreakMode = .byTruncatingTail
         addSubview(title)
         subLabel.font = NSFont.systemFont(ofSize: 12)
-        subLabel.textColor = NSColor(srgbRed: 0.49, green: 0.53, blue: 0.71, alpha: 1)
+        subLabel.textColor = Neon.textDim
         subLabel.lineBreakMode = .byTruncatingTail
         addSubview(subLabel)
         acc.font = style == .leaf ? NSFont.monospacedSystemFont(ofSize: 11, weight: .medium) : NSFont.systemFont(ofSize: 11.5, weight: .medium)
-        acc.textColor = NSColor(srgbRed: 0.49, green: 0.53, blue: 0.71, alpha: 1)
+        acc.textColor = Neon.textDim
         acc.alignment = .right
         addSubview(acc)
         dot.wantsLayer = true
@@ -1842,7 +1852,7 @@ final class TreeRowView: NSView {
             iconView.image = NSImage(systemSymbolName: s, accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold).applying(.init(paletteColors: [c])))
             iconView.isHidden = false
-            acc.textColor = tint?.withAlphaComponent(0.8) ?? NSColor(srgbRed: 0.43, green: 0.47, blue: 0.65, alpha: 1)
+            acc.textColor = tint?.withAlphaComponent(0.8) ?? Neon.textFaint
         }
     }
 
@@ -1866,10 +1876,10 @@ final class TreeRowView: NSView {
         guard let on = toggle else { return }
         let r = NSRect(x: bounds.width - 12 - 30, y: (bounds.height - 18) / 2, width: 30, height: 18)
         let track = NSBezierPath(roundedRect: r, xRadius: 9, yRadius: 9)
-        (on ? Neon.red.withAlphaComponent(0.85) : NSColor(srgbRed: 0.1, green: 0.14, blue: 0.25, alpha: 1)).setFill()
+        (on ? Neon.red.withAlphaComponent(0.85) : Neon.track).setFill()
         track.fill()
         let knob = NSRect(x: on ? r.maxX - 16 : r.minX + 2, y: r.minY + 2, width: 14, height: 14)
-        (on ? NSColor.white : NSColor(srgbRed: 0.49, green: 0.53, blue: 0.71, alpha: 1)).setFill()
+        (on ? NSColor.white : Neon.textDim).setFill()
         NSBezierPath(ovalIn: knob).fill()
     }
 
@@ -1899,17 +1909,27 @@ final class TreeButton: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    private var pressed = false { didSet { if pressed != oldValue { needsDisplay = true } } }
+
+    /// The shared button family (`Palette.drawButton`): the main action filled with the accent,
+    /// a green tint filled green, a red one a soft red; the rest quiet.
+    private var tone: ButtonTone {
+        guard primary else { return .neutral }
+        guard let t = tint else { return .accent }
+        if t.sameRGB(as: Neon.green) { return .success }
+        if t.sameRGB(as: Neon.red) { return .danger }
+        if t.sameRGB(as: Neon.warning) { return .warning }
+        return .accent
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10)
-        let accent = tint ?? Neon.accent
-        (primary ? accent.withAlphaComponent(hovered ? 0.24 : 0.17) : NSColor(srgbRed: 0.035, green: 0.067, blue: 0.157, alpha: hovered ? 1 : 0.9)).setFill()
-        path.fill()
-        (primary ? accent.withAlphaComponent(0.65) : Neon.chipEdge).setStroke()
-        path.lineWidth = 1
-        path.stroke()
-        let t = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: Neon.text])
-        let k = NSAttributedString(string: key, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium), .foregroundColor: Neon.glyph])
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5).pressed(pressed)
+        let path = NSBezierPath(roundedRect: r, xRadius: Radius.m, yRadius: Radius.m)
+        let ink = Pal.drawButton(path, tone: tone, hovered: hovered, pressed: pressed)
+        let filled = tone == .accent || tone == .success
+        let t = NSAttributedString(string: title, attributes: [.font: Typo.button, .foregroundColor: ink])
+        let k = NSAttributedString(string: key, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium),
+                                                              .foregroundColor: filled ? ink.withAlphaComponent(0.75) : Neon.glyph])
         let ts = t.size(), ks = k.size()
         // Too narrow for the key as well: the word alone, so nothing spills over the edge.
         guard ts.width + 10 + ks.width + 10 <= bounds.width - 16 else {
@@ -1921,12 +1941,12 @@ final class TreeButton: NSView {
         t.draw(at: NSPoint(x: x0, y: (bounds.height - ts.height) / 2))
         let kr = NSRect(x: x0 + ts.width + 10, y: (bounds.height - ks.height - 6) / 2, width: ks.width + 10, height: ks.height + 6)
         let kp = NSBezierPath(roundedRect: kr, xRadius: 5, yRadius: 5)
-        Neon.chipEdge.setStroke(); kp.lineWidth = 1; kp.stroke()
+        (filled ? ink.withAlphaComponent(0.3) : Neon.chipEdge).setStroke(); kp.lineWidth = 1; kp.stroke()
         k.draw(at: NSPoint(x: kr.minX + 5, y: kr.minY + 3))
     }
     /// The width that fits the word and its key with comfortable room either side.
     var fittedWidth: CGFloat {
-        let t = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold)]).width
+        let t = (title as NSString).size(withAttributes: [.font: Typo.button]).width
         let k = (key as NSString).size(withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)]).width
         return ceil(t + 10 + k + 10) + 28
     }
@@ -1936,9 +1956,12 @@ final class TreeButton: NSView {
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    override func mouseExited(with event: NSEvent) { hovered = false; pressed = false }
+    override func mouseDown(with event: NSEvent) { pressed = true }
+    override func mouseUp(with event: NSEvent) {
+        pressed = false
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+    }
     override func accessibilityPerformPress() -> Bool { onClick?(); return true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
@@ -1969,8 +1992,9 @@ final class OpenerFlipped: NSView { override var isFlipped: Bool { true } }
 /// A rounded panel that paints its own fill, edge and glow, so it's solid however it's layered.
 final class OpenerGlass: NSView {
     var radius: CGFloat = 26 { didSet { needsDisplay = true } }
-    var fill: NSColor = Neon.fillBottom { didSet { needsDisplay = true } }
-    var edge: NSColor = Neon.edge { didSet { needsDisplay = true } }
+    /// nil: the theme's glass and edge, read each time it draws.
+    var fill: NSColor? { didSet { needsDisplay = true } }
+    var edge: NSColor? { didSet { needsDisplay = true } }
     var lineWidth: CGFloat = 1.5 { didSet { needsDisplay = true } }
     var glow: Float = 0.75 { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
@@ -1981,9 +2005,9 @@ final class OpenerGlass: NSView {
         guard let l = layer else { return }
         l.cornerRadius = radius
         l.cornerCurve = .continuous
-        l.backgroundColor = fill.cgColor
+        l.backgroundColor = (fill ?? Neon.fillBottom).cgColor
         l.borderWidth = lineWidth
-        l.borderColor = edge.cgColor
+        l.borderColor = (edge ?? Neon.edge).cgColor
         l.shadowColor = Neon.halo.cgColor
         l.shadowOpacity = glow
         l.shadowRadius = 22
@@ -2012,7 +2036,7 @@ final class OpenerPill: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 0.75, dy: 0.75)
         let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        (ghost ? NSColor(srgbRed: 0.035, green: 0.067, blue: 0.157, alpha: 1) : Neon.accent.withAlphaComponent(0.16)).setFill(); path.fill()
+        (ghost ? Neon.chip : Neon.accent.withAlphaComponent(0.16)).setFill(); path.fill()
         (ghost ? Neon.chipEdge : Neon.accent.withAlphaComponent(0.65)).setStroke(); path.lineWidth = 1.2; path.stroke()
         let t = text, sz = t.size()
         t.draw(at: NSPoint(x: (bounds.width - sz.width) / 2, y: (bounds.height - sz.height) / 2))

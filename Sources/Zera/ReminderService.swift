@@ -561,6 +561,12 @@ final class ReminderService {
                             headline: "Time for a short break? ☕", detail: "You asked for one — stretch, water, look far away"))
     }
 
+    /// Shows `a` as the banner without firing or remembering it (screen renders in tests).
+    func preview(_ a: ReminderAlert) {
+        pendingAlerts = [a]
+        post()
+    }
+
     private func raise(_ a: ReminderAlert) {
         guard !pendingAlerts.contains(a) else { return }
         // One card per reminder: a newer nudge replaces an older one still waiting.
