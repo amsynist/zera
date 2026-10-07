@@ -129,6 +129,8 @@ final class AppOpener: NSObject, NSWindowDelegate {
     func open(notch: NSRect, screen: NSRect) {
         guard !isOpen else { return }
         isOpen = true
+        // The app you're in now goes to the end of Your usual (its panel never takes focus).
+        AppCatalog.shared.current = NSWorkspace.shared.frontmostApplication.flatMap { $0.processIdentifier == getpid() ? nil : $0.bundleURL }
         onOpenChanged?(true)
         let band = max(24, notch.height)
         let size = NSSize(width: OP.width, height: view.panelHeight(band: band))
@@ -237,6 +239,8 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private var dFacts: [(NSTextField, NSTextField, NSView)] = []
     private let dPrimary = TreeButton()
     private let dSecondary = TreeButton()
+    /// Pin / Unpin for the chosen app, beside Actions, so the shortcut is in plain sight.
+    private let dPin = TreeButton()
     private let dEmpty = NSTextField(wrappingLabelWithString: "")
     // The footer.
     private let footRule = NSView()
@@ -458,6 +462,9 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         dSecondary.onClick = { [weak self] in self?.toggleActions() }
         detail.addSubview(dPrimary)
         detail.addSubview(dSecondary)
+        dPin.key = "⇧⌘P"
+        dPin.onClick = { [weak self] in self?.togglePinChosen() }
+        detail.addSubview(dPin)
         dEmpty.font = NSFont.systemFont(ofSize: 13.5)
         dEmpty.textColor = Neon.textDim
         dEmpty.alignment = .center
@@ -625,8 +632,9 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             r.icon = it.icon
             r.titleText = highlighted(it.name, it.hits, size: 14, weight: .medium)
             switch it {
-            case .app(_, _, let running):
-                r.accessory = running ? "Running" : ""
+            case .app(let a, _, let running):
+                let pinned = AppCatalog.shared.isPinned(a)
+                r.accessory = pinned ? (running ? "Pinned · running" : "Pinned") : (running ? "Running" : "")
                 r.running = running
             case .command(let c, _): r.sub = c.subtitle.replacingOccurrences(of: "Command · ", with: ""); r.accessory = "Command"
             case .action(let a, _): r.sub = OpenerActions.subtitle(a).replacingOccurrences(of: "Action · ", with: ""); r.accessory = "Action"
@@ -920,13 +928,21 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         dPrimary.tint = primaryTint
         dSecondary.title = actionsOpen ? "Hide actions" : "Actions"
         dSecondary.key = actionsOpen ? "esc" : "⌘K"
+        let pinnable = chosenApp
+        dPin.isHidden = !has || actionsOpen || pinnable == nil
+        if let a = pinnable { dPin.title = AppCatalog.shared.isPinned(a) ? "Unpin" : "Pin" }
         needsLayout = true
     }
 
     private func updateFooter() {
         switch mode {
         case .root where actionsOpen: foot.stringValue = "↑↓ choose   ⏎ run   type to search actions   esc back"
-        case .root: foot.stringValue = "↑↓ choose   ⇥ next branch   ⌘1–⌘6 quick open"
+        case .root:
+            if let a = chosenApp, AppCatalog.shared.isPinned(a) {
+                foot.stringValue = "↑↓ choose   ⇥ next branch   ⇧⌘P unpin   ⌥⌘↑↓ move"
+            } else {
+                foot.stringValue = "↑↓ choose   ⇥ next branch   ⇧⌘P pin   ⌘1–⌘6 quick open"
+            }
         case .command(.quitAll): foot.stringValue = "↑↓ choose   space or click to keep   esc back"
         case .command(.custom): foot.stringValue = "esc back"
         case .command: foot.stringValue = "↑↓ choose   ⌘⏎ force   ⌘R refresh   esc back"
@@ -1189,18 +1205,60 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
                 },
             ]
         }
-        if AppCatalog.shared.hasUsage(app) {
-            list.append(PanelAction("Remove from Your Usual", "star.slash", section: 3) { [weak self] in
-                AppCatalog.shared.forgetUsage(app)
-                self?.reload()
-                self?.flash("REMOVED FROM YOUR USUAL")
+        let cat = AppCatalog.shared
+        if let i = cat.pinIndex(app) {
+            list.append(PanelAction("Unpin from Your Usual", "pin.slash", .cmd("p", .shift), section: 3) { [weak self] in
+                cat.unpin(app); self?.keepChosen(app, "UNPINNED \(app.name.uppercased())")
             })
+            if i > 0 {
+                list.append(PanelAction("Move Up in Your Usual", "arrow.up", .code(KeyCombo.upKey, [.command, .option]), section: 3) { [weak self] in
+                    cat.movePin(app, by: -1); self?.keepChosen(app, "MOVED UP")
+                })
+            }
+            if i < cat.pins.count - 1 {
+                list.append(PanelAction("Move Down in Your Usual", "arrow.down", .code(KeyCombo.downKey, [.command, .option]), section: 3) { [weak self] in
+                    cat.movePin(app, by: 1); self?.keepChosen(app, "MOVED DOWN")
+                })
+            }
+        } else {
+            list.append(PanelAction("Pin to Your Usual", "pin", .cmd("p", .shift), section: 3) { [weak self] in
+                cat.pin(app); self?.keepChosen(app, "PINNED \(app.name.uppercased())")
+            })
+            if cat.hasUsage(app) {
+                list.append(PanelAction("Remove from Your Usual", "star.slash", section: 3) { [weak self] in
+                    cat.forgetUsage(app); self?.keepChosen(app, "REMOVED FROM YOUR USUAL")
+                })
+            }
         }
         if AppTools.uninstallBlocker(app) == nil {
             list.append(PanelAction("Uninstall Application", "trash", .code(KeyCombo.deleteKey, [.command, .control]), section: 3,
                                     tint: Neon.red, confirm: "Move \(app.name) to the Trash?") { [weak self] in self?.uninstall(app) })
         }
         return list
+    }
+
+    /// The chosen app, when the chosen item is one (not a command or action).
+    private var chosenApp: AppEntry? {
+        guard mode == .root, case .app(let a, _, _)? = results[safe: selected] else { return nil }
+        return a
+    }
+
+    private func togglePinChosen() {
+        guard let a = chosenApp else { return }
+        let cat = AppCatalog.shared
+        if cat.isPinned(a) { cat.unpin(a); keepChosen(a, "UNPINNED \(a.name.uppercased())") }
+        else { cat.pin(a); keepChosen(a, "PINNED \(a.name.uppercased())") }
+    }
+
+    /// After pinning or reordering: the list re-sorts and the same app stays chosen.
+    private func keepChosen(_ app: AppEntry, _ note: String) {
+        SoundService.shared.play(.openerTick)
+        reload()
+        if let i = results.firstIndex(where: { if case .app(let a, _, _) = $0 { return a.url == app.url }; return false }), i != selected {
+            selected = i
+            rebuild()
+        }
+        flash(note)
     }
 
     private func uninstall(_ app: AppEntry) {
@@ -1521,7 +1579,13 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             f.2.frame = NSRect(x: pad, y: y + 34, width: w - pad * 2, height: 1)
             y += 35
         }
-        dSecondary.frame = NSRect(x: pad, y: h - 22 - 34, width: w - pad * 2, height: 34)
+        if dPin.isHidden {
+            dSecondary.frame = NSRect(x: pad, y: h - 22 - 34, width: w - pad * 2, height: 34)
+        } else {
+            let half = ((w - pad * 2 - 8) / 2).rounded(.down)
+            dPin.frame = NSRect(x: pad, y: h - 22 - 34, width: half, height: 34)
+            dSecondary.frame = NSRect(x: pad + half + 8, y: h - 22 - 34, width: w - pad * 2 - half - 8, height: 34)
+        }
         dPrimary.frame = NSRect(x: pad, y: dSecondary.frame.minY - 8 - 34, width: w - pad * 2, height: 34)
         dEmpty.frame = NSRect(x: pad, y: h / 2 - 30, width: w - pad * 2, height: 60)
     }
@@ -1847,6 +1911,11 @@ final class TreeButton: NSView {
         let t = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: Neon.text])
         let k = NSAttributedString(string: key, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium), .foregroundColor: Neon.glyph])
         let ts = t.size(), ks = k.size()
+        // Too narrow for the key as well: the word alone, so nothing spills over the edge.
+        guard ts.width + 10 + ks.width + 10 <= bounds.width - 16 else {
+            t.draw(at: NSPoint(x: (bounds.width - ts.width) / 2, y: (bounds.height - ts.height) / 2))
+            return
+        }
         let total = ts.width + 10 + ks.width + 10
         let x0 = (bounds.width - total) / 2
         t.draw(at: NSPoint(x: x0, y: (bounds.height - ts.height) / 2))
@@ -1854,6 +1923,12 @@ final class TreeButton: NSView {
         let kp = NSBezierPath(roundedRect: kr, xRadius: 5, yRadius: 5)
         Neon.chipEdge.setStroke(); kp.lineWidth = 1; kp.stroke()
         k.draw(at: NSPoint(x: kr.minX + 5, y: kr.minY + 3))
+    }
+    /// The width that fits the word and its key with comfortable room either side.
+    var fittedWidth: CGFloat {
+        let t = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold)]).width
+        let k = (key as NSString).size(withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)]).width
+        return ceil(t + 10 + k + 10) + 28
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
