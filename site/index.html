@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zera — your AI buddy in the notch</title>
+<meta name="description" content="A free, open-source macOS app that lives in your notch: Claude Code sessions and approvals, tasks and timesheets from your commits, files, clipboard, pull requests and your calendar.">
+<meta name="theme-color" content="#04060f">
+<link rel="icon" type="image/png" href="assets/icon.png">
+<link rel="apple-touch-icon" href="assets/icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Zera — your AI buddy in the notch">
+<meta property="og:description" content="Claude Code, tasks, timesheets, files and your day, in your Mac's notch. Free and open source.">
+<meta property="og:image" content="assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500;600&amp;family=Chakra+Petch:wght@600;700&amp;display=swap">
+<style>
+body{margin:0;background:#04060f}
+a{color:#7fc8ff;text-decoration:none}a:hover{color:#b5dfff}
+.z *{box-sizing:border-box}
+.z section{scroll-margin-top:80px}
+.z-btn{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 22px;border-radius:14px;font:600 15px/1 Geist,system-ui,sans-serif;border:1px solid rgba(84,128,255,.45);color:#eef1ff;background:rgba(10,18,44,.9);transition:border-color .15s,background .15s}
+.z-btn:hover{border-color:rgba(97,184,255,.9);color:#fff}
+.z-btn.primary{background:#4dbdff;border-color:#4dbdff;color:#03101f;box-shadow:0 0 28px rgba(77,189,255,.45)}
+.z-btn.primary:hover{background:#7fd0ff;color:#03101f}
+.z-eyebrow{font:600 12px/1 "Geist Mono",ui-monospace,monospace;letter-spacing:.16em;color:#4dbdff;text-transform:uppercase}
+.z-h2{font:700 clamp(32px,4vw,48px)/1.08 Geist,system-ui,sans-serif;letter-spacing:-.02em;color:#f3f5ff;margin:14px 0 0}
+.z-lead{font:400 18px/1.6 Geist,system-ui,sans-serif;color:#a3acd2;margin:16px 0 0;max-width:560px}
+.z-glass{border-radius:22px;border:1px solid rgba(84,128,255,.45);background:linear-gradient(180deg,rgba(10,18,44,.92),rgba(5,9,24,.96));box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 48px rgba(48,86,255,.18),0 30px 80px rgba(0,0,0,.45)}
+.z-shot{display:block;width:100%;height:auto;border-radius:14px}
+.z-li{display:flex;gap:12px;align-items:flex-start;font:400 16px/1.55 Geist,system-ui,sans-serif;color:#c6cdee}
+.z-li b{color:#f3f5ff;font-weight:600}
+.z-dot{flex:none;width:8px;height:8px;border-radius:50%;background:#4dbdff;box-shadow:0 0 10px #4dbdff;margin-top:9px}
+.z-kbd{font:500 13px/1 "Geist Mono",monospace;color:#9fb5ff;padding:3px 7px;border-radius:6px;border:1px solid rgba(84,128,255,.4);background:rgba(10,18,44,.8)}
+.z-code{font:500 14px/1.7 "Geist Mono",monospace;color:#c6cdee;background:#060b1c;border:1px solid rgba(84,128,255,.3);border-radius:14px;padding:18px 20px;overflow-x:auto;white-space:pre}
+.z-card h3{font:600 19px/1.25 Geist,system-ui,sans-serif;color:#f3f5ff;margin:18px 0 6px}
+.z-card p{font:400 15px/1.55 Geist,system-ui,sans-serif;color:#a3acd2;margin:0}
+.z-num{font:700 44px/1 "Chakra Petch",Geist,sans-serif;color:#4dbdff;text-shadow:0 0 18px rgba(77,189,255,.5)}
+.z-faq{border-bottom:1px solid rgba(84,128,255,.18);padding:20px 0}
+.z-faq summary{cursor:pointer;font:600 17px/1.4 Geist,system-ui,sans-serif;color:#f3f5ff;list-style:none}
+.z-faq p{font:400 15.5px/1.6 Geist,system-ui,sans-serif;color:#a3acd2;margin:10px 0 0;max-width:760px}
+.z-nav a{font:500 14.5px/1 Geist,system-ui,sans-serif;color:#a3acd2}
+.z-nav a:hover{color:#f3f5ff}
+@media (max-width:860px){.z-split{flex-direction:column !important}.z-nav-links{display:none !important}.z-grid3{grid-template-columns:repeat(1,minmax(0,1fr)) !important}.z-grid2{grid-template-columns:repeat(1,minmax(0,1fr)) !important}}
+</style>
+</head>
+<body>
+<div class="z" style="background: #04060f; color: #eef1ff; font-family: Geist, system-ui, sans-serif; min-height: 100vh">
+
+  <!-- Nav -->
+  <header style="position: relative; z-index: 2; border-bottom: 1px solid rgba(84,128,255,.14)">
+    <nav class="z-nav" aria-label="Main" style="max-width: 1200px; margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; gap: 28px">
+      <a href="#top" style="display: flex; align-items: center; gap: 10px; color: #f3f5ff">
+        <img src="assets/zera-hang.png" alt="" style="width: 34px; height: 34px; object-fit: contain">
+        <span style="font: 700 20px/1 Geist, sans-serif; letter-spacing: -.01em">Zera</span>
+      </a>
+      <div class="z-nav-links" style="display: flex; gap: 26px; margin-left: 12px">
+        <a href="#claude">Claude Code</a>
+        <a href="#tasks">Tasks</a>
+        <a href="#timesheets">Timesheets</a>
+        <a href="#everything">Features</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#faq">FAQ</a>
+      </div>
+      <div style="margin-left: auto; display: flex; gap: 10px">
+        <a class="z-btn" href="https://github.com/amsynist/zera" style="min-height: 40px; padding: 0 16px; font-size: 14px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 7L12 17.6 5.8 21.1l1.4-7L2 9.3l7-.8z"></path></svg>
+          GitHub
+        </a>
+        <a class="z-btn primary" href="https://github.com/amsynist/zera/releases/latest" style="min-height: 40px; padding: 0 16px; font-size: 14px">Download</a>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Hero -->
+  <section id="top" style="position: relative; overflow: hidden; padding: 84px 24px 40px">
+    <div aria-hidden="true" style="position: absolute; left: 50%; top: -260px; width: 1100px; height: 700px; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(closest-side, rgba(48,86,255,.32), rgba(48,86,255,0))"></div>
+    <div style="position: relative; max-width: 1200px; margin: 0 auto; text-align: center">
+      <div class="z-eyebrow">For macOS · free and open source</div>
+      <h1 style="font: 800 clamp(44px, 7vw, 84px)/1.0 Geist, system-ui, sans-serif; letter-spacing: -.035em; margin: 18px auto 0; max-width: 980px; color: #f6f8ff">Your AI buddy<br>in the notch.</h1>
+      <p style="font: 400 clamp(17px, 1.6vw, 21px)/1.55 Geist, system-ui, sans-serif; color: #a3acd2; margin: 22px auto 0; max-width: 660px">Zera hangs from your Mac's notch and keeps your day in one place: your Claude Code sessions, your tasks and timesheets, your files, clipboard, pull requests and calendar.</p>
+      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 34px">
+        <a class="z-btn primary" href="https://github.com/amsynist/zera/releases/latest">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
+          Download for Mac
+        </a>
+        <a class="z-btn" href="https://github.com/amsynist/zera">View on GitHub</a>
+      </div>
+      <p style="font: 500 13px/1 'Geist Mono', monospace; color: #6d78a6; margin: 18px 0 0">macOS 13+ · Apple silicon and Intel · no account, no API key</p>
+    </div>
+
+    <!-- The tour, in a glass frame under a notch -->
+    <div style="position: relative; max-width: 1120px; margin: 64px auto 0">
+      <div class="z-glass" style="padding: 12px; border-radius: 28px">
+        <div style="position: relative; border-radius: 18px; overflow: hidden; background: #000; aspect-ratio: 16 / 9">
+          <video src="assets/zera-tour.mp4" poster="assets/zera-tour-poster.jpg" autoplay muted loop playsinline preload="metadata" aria-label="A tour of Zera: the notch opens into its tabs, Tasks by day, the focus orb and quick add, the timesheet export, the app opener, and Claude Code in the wings" style="width: 100%; height: 100%; object-fit: cover; display: block"></video>
+        </div>
+      </div>
+      <p style="text-align: center; font: 400 13px/1.4 Geist, sans-serif; color: #6d78a6; margin: 14px 0 0">Recorded from the app with sample data.</p>
+    </div>
+  </section>
+
+  <!-- Works with -->
+  <section aria-label="Works with" style="padding: 28px 24px 8px">
+    <div style="max-width: 1000px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 14px 40px; justify-content: center; align-items: center; font: 500 14px/1 'Geist Mono', monospace; color: #8b96c6; letter-spacing: .04em">
+      <span style="color: #5d6896">WORKS WITH</span>
+      <span>Claude Code</span><span aria-hidden="true" style="color: #2b3566">·</span>
+      <span>GitHub</span><span aria-hidden="true" style="color: #2b3566">·</span>
+      <span>macOS Calendar</span><span aria-hidden="true" style="color: #2b3566">·</span>
+      <span>Google, Outlook, iCloud calendars</span>
+    </div>
+  </section>
+
+  <!-- Claude Code -->
+  <section id="claude" style="padding: 120px 24px 40px">
+    <div class="z-split" style="max-width: 1200px; margin: 0 auto; display: flex; gap: 64px; align-items: center">
+      <div style="flex: 1 1 420px; min-width: 0">
+        <div class="z-eyebrow">Claude Code, live</div>
+        <h2 class="z-h2">Watch it work.<br>Approve from the notch.</h2>
+        <p class="z-lead">While Claude Code works, Zera sprouts two glowing wings beside the notch: what it's doing, how far it's got, and the command it wants to run.</p>
+        <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 28px">
+          <div class="z-li"><span class="z-dot"></span><span><b>Progress at a glance</b> for every session, with its plan and the files it touched.</span></div>
+          <div class="z-li"><span class="z-dot"></span><span><b>Approve or reject</b> commands right there, only when the terminal would have asked.</span></div>
+          <div class="z-li"><span class="z-dot"></span><span><b>Reply when it's done</b> and the same session keeps going.</span></div>
+        </div>
+      </div>
+      <div style="flex: 1.25 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+        <div class="z-glass" style="padding: 18px"><img loading="lazy" decoding="async" class="z-shot" src="assets/16-wings-approval.png" alt="The wings asking to approve a git commit"></div>
+        <div class="z-glass" style="padding: 18px"><img loading="lazy" decoding="async" class="z-shot" src="assets/wings-reply.jpg" alt="The wings showing a finished session with a reply being typed"></div>
+        <div class="z-glass" style="padding: 18px"><img loading="lazy" decoding="async" class="z-shot" src="assets/03-claude-sessions.png" alt="The Claude tab listing a running and a completed session"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tasks -->
+  <section id="tasks" style="padding: 110px 24px 40px">
+    <div class="z-split" style="max-width: 1200px; margin: 0 auto; display: flex; gap: 64px; align-items: center; flex-direction: row-reverse">
+      <div style="flex: 1 1 420px; min-width: 0">
+        <div class="z-eyebrow">Tasks and focus</div>
+        <h2 class="z-h2">A to-do list that<br>keeps the time.</h2>
+        <p class="z-lead">Add a task, press play, and a small orb floats on the screen edge with your time against the estimate. Click it and it opens right where it floats.</p>
+        <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 28px">
+          <div class="z-li"><span class="z-dot"></span><span><b>Type it once:</b> <span class="z-kbd">Write docs #website 30m</span> sets the project and the estimate.</span></div>
+          <div class="z-li"><span class="z-dot"></span><span><b>Add from anywhere</b> with <span class="z-kbd">⌥⌘T</span>, or hover the orb and tap +.</span></div>
+          <div class="z-li"><span class="z-dot"></span><span><b>Projects</b> keep work apart; Today, Week and Month show what got done.</span></div>
+          <div class="z-li"><span class="z-dot"></span><span><b>Honest time:</b> the timer pauses itself when you walk away.</span></div>
+        </div>
+      </div>
+      <div style="flex: 1.25 1 520px; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px" class="z-grid2">
+        <div class="z-glass" style="padding: 14px; grid-column: span 2"><img loading="lazy" decoding="async" class="z-shot" src="assets/tasks-month.jpg" alt="The Tasks tab: projects, and the work done by day"></div>
+        <div class="z-glass" style="padding: 14px"><img loading="lazy" decoding="async" class="z-shot" src="assets/focus-card.jpg" alt="The focus card: timer ring, pause, done, next and up next"></div>
+        <div class="z-glass" style="padding: 14px; display: flex; align-items: center"><img loading="lazy" decoding="async" class="z-shot" src="assets/orb-quick.jpg" alt="Quick add sliding out of the focus orb"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Timesheets -->
+  <section id="timesheets" style="padding: 110px 24px 40px">
+    <div style="max-width: 1200px; margin: 0 auto">
+      <div style="text-align: center; max-width: 760px; margin: 0 auto">
+        <div class="z-eyebrow">Timesheets from your commits</div>
+        <h2 class="z-h2">Month end in a minute.</h2>
+        <p class="z-lead" style="margin-left: auto; margin-right: auto">Link a project to its repos. Your commits become done tasks, grouped by Claude into the work you actually did. Then copy it day by day into your timesheet.</p>
+      </div>
+      <div class="z-grid3" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 52px">
+        <div class="z-glass z-card" style="padding: 26px">
+          <div class="z-num">01</div>
+          <h3>Link your repos</h3>
+          <p>One repo, or a folder of them. Only your commits count, from every branch.</p>
+        </div>
+        <div class="z-glass z-card" style="padding: 26px">
+          <div class="z-num">02</div>
+          <h3>Claude groups them</h3>
+          <p>A month of commits becomes a few clear tasks a day, with the repo each came from, in seconds.</p>
+        </div>
+        <div class="z-glass z-card" style="padding: 26px">
+          <div class="z-num">03</div>
+          <h3>Click a day, paste it</h3>
+          <p>Each day copies as a clean list. Times rounded to quarter hours if you want them, or export to Excel and CSV.</p>
+        </div>
+      </div>
+      <div class="z-glass" style="padding: 14px; margin: 26px auto 0; max-width: 760px"><img loading="lazy" decoding="async" class="z-shot" src="assets/timesheet.jpg" alt="The timesheet export: days as cards, click a day to copy its tasks"></div>
+    </div>
+  </section>
+
+  <!-- Everything else -->
+  <section id="everything" style="padding: 110px 24px 40px">
+    <div style="max-width: 1200px; margin: 0 auto">
+      <div style="text-align: center">
+        <div class="z-eyebrow">Everything else in the notch</div>
+        <h2 class="z-h2">Hover her. The notch opens.</h2>
+      </div>
+      <div class="z-glass" style="padding: 16px; max-width: 760px; margin: 40px auto 0"><img loading="lazy" decoding="async" class="z-shot" src="assets/01-hover-tabs.png" alt="Hovering Zera widens the notch into tabs"></div>
+      <div class="z-grid3" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 30px">
+        <div class="z-glass z-card" style="padding: 16px 16px 24px">
+          <img loading="lazy" decoding="async" class="z-shot" src="assets/04-shelf.png" alt="The Files shelf">
+          <div style="padding: 0 8px"><h3>Files shelf</h3><p>Drop files on the notch, then ask Claude to summarize, explain or pull out what matters.</p></div>
+        </div>
+        <div class="z-glass z-card" style="padding: 16px 16px 24px">
+          <img loading="lazy" decoding="async" class="z-shot" src="assets/05-clipboard.png" alt="Clipboard history">
+          <div style="padding: 0 8px"><h3>Clipboard history</h3><p>Everything you copied, searchable. Passwords and private copies are never kept.</p></div>
+        </div>
+        <div class="z-glass z-card" style="padding: 16px 16px 24px">
+          <img loading="lazy" decoding="async" class="z-shot" src="assets/06-pull-requests.png" alt="Pull requests">
+          <div style="padding: 0 8px"><h3>Pull requests</h3><p>Reviews you owe, checks, approvals and waiting workflow runs.</p></div>
+        </div>
+        <div class="z-glass z-card" style="padding: 16px 16px 24px">
+          <img loading="lazy" decoding="async" class="z-shot" src="assets/07-reminders.png" alt="Reminders and calendar">
+          <div style="padding: 0 8px"><h3>Reminders and calendar</h3><p>Meeting heads-ups with a join button, breaks and water, from macOS Calendar.</p></div>
+        </div>
+        <div class="z-glass z-card" style="padding: 16px 16px 24px">
+          <img loading="lazy" decoding="async" class="z-shot" src="assets/13-app-opener-actions.png" alt="The app opener with ⌘K actions">
+          <div style="padding: 0 8px"><h3>App opener</h3><p><span class="z-kbd">⌥Space</span> brings down a tree of your apps; <span class="z-kbd">⌘K</span> for actions and Quit All.</p></div>
+        </div>
+        <div class="z-glass z-card" style="padding: 16px 16px 24px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center">
+          <img loading="lazy" decoding="async" src="assets/zera-wave.png" alt="Zera waving" style="width: 150px; height: auto">
+          <div style="padding: 0 8px"><h3>And her</h3><p>She reacts to what you do, dozes off when you're away, and cheers when the build goes green.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Privacy -->
+  <section id="privacy" style="padding: 110px 24px 40px">
+    <div class="z-glass" style="max-width: 1200px; margin: 0 auto; padding: clamp(28px, 5vw, 56px)">
+      <div class="z-split" style="display: flex; gap: 56px">
+        <div style="flex: 1 1 360px; min-width: 0">
+          <div class="z-eyebrow">Local by design</div>
+          <h2 class="z-h2">Your Mac.<br>Your data.</h2>
+          <p class="z-lead">No account, no analytics, no telemetry, no update service. Zera runs your own Claude Code login; nothing goes anywhere you didn't ask.</p>
+        </div>
+        <div style="flex: 1.2 1 440px; min-width: 0; display: flex; flex-direction: column; gap: 16px; justify-content: center">
+          <div class="z-li"><span class="z-dot"></span><span><b>Files stay put.</b> Their contents go to Claude only when you click Summarize, Explain or Ask.</span></div>
+          <div class="z-li"><span class="z-dot"></span><span><b>Tasks and timesheets stay on your Mac.</b> Linked projects send only commit messages to Claude, through your login.</span></div>
+          <div class="z-li"><span class="z-dot"></span><span><b>Tokens live in your Keychain</b> and only talk to GitHub or Anthropic.</span></div>
+          <div class="z-li"><span class="z-dot"></span><span><b>No special permissions:</b> no Accessibility, no Input Monitoring, no event taps.</span></div>
+          <div class="z-li"><span class="z-dot"></span><span><b>Open source,</b> so you can read every line.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section id="install" style="padding: 110px 24px 40px">
+    <div class="z-split" style="max-width: 1200px; margin: 0 auto; display: flex; gap: 56px; align-items: flex-start">
+      <div style="flex: 1 1 400px; min-width: 0">
+        <div class="z-eyebrow">Get Zera</div>
+        <h2 class="z-h2">Three steps.</h2>
+        <ol style="list-style: none; padding: 0; margin: 28px 0 0; display: flex; flex-direction: column; gap: 18px">
+          <li class="z-li"><span class="z-num" style="font-size: 22px; width: 34px">1</span><span>Download <b>Zera.dmg</b> from the latest release.</span></li>
+          <li class="z-li"><span class="z-num" style="font-size: 22px; width: 34px">2</span><span>Drag Zera into <b>Applications</b> and open it.</span></li>
+          <li class="z-li"><span class="z-num" style="font-size: 22px; width: 34px">3</span><span>Sign in to <b>Claude Code</b> once. Zera finds it on its own.</span></li>
+        </ol>
+        <div style="margin-top: 30px"><a class="z-btn primary" href="https://github.com/amsynist/zera/releases/latest">Download for Mac</a></div>
+      </div>
+      <div style="flex: 1 1 460px; min-width: 0">
+        <p style="font: 600 15px/1 Geist, sans-serif; color: #f3f5ff; margin: 8px 0 14px">Or build it yourself</p>
+        <div class="z-code">git clone https://github.com/amsynist/zera.git
+cd zera
+./build.sh
+open dist/Zera.app</div>
+        <p style="font: 400 14px/1.6 Geist, sans-serif; color: #8b96c6; margin: 14px 0 0">No Xcode project and no dependencies: just Swift and the Command Line Tools.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" style="padding: 110px 24px 60px">
+    <div style="max-width: 860px; margin: 0 auto">
+      <div class="z-eyebrow">FAQ</div>
+      <h2 class="z-h2" style="margin-bottom: 18px">Questions</h2>
+      <details class="z-faq"><summary>Does it need an API key or an account?</summary><p>No. Zera uses the Claude Code CLI you're already signed in to. An Anthropic API key is optional, and there's no Zera account at all.</p></details>
+      <details class="z-faq"><summary>My Mac has no notch.</summary><p>Zera hangs from the middle of the menu bar instead, and everything works the same.</p></details>
+      <details class="z-faq"><summary>How are commit times worked out?</summary><p>From the gaps between your commits, capped so a lunch break doesn't count. Round to quarter hours in the timesheet if you like, and check them before you submit.</p></details>
+      <details class="z-faq"><summary>Will it slow my Mac down?</summary><p>No. It's a native Swift app with no web views. Timers only run while something is actually happening.</p></details>
+      <details class="z-faq"><summary>Is it really free?</summary><p>Yes, and open source on GitHub. Issues and pull requests are welcome.</p></details>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer style="border-top: 1px solid rgba(84,128,255,.14); padding: 36px 24px 48px">
+    <div style="max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: center">
+      <img loading="lazy" decoding="async" src="assets/zera-hang.png" alt="" style="width: 30px; height: 30px; object-fit: contain">
+      <span style="font: 700 17px/1 Geist, sans-serif">Zera</span>
+      <span style="font: 400 14px/1 Geist, sans-serif; color: #6d78a6">Your AI buddy in the notch.</span>
+      <div style="margin-left: auto; display: flex; gap: 22px; font: 500 14px/1 Geist, sans-serif">
+        <a href="https://github.com/amsynist/zera">GitHub</a>
+        <a href="https://github.com/amsynist/zera/releases">Releases</a>
+        <a href="https://github.com/amsynist/zera/blob/main/SECURITY.md">Security</a>
+      </div>
+    </div>
+    <p style="max-width: 1200px; margin: 22px auto 0; font: 400 12.5px/1.6 Geist, sans-serif; color: #5d6896">Zera is independent and not affiliated with Anthropic, GitHub or Apple. Claude and Claude Code are trademarks of Anthropic, PBC; GitHub of GitHub, Inc.; Apple, Mac and macOS of Apple Inc.</p>
+  </footer>
+</div>
+</body>
+</html>
