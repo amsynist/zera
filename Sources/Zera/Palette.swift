@@ -26,7 +26,8 @@ enum Metrics {
     static let control: CGFloat = 28    // fields, popups, inline buttons
     static let button: CGFloat = 32     // every text button
     static let icon: CGFloat = 30       // icon tile in a row
-    static let cardPad: CGFloat = Space.l
+    /// Side padding of island screens built on CardBase: the same 20 pt as every other screen.
+    static let cardPad: CGFloat = sidePad
 
     // v2: one set of sizes every screen shares.
     /// Side padding inside the island; floating panels (Export, Focus card, App opener) use `panelPad`.
@@ -93,6 +94,12 @@ enum Typo {
     /// Segments and chips: the same weight selected or not, so nothing shifts when you pick one.
     static let chip = NSFont.systemFont(ofSize: 12.5, weight: .medium)
     static let count = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
+
+    /// A section label ("NEEDS YOU", "TO DO · 4"): upper-cased, quiet, slightly spaced.
+    static func sectionText(_ text: String, color: NSColor? = nil) -> NSAttributedString {
+        NSAttributedString(string: text.uppercased(), attributes: [
+            .font: sectionLabel, .foregroundColor: color ?? Pal.textTertiary, .kern: sectionKern])
+    }
 }
 
 /// Light / dark / follow-the-system, chosen in Settings → Appearance.

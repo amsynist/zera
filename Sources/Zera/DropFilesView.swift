@@ -885,7 +885,7 @@ final class DropFilesView: NSView, CardContent {
     private let bubble = ZeraGitHubBubble()
     private let zone = FileDropZone()
     private var actionTiles: [FileActionTile] = []
-    private let recentTitle = dlabel(NSFont.systemFont(ofSize: 15, weight: .semibold), Pal.text)
+    private let recentTitle = dlabel(Typo.sectionLabel, Pal.textTertiary)
     private var clearRecent: PRActionButton!
     private let recentScroll = NSScrollView()
     private let recentList = FlippedView()
@@ -1014,7 +1014,7 @@ final class DropFilesView: NSView, CardContent {
             actionTiles.append(a)
             left.addSubview(a)
         }
-        recentTitle.stringValue = "Recent files"
+        recentTitle.stringValue = "RECENT FILES"
         left.addSubview(recentTitle)
         clearRecent = PRActionButton("Clear all", style: .secondary, target: self, action: #selector(clearRecentTapped))
         left.addSubview(clearRecent)
@@ -1228,7 +1228,7 @@ final class DropFilesView: NSView, CardContent {
         let hasSel = selectedPath.map { FileManager.default.fileExists(atPath: $0) } ?? false
         actionTiles.forEach { $0.enabled = hasSel }
         // Two-pane: the left list shows the Shelf (there's no right panel); otherwise Recent.
-        recentTitle.stringValue = leftShowsRecent ? "Recent files" : "Dropped Files"
+        recentTitle.stringValue = leftShowsRecent ? "RECENT FILES" : "DROPPED FILES"
         let entries: [(String, Date)] = leftShowsRecent ? store.recent.map { ($0.path, $0.addedAt) } : store.items.map { ($0.path, $0.addedAt) }
         let ids = entries.map { $0.0 }
         for (id, r) in recentRows where !ids.contains(id) { r.removeFromSuperview(); recentRows.removeValue(forKey: id) }
@@ -1254,7 +1254,7 @@ final class DropFilesView: NSView, CardContent {
         bubble.text = zone.isTargeted ? "Drop it here! ✨" : (store.items.isEmpty ? "Drop a file here\nand I'll take a look! ✨" : "Tap a file to copy it,\nor drag it out 👇")
         let n = store.items.count
         leftSub.stringValue = n == 0 ? "Drop files on Zera or below" : "\(n) file\(n == 1 ? "" : "s") · tap to copy, drag to use"
-        recentTitle.stringValue = "Dropped files"
+        recentTitle.stringValue = leftShowsRecent ? "RECENT FILES" : "DROPPED FILES"
     }
 
     private func reloadRight() {
@@ -1624,7 +1624,7 @@ final class DropFilesView: NSView, CardContent {
         fileName.frame = NSRect(x: tx, y: 24, width: max(40, half - tx), height: 22)
         fileMeta.frame = NSRect(x: tx, y: 46, width: max(40, half - tx), height: 16)
 
-        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: 36)
+        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
 
         // Bottom: suggestions, then the input.
         let sy = h - 16 - 30
@@ -1640,7 +1640,7 @@ final class DropFilesView: NSView, CardContent {
 
         // The answer fills the rest; Zera's reaction lives in the header now (she hangs there).
         reaction.isHidden = true
-        let cy = Isle.headerHeight + 36 + 10
+        let cy = Isle.headerHeight + Metrics.segment + 10
         content.frame = NSRect(x: x, y: cy, width: iw, height: max(80, inputY - 10 - cy))
     }
 

@@ -24,8 +24,8 @@ private enum S {
     static let gap: CGFloat = 14
     static let pad: CGFloat = 20
     static let radius: CGFloat = 22
-    static let rowH: CGFloat = 76
-    static let rowGap: CGFloat = 8
+    static let rowH: CGFloat = RowTier.rich.height
+    static let rowGap: CGFloat = Metrics.rowGap
     static let tipH: CGFloat = 72
     static let maxWidth: CGFloat = 1240
     static let maxHeight: CGFloat = 840
@@ -320,7 +320,8 @@ final class ClaudeSessionRow: NSView {
         super.layout()
         let w = bounds.width, h = bounds.height
         let mid = (h / 2).rounded()
-        tile.frame = NSRect(x: 14, y: mid - 22, width: 44, height: 44)
+        let ts = RowTier.rich.tile
+        tile.frame = NSRect(x: 14, y: mid - ts / 2, width: ts, height: ts)
         more.frame = NSRect(x: w - 14 - 34, y: mid - 17, width: 34, height: 34)
         action.frame = NSRect(x: more.frame.minX - 8 - 34, y: mid - 17, width: 34, height: 34)
         // Without a stop / review button the status column moves up against the menu button.
@@ -335,7 +336,7 @@ final class ClaudeSessionRow: NSView {
         // as a block on the row so the text lines up with the tile and the buttons.
         let third = (kind == .running && !bar.isHidden) || kind == .waiting
         let top = (mid - (third ? 30 : 19)).rounded()
-        let tx: CGFloat = 72, tw = max(60, sx - 12 - tx)
+        let tx: CGFloat = tile.frame.maxX + 12, tw = max(60, sx - 12 - tx)
         title.frame = NSRect(x: tx, y: top, width: tw, height: 20)
         meta.frame = NSRect(x: tx, y: top + 22, width: tw, height: 16)
         // The chip sits on the title's line; completed rows put the note under it.
@@ -358,10 +359,10 @@ final class ClaudeSessionRow: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: Radius.l, yRadius: Radius.l)
-        if selected { p.selectedFill.setFill() } else { (hovered ? p.surfaceHover : p.surfaceRow).setFill() }
-        path.fill()
-        (selected ? p.selectedEdge : (hovered ? p.accentBorder : p.border)).setStroke()
-        path.lineWidth = selected ? 1.5 : 1
+        (hovered ? p.surfaceHover : p.surfaceRow).setFill(); path.fill()
+        if selected { p.selectedFill.setFill(); path.fill() }
+        (selected ? p.selectedEdge : p.divider).setStroke()
+        path.lineWidth = 1
         path.stroke()
     }
 
@@ -1428,11 +1429,11 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         // Filters and search on one line.
         var y = Isle.headerHeight
         let segW = min(iw, filters.preferredWidth)
-        filters.frame = NSRect(x: x, y: y, width: segW, height: 40)
+        filters.frame = NSRect(x: x, y: y, width: segW, height: Metrics.segment)
         let besideW = iw - segW - 10
         search.isHidden = besideW < 120
-        search.frame = NSRect(x: x + segW + 10, y: y + 2, width: max(0, besideW), height: 36)
-        y += 40 + 12
+        search.frame = NSRect(x: x + segW + 10, y: y, width: max(0, besideW), height: Metrics.field)
+        y += Metrics.segment + 12
 
         tip.isHidden = true
         let listBottom = h - 14
@@ -1474,7 +1475,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         sessionChipView.frame = NSRect(x: chipRight - chipW, y: 32, width: chipW, height: 24)
 
         // Tabs.
-        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: 36)
+        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
 
         // Bottom: quick asks, then the ask field above them.
         let qh: CGFloat = 30
@@ -1492,7 +1493,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         reaction.isHidden = true
 
         // Body between the tabs and the ask field.
-        let bodyTop = Isle.headerHeight + 36 + 10
+        let bodyTop = Isle.headerHeight + Metrics.segment + 10
         let bodyBottom = inputY - 10
         let bodyH = max(0, bodyBottom - bodyTop)
         infoScroll.frame = NSRect(x: x, y: bodyTop, width: iw, height: bodyH)

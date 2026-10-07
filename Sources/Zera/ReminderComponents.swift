@@ -310,10 +310,10 @@ final class AgendaRow: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: Radius.l + 2, yRadius: Radius.l + 2)
-        if selected { p.drawSelected(path) } else {
+        let path = NSBezierPath(roundedRect: r, xRadius: Radius.l, yRadius: Radius.l)
+        if selected { p.surfaceRow.setFill(); path.fill(); p.drawSelected(path) } else {
             (hovered ? p.surfaceHover : p.surfaceRow).setFill(); path.fill()
-            p.border.setStroke(); path.lineWidth = 1; path.stroke()
+            p.divider.setStroke(); path.lineWidth = 1; path.stroke()
         }
         // Coloured accent bar on the left, in the item's colour.
         tint.setFill()
@@ -342,15 +342,15 @@ final class AgendaRow: NSView {
 /// "Tomorrow · Mon, Oct 5" above a day's items in Upcoming.
 final class DayHeader: NSView {
     static let height: CGFloat = 30
-    private let label = rlabel(NSFont.systemFont(ofSize: 12.5, weight: .bold), Pal.textSecondary)
-    private let count = rlabel(NSFont.systemFont(ofSize: 12, weight: .medium), Pal.textTertiary)
+    private let label = rlabel(Typo.sectionLabel, Pal.textTertiary)
+    private let count = rlabel(Typo.meta, Pal.textTertiary)
     override var isFlipped: Bool { true }
 
     init(day: Date, items: Int) {
         super.init(frame: .zero)
         let rel = ReminderFormat.relativeDay(day)
         let long = ReminderFormat.longDate.string(from: day)
-        label.stringValue = (rel == "Tomorrow" ? "Tomorrow · " + long : long).uppercased()
+        label.attributedStringValue = Typo.sectionText(rel == "Tomorrow" ? "Tomorrow · " + long : long)
         count.stringValue = "\(items) item\(items == 1 ? "" : "s")"
         count.alignment = .right
         addSubview(label); addSubview(count)
