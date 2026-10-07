@@ -197,7 +197,8 @@ final class TaskRowView: NSView {
     var expanded = false { didSet { needsDisplay = true } }
     /// In a look back (Week, Month) done is a given: no strike-through, full-strength text.
     var history = false { didSet { needsDisplay = true } }
-    private var hovered = false { didSet { needsDisplay = true } }
+    /// Read live while drawing, so rows a scroll moved under the pointer don't stay lit.
+    private var hovered: Bool { isPointerInside }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -290,8 +291,8 @@ final class TaskRowView: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
-    override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseEntered(with event: NSEvent) { needsDisplay = true }
+    override func mouseExited(with event: NSEvent) { needsDisplay = true }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
@@ -459,6 +460,10 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         scroll.borderType = .noBorder
         scroll.contentView.drawsBackground = false
         scroll.documentView = doc
+        // Rows read the pointer while drawing; scrolling redraws them so none stays lit.
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(listScrolled), name: NSView.boundsDidChangeNotification,
+                                               object: scroll.contentView)
         addSubview(scroll)
         footLine.paint = { r in Neon.divider.setFill(); r.fill() }
         addSubview(footLine)
@@ -532,6 +537,11 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
             RunLoop.main.add(t, forMode: .common)
             spinTimer = t
         }
+    }
+
+    @objc private func listScrolled() {
+        func redraw(_ v: NSView) { v.needsDisplay = true; v.subviews.forEach(redraw) }
+        redraw(doc)
     }
 
     private func updateSubtitle() {
@@ -1212,6 +1222,10 @@ final class TaskExportView: NSView {
         sheetScroll.hasHorizontalScroller = false
         sheetScroll.borderType = .noBorder
         sheetScroll.contentView.drawsBackground = false
+        // Scrolling moves the cards under a still pointer: redraw so only the one under it lights.
+        sheetScroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(sheetScrolled), name: NSView.boundsDidChangeNotification,
+                                               object: sheetScroll.contentView)
         glass.addSubview(sheetScroll)
         sheet.options = options
         sheet.onCopy = { [weak self] day in
@@ -1267,6 +1281,8 @@ final class TaskExportView: NSView {
         paint.needsDisplay = true
         needsLayout = true
     }
+
+    @objc private func sheetScrolled() { sheet.cards.forEach { $0.needsDisplay = true } }
 
     /// Back to the top, where the newest day is, so it can be copied without scrolling.
     /// Not part of `refresh()`: a live refresh keeps wherever you scrolled to.
@@ -1820,7 +1836,9 @@ final class TimesheetDayView: NSView {
     let rows: [TaskExport.Row]
     var options = TaskExport.SheetOptions() { didSet { needsDisplay = true } }
     var onCopy: ((TimesheetDayView) -> Void)?
-    private var hovered = false { didSet { needsDisplay = true } }
+    /// Read live while drawing: when the list scrolls under a still pointer, enter / exit events
+    /// go missing and every card it passed over used to stay lit as if selected.
+    private var hovered: Bool { isPointerInside }
     private var copiedUntil: Date?
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -1917,8 +1935,8 @@ final class TimesheetDayView: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
-    override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseEntered(with event: NSEvent) { needsDisplay = true }
+    override func mouseExited(with event: NSEvent) { needsDisplay = true }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onCopy?(self) } }
     override func accessibilityPerformPress() -> Bool { onCopy?(self); return true }

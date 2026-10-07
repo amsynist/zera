@@ -112,6 +112,18 @@ extension Motion {
     static func refresh(_ view: NSView) { arrive(view, direction: 0) }
 }
 
+// MARK: - Hover
+
+extension NSView {
+    /// Whether the pointer is over the visible part of this view right now. Rows inside a
+    /// scroll view should read this while drawing rather than trust mouseEntered / mouseExited:
+    /// those go missing while the list scrolls under a still pointer, leaving rows lit.
+    var isPointerInside: Bool {
+        guard let w = window, w.isVisible, !isHiddenOrHasHiddenAncestor else { return false }
+        return visibleRect.contains(convert(w.mouseLocationOutsideOfEventStream, from: nil))
+    }
+}
+
 // MARK: - Pressed look
 
 extension NSRect {
