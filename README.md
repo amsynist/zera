@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="site/assets/zera-film.mp4"><img src="docs/zera-whats-new.webp" alt="What's new in Zera: the vitals strip on Home and the This Mac page, the Shelf's Fresh tab with a download arriving, clipboard, the week's tasks, pull request approvals and a PR's page, Claude sessions, the low-battery banner, and the Excel export" width="100%"></a><br>
-  <sub>What's new, recorded from the app with sample data. <a href="site/assets/zera-film.mp4">1080p MP4</a> · <a href="docs/zera-tour.mp4">the full tour</a></sub>
+  <sub>What's new, recorded from the app with sample data. <a href="site/assets/zera-film.mp4">1080p MP4</a> · <a href="site/assets/zera-tour.mp4">the full tour</a></sub>
 </p>
 
 ## What's new

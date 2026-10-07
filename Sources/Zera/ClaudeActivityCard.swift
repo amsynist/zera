@@ -334,7 +334,7 @@ final class ClaudeActivityCard: CardBase, CardContent {
 
 // MARK: - Pieces
 
-/// Small rounded tag: icon + text ("portal-utils", "main", "Started 10:24:13").
+/// Small rounded tag: icon + text ("aurora-api", "main", "Started 10:24:13").
 final class TagChip: NSView {
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")

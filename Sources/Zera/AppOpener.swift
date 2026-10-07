@@ -526,6 +526,14 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         treeScroll.contentView.scroll(to: .zero)
     }
 
+    // For the tour recording: what a person would do with the keyboard.
+    func previewType(_ text: String) {
+        field.stringValue = text
+        controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+    }
+    func previewActions() { toggleActions() }
+    func previewMove(_ by: Int) { move(by) }
+
     private func setPlaceholder(_ text: String) {
         if let p = field.placeholderAttributedString?.mutableCopy() as? NSMutableAttributedString {
             p.mutableString.setString(text)

@@ -74,7 +74,7 @@ enum TaskExport {
         var date: Date        // that day, for headings
         var index: Int        // 1, 2, 3 within the day
         var project: String
-        var repo: String = ""     // "cerebrum", "api, web" (commit-made tasks)
+        var repo: String = ""     // "aurora-api", "api, web" (commit-made tasks)
         var title: String
         var done: Bool        // finished that day
         var minutes: Int
