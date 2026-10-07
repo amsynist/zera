@@ -332,15 +332,19 @@ final class ClaudeSessionRow: NSView {
         // Title (18) and folder (16) are one block; a progress bar or a note adds a third line.
         // The block is centred on the row, so the space above and below it is the same.
         let running = kind == .running && !bar.isHidden, waiting = kind == .waiting
-        let block: CGFloat = 18 + 3 + 16 + (running ? 8 + 6 : (waiting ? 3 + 16 : 0))
+        // Split up so the type checker stays quick (CI's compiler gave up on the one-liner).
+        let third: CGFloat = running ? 14 : (waiting ? 19 : 0)
+        let block: CGFloat = 37 + third
         let top = (mid - block / 2).rounded()
         let tx: CGFloat = tile.frame.maxX + 12, tw = max(60, sx - 12 - tx)
         title.frame = NSRect(x: tx, y: top - 1, width: tw, height: 20)
         meta.frame = NSRect(x: tx, y: top + 21, width: tw, height: 16)
         // The chip sits on the title's line (two-line rows: on the row's middle); completed rows
         // put the note under it.
-        let chipY = kind == .completed && !note.isHidden ? (mid - (24 + 6 + 16) / 2).rounded()
-            : (running || waiting ? top + 9 - 12 : mid - 12)
+        let chipY: CGFloat
+        if kind == .completed && !note.isHidden { chipY = (mid - 23).rounded() }
+        else if running || waiting { chipY = top - 3 }
+        else { chipY = mid - 12 }
         chip.frame = NSRect(x: sx, y: chipY, width: cw, height: 24)
         time.frame = NSRect(x: chip.frame.maxX + 8, y: chipY + 4, width: max(0, sx + statusW - chip.frame.maxX - 8), height: 16)
         switch kind {
