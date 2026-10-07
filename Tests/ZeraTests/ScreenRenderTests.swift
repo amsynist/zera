@@ -77,8 +77,8 @@ final class ScreenRenderTests: XCTestCase {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let pdf = dir.appendingPathComponent("Q3 report.pdf"); try Data("%PDF-1.4\n".utf8).write(to: pdf)
         let note = dir.appendingPathComponent("Note 7 Oct.txt"); try Data("Ship the theme picker before Friday.".utf8).write(to: note)
-        let link = dir.appendingPathComponent("Zera releases.webloc")
-        try PropertyListSerialization.data(fromPropertyList: ["URL": "https://github.com/amsynist/zera/releases"], format: .xml, options: 0).write(to: link)
+        let link = dir.appendingPathComponent("Aurora releases.webloc")
+        try PropertyListSerialization.data(fromPropertyList: ["URL": "https://example.com/aurora/releases"], format: .xml, options: 0).write(to: link)
         let img = NSImage(size: NSSize(width: 64, height: 40))
         img.lockFocus(); NSColor.systemTeal.setFill(); NSRect(x: 0, y: 0, width: 64, height: 40).fill(); img.unlockFocus()
         let png = dir.appendingPathComponent("hero-shot.png")
@@ -92,7 +92,7 @@ final class ScreenRenderTests: XCTestCase {
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
         let tasks = sampleTasks()
         // Home's vitals strip shows this machine's readings.
-        SystemVitals.shared.watch()
+        SystemVitals.shared.simulate()
         defer { SystemVitals.shared.unwatch() }
         RunLoop.main.run(until: Date().addingTimeInterval(2.2))
 
@@ -128,7 +128,7 @@ final class ScreenRenderTests: XCTestCase {
         island(ReminderAlertCard(), tab: nil, "14-banner-water")
         let toast = ToastCard()
         toast.show(event: GHEvent(id: "render", kind: .prOpened, title: "Add themes: seven built in, plus your own",
-            subtitle: "amsynist/zera #11", date: Date(), url: URL(string: "https://example.com/pr/11")!, approval: nil))
+            subtitle: "acme/aurora #11", date: Date(), url: URL(string: "https://example.com/pr/11")!, approval: nil))
         island(toast, tab: nil, "15-banner-pr")
 
         // The Claude wings.
@@ -173,10 +173,10 @@ final class ScreenRenderTests: XCTestCase {
     private func sampleMonth() -> TaskStore {
         let s = TaskStore(url: nil)
         let cal = Calendar.current
-        let repos = ["portal-web-solutions", "portal-infrastructure", "database-migrations", "aurora-app"]
-        let subjects = ["Fix the nightly export timing out on large studies", "Bump Datadog lambda extension and log sampling",
-                        "Add CSV bill-of-materials endpoint", "Optimize Lambda images and cold starts",
-                        "Restore sign-off flow after the auth refactor", "Normalize artifact spelling in the downloader"]
+        let repos = ["aurora-app", "aurora-api", "design-system", "website"]
+        let subjects = ["Add dark mode to the settings page", "Cache avatars on disk between launches",
+                        "Fix the date picker on small screens", "Speed up the search index rebuild",
+                        "Polish the onboarding copy", "Upgrade the charts library"]
         for (n, name) in ["Aurora", "Website"].enumerated() {
             let p = s.addProject(name)
             s.link(p, to: "/tmp")
@@ -199,23 +199,23 @@ final class ScreenRenderTests: XCTestCase {
     private func samplePRs() -> [GHPullRequest] {
         let now = Date()
         func person(_ l: String) -> GHPullRequest.Person { .init(login: l, avatar: nil) }
-        var a = GHPullRequest(id: "acme/portal-web#6327", owner: "acme", repo: "portal-web", number: 6327,
-            title: "Follow-up: direction-aware status axis in validateSubUploadStatusForm",
-            author: person("rraj"), created: now.addingTimeInterval(-47 * 60), updated: now.addingTimeInterval(-5 * 60),
-            url: URL(string: "https://github.com/acme/portal-web/pull/6327")!)
-        a.branch = "fix-qa-shared-status-direction"; a.base = "dev"
-        a.reviewers = [person("lbhatt"), person("theo")]; a.comments = 4
+        var a = GHPullRequest(id: "acme/aurora-web#214", owner: "acme", repo: "aurora-web", number: 214,
+            title: "Make the settings page work from the keyboard",
+            author: person("maya"), created: now.addingTimeInterval(-47 * 60), updated: now.addingTimeInterval(-5 * 60),
+            url: URL(string: "https://github.com/acme/aurora-web/pull/214")!)
+        a.branch = "settings-keyboard"; a.base = "main"
+        a.reviewers = [person("sam"), person("theo")]; a.comments = 4
         a.additions = 13; a.deletions = 2; a.changedFiles = 1
         a.ci = .failed; a.checksTotal = 6
-        a.failing = [.init(name: "PR Risk Assessment", title: "2 high-risk files changed", summary: "", url: nil),
+        a.failing = [.init(name: "Lint", title: "2 warnings treated as errors", summary: "", url: nil),
                      .init(name: "unit-tests", title: "3 failed", summary: "", url: nil)]
-        a.labels = ["qa", "follow-up"]; a.reviewRequested = true
+        a.labels = ["accessibility", "ui"]; a.reviewRequested = true
         var b = GHPullRequest(id: "acme/aurora#412", owner: "acme", repo: "aurora", number: 412, title: "Add themes: seven built in, plus your own",
             author: person("you"), created: now.addingTimeInterval(-3 * 3600), updated: now.addingTimeInterval(-20 * 60),
             url: URL(string: "https://github.com/acme/aurora/pull/412")!)
         b.ci = .passed; b.review = .approved; b.approvedBy = ["theo"]; b.reviewers = [person("theo")]; b.mine = true
         b.additions = 812; b.deletions = 140; b.changedFiles = 22
-        var c = GHPullRequest(id: "acme/infra#88", owner: "acme", repo: "infra", number: 88, title: "Bump strawberry-graphql and aiohttp",
+        var c = GHPullRequest(id: "acme/infra#88", owner: "acme", repo: "infra", number: 88, title: "Bump the build image to Node 22",
             author: person("dependabot"), created: now.addingTimeInterval(-6 * 3600), updated: now.addingTimeInterval(-2 * 3600),
             url: URL(string: "https://github.com/acme/infra/pull/88")!)
         c.ci = .running; c.approvalsWaiting = 1
@@ -223,7 +223,7 @@ final class ScreenRenderTests: XCTestCase {
         var d = GHPullRequest(id: "acme/aurora#398", owner: "acme", repo: "aurora", number: 398, title: "Cache avatars on disk between launches",
             author: person("you"), created: now.addingTimeInterval(-6 * 86400), updated: now.addingTimeInterval(-40 * 60),
             url: URL(string: "https://github.com/acme/aurora/pull/398")!)
-        d.mine = true; d.ci = .passed; d.review = .approved; d.approvedBy = ["lbhatt", "theo"]; d.reviewers = [person("lbhatt"), person("theo")]
+        d.mine = true; d.ci = .passed; d.review = .approved; d.approvedBy = ["sam", "theo"]; d.reviewers = [person("sam"), person("theo")]
         return [a, b, c, d]
     }
 
@@ -249,14 +249,14 @@ final class ScreenRenderTests: XCTestCase {
             return s
         }
         ClaudeActivityService.shared.preview([session("aurora", "Fix the theme picker", .running, 90),
-                                              session("portal", "Why does the nightly export time out?", .waiting, 400),
+                                              session("website", "Why is the hero video so large?", .waiting, 400),
                                               session("zera", "Write release notes for v0.1.4", .done, 3000)])
         island(ClaudeSessionsView(), tab: .claude, "23-claude-sessions")
 
         // Clipboard with a few kinds of copies.
         ClipboardStore.shared.preview([
             ClipItem(kind: .text, text: "Ship the theme picker before Friday — Theo has the review.", bytes: 60, sourceApp: "Slack", fingerprint: "a"),
-            ClipItem(kind: .link, text: "https://github.com/amsynist/zera/pull/11", bytes: 40, sourceApp: "Safari", fingerprint: "b"),
+            ClipItem(kind: .link, text: "https://example.com/aurora/pull/214", bytes: 40, sourceApp: "Safari", fingerprint: "b"),
             ClipItem(kind: .code, text: "swift test --filter ScreenRenderTests", bytes: 38, sourceApp: "Terminal", fingerprint: "c"),
             ClipItem(kind: .color, text: "#7AA2F7", bytes: 7, sourceApp: "Figma", fingerprint: "d")])
         island(ClipboardView(), tab: .clipboard, "24-clipboard")
@@ -271,7 +271,7 @@ final class ScreenRenderTests: XCTestCase {
             panel(v, "2\(5 + i)-export-\(f.title.lowercased())")
         }
         // Home with this Mac's vitals, and the This Mac page (live readings from the machine).
-        SystemVitals.shared.watch()
+        SystemVitals.shared.simulate()
         RunLoop.main.run(until: Date().addingTimeInterval(2.2))
         island(HomeCard(), tab: .home, "30-home-vitals")
         let mac = HomeCard()
@@ -375,12 +375,12 @@ final class ScreenRenderTests: XCTestCase {
         }
 
         // Data: live vitals, sample PRs, sessions, clipboard, a month of tasks, fresh downloads.
-        SystemVitals.shared.watch()
+        SystemVitals.shared.simulate()
         GitHubService.shared.preview(login: "you", pulls: samplePRs())
         let month = sampleMonth()
         ClipboardStore.shared.preview([
             ClipItem(kind: .text, text: "Ship the theme picker before Friday — Theo has the review.", bytes: 60, sourceApp: "Slack", fingerprint: "a"),
-            ClipItem(kind: .link, text: "https://github.com/amsynist/zera/pull/11", bytes: 40, sourceApp: "Safari", fingerprint: "b"),
+            ClipItem(kind: .link, text: "https://example.com/aurora/pull/214", bytes: 40, sourceApp: "Safari", fingerprint: "b"),
             ClipItem(kind: .code, text: "swift test --filter ScreenRenderTests", bytes: 38, sourceApp: "Terminal", fingerprint: "c"),
             ClipItem(kind: .color, text: "#9D8CFF", bytes: 7, sourceApp: "Figma", fingerprint: "d")])
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -449,7 +449,7 @@ final class ScreenRenderTests: XCTestCase {
             return s
         }
         ClaudeActivityService.shared.preview([session("aurora", "Fix the theme picker", .running, 90),
-                                              session("portal", "Why does the nightly export time out?", .waiting, 400),
+                                              session("website", "Why is the hero video so large?", .waiting, 400),
                                               session("zera", "Write release notes for v0.1.4", .done, 3000)])
         scene("claude")
         show(ClaudeSessionsView(), tab: .claude, direction: -1)
@@ -484,5 +484,208 @@ final class ScreenRenderTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: times).write(to: out.appendingPathComponent("times.json"))
         try JSONSerialization.data(withJSONObject: scenes).write(to: out.appendingPathComponent("scenes.json"))
         print("tour: \(times.count) frames, \(String(format: "%.1f", times.last ?? 0)) s")
+    }
+
+    /// The full tour: every screen of the current app, for the site and the README.
+    /// `ZERA_FULL_TOUR=1` with ZERA_RENDER_SCREENS pointing at an empty folder.
+    func testRecordFullTour() throws {
+        guard ProcessInfo.processInfo.environment["ZERA_FULL_TOUR"] != nil else { throw XCTSkip("set ZERA_FULL_TOUR to record") }
+        ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
+        let frames = out.appendingPathComponent("frames", isDirectory: true)
+        try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
+
+        let size = NSSize(width: 1600, height: 900)
+        let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 20, y: 20), size: size), styleMask: .borderless, backing: .buffered, defer: false)
+        w.backgroundColor = desk
+        w.appearance = NSAppearance(named: .darkAqua)
+        let root = FlippedView(frame: NSRect(origin: .zero, size: size))
+        w.contentView = root
+        w.orderFrontRegardless()
+        let iv = IslandView(frame: NSRect(x: 0, y: 0, width: size.width, height: band + Isle.maxContentHeight + 40))
+        iv.band = band
+        iv.notchWidth = 190
+        iv.centerX = size.width / 2
+        root.addSubview(iv)
+
+        var times: [Double] = []
+        var scenes: [[String: Any]] = []
+        let start = CACurrentMediaTime()
+        let encode = DispatchQueue(label: "full-tour-encode")
+        let group = DispatchGroup()
+        func capture() {
+            guard let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), .bestResolution) else { return }
+            let n = times.count
+            times.append(CACurrentMediaTime() - start)
+            group.enter()
+            encode.async {
+                try? NSBitmapImageRep(cgImage: cg).representation(using: .jpeg, properties: [.compressionFactor: 0.93])?
+                    .write(to: frames.appendingPathComponent(String(format: "%05d.jpg", n)))
+                group.leave()
+            }
+        }
+        func run(_ seconds: Double) {
+            let end = CACurrentMediaTime() + seconds
+            var next = CACurrentMediaTime()
+            while CACurrentMediaTime() < end {
+                next += 1.0 / 30
+                RunLoop.main.run(until: Date().addingTimeInterval(max(0.001, next - CACurrentMediaTime())))
+                capture()
+            }
+        }
+        // `place`: island (hangs from the top, the island's own area), float (centred), top (the wings).
+        func scene(_ name: String, _ place: String) { scenes.append(["name": name, "t": CACurrentMediaTime() - start, "place": place]) }
+        var floating: NSView?
+        func show(_ c: NSView & CardContent, tab: CardKind?, direction: CGFloat) {
+            floating?.removeFromSuperview(); floating = nil
+            iv.isHidden = false
+            c.setFrameSize(NSSize(width: c.cardWidth, height: 400))
+            c.needsLayout = true
+            c.layoutSubtreeIfNeeded()
+            iv.present(c, size: NSSize(width: c.cardWidth, height: min(c.desiredHeight, Isle.maxContentHeight)), direction: direction, animated: true)
+            iv.activeTab = tab
+        }
+        func float(_ v: NSView, top: Bool = false) {
+            floating?.removeFromSuperview()
+            iv.isHidden = true
+            v.setFrameOrigin(NSPoint(x: (size.width - v.frame.width) / 2, y: top ? 0 : (size.height - v.frame.height) / 2))
+            root.addSubview(v)
+            floating = v
+            if !Motion.reduced { Motion.arrive(v, direction: 0) }
+        }
+
+        // Sample data, all in the throwaway home: vitals are this machine's.
+        SystemVitals.shared.simulate()
+        GitHubService.shared.preview(login: "you", pulls: samplePRs())
+        let today = sampleTasks()
+        let month = sampleMonth()
+        ClipboardStore.shared.preview([
+            ClipItem(kind: .text, text: "Ship the theme picker before Friday — Theo has the review.", bytes: 60, sourceApp: "Slack", fingerprint: "a"),
+            ClipItem(kind: .link, text: "https://example.com/aurora/pull/214", bytes: 40, sourceApp: "Safari", fingerprint: "b"),
+            ClipItem(kind: .code, text: "swift test --filter ScreenRenderTests", bytes: 38, sourceApp: "Terminal", fingerprint: "c"),
+            ClipItem(kind: .color, text: "#9D8CFF", bytes: 7, sourceApp: "Figma", fingerprint: "d")])
+        try sampleShelf()
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let downloads = home.appendingPathComponent("Downloads", isDirectory: true)
+        for (folder, names) in [("Downloads", ["Invoice-October.pdf", "team-offsite-photos.zip", "design-review.mov"]), ("Desktop", ["Q3 roadmap.key"])] {
+            let dir = home.appendingPathComponent(folder, isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            for n in names where !FileManager.default.fileExists(atPath: dir.appendingPathComponent(n).path) {
+                try Data(repeating: 7, count: 240_000).write(to: dir.appendingPathComponent(n))
+            }
+        }
+        let arriving = downloads.appendingPathComponent("Screenshot 2026-10-08 at 09.41.12.png")
+        try? FileManager.default.removeItem(at: arriving)
+        UserDefaults.standard.set(false, forKey: "zera.shelf.freshTab")
+        let rs = ReminderService.shared
+        let now = Date()
+        var review = CalendarEvent(title: "Design review", startAt: now.addingTimeInterval(50 * 60))
+        review.url = "https://meet.example.com/design"
+        rs.save(event: review)
+        rs.save(event: CalendarEvent(title: "1:1 with Theo", startAt: now.addingTimeInterval(3 * 3600)))
+        rs.addOneOff(title: "Send the October invoice", at: now.addingTimeInterval(2 * 3600))
+        func session(_ id: String, _ title: String, _ status: ClaudeSession.Status, _ ago: TimeInterval) -> ClaudeSession {
+            let s = ClaudeSession(id: id, cwd: "/Users/you/\(id)", at: Date().addingTimeInterval(-ago))
+            s.title = title; s.status = status; s.promptAt = Date().addingTimeInterval(-ago); s.branch = "main"
+            return s
+        }
+        // The opener's app list (only a built-in app is searched for on camera), with no history
+        // from earlier test runs.
+        UserDefaults.standard.removeObject(forKey: "appOpener.usage")
+        var catalogReady = false
+        AppCatalog.shared.refreshIfNeeded { catalogReady = true }
+        let catalogDeadline = Date().addingTimeInterval(20)
+        while !catalogReady && Date() < catalogDeadline { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
+        let running = session("aurora", "Fix the theme picker", .running, 90)
+        ClaudeActivityService.shared.preview([running, session("website", "Why is the hero video so large?", .waiting, 400),
+                                              session("zera", "Write release notes for v0.1.4", .done, 3000)])
+        RunLoop.main.run(until: Date().addingTimeInterval(2.2))
+
+        // Home, and This Mac.
+        let homeCard = HomeCard()
+        scene("home", "island"); show(homeCard, tab: .home, direction: 0); run(3.4)
+        scene("thismac", "island"); homeCard.setVitals(true); homeCard.layoutSubtreeIfNeeded(); show(homeCard, tab: .home, direction: 0); run(3.4)
+        // Claude: the sessions, then the wings.
+        scene("claude", "island"); show(ClaudeSessionsView(), tab: .claude, direction: 1); run(2.8)
+        let wings = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
+        wings.centerX = LiveActivityView.panelSize.width / 2
+        wings.update(session: running, pending: HookRequest(id: "r", receivedAt: Date(), sessionID: running.id, toolName: "Bash",
+            command: "npm test -- --watch=false", detail: nil, cwd: "/Users/you/aurora"))
+        scene("wings", "top"); float(wings, top: true); run(3.0)
+        wings.update(session: running, pending: nil)
+        run(2.2)
+        // Shelf, then Fresh with a download landing.
+        let shelf = DropFilesView(); shelf.willShow()
+        scene("shelf", "island"); show(shelf, tab: .shelf, direction: 1); run(2.6)
+        UserDefaults.standard.set(true, forKey: "zera.shelf.freshTab")
+        FreshFiles.shared.start()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        let fresh = DropFilesView(); fresh.willShow()
+        scene("fresh", "island"); show(fresh, tab: .shelf, direction: 1); run(1.4)
+        try Data(repeating: 9, count: 1_900_000).write(to: arriving)
+        run(2.4)
+        UserDefaults.standard.set(false, forKey: "zera.shelf.freshTab")
+        // Clipboard.
+        let clip = ClipboardView(); clip.willShow()
+        scene("clipboard", "island"); show(clip, tab: .clipboard, direction: 1); run(2.6)
+        // Tasks: today, then the week.
+        scene("tasks", "island"); show(TasksCard(store: today), tab: .tasks, direction: 1); run(2.6)
+        UserDefaults.standard.set(1, forKey: "tasks.viewSpan")
+        scene("week", "island"); show(TasksCard(store: month), tab: .tasks, direction: 0); run(2.6)
+        UserDefaults.standard.set(0, forKey: "tasks.viewSpan")
+        // The focus card.
+        let focus = FocusCardView(store: today)
+        focus.setFrameSize(NSSize(width: focus.frame.width, height: focus.desiredHeight))
+        scene("focus", "float"); float(focus); run(2.8)
+        // Export: Timesheet, then Excel.
+        let export = TaskExportView(store: month)
+        export.span = .all
+        export.setFrameSize(TaskExportView.size)
+        scene("export", "float"); float(export); run(1.8)
+        export.format = .xlsx
+        run(2.2)
+        // Pull requests: the list, Approvals, a PR's page.
+        let gh = GitHubCard(); gh.selectTab(0)
+        scene("prs", "island"); show(gh, tab: .github, direction: 1); run(2.4)
+        scene("approvals", "island"); gh.selectTab(3); show(gh, tab: .github, direction: 0); run(2.2)
+        scene("prpage", "island"); gh.openDetail(samplePRs()[0]); show(gh, tab: .github, direction: 0); run(2.6)
+        gh.selectTab(0)
+        // Reminders, a meeting heads-up, the battery.
+        let rem = RemindersView(); rem.willShow()
+        scene("reminders", "island"); show(rem, tab: .reminders, direction: 1); run(2.6)
+        rs.preview(ReminderAlert(id: "tour-meeting", kind: .calendarHeadsUp, headline: "You have a meeting in 5 minutes",
+                                 detail: "Design review · 3:00 PM", eventID: "tour", joinURL: URL(string: "https://meet.example.com/design")))
+        scene("meeting", "island"); show(ReminderAlertCard(), tab: .reminders, direction: 0); run(2.6)
+        var warned = false, critical = false
+        if let low = BatteryAlerts.lowAlert(VitalsSample.Battery(percent: 18, charging: false, onPower: false, toEmpty: 64),
+                                            threshold: 20, enabled: true, warned: &warned, warnedCritical: &critical) { rs.preview(low) }
+        scene("battery", "island"); show(ReminderAlertCard(), tab: nil, direction: 0); run(2.6)
+        // Settings, then every theme.
+        let settings = SettingsCard(defaultKind: .shelf, showingZera: true, loginEnabled: false)
+        scene("settings", "island"); show(settings, tab: .settings, direction: 1); run(2.2)
+        settings.select(.appearance); settings.layoutSubtreeIfNeeded(); show(settings, tab: .settings, direction: 0); run(2.0)
+        scene("themes", "island")
+        for t in ThemeStore.shared.builtIns {
+            ThemeStore.shared.select(t)
+            iv.themeChanged()
+            show(HomeCard(), tab: .home, direction: 0)
+            run(0.75)
+        }
+        ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
+        iv.themeChanged()
+        // The app opener: a search, then ⌘K.
+        let opener = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 860, height: 760))
+        opener.prepare()
+        // Searched before it shows, so the list on camera is just Safari, not this Mac's apps.
+        opener.previewType("safari")
+        scene("opener", "float"); float(opener); run(2.0)
+        opener.previewActions(); run(2.8)
+        scene("end", "float"); run(0.3)
+
+        group.wait()
+        SystemVitals.shared.unwatch()
+        w.orderOut(nil)
+        try JSONSerialization.data(withJSONObject: times).write(to: out.appendingPathComponent("times.json"))
+        try JSONSerialization.data(withJSONObject: scenes).write(to: out.appendingPathComponent("scenes.json"))
+        print("full tour: \(times.count) frames, \(String(format: "%.1f", times.last ?? 0)) s")
     }
 }

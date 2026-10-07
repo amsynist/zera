@@ -193,6 +193,13 @@ h1,h2,h3{margin:0;color:var(--ink)}
 .ring-pulse.go{animation:pulse 1.2s var(--ease)}
 @keyframes pulse{0%{opacity:.8;transform:scale(.98)}100%{opacity:0;transform:scale(1.04)}}
 
+/* ⌥Space keycaps, pressed in turn */
+.keys{display:flex;align-items:center;gap:12px;margin-top:26px}
+.key{display:inline-flex;align-items:center;justify-content:center;min-width:56px;height:52px;padding:0 18px;border-radius:12px;font:600 18px/1 Geist,sans-serif;color:var(--ink);background:linear-gradient(180deg,#2a2536,#1b1824);border:1px solid rgba(255,255,255,.12);box-shadow:0 5px 0 #0d0b12,0 10px 24px rgba(0,0,0,.4);animation:press 2.8s ease-in-out infinite}
+.key.k2{min-width:150px;animation-delay:.18s}
+.plus{color:var(--faint);font-weight:600}
+@keyframes press{0%,60%,100%{transform:translateY(0);box-shadow:0 5px 0 #0d0b12,0 10px 24px rgba(0,0,0,.4);border-color:rgba(255,255,255,.12)}70%,80%{transform:translateY(4px);box-shadow:0 1px 0 #0d0b12,0 4px 10px rgba(0,0,0,.4);border-color:rgba(var(--accent-rgb),.7)}}
+
 /* wings */
 .wings{display:flex;flex-direction:column;gap:18px}
 .wings img{width:100%}
@@ -261,6 +268,7 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
       <a href="#fresh">Shelf</a>
       <a href="#claude">Claude Code</a>
       <a href="#tasks">Tasks</a>
+      <a href="#opener">Opener</a>
       <a href="#themes">Themes</a>
       <a href="#faq">FAQ</a>
     </div>
@@ -393,7 +401,7 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
         <div class="toggle rv d2" id="prtoggle"><span class="pill"></span><button class="on" data-i="0">Approvals</button><button data-i="1">A PR's page</button></div>
       </div>
       <div class="media swap" id="prswap">
-        <img class="shot" src="assets/shots/pr-approvals.webp" alt="Approvals: your PRs approved by @theo and @lbhatt" loading="lazy">
+        <img class="shot" src="assets/shots/pr-approvals.webp" alt="Approvals: your PRs approved by @sam and @theo" loading="lazy">
         <img class="shot hide" src="assets/shots/pr-page.webp" alt="A pull request's page: checks failing, reviewers, Review button" loading="lazy">
       </div>
     </div>
@@ -437,6 +445,29 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
     </div>
   </section>
 
+  <!-- App opener -->
+  <section id="opener" class="feature">
+    <div class="wrap split">
+      <div class="copy">
+        <span class="eyebrow rv"><i></i>App opener</span>
+        <h2 class="h2 kin">Open anything<br>with ⌥Space.</h2>
+        <p class="lead rv d1">Press <span class="kbd">⌥</span> <span class="kbd">Space</span> and a tree of your apps drops from the notch: your usual ones first, then everything, then commands. Type to narrow it, <span class="kbd">⏎</span> to open, <span class="kbd">⌘K</span> for what you can do with it.</p>
+        <div class="keys rv d2" aria-hidden="true"><span class="key k1">⌥</span><span class="plus">+</span><span class="key k2">Space</span></div>
+        <div class="ticks rv d2">
+          <div class="tick"><span><b>⌘K actions:</b> show in Finder, copy its path or bundle ID, pin it, quit it.</span></div>
+          <div class="tick"><span><b>Commands:</b> Kill Process, Kill Port, Quit All Apps, right in the tree.</span></div>
+          <div class="tick"><span><b>⌘1–⌘6</b> open the first six without leaving the keyboard.</span></div>
+        </div>
+        <div class="toggle rv d3" id="optoggle"><span class="pill"></span><button class="on" data-i="0">Search</button><button data-i="1">⌘K actions</button><button data-i="2">Commands</button></div>
+      </div>
+      <div class="media swap" id="opswap">
+        <img class="shot" src="assets/shots/opener-search.webp" alt="The app opener: searching for Safari" loading="lazy">
+        <img class="shot hide" src="assets/shots/opener-actions.webp" alt="⌘K on Safari: open, show in Finder, copy path, copy bundle identifier, pin" loading="lazy">
+        <img class="shot hide" src="assets/shots/app-opener.webp" alt="Commands: Kill Process, Kill Port, Quit All Apps" loading="lazy">
+      </div>
+    </div>
+  </section>
+
   <!-- Themes -->
   <section id="themes" class="themes">
     <div class="wrap">
@@ -471,7 +502,8 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
     <div class="wrap" style="text-align:center">
       <span class="eyebrow rv"><i></i>The full tour</span>
       <h2 class="h2 kin">Every screen, in the app.</h2>
-      <div class="frame rv d2"><video src="assets/zera-tour.mp4" poster="assets/zera-tour-poster.jpg" controls muted playsinline preload="none" aria-label="The full tour of Zera"></video></div>
+      <div class="frame rv d2"><video src="assets/zera-tour.mp4" poster="assets/zera-tour-poster.jpg" controls muted playsinline preload="none" aria-label="The full tour of Zera: Home and This Mac, Claude sessions and the wings, the Shelf and Fresh, clipboard, tasks and the week, focus, export, pull requests, reminders, a meeting heads-up, the battery banner, settings and themes, and the app opener"></video></div>
+      <p class="meta">Recorded from the app with sample data.</p>
     </div>
   </section>
 
@@ -587,6 +619,7 @@ open dist/Zera.app</div>
     ['tasks-week', 'Tasks', 'Your week, written from your commits', '<circle cx="5" cy="7" r="2"/><circle cx="5" cy="17" r="2"/><path d="M10 7h10M10 17h10"/>'],
     ['pr-approvals', 'Pull requests', "Approvals, checks and reviews", '<circle cx="7" cy="5" r="2"/><path d="M7 7v14M7 13c6 0 10-2 10-8"/>'],
     ['this-mac', 'This Mac', 'Vitals, battery health and a speed test', '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'],
+    ['opener-actions', 'Opener', '⌥Space opens anything; ⌘K for actions', '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'],
     ['settings-appearance', 'Settings', 'Seven themes, sounds, shortcuts', '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>'],
   ];
   const screens = $('#screens'), tabs = $('#tabs'), cap = $('#caption'), island = $('#island');
@@ -699,6 +732,7 @@ open dist/Zera.app</div>
   }
   segmented($('#prtoggle'), $('#prswap'));
   segmented($('#extoggle'), $('#exswap'));
+  segmented($('#optoggle'), $('#opswap'));
 
   // ---------- themes: the screenshot and the page change together ----------
   const T = [['zera', 'Zera', '#9D8CFF'], ['tokyo-night', 'Tokyo Night', '#7AA2F7'], ['dracula', 'Dracula', '#BD93F9'], ['catppuccin-mocha', 'Catppuccin', '#CBA6F7'],

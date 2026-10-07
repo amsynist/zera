@@ -62,7 +62,7 @@ final class SystemVitals {
     /// Something started showing vitals; sampling runs while anyone watches.
     func watch() {
         watchers += 1
-        guard timer == nil else { return }
+        guard timer == nil, !simulating else { return }
         sampleSoon()
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.sampleSoon() }
         t.tolerance = 0.1
@@ -72,9 +72,48 @@ final class SystemVitals {
 
     func unwatch() {
         watchers = max(0, watchers - 1)
-        guard watchers == 0 else { return }
+        guard watchers == 0, !simulating else { return }
         timer?.invalidate()
         timer = nil
+    }
+
+    // MARK: Simulation
+
+    private var simulating = false
+    private var simTimer: Timer?
+    private var simState: UInt64 = 0x9E3779B97F4A7C15
+
+    /// Made-up readings that drift like real ones, for screen renders and recordings, so they
+    /// never show a real Mac's uptime, battery health or network. Replaces sampling for the
+    /// rest of the process.
+    func simulate() {
+        guard !simulating else { return }
+        simulating = true
+        timer?.invalidate(); timer = nil
+        var s = VitalsSample()
+        s.cores = [0.34, 0.22, 0.48, 0.12, 0.08, 0.41, 0.19, 0.27]
+        s.memTotal = 16 * 1_073_741_824
+        s.memApps = 6.8 * 1_073_741_824; s.memWired = 2.1 * 1_073_741_824; s.memCompressed = 1.4 * 1_073_741_824
+        s.gpu = 0.28; s.down = 48e6; s.up = 6.2e6; s.wifiLink = 866; s.load = 2.4
+        s.battery = .init(percent: 78, charging: false, onPower: false, toEmpty: 245, health: 0.92, cycles: 143, watts: 9.8)
+        s.uptime = 3 * 86400 + 4 * 3600
+        func step() {
+            func r() -> Double { simState = simState &* 6364136223846793005 &+ 1442695040888963407; return Double(simState >> 11) / Double(1 << 53) - 0.5 }
+            func walk(_ v: Double, _ lo: Double, _ hi: Double, _ by: Double) -> Double { min(hi, max(lo, v + r() * by)) }
+            s.cores = s.cores.map { walk($0, 0.03, 0.95, 0.3) }
+            s.cpu = s.cores.reduce(0, +) / Double(s.cores.count)
+            s.memApps = walk(s.memApps, 5.5 * 1_073_741_824, 8.5 * 1_073_741_824, 0.4 * 1_073_741_824)
+            s.gpu = walk(s.gpu ?? 0.3, 0.05, 0.85, 0.25)
+            s.down = walk(s.down, 4e6, 180e6, 50e6)
+            s.up = walk(s.up, 1e6, 30e6, 6e6)
+            let watts = walk(s.battery?.watts ?? 9, 5, 22, 3)
+            s.battery?.watts = watts
+            publish(s)
+        }
+        for _ in 0..<Self.historyLength { step() }
+        let t = Timer(timeInterval: 1, repeats: true) { _ in step() }
+        RunLoop.main.add(t, forMode: .common)
+        simTimer = t
     }
 
     /// The battery right now (nil on a Mac without one). Cheap; any thread.

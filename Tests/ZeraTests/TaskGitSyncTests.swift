@@ -160,10 +160,10 @@ final class TaskGitSyncDebugTests: XCTestCase {
         let since = Date().addingTimeInterval(-31 * 86400)
         let cs = GitCommits.repos(in: dir).flatMap { GitCommits.commits(in: $0, since: since) }.sorted { $0.date < $1.date }
         let chunk = Array(cs.prefix(CommitGrouper.maxPerCall))  // the whole month: one call
-        let prompt = CommitGrouper.prompt(project: "VIDA", commits: chunk)
+        let prompt = CommitGrouper.prompt(project: "Aurora", commits: chunk)
         print("DEBUG commits:", cs.count, "chunk:", chunk.count, "prompt chars:", prompt.count)
         let t0 = Date()
-        let g = CommitGrouper.group(project: "VIDA", commits: chunk)
+        let g = CommitGrouper.group(project: "Aurora", commits: chunk)
         print("DEBUG seconds:", Int(Date().timeIntervalSince(t0)), "groups:", g?.count ?? -1)
         for (t, c) in (g ?? []).prefix(6) { print("DEBUG TASK:", t, c.count) }
     }

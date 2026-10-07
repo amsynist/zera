@@ -201,34 +201,34 @@ final class TasksTests: XCTestCase {
         XCTAssertEqual([0, 4, 8, 22, 23, 44, 52].map { TaskExport.minutes($0, round: true) }, [0, 15, 15, 15, 30, 45, 45])
         XCTAssertEqual(TaskExport.minutes(44, round: false), 44)
         let d = clock
-        let rows = [TaskExport.Row(day: "2026-10-07", date: d, index: 1, project: "VIDA", repo: "cerebrum", title: "Fix stage tests", done: true, minutes: 44, estimate: 30),
-                    TaskExport.Row(day: "2026-10-07", date: d, index: 2, project: "VIDA", title: "Plan sprint", done: false, minutes: 0, estimate: 30)]
+        let rows = [TaskExport.Row(day: "2026-10-07", date: d, index: 1, project: "Aurora", repo: "aurora-api", title: "Fix stage tests", done: true, minutes: 44, estimate: 30),
+                    TaskExport.Row(day: "2026-10-07", date: d, index: 2, project: "Aurora", title: "Plan sprint", done: false, minutes: 0, estimate: 30)]
         XCTAssertEqual(TaskExport.dayText(rows, .init()), "• Fix stage tests\n• Plan sprint", "just what was done, by default")
         XCTAssertEqual(TaskExport.dayText(rows, .init(times: true, repos: true, round: true)),
-                       "• Fix stage tests (cerebrum) — 45m\n• Plan sprint — 0m")
+                       "• Fix stage tests (aurora-api) — 45m\n• Plan sprint — 0m")
         XCTAssertEqual(TaskExport.sheetText(rows, .init()), "Wed 7 Oct 2026 · 45m\n• Fix stage tests\n• Plan sprint\n")
     }
 
     func testLastMonthIsThePreviousCalendarMonth() {
         let s = store()
-        let p = s.addProject("VIDA")
+        let p = s.addProject("Aurora")
         s.link(p, to: "/tmp")
         let sep = Calendar.current.date(from: DateComponents(year: 2026, month: 9, day: 29, hour: 10))!
-        let made = TaskGitSync.tasks(from: [GitCommit(hash: "abcdef1000", date: sep, subject: "Fix stage tests", body: "", repo: "cerebrum")],
+        let made = TaskGitSync.tasks(from: [GitCommit(hash: "abcdef1000", date: sep, subject: "Fix stage tests", body: "", repo: "aurora-api")],
                                      project: p, calendar: .current, claude: false)
         s.importCommits(p, tasks: made, seen: ["abcdef1000"], through: clock)
         s.add("Today's thing")
         XCTAssertEqual(TaskExport.rows(s, span: .lastMonth).map(\.title), ["Fix stage tests"])
-        XCTAssertEqual(TaskExport.rows(s, span: .lastMonth).first?.repo, "cerebrum", "where it came from")
-        XCTAssertTrue(TaskExport.text(TaskExport.rows(s, span: .lastMonth)).contains("Fix stage tests [cerebrum]"))
+        XCTAssertEqual(TaskExport.rows(s, span: .lastMonth).first?.repo, "aurora-api", "where it came from")
+        XCTAssertTrue(TaskExport.text(TaskExport.rows(s, span: .lastMonth)).contains("Fix stage tests [aurora-api]"))
         XCTAssertEqual(TaskExport.rows(s, span: .month).map(\.title), ["Today's thing"])
-        XCTAssertEqual(s.tasks.first { $0.fromCommits }?.commitNotes, ["cerebrum · abcdef1 · Fix stage tests"])
-        XCTAssertEqual(TasksCard.whatWasDone("portal-utils · 5b62e36 · feat: shorten expiry · and more"), "Shorten expiry · and more", "no repo, no hash, no prefix")
+        XCTAssertEqual(s.tasks.first { $0.fromCommits }?.commitNotes, ["aurora-api · abcdef1 · Fix stage tests"])
+        XCTAssertEqual(TasksCard.whatWasDone("aurora-api · 5b62e36 · feat: shorten expiry · and more"), "Shorten expiry · and more", "no repo, no hash, no prefix")
     }
 
     func testARebuildSwapsTasksInOneStep() {
         let s = store()
-        let p = s.addProject("VIDA")
+        let p = s.addProject("Aurora")
         s.link(p, to: "/tmp")
         let day = clock.addingTimeInterval(-2 * 86400)
         func make(_ subject: String, _ hash: String) -> [FocusTask] {
@@ -289,10 +289,10 @@ final class TasksTests: XCTestCase {
         s.shownProject = nil
         // Month view: done tasks by date, one commit task opened to show its commits.
         let back = clock.addingTimeInterval(-6 * 86400)
-        let cs = [GitCommit(hash: "5b62e36000", date: back, subject: "PORT-10097: shorten credential expiry", body: "", repo: "portal-utils"),
-                  GitCommit(hash: "bb91d17000", date: back.addingTimeInterval(1500), subject: "PORT-10097: gate on PORTAL_BRANCH", body: "", repo: "portal-infrastructure")]
+        let cs = [GitCommit(hash: "5b62e36000", date: back, subject: "AUR-142: shorten session expiry", body: "", repo: "aurora-api"),
+                  GitCommit(hash: "bb91d17000", date: back.addingTimeInterval(1500), subject: "AUR-142: gate on AURORA_BRANCH", body: "", repo: "aurora-infra")]
         var made = TaskGitSync.tasks(from: cs, project: "Zera", calendar: .current, claude: false)
-        made[0].title = "Add credential expiry test hooks"
+        made[0].title = "Add session expiry test hooks"
         made[0].commits = cs.map(\.short)
         made[0].commitNotes = cs.map { "\($0.repo) · \($0.short) · \($0.subject)" }
         made[0].log = [made[0].log.keys.first!: 3300]

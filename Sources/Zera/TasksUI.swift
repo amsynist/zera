@@ -639,7 +639,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         needsLayout = true
     }
 
-    /// "portal-utils · 5b62e36 · feat: shorten credential expiry" → "Shorten credential expiry":
+    /// "aurora-api · 5b62e36 · feat: shorten session expiry" → "Shorten session expiry":
     /// just what was done.
     static func whatWasDone(_ note: String) -> String {
         let parts = note.components(separatedBy: " · ")
