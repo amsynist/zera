@@ -653,7 +653,8 @@ final class GitHubSegmentedControl: NSView {
             let showIcon = icon != nil && full <= r.width - 16
             let total = (showIcon ? iconW + 6 : 0) + titleW + (bw > 0 ? 6 + bw : 0)
             var x = r.midX - min(total, r.width - 12) / 2
-            if showIcon, let ic = icon?.withSymbolConfiguration(.init(paletteColors: [on ? p.accent : (it.tint ?? p.textSecondary)])) {
+            // Hierarchical, not one flat colour: a filled "checkmark.circle" keeps its check.
+            if showIcon, let ic = icon?.withSymbolConfiguration(.init(hierarchicalColor: on ? p.accent : (it.tint ?? p.textSecondary))) {
                 let s = ic.size
                 ic.draw(in: NSRect(x: x, y: r.midY - s.height / 2, width: s.width, height: s.height),
                         from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)

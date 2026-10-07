@@ -1171,15 +1171,27 @@ final class GlowPillButton: NSView {
         let color = tint == .red ? Neon.red : (tint == .blue ? Neon.cyan : Neon.green)
         let r = bounds.insetBy(dx: 4, dy: 4)
         let shape = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        Neon.glowing(color.withAlphaComponent(hovered ? 0.5 : 0.25), blur: hovered ? 12 : 7) {
-            color.withAlphaComponent(hovered ? 0.16 : 0.08).setFill()
-            shape.fill()
+        var ink = color
+        if tint == .green {
+            // Approve is the one to press: filled, like every main action in the island.
+            Neon.glowing(color.withAlphaComponent(hovered ? 0.55 : 0.3), blur: hovered ? 12 : 7) {
+                (hovered ? (color.blended(withFraction: 0.1, of: .white) ?? color) : color).setFill()
+                shape.fill()
+            }
+            NSColor.white.withAlphaComponent(hovered ? 0.22 : 0.14).setStroke(); shape.lineWidth = 1; shape.stroke()
+            ink = Pal.ink(on: color)
+        } else {
+            // Reject (and the rest) stay a soft tint with an edge, so they never shout.
+            Neon.glowing(color.withAlphaComponent(hovered ? 0.4 : 0.15), blur: hovered ? 10 : 6) {
+                color.withAlphaComponent(hovered ? 0.2 : 0.12).setFill()
+                shape.fill()
+            }
+            shape.lineWidth = 1
+            color.withAlphaComponent(hovered ? 0.6 : 0.4).setStroke(); shape.stroke()
         }
-        shape.lineWidth = 1.2
-        color.withAlphaComponent(0.65).setStroke(); shape.stroke()
         let icon = NSRect(x: r.minX + 14, y: r.midY - 7.5, width: 15, height: 15)
-        Neon.symbol(symbol, in: icon, size: 13, weight: .bold, color: color)
-        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color]
+        Neon.symbol(symbol, in: icon, size: 13, weight: .bold, color: ink)
+        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: ink]
         let s = (title as NSString).size(withAttributes: attrs)
         (title as NSString).draw(at: NSPoint(x: icon.maxX + 7, y: r.midY - s.height / 2), withAttributes: attrs)
     }
