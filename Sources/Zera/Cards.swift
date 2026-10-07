@@ -580,7 +580,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         let needs = attentionRows.count
         attentionRows = Array(attentionRows.prefix(Self.maxAttention))
         for r in attentionRows { r.isHidden = showingVitals; addSubview(r) }
-        allClear.isHidden = !attentionRows.isEmpty
+        allClear.isHidden = showingVitals || !attentionRows.isEmpty
         allClear.stringValue = "All clear — nothing needs you right now ✨"
         let day = Date().formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
         setSubtitle(showingVitals ? VitalsPage.subtitle
@@ -605,6 +605,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         entries.sort { $0.0 > $1.0 }
         // Recent shows only while you search: the matches, so Return can still ask Zera instead.
         for (_, text, r) in entries where !query.isEmpty && text.localizedCaseInsensitiveContains(query) {
+            r.isHidden = showingVitals
             addSubview(r)
             recentRows.append(r)
             if recentRows.count == Self.maxAttention { break }
