@@ -414,7 +414,8 @@ enum QuickAction {
 /// "What does Zera want me to know right now?" Greeting in the header → ask Zera → what needs
 /// you (up to three) → one row of quick actions. Recent files live on the Files tab.
 final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
-    var cardWidth: CGFloat { 540 }
+    /// Wide enough for seven quick-action labels ("Clipboard", "Screenshot") in full.
+    var cardWidth: CGFloat { 600 }
     var onOpen: ((CardKind) -> Void)?
     var onAction: ((QuickAction) -> Void)?
     var onOpenURL: ((URL) -> Void)?
@@ -1149,7 +1150,8 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private func sectionLabel(_ text: String, _ s: inout Stack) {
-        let l = label(text, font: Typo.section, color: Pal.textSecondary, in: pane)
+        let l = label("", in: pane)
+        l.attributedStringValue = Typo.sectionText(text)
         s.place(l, height: 18, gap: Space.xs)
     }
 

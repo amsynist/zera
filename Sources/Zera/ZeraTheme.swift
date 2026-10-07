@@ -405,7 +405,7 @@ final class ThemeRow: NSView {
         let ns = name.size(withAttributes: attrs)
         name.draw(at: NSPoint(x: chip.maxX + 12, y: (bounds.height - ns.height) / 2), withAttributes: attrs)
         if selected, let img = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "In use")?
-            .withSymbolConfiguration(.init(pointSize: 14, weight: .semibold).applying(.init(paletteColors: [p.accent]))) {
+            .withSymbolConfiguration(.init(pointSize: 14, weight: .semibold).applying(.init(paletteColors: [p.onAccent, p.accent]))) {
             let sz = img.size
             img.draw(in: NSRect(x: bounds.maxX - 12 - sz.width, y: (bounds.height - sz.height) / 2, width: sz.width, height: sz.height),
                      from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)

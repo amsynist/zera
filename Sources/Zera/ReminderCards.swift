@@ -169,11 +169,20 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         let tx = x + 36 + 12, half = w / 2 - Isle.zeraGap / 2 - 8
         headline.font = Typo.rowTitleStrong
         detail.font = Typo.meta
+        // A long title ("You have a meeting in 5 minutes") wraps to a second line instead of
+        // cutting off; the block stays centred on the button row.
+        headline.maximumNumberOfLines = 2
+        headline.lineBreakMode = .byWordWrapping
+        headline.cell?.truncatesLastVisibleLine = true
         detail.maximumNumberOfLines = 1
-        headline.lineBreakMode = .byTruncatingTail
         detail.lineBreakMode = .byTruncatingTail
-        headline.frame = NSRect(x: tx, y: 25, width: max(60, half - tx), height: 18)
-        detail.frame = NSRect(x: tx, y: 45, width: max(60, half - tx), height: 16)
+        let tw = max(60, half - tx)
+        let fits = (headline.stringValue as NSString).boundingRect(with: NSSize(width: tw, height: 100),
+            options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: Typo.rowTitleStrong]).height
+        let hh = min(36, max(18, ceil(fits)))
+        let top = (28 + Metrics.button / 2 - (hh + 2 + 16) / 2).rounded()
+        headline.frame = NSRect(x: tx, y: top, width: tw, height: hh)
+        detail.frame = NSRect(x: tx, y: top + hh + 2, width: tw, height: 16)
         let pw = max(84, primary.fittedWidth), bh = Metrics.button
         // ✕ ends the button row, centred on it, at the same margin as everything else.
         let db = Metrics.rowButton
