@@ -68,7 +68,7 @@ enum AgendaFilter: Int, CaseIterable {
 
 /// What Zera is telling you right now.
 struct ReminderAlert: Equatable {
-    enum Kind { case headsUp, now, snoozed, calendarHeadsUp, calendarNow, breakTime }
+    enum Kind { case headsUp, now, snoozed, calendarHeadsUp, calendarNow, breakTime, battery }
     let id: String
     let kind: Kind
     let headline: String
@@ -560,6 +560,9 @@ final class ReminderService {
         raise(ReminderAlert(id: "break-\(Int(now.timeIntervalSince1970))", kind: .breakTime,
                             headline: "Time for a short break? ☕", detail: "You asked for one — stretch, water, look far away"))
     }
+
+    /// A banner from elsewhere in Zera (the battery), shown like any reminder.
+    func raiseNow(_ a: ReminderAlert) { raise(a) }
 
     /// Shows `a` as the banner without firing or remembering it (screen renders in tests).
     func preview(_ a: ReminderAlert) {

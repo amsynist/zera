@@ -1061,10 +1061,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let mood: ZeraMood
         switch a.kind {
         case .breakTime: mood = .cozy
+        case .battery: mood = .worried
         case .calendarHeadsUp, .headsUp: mood = .hello
         case .calendarNow, .now, .snoozed: mood = .excited
         }
         if a.hydration { sound(.water) }
+        else if a.kind == .battery { sound(.batteryLow) }
         else if a.kind == .breakTime { sound(.breakTime) }
         else if a.isEvent { sound(.calendar) }
         else { sound(.reminder) }
@@ -1486,7 +1488,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             }
             // The screen shows the counts; her face follows them.
             if swapping, connected { react(reviews > 0 ? .thinking : (open > 0 ? .hello : .happy), for: 2.5) }
-        case .home: (cards[.home] as? HomeCard)?.refresh()
+        case .home: (cards[.home] as? HomeCard)?.willShow()
         case .approval: (cards[.approval] as? ApprovalCard)?.reload()
         case .reminders: (cards[.reminders] as? RemindersView)?.willShow()
         case .reminderAlert: (cards[.reminderAlert] as? ReminderAlertCard)?.reload()

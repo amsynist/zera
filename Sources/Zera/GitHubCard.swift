@@ -132,7 +132,11 @@ final class PullRequestRow: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     private func updateMeta(showStatus: Bool) {
-        var s = "@\(pr.author.login)  ·  \(longAgo(pr.updated))"
+        // Your own PR: who approved it says more than your own name.
+        let approvers = pr.mine ? pr.approvedBy.filter { $0 != pr.author.login } : []
+        var s = approvers.isEmpty ? "@\(pr.author.login)  ·  \(longAgo(pr.updated))"
+            : "approved by " + approvers.prefix(2).map { "@\($0)" }.joined(separator: ", ")
+              + (approvers.count > 2 ? " +\(approvers.count - 2)" : "") + "  ·  \(longAgo(pr.updated))"
         if pr.draft { s += "  ·  draft" }
         if showStatus { s += "  ·  \(prStatus(pr).text)" }
         meta.stringValue = s
@@ -716,18 +720,22 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
 
     private var gh: GitHubService { GitHubService.shared }
 
-    /// Every tab is a filter over the same set — the PRs opened in the last 24 hours — so no
-    /// tab needs its own request:
-    ///  Open: all of them · Review: not approved yet · CI: those with check runs ·
-    ///  Approvals: the ones you approved.
+    /// Every tab is a filter over the same set, so no tab needs its own request:
+    ///  Open: the PRs opened in the last 24 hours · Review: those not approved yet · CI: those
+    ///  with check runs · Approvals: the ones you approved, and yours that someone approved
+    ///  (however old — the service fetches those too).
     private func pulls(forTab t: Int) -> [GHPullRequest] {
-        let all = gh.pulls
         let me = gh.login ?? ""
+        let cutoff = Date().addingTimeInterval(-GitHubService.openedWindow)
+        let recent = gh.pulls.filter { $0.created >= cutoff }
         switch t {
-        case 1: return all.filter { $0.approvedBy.isEmpty && !gh.isMarkedReviewed($0) }
-        case 2: return all.filter { $0.ci != .none }
-        case 3: return all.filter { !me.isEmpty && $0.approvedBy.contains(me) }
-        default: return all
+        case 1: return recent.filter { $0.approvedBy.isEmpty && !gh.isMarkedReviewed($0) }
+        case 2: return recent.filter { $0.ci != .none }
+        case 3: return gh.pulls.filter { pr in
+            guard !me.isEmpty else { return false }
+            return pr.approvedBy.contains(me) || (pr.mine && pr.approvedBy.contains { $0 != me })
+        }
+        default: return recent
         }
     }
 
@@ -784,7 +792,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
 
         // Tabs.
         let counts = (0..<4).map { pulls(forTab: $0).count }
-        let failing = gh.pulls.filter { $0.ci == .failed }.count
+        let failing = pulls(forTab: 0).filter { $0.ci == .failed }.count
         segmented.items = [
             .init(symbol: "arrow.triangle.branch", title: "Open", count: counts[0], tint: nil),
             .init(symbol: "bubble.left", title: "Review", count: counts[1], tint: nil),
@@ -899,7 +907,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
                 switch Self.tab {
                 case 1: state.set(pose: "card_thumbs_wink", title: "Everything's approved ✨", subtitle: "Every PR opened in the last 24 hours has an approval.")
                 case 2: state.set(pose: "card_sleepy_sit", title: "No checks to show", subtitle: "None of today's PRs have run any checks yet.")
-                default: state.set(pose: "card_read_q", title: "Nothing approved yet", subtitle: "PRs from the last 24 hours that you approve show up here.")
+                default: state.set(pose: "card_read_q", title: "Nothing approved yet", subtitle: "PRs you approve, and yours once someone approves them, show up here.")
                 }
             }
         default: break
@@ -908,9 +916,9 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
 
     /// Her pose and line in the header, and her take in the insight card.
     private func configureZera(failing: Int) {
-        let n = gh.pulls.count
+        let n = pulls(forTab: 0).count
         let reviews = pulls(forTab: 1).count
-        let approvals = gh.pulls.filter { $0.approvalsWaiting > 0 }.count
+        let approvals = pulls(forTab: 0).filter { $0.approvalsWaiting > 0 }.count
         let fresh = gh.unseenPRIDs.count
         let pose: String
         switch mode {
@@ -1063,6 +1071,13 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     // MARK: Actions
+
+    /// Switches tab (0 Open … 3 Approvals), as pressing it would.
+    func selectTab(_ i: Int) {
+        Self.tab = i
+        detailID = nil
+        reload()
+    }
 
     func openDetail(_ pr: GHPullRequest) {
         detailID = pr.id

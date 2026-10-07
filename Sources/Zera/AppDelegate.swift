@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         controller = ZeraController()
         controller.prewarmScreens()
+        BatteryAlerts.shared.start()
         buildStatusItem()
         refreshBadge()
         NotificationCenter.default.addObserver(self, selector: #selector(refreshBadge),

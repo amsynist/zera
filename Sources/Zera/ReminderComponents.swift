@@ -271,12 +271,8 @@ final class AgendaRow: NSView {
         needsDisplay = true
     }
 
-    private func updateGlow() {
-        layer?.shadowColor = Pal.accent.cgColor
-        layer?.shadowOffset = .zero
-        layer?.shadowRadius = 10
-        layer?.shadowOpacity = selected ? 0.35 : 0
-    }
+    /// Selection is drawn (accent wash and edge); a glow would be clipped square by the list.
+    private func updateGlow() { layer?.shadowOpacity = 0 }
 
     override func layout() {
         super.layout()
