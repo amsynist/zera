@@ -31,11 +31,11 @@ class CardBase: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: 200))
         let p = Pal
         titleLabel.stringValue = title
-        titleLabel.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.font = Typo.screenTitle
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.textColor = p.text
         addSubview(titleLabel)
-        subtitleLabel.font = Typo.caption
+        subtitleLabel.font = Typo.screenSubtitle
         subtitleLabel.textColor = p.textSecondary
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.isHidden = true
@@ -93,7 +93,7 @@ final class ListRow: NSView {
     var badge = 0 { didSet { needsDisplay = true; needsLayout = true } }
     var showsChevron = false { didSet { needsDisplay = true; needsLayout = true } }
     var selected = false { didSet { restyle() } }
-    var emphasized = false { didSet { title.font = emphasized ? Typo.bodyStrong : Typo.bodyMedium } }
+    var emphasized = false { didSet { title.font = emphasized ? Typo.rowTitleStrong : Typo.rowTitle } }
     /// A control shown at the right edge, vertically centred (e.g. Toggle, CardButton).
     var accessory: NSView? {
         didSet {
@@ -113,12 +113,12 @@ final class ListRow: NSView {
         roundLayer(Radius.l)
         addSubview(tile)
         title.stringValue = t
-        title.font = Typo.bodyMedium
+        title.font = Typo.rowTitle
         title.textColor = Pal.text
         title.lineBreakMode = .byTruncatingTail
         addSubview(title)
         subtitle.stringValue = s
-        subtitle.font = Typo.caption
+        subtitle.font = Typo.meta
         subtitle.textColor = Pal.textSecondary
         subtitle.lineBreakMode = .byTruncatingTail
         addSubview(subtitle)
@@ -155,7 +155,9 @@ final class ListRow: NSView {
     override func layout() {
         super.layout()
         let h = bounds.height
-        tile.frame = NSRect(x: Space.m, y: (h - Metrics.icon) / 2, width: Metrics.icon, height: Metrics.icon)
+        // Standard rows (52) carry the standard 36 pt tile; shorter ones keep the compact one.
+        let ts: CGFloat = h >= RowTier.standard.height - 2 ? RowTier.standard.tile : Metrics.icon
+        tile.frame = NSRect(x: Space.m, y: (h - ts) / 2, width: ts, height: ts)
         var right = bounds.width - Space.m
         if let a = accessory {
             let aw = (a as? CardButton)?.fittedWidth ?? a.frame.width
@@ -168,14 +170,14 @@ final class ListRow: NSView {
         let trW: CGFloat = trailing.stringValue.isEmpty ? 0 : min(150, ceil((trailing.stringValue as NSString).size(withAttributes: [.font: Typo.caption]).width) + 4)
         trailing.frame = NSRect(x: right - trW, y: (h - 14) / 2, width: trW, height: 14)
         if trW > 0 { right -= trW + Space.s }
-        let textX = Space.m + Metrics.icon + Space.m
+        let textX = tile.frame.maxX + Space.m
         let textW = max(20, right - textX)
         if subtitle.stringValue.isEmpty {
-            title.frame = NSRect(x: textX, y: (h - 16) / 2, width: textW, height: 16)
+            title.frame = NSRect(x: textX, y: (h - 18) / 2, width: textW, height: 18)
             subtitle.isHidden = true
         } else {
-            title.frame = NSRect(x: textX, y: h / 2 - 16, width: textW, height: 16)
-            subtitle.frame = NSRect(x: textX, y: h / 2 + 1, width: textW, height: 14)
+            title.frame = NSRect(x: textX, y: (h / 2 - 18).rounded(), width: textW, height: 18)
+            subtitle.frame = NSRect(x: textX, y: (h / 2 + 1).rounded(), width: textW, height: 16)
             subtitle.isHidden = false
         }
     }
@@ -322,8 +324,7 @@ final class SectionHeader: NSView {
     init(_ t: String, link l: String? = nil) {
         super.init(frame: .zero)
         // Small caps label, quiet, so the rows carry the weight.
-        title.attributedStringValue = NSAttributedString(string: t.uppercased(), attributes: [
-            .font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: Pal.textTertiary, .kern: 0.8])
+        title.attributedStringValue = Typo.sectionText(t)
         addSubview(title)
         link.isBordered = false
         link.isHidden = l == nil
@@ -459,13 +460,13 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     func focusSearch() { window?.makeKey(); window?.makeFirstResponder(search.field) }
 
     private let tileHeight: CGFloat = 54
-    private let rowH: CGFloat = 46
+    private let rowH: CGFloat = RowTier.standard.height
     private static let maxAttention = 3
 
-    private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (rowH + 6) - 6 }
+    private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (rowH + Metrics.rowGap) - Metrics.rowGap }
 
     var desiredHeight: CGFloat {
-        var h = headerBottom + 36 + Space.l
+        var h = headerBottom + Metrics.field + Space.l
         h += 18 + Space.s + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.l
         h += 18 + Space.s + tileHeight + Metrics.cardPad
         return h
@@ -585,13 +586,12 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         layoutHeader()
         let x = Metrics.cardPad, w = bounds.width - x * 2
         var y = headerBottom
-        search.frame = NSRect(x: x, y: y, width: w, height: 36)
-        y += 36 + Space.l
+        search.frame = NSRect(x: x, y: y, width: w, height: Metrics.field)
+        y += Metrics.field + Space.l
 
         // While searching, the matches take the place of "Needs you".
         let searching = !query.isEmpty
-        attentionHeader.title.attributedStringValue = NSAttributedString(string: searching ? "MATCHES" : "NEEDS YOU", attributes: [
-            .font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: Pal.textTertiary, .kern: 0.8])
+        attentionHeader.title.attributedStringValue = Typo.sectionText(searching ? "Matches" : "Needs you")
         let shown = searching ? recentRows : attentionRows
         attentionRows.forEach { $0.isHidden = searching }
         recentRows.forEach { $0.isHidden = !searching }
@@ -603,8 +603,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             y += 20
         } else {
             allClear.isHidden = true
-            for r in shown { r.frame = NSRect(x: x, y: y, width: w, height: rowH); y += rowH + 6 }
-            y -= 6
+            for r in shown { r.frame = NSRect(x: x, y: y, width: w, height: rowH); y += rowH + Metrics.rowGap }
+            y -= Metrics.rowGap
         }
         y += Space.l
 
@@ -1179,7 +1179,7 @@ final class SettingsCard: CardBase, CardContent {
             self?.rebuildPane()
         }
         pane.addSubview(tabs)
-        s.place(tabs, height: Metrics.control + 2, gap: Space.m)
+        s.place(tabs, height: Metrics.segment, gap: Space.m)
 
         switch a.provider {
         case .claudeCode:

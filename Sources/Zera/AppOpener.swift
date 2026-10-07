@@ -1909,17 +1909,27 @@ final class TreeButton: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    private var pressed = false { didSet { if pressed != oldValue { needsDisplay = true } } }
+
+    /// The shared button family (`Palette.drawButton`): the main action filled with the accent,
+    /// a green tint filled green, a red one a soft red; the rest quiet.
+    private var tone: ButtonTone {
+        guard primary else { return .neutral }
+        guard let t = tint else { return .accent }
+        if t.sameRGB(as: Neon.green) { return .success }
+        if t.sameRGB(as: Neon.red) { return .danger }
+        if t.sameRGB(as: Neon.warning) { return .warning }
+        return .accent
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10)
-        let accent = tint ?? Neon.accent
-        (primary ? accent.withAlphaComponent(hovered ? 0.24 : 0.17) : Neon.chip.withAlphaComponent(hovered ? 1 : 0.9)).setFill()
-        path.fill()
-        (primary ? accent.withAlphaComponent(0.65) : Neon.chipEdge).setStroke()
-        path.lineWidth = 1
-        path.stroke()
-        let t = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: Neon.text])
-        let k = NSAttributedString(string: key, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium), .foregroundColor: Neon.glyph])
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5).pressed(pressed)
+        let path = NSBezierPath(roundedRect: r, xRadius: Radius.m, yRadius: Radius.m)
+        let ink = Pal.drawButton(path, tone: tone, hovered: hovered, pressed: pressed)
+        let filled = tone == .accent || tone == .success
+        let t = NSAttributedString(string: title, attributes: [.font: Typo.button, .foregroundColor: ink])
+        let k = NSAttributedString(string: key, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium),
+                                                              .foregroundColor: filled ? ink.withAlphaComponent(0.75) : Neon.glyph])
         let ts = t.size(), ks = k.size()
         // Too narrow for the key as well: the word alone, so nothing spills over the edge.
         guard ts.width + 10 + ks.width + 10 <= bounds.width - 16 else {
@@ -1931,12 +1941,12 @@ final class TreeButton: NSView {
         t.draw(at: NSPoint(x: x0, y: (bounds.height - ts.height) / 2))
         let kr = NSRect(x: x0 + ts.width + 10, y: (bounds.height - ks.height - 6) / 2, width: ks.width + 10, height: ks.height + 6)
         let kp = NSBezierPath(roundedRect: kr, xRadius: 5, yRadius: 5)
-        Neon.chipEdge.setStroke(); kp.lineWidth = 1; kp.stroke()
+        (filled ? ink.withAlphaComponent(0.3) : Neon.chipEdge).setStroke(); kp.lineWidth = 1; kp.stroke()
         k.draw(at: NSPoint(x: kr.minX + 5, y: kr.minY + 3))
     }
     /// The width that fits the word and its key with comfortable room either side.
     var fittedWidth: CGFloat {
-        let t = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold)]).width
+        let t = (title as NSString).size(withAttributes: [.font: Typo.button]).width
         let k = (key as NSString).size(withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)]).width
         return ceil(t + 10 + k + 10) + 28
     }
@@ -1946,9 +1956,12 @@ final class TreeButton: NSView {
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    override func mouseExited(with event: NSEvent) { hovered = false; pressed = false }
+    override func mouseDown(with event: NSEvent) { pressed = true }
+    override func mouseUp(with event: NSEvent) {
+        pressed = false
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+    }
     override func accessibilityPerformPress() -> Bool { onClick?(); return true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }

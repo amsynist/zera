@@ -23,10 +23,10 @@ private enum L {
     static let headerTop: CGFloat = 20
     /// Under the island header Zera hangs in.
     static let segY: CGFloat = 88
-    static let segH: CGFloat = 40
+    static let segH: CGFloat = Metrics.segment
     static let filterH: CGFloat = 34
-    static let rowH: CGFloat = 76
-    static let rowGap: CGFloat = 8
+    static let rowH: CGFloat = RowTier.rich.height
+    static let rowGap: CGFloat = Metrics.rowGap
     static let bannerH: CGFloat = 44
     static let insightH: CGFloat = 84
     static let gap: CGFloat = 12
@@ -144,28 +144,32 @@ final class PullRequestRow: NSView {
     override func layout() {
         super.layout()
         let w = bounds.width, h = bounds.height
-        tile.frame = NSRect(x: 14, y: (h - 40) / 2, width: 40, height: 40)
+        let ts = RowTier.rich.tile
+        tile.frame = NSRect(x: 14, y: (h - ts) / 2, width: ts, height: ts)
         var right = w - 12
-        more.frame = NSRect(x: right - 32, y: (h - 32) / 2, width: 32, height: 32)
-        right -= 32 + 8
+        let mb = Metrics.headerButton
+        more.frame = NSRect(x: right - mb, y: (h - mb) / 2, width: mb, height: mb)
+        right -= mb + 8
         let pw = max(84, primary.fittedWidth)
-        primary.frame = NSRect(x: right - pw, y: (h - 34) / 2, width: pw, height: 34)
+        primary.frame = NSRect(x: right - pw, y: (h - Metrics.button) / 2, width: pw, height: Metrics.button)
         right -= pw + 14
 
         // Responsive status column: full (chip + avatars + comments) → chip only → folded into meta.
         let full = w >= 540, medium = w >= 460
+        // Three lines (repo, title, meta) are 54 pt tall: centre them as a block on the row.
+        let top = ((h - 54) / 2).rounded()
         let statusW: CGFloat = full ? 136 : (medium ? 120 : 0)
         chip.isHidden = statusW == 0
         let colX = right - statusW
         if statusW > 0 {
             let cw = min(statusW, chip.fittedWidth)
-            chip.frame = NSRect(x: colX, y: full ? 12 : (h - 24) / 2, width: cw, height: 24)
+            chip.frame = NSRect(x: colX, y: full ? top : (h - 24) / 2, width: cw, height: 24)
             let commentsW = comments.count > 0 ? comments.fittedWidth : 0
             comments.isHidden = !full || commentsW == 0
-            comments.frame = NSRect(x: right - commentsW, y: 43, width: commentsW, height: 22)
+            comments.frame = NSRect(x: right - commentsW, y: top + 31, width: commentsW, height: 22)
             let aw = avatars.fittedWidth
             avatars.isHidden = !full || aw == 0 || aw + commentsW + 8 > statusW
-            avatars.frame = NSRect(x: colX, y: 42, width: aw, height: 24)
+            avatars.frame = NSRect(x: colX, y: top + 30, width: aw, height: 24)
             right = colX - 14
         } else {
             comments.isHidden = true
@@ -173,17 +177,17 @@ final class PullRequestRow: NSView {
         }
         updateMeta(showStatus: statusW == 0)
 
-        let tx: CGFloat = 66, tw = max(40, right - tx)
-        repoLine.frame = NSRect(x: tx, y: 12, width: tw, height: 16)
-        title.frame = NSRect(x: tx, y: 29, width: tw, height: 20)
-        meta.frame = NSRect(x: tx, y: 50, width: tw, height: 16)
+        let tx: CGFloat = tile.frame.maxX + 12, tw = max(40, right - tx)
+        repoLine.frame = NSRect(x: tx, y: top, width: tw, height: 16)
+        title.frame = NSRect(x: tx, y: top + 17, width: tw, height: 20)
+        meta.frame = NSRect(x: tx, y: top + 38, width: tw, height: 16)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l, yRadius: Radius.l)
         (hovered ? p.surfaceHover : p.surfaceRow).setFill(); path.fill()
-        (hovered ? p.accentBorder : p.border).setStroke(); path.lineWidth = 1; path.stroke()
+        p.divider.setStroke(); path.lineWidth = 1; path.stroke()
         if isNew {
             p.accent.setFill()
             NSBezierPath(ovalIn: NSRect(x: 5, y: bounds.midY - 3, width: 6, height: 6)).fill()

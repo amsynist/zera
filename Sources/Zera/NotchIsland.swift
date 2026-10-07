@@ -261,8 +261,8 @@ final class IslandView: NSView {
     private func layoutWhisper() {
         guard let c = content else { return }
         let f = c.frame
-        // Screens built on CardBase start their header text at cardPad + 4; the others at 24.
-        let lead: CGFloat = c is CardBase ? Metrics.cardPad + 4 : 24
+        // Every screen starts its header text at the side padding + 4.
+        let lead: CGFloat = c is CardBase ? Metrics.cardPad + 4 : Metrics.sidePad + 4
         let width = f.width / 2 - Isle.zeraGap / 2 - lead
         whisperView.frame = NSRect(x: f.minX + lead - 2, y: band + 45, width: max(0, width + 2), height: 18)
     }
