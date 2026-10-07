@@ -1150,7 +1150,7 @@ private func drawTrackIndicator(_ ind: SlidingIndicator, under segment: TaskChoi
 final class TaskExportView: NSView {
     static let size = NSSize(width: 660 + TaskGlow.margin * 2, height: 700 + TaskGlow.margin * 2)
     private let store: TaskStore
-    var span: TaskExport.Span = .week { didSet { refresh(); showNewest() } }
+    var span: TaskExport.Span = .today { didSet { refresh(); showNewest() } }
     var format: TaskExport.Format = .timesheet { didSet { refresh(); showNewest() } }
     /// nil: every project.
     var project: String? { didSet { refresh(); showNewest() } }

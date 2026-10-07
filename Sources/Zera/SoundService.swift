@@ -17,7 +17,7 @@ enum ZeraSound: String, CaseIterable {
     case claudeRejected = "claude_rejected", claudeDone = "claude_done"
     // Reminders
     case reminder = "reminder_chime", water = "reminder_water", breakTime = "reminder_break"
-    case calendar = "reminder_calendar", reminderDone = "reminder_done"
+    case calendar = "reminder_calendar", reminderDone = "reminder_done", batteryLow = "reminder_battery"
     // GitHub
     case githubPing = "github_ping", ciFailed = "github_ci_failed", ciPassed = "github_ci_passed"
     // Clipboard
@@ -48,7 +48,7 @@ enum ZeraSound: String, CaseIterable {
              .fileHover, .fileCatch, .fileReject, .fileDragOut, .screenshot, .timerSet: return .zera
         case .islandOpen, .islandClose, .tab, .button: return .island
         case .claudeStart, .claudeApproval, .claudeApproved, .claudeRejected, .claudeDone: return .claude
-        case .reminder, .water, .breakTime, .calendar, .reminderDone: return .reminders
+        case .reminder, .water, .breakTime, .calendar, .reminderDone, .batteryLow: return .reminders
         case .githubPing, .ciFailed, .ciPassed: return .github
         case .clipCopy, .clipClear: return .clipboard
         case .openerDrop, .openerTick, .openerLaunch: return .opener
@@ -59,7 +59,7 @@ enum ZeraSound: String, CaseIterable {
     var gain: Float {
         switch self {
         case .caption, .islandOpen, .islandClose, .tab, .button, .fileHover, .fileDragOut, .hello, .openerTick: return 0.55
-        case .claudeApproval, .claudeDone, .reminder, .water, .breakTime, .calendar: return 1.0
+        case .claudeApproval, .claudeDone, .reminder, .water, .breakTime, .calendar, .batteryLow: return 1.0
         default: return 0.8
         }
     }

@@ -215,7 +215,12 @@ final class ScreenRenderTests: XCTestCase {
             author: person("dependabot"), created: now.addingTimeInterval(-6 * 3600), updated: now.addingTimeInterval(-2 * 3600),
             url: URL(string: "https://github.com/acme/infra/pull/88")!)
         c.ci = .running; c.approvalsWaiting = 1
-        return [a, b, c]
+        // Yours from last week, approved since: only under Approvals.
+        var d = GHPullRequest(id: "acme/aurora#398", owner: "acme", repo: "aurora", number: 398, title: "Cache avatars on disk between launches",
+            author: person("you"), created: now.addingTimeInterval(-6 * 86400), updated: now.addingTimeInterval(-40 * 60),
+            url: URL(string: "https://github.com/acme/aurora/pull/398")!)
+        d.mine = true; d.ci = .passed; d.review = .approved; d.approvedBy = ["lbhatt", "theo"]; d.reviewers = [person("lbhatt"), person("theo")]
+        return [a, b, c, d]
     }
 
     func testRenderPopulatedStates() throws {
@@ -228,6 +233,10 @@ final class ScreenRenderTests: XCTestCase {
         let detail = GitHubCard()
         detail.openDetail(prs[0])
         island(detail, tab: .github, "22-pr-detail")
+        let approvals = GitHubCard()
+        approvals.selectTab(3)
+        island(approvals, tab: .github, "35-pr-approvals")
+        approvals.selectTab(0)
 
         // Claude sessions: running, waiting, done.
         func session(_ id: String, _ title: String, _ status: ClaudeSession.Status, _ ago: TimeInterval) -> ClaudeSession {
@@ -257,6 +266,44 @@ final class ScreenRenderTests: XCTestCase {
             v.format = f
             panel(v, "2\(5 + i)-export-\(f.title.lowercased())")
         }
+        // Home with this Mac's vitals, and the This Mac page (live readings from the machine).
+        SystemVitals.shared.watch()
+        RunLoop.main.run(until: Date().addingTimeInterval(2.2))
+        island(HomeCard(), tab: .home, "30-home-vitals")
+        let mac = HomeCard()
+        mac.setVitals(true, animated: false)
+        island(mac, tab: .home, "31-this-mac")
+        SystemVitals.shared.unwatch()
+
+        // The low-battery banner.
+        var w = false, c = false
+        if let low = BatteryAlerts.lowAlert(VitalsSample.Battery(percent: 18, charging: false, onPower: false, toEmpty: 64),
+                                            threshold: 20, enabled: true, warned: &w, warnedCritical: &c) {
+            ReminderService.shared.preview(low)
+            island(ReminderAlertCard(), tab: nil, "34-banner-battery")
+        }
+
+        // Shelf · Fresh: new files in the (render home's) Downloads and Desktop.
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        for (folder, names) in [("Downloads", ["Invoice-October.pdf", "team-offsite-photos.zip", "design-review.mov"]),
+                                ("Desktop", ["Screenshot 2026-10-07 at 20.41.12.png", "Q3 roadmap.key"])] {
+            let dir = home.appendingPathComponent(folder, isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            for n in names where !FileManager.default.fileExists(atPath: dir.appendingPathComponent(n).path) {
+                try Data(repeating: 7, count: 180_000).write(to: dir.appendingPathComponent(n))
+            }
+        }
+        UserDefaults.standard.set(true, forKey: "zera.shelf.freshTab")
+        FreshFiles.shared.start()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        let freshShelf = DropFilesView()
+        freshShelf.willShow()
+        island(freshShelf, tab: .shelf, "32-shelf-fresh")
+        UserDefaults.standard.set(false, forKey: "zera.shelf.freshTab")
+        let shelfSettings = SettingsCard(defaultKind: .shelf, showingZera: true, loginEnabled: false)
+        shelfSettings.select(.shelf)
+        island(shelfSettings, tab: .settings, "33-settings-shelf")
+
         // Tasks, the week view.
         UserDefaults.standard.set(1, forKey: "tasks.viewSpan")
         island(TasksCard(store: month), tab: .tasks, "29-tasks-week")

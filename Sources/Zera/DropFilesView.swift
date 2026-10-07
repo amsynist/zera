@@ -893,6 +893,17 @@ final class DropFilesView: NSView, CardContent {
     private var recentRows: [String: ShelfFileRow] = [:]
     private var recentOrder: [String] = []
     private let recentEmpty = dlabel(NSFont.systemFont(ofSize: 12.5), Pal.textTertiary)
+    // Fresh: what's new in the watched folders (Downloads, Desktop…), one tab over from the Shelf.
+    private static let freshKey = "zera.shelf.freshTab"
+    private var freshTab: Bool { UserDefaults.standard.bool(forKey: Self.freshKey) && FreshFiles.shared.enabled }
+    private let leftTabs = GitHubSegmentedControl(items: [])
+    private let freshScroll = NSScrollView()
+    private let freshList = FlippedView()
+    private var freshRows: [String: ShelfFileRow] = [:]
+    private var freshOrder: [String] = []
+    private let freshInfo = dlabel(Typo.meta, Pal.textTertiary)
+    private var addFolder: PRActionButton!
+    private let freshEmpty = dlabel(NSFont.systemFont(ofSize: 12.5), Pal.textTertiary)
 
     // Centre
     private let fileTile = FileTypeTile()
@@ -955,9 +966,16 @@ final class DropFilesView: NSView, CardContent {
     var desiredHeight: CGFloat {
         guard !expanded else { return Isle.maxContentHeight }
         // Header, slim drop zone, one row of actions, up to three dropped files (more scroll).
+        let rowH = ShelfFileRow.height(.dropped) + Metrics.rowGap
+        let tabs: CGFloat = FreshFiles.shared.enabled ? Metrics.segment + 12 : 0
+        if freshTab {
+            // Up to five fresh files before the list scrolls.
+            let n = min(5, freshOrder.count)
+            return Isle.headerHeight + tabs + Metrics.chip + 10 + (n == 0 ? 60 : CGFloat(n) * rowH - Metrics.rowGap) + 16
+        }
         let rows = min(3, recentOrder.count)
-        let list: CGFloat = rows == 0 ? 40 : CGFloat(rows) * (ShelfFileRow.height(.dropped) + Metrics.rowGap) - Metrics.rowGap
-        return Isle.headerHeight + 60 + 12 + 40 + 16 + 26 + list + 16
+        let list: CGFloat = rows == 0 ? 40 : CGFloat(rows) * rowH - Metrics.rowGap
+        return Isle.headerHeight + tabs + 60 + 12 + 40 + 16 + (tabs > 0 ? 0 : 26) + list + 16
     }
     /// The island shows one panel at a time: the Shelf, or the file you picked.
     private var threePane: Bool { false }
@@ -982,7 +1000,72 @@ final class DropFilesView: NSView, CardContent {
     func willShow() {
         expanded = pendingExpand && selectedPath != nil
         pendingExpand = false
+        if freshTab { FreshFiles.shared.start() }
         reload()
+    }
+
+    // MARK: Fresh
+
+    /// Shelf ↔ Fresh. The first time Fresh opens, the watched folders are read (macOS asks for
+    /// access then) and watched from then on.
+    private func showFresh(_ on: Bool) {
+        guard on != freshTab else { return }
+        UserDefaults.standard.set(on, forKey: Self.freshKey)
+        if on { FreshFiles.shared.start() }
+        reload()
+        layoutSubtreeIfNeeded()
+        onHeightChange?()
+        delegate?.shelfHeightChanged()
+        Motion.page(on ? freshScroll : recentScroll, forward: on)
+    }
+
+    @objc private func freshChanged() {
+        reloadLeft()
+        needsLayout = true
+        guard freshTab else { return }
+        layoutSubtreeIfNeeded()
+        onHeightChange?()
+        delegate?.shelfHeightChanged()
+    }
+
+    @objc private func addFolderTapped() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Watch Folder"
+        panel.message = "New files in this folder show up in the Shelf's Fresh tab."
+        NSApp.activate(ignoringOtherApps: true)
+        panel.begin { r in
+            guard r == .OK, let u = panel.url else { return }
+            FreshFiles.shared.addFolder(u)
+        }
+    }
+
+    /// Rows for the fresh files, newest first; a file that just arrived slides in.
+    private func reloadFresh() {
+        let fresh = FreshFiles.shared
+        let items = fresh.items
+        let ids = items.map(\.path)
+        for (id, r) in freshRows where !ids.contains(id) { r.removeFromSuperview(); freshRows.removeValue(forKey: id) }
+        let firstFill = freshRows.isEmpty
+        for item in items {
+            let r: ShelfFileRow
+            if let existing = freshRows[item.path] { r = existing } else {
+                r = makeRow(path: item.path, style: .dropped)
+                freshList.addSubview(r)
+                freshRows[item.path] = r
+                if !firstFill { Motion.arrive(r, direction: 0) }
+            }
+            r.selected = Self.userFocused && item.path == selectedPath
+            r.update(addedAt: item.added, status: ("\(item.source) · \(relativeTime(item.added))", Pal.textSecondary))
+        }
+        freshOrder = ids
+        let names = fresh.folders.filter(\.on).map(\.name)
+        freshInfo.stringValue = names.isEmpty ? "No folders watched" : "From " + names.joined(separator: ", ") + " · newest first"
+        freshEmpty.stringValue = !fresh.started || fresh.scanning && items.isEmpty ? "Looking…"
+            : (names.isEmpty ? "Add a folder to see what lands in it." : "Nothing new in the last \(fresh.windowTitle).")
+        freshEmpty.isHidden = !items.isEmpty
     }
 
     // MARK: Init
@@ -1024,6 +1107,18 @@ final class DropFilesView: NSView, CardContent {
         recentEmpty.stringValue = "Files you drop wait here — drag them anywhere."
         recentEmpty.alignment = .center
         left.addSubview(recentEmpty)
+        leftTabs.onSelect = { [weak self] i in self?.showFresh(i == 1) }
+        left.addSubview(leftTabs)
+        configure(freshScroll, freshList)
+        left.addSubview(freshScroll)
+        freshInfo.lineBreakMode = .byTruncatingTail
+        left.addSubview(freshInfo)
+        addFolder = PRActionButton("Folder", style: .secondary, symbol: "plus", target: self, action: #selector(addFolderTapped))
+        addFolder.toolTip = "Watch another folder for new files"
+        left.addSubview(addFolder)
+        freshEmpty.alignment = .center
+        left.addSubview(freshEmpty)
+        NotificationCenter.default.addObserver(self, selector: #selector(freshChanged), name: FreshFiles.changed, object: nil)
 
         // Centre.
         center.addSubview(fileTile)
@@ -1249,12 +1344,34 @@ final class DropFilesView: NSView, CardContent {
         recentEmpty.isHidden = !entries.isEmpty
         clearRecent.isHidden = entries.isEmpty
 
+        // Shelf · Fresh.
+        let fresh = freshTab, tabsOn = FreshFiles.shared.enabled && !leftShowsRecent
+        leftTabs.isHidden = !tabsOn
+        if tabsOn {
+            let f = FreshFiles.shared
+            leftTabs.items = [.init(symbol: "tray.full", title: "Shelf", count: store.items.count, tint: nil),
+                              .init(symbol: "clock.arrow.circlepath", title: "Fresh · \(f.windowTitle)", count: f.started ? f.items.count : 0, tint: nil)]
+            leftTabs.selected = fresh ? 1 : 0
+        }
+        if fresh { reloadFresh() }
+        ([zone, recentScroll, recentEmpty, clearRecent, undo] as [NSView]).forEach { $0.isHidden = $0.isHidden || fresh }
+        actionTiles.forEach { $0.isHidden = fresh }
+        if !fresh { zone.isHidden = false; recentScroll.isHidden = false }
+        recentTitle.isHidden = tabsOn
+        ([freshScroll, freshInfo, addFolder] as [NSView]).forEach { $0.isHidden = !fresh }
+        freshEmpty.isHidden = !fresh || !freshOrder.isEmpty
+
         // Zera over the zone: excited when files are on the Shelf, peeking when it's empty.
         peek.image = SpriteLibrary.shared.sprite(zone.isTargeted ? "card_catch_pdf" : "card_peek_down")?.image
             ?? SpriteLibrary.shared.sprite("peek")?.image
         bubble.text = zone.isTargeted ? "Drop it here! ✨" : (store.items.isEmpty ? "Drop a file here\nand I'll take a look! ✨" : "Tap a file to copy it,\nor drag it out 👇")
         let n = store.items.count
-        leftSub.stringValue = n == 0 ? "Drop files on Zera or below" : "\(n) file\(n == 1 ? "" : "s") · tap to copy, drag to use"
+        if freshTab {
+            let k = FreshFiles.shared.items.count
+            leftSub.stringValue = "\(k) new in the last \(FreshFiles.shared.windowTitle) · tap to copy"
+        } else {
+            leftSub.stringValue = n == 0 ? "Drop files on Zera or below" : "\(n) file\(n == 1 ? "" : "s") · tap to copy, drag to use"
+        }
         recentTitle.stringValue = leftShowsRecent ? "RECENT FILES" : "DROPPED FILES"
     }
 
@@ -1574,8 +1691,32 @@ final class DropFilesView: NSView, CardContent {
         let cw = clearRecent.isHidden ? 0 : max(80, clearRecent.fittedWidth)
         clearRecent.frame = NSRect(x: w - x - cw, y: 30, width: cw, height: 28)
 
+        // Shelf · Fresh under the header.
+        var top = Isle.headerHeight
+        if !leftTabs.isHidden {
+            leftTabs.frame = NSRect(x: x, y: top, width: iw, height: Metrics.segment)
+            top += Metrics.segment + 12
+        }
+        if freshTab {
+            let bw = addFolder.fittedWidth
+            addFolder.frame = NSRect(x: x + iw - bw, y: top, width: bw, height: Metrics.chip)
+            freshInfo.frame = NSRect(x: x + 2, y: top + 6, width: iw - bw - 12, height: 16)
+            top += Metrics.chip + 10
+            freshScroll.frame = NSRect(x: x - 4, y: top, width: iw + 8, height: max(0, h - 12 - top))
+            freshEmpty.frame = NSRect(x: x, y: top + 16, width: iw, height: 18)
+            var fy: CGFloat = 0
+            for path in freshOrder {
+                guard let r = freshRows[path] else { continue }
+                let rh = ShelfFileRow.height(.dropped)
+                r.frame = NSRect(x: 4, y: fy, width: iw, height: rh)
+                fy += rh + Metrics.rowGap
+            }
+            freshList.frame = NSRect(x: 0, y: 0, width: iw + 8, height: max(fy, freshScroll.frame.height))
+            return
+        }
+
         // Slim drop zone, then the four actions in one row.
-        let zoneY = Isle.headerHeight
+        let zoneY = top
         zone.frame = NSRect(x: x, y: zoneY, width: iw, height: 60)
         let ay = zone.frame.maxY + 12, ah: CGFloat = 40
         let aw = (iw - 8 * 3) / 4
@@ -1586,7 +1727,7 @@ final class DropFilesView: NSView, CardContent {
         // The dropped files.
         let ry = ay + ah + 16
         recentTitle.frame = NSRect(x: x, y: ry, width: iw, height: 18)
-        var ly = ry + 26
+        var ly = recentTitle.isHidden ? ry : ry + 26
         if !leftShowsRecent, !undo.isHidden {
             if undo.superview !== left { left.addSubview(undo) }
             undo.frame = NSRect(x: x, y: ly, width: iw, height: 38)
@@ -1694,6 +1835,7 @@ final class DropFilesView: NSView, CardContent {
         Self.userFocused = true
         for (p, r) in recentRows { r.selected = p == path; if p == path { r.flashCopied() } }
         for (p, r) in shelfRows { r.selected = p == path; if p == path { r.flashCopied() } }
+        for (p, r) in freshRows { r.selected = p == path; if p == path { r.flashCopied() } }
         SoundService.shared.play(.clipCopy)
         var name = (path as NSString).lastPathComponent
         if name.count > 28 { name = String(name.prefix(25)) + "…" }
@@ -1838,8 +1980,9 @@ final class DropFilesView: NSView, CardContent {
             items.append(ClosureMenuItem("Remove from Shelf", symbol: "tray.and.arrow.up") { [weak self] in self?.removePaths([path]) })
         } else {
             items.append(ClosureMenuItem("Add to Shelf", symbol: "tray.and.arrow.down", enabled: exists) { [weak self] in
-                guard let self = self, let r = self.store.recent.first(where: { $0.path == path }) else { return }
-                self.store.reshelve(r)
+                guard let self = self else { return }
+                if let r = self.store.recent.first(where: { $0.path == path }) { self.store.reshelve(r) }
+                else { self.store.add(urls: [URL(fileURLWithPath: path)]) }
             })
         }
         if style == .recent || !onShelf {
