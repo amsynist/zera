@@ -306,7 +306,8 @@ final class LiveActivityView: NSView {
 
         let p = s?.progress ?? 0
         let real = s?.hasRealProgress ?? false
-        set(clock, mode == .idle ? "" : (elapsed ?? ""))
+        // While a reply is offered the countdown needs the room; the session time steps aside.
+        set(clock, mode == .idle || offering ? "" : (elapsed ?? ""))
         switch mode {
         case .idle:
             status.attributedStringValue = Self.statusLine("Ready", detail: "waiting for your next request")
@@ -508,8 +509,9 @@ final class LiveActivityView: NSView {
                 right = replyButton.frame.minX
             }
             let sw = max(0, right - 14 - sx)
+            let clockW: CGFloat = clock.stringValue.isEmpty ? 0 : 56
             clock.frame = NSRect(x: sx + sw - 56, y: mid - 19, width: 56, height: 17)
-            status.frame = NSRect(x: sx, y: mid - 22, width: max(0, sw - 60), height: 21)
+            status.frame = NSRect(x: sx, y: mid - 22, width: max(0, sw - clockW - (clockW > 0 ? 4 : 0)), height: 21)
             bar.frame = NSRect(x: sx, y: mid + 8, width: sw, height: 6)
         }
     }

@@ -20,6 +20,8 @@ struct KeyCombo: Equatable {
 
     static let returnKey: UInt16 = 36
     static let deleteKey: UInt16 = 51
+    static let upKey: UInt16 = 126
+    static let downKey: UInt16 = 125
 
     static func cmd(_ key: String, _ extra: NSEvent.ModifierFlags = []) -> KeyCombo {
         KeyCombo(key: key, keyCode: nil, modifiers: extra.union(.command))
@@ -38,6 +40,8 @@ struct KeyCombo: Equatable {
         switch keyCode {
         case Self.returnKey?: s += "⏎"
         case Self.deleteKey?: s += "⌫"
+        case Self.upKey?: s += "↑"
+        case Self.downKey?: s += "↓"
         case 49?: s += "Space"
         default: s += (key ?? "").uppercased()
         }
