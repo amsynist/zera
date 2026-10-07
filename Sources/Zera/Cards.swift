@@ -641,6 +641,11 @@ final class SettingsCard: CardBase, CardContent {
     var onOpenerShortcutChanged: ((HotKeyShortcut?) -> Bool)?
     var onOpenerShortcutRecording: ((Bool) -> Void)?
     var onOpenerEnabledChanged: ((Bool) -> Void)?
+    /// Quick add for Tasks (nil = off), and the menu bar item / orb switches.
+    var tasksShortcut: HotKeyShortcut? = TasksSettings.defaultShortcut
+    var onTasksShortcutChanged: ((HotKeyShortcut?) -> Bool)?
+    var onTasksShortcutRecording: ((Bool) -> Void)?
+    var onTasksSettingsChanged: (() -> Void)?
     var say: ((String, ZeraMood) -> Void)?
 
     enum Pane: Int, CaseIterable {
@@ -722,7 +727,7 @@ final class SettingsCard: CardBase, CardContent {
         paneScroll.drawsBackground = false
         paneScroll.contentView.drawsBackground = false
         paneScroll.borderType = .noBorder
-        paneScroll.hasVerticalScroller = true
+        paneScroll.hasVerticalScroller = false   // still scrolls with the trackpad or wheel
         paneScroll.scrollerStyle = .overlay
         paneScroll.verticalScrollElasticity = .allowed
         paneScroll.documentView = pane
@@ -915,6 +920,25 @@ final class SettingsCard: CardBase, CardContent {
         toggleRow("Show running apps first", on: AppOpenerSettings.runningFirst, &s, enabled: AppOpenerSettings.enabled) { on in
             AppOpenerSettings.runningFirst = on
         }
+
+        // Tasks: a tab right of the notch, plus the orb on the screen edge.
+        toggleRow("Focus orb on the screen edge", on: TasksSettings.orb, &s) { [weak self] on in
+            TasksSettings.orb = on
+            self?.onTasksSettingsChanged?()
+        }
+        let tasksRecorder = ShortcutRecorder()
+        tasksRecorder.shortcut = tasksShortcut
+        tasksRecorder.onChange = { [weak self] new in
+            guard let self = self, self.onTasksShortcutChanged?(new) ?? true else { return false }
+            self.tasksShortcut = new
+            return true
+        }
+        tasksRecorder.onRecording = { [weak self] on in self?.onTasksShortcutRecording?(on) }
+        settingRow("Add a task with", &s, control: tasksRecorder, controlWidth: 150)
+        toggleRow("Group commits into tasks with Claude", on: TaskGitSync.useClaude, &s) { on in TaskGitSync.useClaude = on }
+        hint("Drag the orb along either edge. Its outer ring is today's tasks, the inner one your time against the estimate (type 30m after a task to set one; without, it goes round hourly); "
+             + "the timer pauses itself after 5 minutes away. Right-click a project → Link Code Folder… and your commits there "
+             + "become its done tasks (only commit messages go to Claude, through your Claude Code login).", &s)
     }
 
     private func buildSounds(_ s: inout Stack) {
@@ -1329,6 +1353,9 @@ final class SettingsCard: CardBase, CardContent {
             ("Close any card", "Esc"), ("Approve / reject a Claude command", "⏎ / Esc"), ("Add an event or reminder", "+ Add Event ▾"),
             ("Open clipboard history", clipboardShortcut?.label ?? "Clipboard tab"),
             ("Open an app", openerShortcut?.label ?? "Off (Settings → General)"),
+            ("Add a task from anywhere", tasksShortcut?.label ?? "Off (Settings → General)"),
+            ("Focus card: pause · done · next", "Space · ⏎ · ⇥"),
+            ("Export tasks (from the list)", "⌘E"),
             ("Copy an item again", "Click it · ⏎ · ⌘1–⌘9"),
             ("Paste clipboard onto the shelf", "⌘V"), ("Select all tiles", "⌘A"), ("Remove selected tiles", "⌫"),
         ]

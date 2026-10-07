@@ -17,10 +17,10 @@ enum Isle {
     /// Room around the island inside its window for the glow.
     static let margin: CGFloat = 44
 
-    /// The tabs at notch level: Home · Claude · Files · Clipboard left of the notch, PRs ·
-    /// Reminders · Settings right of it.
+    /// The tabs at notch level: Home · Claude · Files · Clipboard left of the notch, Tasks ·
+    /// PRs · Reminders · Settings right of it.
     static let leftTabs: [CardKind] = [.home, .claude, .shelf, .clipboard]
-    static let rightTabs: [CardKind] = [.github, .reminders, .settings]
+    static let rightTabs: [CardKind] = [.tasks, .github, .reminders, .settings]
 
     /// Which tab lights up for a screen that has none of its own.
     static func tab(for kind: CardKind) -> CardKind {
@@ -42,6 +42,7 @@ enum Isle {
         case .reminders: return "calendar"
         case .settings: return "gearshape"
         case .clipboard: return "doc.on.clipboard"
+        case .tasks: return "checklist"
         default: return tab.symbol
         }
     }
@@ -57,6 +58,7 @@ enum Isle {
         case .settings: return "hang_swing"
         case .toast: return "hang_wave"
         case .clipboard: return "hang_upsidedown"
+        case .tasks: return "hang_smile"
         }
     }
 }
