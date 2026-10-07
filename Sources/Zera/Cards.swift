@@ -141,18 +141,15 @@ final class ListRow: NSView {
         needsLayout = true
     }
 
-    /// Glass row: a navy step up with a soft blue edge that lights up under the pointer.
+    /// Glass row: one step up from the glass, a step brighter under the pointer.
     private func restyle() {
         let p = Pal
         let hot = hovered && onTap != nil
         layer?.backgroundColor = (selected ? p.accentSoft : (hot ? p.surfaceHover : p.surfaceRow)).cgColor
         layer?.borderWidth = 1
-        layer?.borderColor = (selected ? p.selectedEdge : (hot ? p.accent.withAlphaComponent(0.45) : p.divider)).cgColor
+        layer?.borderColor = (selected ? p.selectedEdge : p.divider).cgColor
         layer?.masksToBounds = false
-        layer?.shadowColor = p.accent.cgColor
-        layer?.shadowRadius = 8
-        layer?.shadowOffset = .zero
-        layer?.shadowOpacity = hot ? 0.25 : 0
+        layer?.shadowOpacity = 0
     }
 
     override func layout() {
@@ -239,9 +236,10 @@ final class NavRow: NSView {
         layer?.backgroundColor = (selected ? p.selectedFill : (hovered ? p.surfaceHover : .clear)).cgColor
         layer?.borderWidth = selected ? 1 : 0
         layer?.borderColor = p.selectedEdge.cgColor
-        icon.contentTintColor = selected ? p.selectedAccent : p.textSecondary
-        title.textColor = selected ? p.text : p.text(0.8)
-        title.font = selected ? Typo.bodyStrong : Typo.nav
+        icon.contentTintColor = selected ? p.accent : p.textSecondary
+        title.textColor = selected ? p.accent : p.textSecondary
+        // One weight in both states, so the label never shifts when you pick a pane.
+        title.font = Typo.chip
     }
 
     override func layout() {

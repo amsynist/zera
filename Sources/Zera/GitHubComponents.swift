@@ -359,8 +359,8 @@ final class GHSquareButton: NSButton {
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.m, yRadius: Radius.m)
-        (isHighlighted ? p.surfacePressed : (hovered && isEnabled ? p.surfaceHover : p.surfaceRow)).setFill()
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5).pressed(isHighlighted && isEnabled), xRadius: Radius.m, yRadius: Radius.m)
+        (isHighlighted ? p.surfacePressed : (hovered && isEnabled ? p.surfaceHover : p.surface)).setFill()
         path.fill()
         p.border.setStroke(); path.lineWidth = 1; path.stroke()
         guard !spinning, let g = glyph?.withSymbolConfiguration(.init(paletteColors: [hovered ? p.text : p.textSecondary])) else { return }
@@ -379,11 +379,12 @@ final class GHSquareButton: NSButton {
     override func resetCursorRects() { if isEnabled { addCursorRect(bounds, cursor: .pointingHand) } }
 }
 
-/// The PR screen's button: violet gradient (primary) or hairline surface (secondary), 13 pt
-/// semibold, icon + title centred, hover / pressed / disabled / keyboard-focus states.
+/// The island's text button, used on every screen: icon + title centred, hover / pressed /
+/// disabled / keyboard-focus states.
 class PRActionButton: NSButton {
-    /// The island's button family (see `Palette.drawButton`): primary is a blue outline,
-    /// secondary a quiet chip, success green (Done, Approve), destructive red (Stop), warning amber.
+    /// The island's button family (see `Palette.drawButton`): primary is filled with the accent
+    /// gradient, secondary a quiet chip, success filled green (Done, Approve), destructive a soft
+    /// red (Stop, Delete), warning a soft amber.
     enum Style { case primary, secondary, destructive, warning, success }
     var style: Style { didSet { needsDisplay = true } }
     /// Row hover: the primary button glows a little.
@@ -391,7 +392,7 @@ class PRActionButton: NSButton {
     private var titleText: String
     private var glyph: NSImage?
     private var hovered = false { didSet { needsDisplay = true; updateGlow() } }
-    static let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+    static let font = Typo.button
 
     init(_ title: String, style: Style, symbol: String? = nil, target: AnyObject?, action: Selector) {
         self.style = style
@@ -449,11 +450,10 @@ class PRActionButton: NSButton {
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        // A pill, except icon-only squares (a 34 × 34 trash button) keep soft corners.
-        let radius = titleText.isEmpty ? Radius.m : r.height / 2
-        let path = NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius)
         let pressed = isHighlighted
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5).pressed(pressed && isEnabled)
+        let radius = min(Radius.m, r.height / 2)
+        let path = NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius)
         let tone: ButtonTone
         switch style {
         case .primary: tone = .accent
@@ -564,13 +564,21 @@ final class GitHubSegmentedControl: NSView {
     var items: [Item] { didSet { needsDisplay = true } }
     /// Segments sized to their content (proportionally) instead of equal widths.
     var fitToContent = false { didSet { needsDisplay = true } }
-    var selected = 0 { didSet { needsDisplay = true } }
+    /// The chosen segment. Changing it glides the indicator over (`setSelected(_:animated:)`).
+    var selected = 0 {
+        didSet {
+            guard selected != oldValue else { return }
+            indicator.move(to: slot(selected), animated: true)
+            needsDisplay = true
+        }
+    }
     var onSelect: ((Int) -> Void)?
     private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
+    private lazy var indicator = SlidingIndicator(view: self)
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    private static let font = NSFont.systemFont(ofSize: 13.5, weight: .semibold)
-    private static let badgeFont = NSFont.systemFont(ofSize: 11.5, weight: .bold)
+    private static let font = Typo.chip
+    private static let badgeFont = Typo.count
 
     init(items: [Item]) {
         self.items = items
@@ -581,7 +589,7 @@ final class GitHubSegmentedControl: NSView {
 
     private func icon(_ it: Item) -> NSImage? {
         it.symbol.isEmpty ? nil : NSImage(systemSymbolName: it.symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
     }
 
     private func hasBadge(_ it: Item) -> Bool { it.count > 0 || it.showsZero }
@@ -589,19 +597,21 @@ final class GitHubSegmentedControl: NSView {
     /// Width one segment needs: icon · title · badge plus 24 pt of padding.
     private func contentWidth(_ it: Item) -> CGFloat {
         let titleW: CGFloat = ceil((it.title as NSString).size(withAttributes: [.font: Self.font]).width)
-        let iconW: CGFloat = icon(it).map { ceil($0.size.width) + 8 } ?? 0
-        let badgeW: CGFloat = hasBadge(it) ? badgeWidth(it.count) + 8 : 0
+        let iconW: CGFloat = icon(it).map { ceil($0.size.width) + 6 } ?? 0
+        let badgeW: CGFloat = hasBadge(it) ? badgeWidth(it.count) + 6 : 0
         return iconW + titleW + badgeW + 24
     }
 
     /// Smallest width that shows every segment in full.
-    var preferredWidth: CGFloat { items.reduce(8) { $0 + contentWidth($1) } }
+    var preferredWidth: CGFloat { items.reduce(Metrics.segmentInset * 2) { $0 + contentWidth($1) } }
 
     private func slot(_ i: Int) -> NSRect {
-        let inset: CGFloat = 4
+        let inset = Metrics.segmentInset
         let avail = bounds.width - inset * 2
-        guard fitToContent, !items.isEmpty else {
-            let w = avail / CGFloat(max(1, items.count))
+        guard !items.isEmpty else { return .zero }
+        let i = min(max(0, i), items.count - 1)
+        guard fitToContent else {
+            let w = avail / CGFloat(items.count)
             return NSRect(x: inset + CGFloat(i) * w, y: inset, width: w, height: bounds.height - inset * 2)
         }
         let widths = items.map { contentWidth($0) }
@@ -611,57 +621,57 @@ final class GitHubSegmentedControl: NSView {
     }
 
     private func badgeWidth(_ n: Int) -> CGFloat {
-        max(24, ceil(("\(n)" as NSString).size(withAttributes: [.font: Self.badgeFont]).width) + 14)
+        max(18, ceil(("\(n)" as NSString).size(withAttributes: [.font: Self.badgeFont]).width) + 10)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        let outer = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l, yRadius: Radius.l)
-        p.surfaceRow.setFill(); outer.fill()
-        p.border.setStroke(); outer.lineWidth = 1; outer.stroke()
+        let radius = Radius.m + 2, inner = Radius.m - 1
+        let outer = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
+        p.surface.setFill(); outer.fill()
+        p.divider.setStroke(); outer.lineWidth = 1; outer.stroke()
+
+        // Hover sits under the indicator; the indicator glides between segments.
+        if let h = hoverIndex, h != selected {
+            p.surfaceHover.setFill()
+            NSBezierPath(roundedRect: slot(h), xRadius: inner, yRadius: inner).fill()
+        }
+        if !items.isEmpty {
+            indicator.settle(at: slot(selected))
+            p.drawSegmentIndicator(NSBezierPath(roundedRect: indicator.rect, xRadius: inner, yRadius: inner))
+        }
 
         for (i, it) in items.enumerated() {
             let r = slot(i)
             let on = i == selected
-            if on {
-                p.drawSelected(NSBezierPath(roundedRect: r, xRadius: Radius.m + 1, yRadius: Radius.m + 1))
-            } else if hoverIndex == i {
-                p.surfaceHover.setFill()
-                NSBezierPath(roundedRect: r, xRadius: Radius.m + 1, yRadius: Radius.m + 1).fill()
-            }
-            // Hairline divider between two unselected neighbours.
-            if i > 0, !on, i - 1 != selected, hoverIndex != i, hoverIndex != i - 1 {
-                p.divider.setFill()
-                NSRect(x: r.minX - 0.5, y: r.minY + 9, width: 1, height: r.height - 18).fill()
-            }
-
-            let textColor = on ? p.text : p.text(0.8)
+            let textColor = on ? p.text : p.textSecondary
             let titleW = ceil((it.title as NSString).size(withAttributes: [.font: Self.font]).width)
             let bw = hasBadge(it) ? badgeWidth(it.count) : 0
             let icon = self.icon(it)
             let iconW = icon.map { ceil($0.size.width) } ?? 0
-            let full = iconW + 8 + titleW + (bw > 0 ? 8 + bw : 0)
+            let full = iconW + 6 + titleW + (bw > 0 ? 6 + bw : 0)
             let showIcon = icon != nil && full <= r.width - 16
-            let total = (showIcon ? iconW + 8 : 0) + titleW + (bw > 0 ? 8 + bw : 0)
+            let total = (showIcon ? iconW + 6 : 0) + titleW + (bw > 0 ? 6 + bw : 0)
             var x = r.midX - min(total, r.width - 12) / 2
-            if showIcon, let ic = icon?.withSymbolConfiguration(.init(paletteColors: [on ? p.selectedAccent : (it.tint ?? p.textSecondary)])) {
+            if showIcon, let ic = icon?.withSymbolConfiguration(.init(paletteColors: [on ? p.accent : (it.tint ?? p.textSecondary)])) {
                 let s = ic.size
                 ic.draw(in: NSRect(x: x, y: r.midY - s.height / 2, width: s.width, height: s.height),
                         from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-                x += iconW + 8
+                x += iconW + 6
             }
             let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
             let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: textColor, .paragraphStyle: para]
             let th = ceil(Self.font.ascender - Self.font.descender) + 1
-            let tw = min(titleW, r.maxX - 6 - x - (bw > 0 ? 8 + bw : 0))
+            let tw = min(titleW, r.maxX - 6 - x - (bw > 0 ? 6 + bw : 0))
             (it.title as NSString).draw(in: NSRect(x: x, y: r.midY - th / 2, width: max(0, tw), height: th), withAttributes: attrs)
-            x += tw + 8
+            x += tw + 6
             if bw > 0 {
-                let br = NSRect(x: x, y: r.midY - 11, width: bw, height: 22)
-                (on ? p.selectedAccent.withAlphaComponent(0.16) : (it.badgeTint?.withAlphaComponent(0.22) ?? p.surfaceStrong)).setFill()
-                NSBezierPath(roundedRect: br, xRadius: 11, yRadius: 11).fill()
+                let br = NSRect(x: x, y: r.midY - 9, width: bw, height: 18)
+                (on ? p.accent.withAlphaComponent(0.18) : (it.badgeTint?.withAlphaComponent(0.2) ?? p.surfaceStrong)).setFill()
+                NSBezierPath(roundedRect: br, xRadius: 9, yRadius: 9).fill()
                 let s = "\(it.count)" as NSString
-                let ba: [NSAttributedString.Key: Any] = [.font: Self.badgeFont, .foregroundColor: on ? p.selectedAccent : p.text(0.85)]
+                let ba: [NSAttributedString.Key: Any] = [.font: Self.badgeFont,
+                                                         .foregroundColor: on ? p.accent : (it.badgeTint ?? p.textSecondary)]
                 let sz = s.size(withAttributes: ba)
                 s.draw(at: NSPoint(x: br.midX - sz.width / 2, y: br.midY - sz.height / 2), withAttributes: ba)
             }
