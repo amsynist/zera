@@ -81,7 +81,14 @@ final class IslandView: NSView {
     /// Where the island is centred, in view coordinates (under Zera's rope).
     var centerX: CGFloat = 0 { didSet { needsLayout = true } }
 
-    var activeTab: CardKind? { didSet { tabs.forEach { $0.isOn = $0.kind == activeTab } } }
+    var activeTab: CardKind? {
+        didSet {
+            tabs.forEach { $0.isOn = $0.kind == activeTab }
+            // The pill glides from the tab you were on to the one you picked; on first open it
+            // simply appears under it.
+            tabIndicator.moveTo(activeTabFrame, animated: oldValue != nil && activeTab != nil)
+        }
+    }
     var badges: Set<CardKind> = [] { didSet { tabs.forEach { $0.hasBadge = badges.contains($0.kind) } } }
     /// Numbers on the tabs, such as running Claude sessions.
     var counts: [CardKind: Int] = [:] { didSet { tabs.forEach { $0.count = counts[$0.kind] ?? 0 } } }
@@ -98,6 +105,8 @@ final class IslandView: NSView {
     private let hostMask = CAShapeLayer()
     private let host = IslandHost()
     private var tabs: [IslandTab] = []
+    /// The soft pill under the open screen's tab.
+    private let tabIndicator = IslandTabIndicator()
     /// Zera's line while a screen is open: the header's second line, left of her.
     private let whisperView = IslandWhisper()
     private(set) var whisperText: String?
@@ -121,7 +130,7 @@ final class IslandView: NSView {
         layer?.addSublayer(fill)
 
         edge.fillColor = nil
-        edge.strokeColor = Neon.edge.withAlphaComponent(0.6).cgColor
+        edge.strokeColor = Neon.edge.cgColor
         edge.lineWidth = 1.2
         edge.shadowColor = Neon.edge.cgColor
         edge.shadowRadius = 4
@@ -139,6 +148,9 @@ final class IslandView: NSView {
         whisperView.isHidden = true
         addSubview(whisperView)
 
+        tabIndicator.alphaValue = 0
+        tabIndicator.target = { [weak self] in self?.activeTabFrame }
+        addSubview(tabIndicator)
         for kind in Isle.leftTabs + Isle.rightTabs {
             let t = IslandTab(kind: kind)
             t.onTap = { [weak self] in self?.onTab?(kind) }
@@ -195,6 +207,17 @@ final class IslandView: NSView {
         window?.invalidateCursorRects(for: self)
     }
 
+    /// The theme changed: recolour the glass, its edge and the tabs.
+    func themeChanged() {
+        glow.fillColor = Neon.fillBottom.cgColor
+        glow.shadowColor = Neon.halo.cgColor
+        edge.strokeColor = Neon.edge.cgColor
+        edge.shadowColor = Neon.edge.cgColor
+        tabs.forEach { $0.needsDisplay = true }
+        whisperView.needsDisplay = true
+        needsLayout = true
+    }
+
     override func layout() {
         super.layout()
         CATransaction.begin(); CATransaction.setDisableActions(true)
@@ -238,8 +261,8 @@ final class IslandView: NSView {
     private func layoutWhisper() {
         guard let c = content else { return }
         let f = c.frame
-        // Screens built on CardBase start their header text at cardPad + 4; the others at 24.
-        let lead: CGFloat = c is CardBase ? Metrics.cardPad + 4 : 24
+        // Every screen starts its header text at the side padding + 4.
+        let lead: CGFloat = c is CardBase ? Metrics.cardPad + 4 : Metrics.sidePad + 4
         let width = f.width / 2 - Isle.zeraGap / 2 - lead
         whisperView.frame = NSRect(x: f.minX + lead - 2, y: band + 45, width: max(0, width + 2), height: 18)
     }
@@ -251,12 +274,21 @@ final class IslandView: NSView {
         for t in tabs.prefix(Isle.leftTabs.count) { t.frame = NSRect(x: x, y: y, width: w, height: h); x += w + gap }
         x = centerX + notchWidth / 2 + 10
         for t in tabs.suffix(Isle.rightTabs.count) { t.frame = NSRect(x: x, y: y, width: w, height: h); x += w + gap }
+        tabIndicator.frame = bounds
+        tabIndicator.needsDisplay = true
+    }
+
+    /// Where the open screen's tab is, in this view's coordinates.
+    private var activeTabFrame: NSRect? {
+        guard let k = activeTab, let t = tabs.first(where: { $0.kind == k }) else { return nil }
+        return t.frame
     }
 
     private func setTabs(visible: Bool) {
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = Motion.duration(visible ? 0.22 : 0.12)
             tabs.forEach { $0.animator().alphaValue = visible ? 1 : 0 }
+            tabIndicator.animator().alphaValue = visible ? 1 : 0
         }
     }
 
@@ -333,21 +365,11 @@ final class IslandView: NSView {
             view.frame = target
             host.addSubview(view)
             content = view
-            if animated, !Motion.reduced {
-                view.wantsLayer = true
-                let fade = CABasicAnimation(keyPath: "opacity")
-                fade.fromValue = 0; fade.toValue = 1
-                let move = CASpringAnimation(keyPath: "transform.translation.\(direction == 0 ? "y" : "x")")
-                move.fromValue = direction == 0 ? -8 : direction * 18; move.toValue = 0
-                move.stiffness = 220; move.damping = 24
-                let group = CAAnimationGroup()
-                group.animations = [fade, move]
-                group.beginTime = CACurrentMediaTime() + (wasOpen ? 0.06 : 0.12)
-                group.duration = 0.42
-                group.fillMode = .backwards
-                fade.duration = 0.24
-                move.duration = move.settlingDuration
-                view.layer?.add(group, forKey: "enter")
+            if animated {
+                // Switching tabs: the new screen starts moving with the tab pill, from the side
+                // you moved toward. Opening fresh: it settles in from just above, once the island
+                // has begun to open. Reduce Motion: a short fade.
+                Motion.arrive(view, direction: direction, distance: 16, delay: wasOpen ? 0.02 : 0.1)
             }
         } else {
             view.frame = target
@@ -375,7 +397,7 @@ final class IslandView: NSView {
         old.layer?.add(fade, forKey: "leave")
         if direction != 0 {
             let move = CABasicAnimation(keyPath: "transform.translation.x")
-            move.fromValue = 0; move.toValue = -direction * 16; move.duration = 0.18
+            move.fromValue = 0; move.toValue = -direction * 12; move.duration = 0.16
             move.fillMode = .forwards; move.isRemovedOnCompletion = false
             old.layer?.add(move, forKey: "slide")
         }
@@ -465,22 +487,19 @@ final class IslandTab: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let b = bounds
+        // The open tab's pill is drawn underneath by `IslandTabIndicator`, so it can glide.
         if hovered && !isOn {
-            Neon.cyan.withAlphaComponent(0.12).setFill()
+            Neon.chipHover.setFill()
             NSBezierPath(roundedRect: b, xRadius: 9, yRadius: 9).fill()
         }
-        let color = isOn ? Neon.cyan : (hovered ? Neon.text : Neon.textDim)
+        let color = isOn ? Neon.accent : (hovered ? Neon.text : Neon.textDim)
         Neon.symbol(Isle.symbol(for: kind), in: b.insetBy(dx: 0, dy: -1), size: 13.5, weight: .semibold, color: color)
-        if isOn {
-            let u = NSRect(x: b.midX - 7, y: b.maxY - 3, width: 14, height: 2)
-            Neon.glowing(Neon.cyan, blur: 6) { Neon.cyan.setFill(); NSBezierPath(roundedRect: u, xRadius: 1, yRadius: 1).fill() }
-        }
         if count > 0 {
             let text = count > 9 ? "9+" : "\(count)"
             let font = NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .bold)
             let tw = ceil((text as NSString).size(withAttributes: [.font: font]).width)
             let pill = NSRect(x: b.maxX - max(12, tw + 6), y: 0, width: max(12, tw + 6), height: 12)
-            let tone = hasBadge ? Neon.warning : Neon.cyan
+            let tone = hasBadge ? Neon.warning : Neon.highlight
             Neon.glowing(tone, blur: 5) { tone.setFill(); NSBezierPath(roundedRect: pill, xRadius: 6, yRadius: 6).fill() }
             let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Neon.fillBottom.withAlphaComponent(1)]
             let ts = (text as NSString).size(withAttributes: attrs)
@@ -501,4 +520,30 @@ final class IslandTab: NSView {
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
+}
+
+/// The soft accent pill under the open screen's tab. It spans the whole island so it can glide
+/// from one tab to another (across the notch, too), and never takes a click.
+final class IslandTabIndicator: NSView {
+    /// Where the pill belongs right now (the open tab's frame), or nil for none.
+    var target: (() -> NSRect?)?
+    private lazy var indicator = SlidingIndicator(view: self)
+    private var showing = false
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func moveTo(_ r: NSRect?, animated: Bool) {
+        guard let r = r else { showing = false; needsDisplay = true; return }
+        indicator.move(to: r, animated: animated && showing)
+        showing = true
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard showing, let r = target?() else { return }
+        indicator.settle(at: r)
+        let path = NSBezierPath(roundedRect: indicator.rect, xRadius: 9, yRadius: 9)
+        Neon.accent.withAlphaComponent(0.16).setFill(); path.fill()
+        Neon.accent.withAlphaComponent(0.3).setStroke(); path.lineWidth = 1; path.stroke()
+    }
 }

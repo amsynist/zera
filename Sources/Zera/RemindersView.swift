@@ -25,9 +25,9 @@ private enum RS {
     static let maxHeight: CGFloat = 820
     static let expandedHeight: CGFloat = 720
     static let tipH: CGFloat = 72
-    static let rowGap: CGFloat = 8
-    /// Header (88) · tabs · source filters, then the list.
-    static let listTop: CGFloat = 174
+    static let rowGap: CGFloat = Metrics.rowGap
+    /// Header (88) · tabs (34) · 10 · source chips (28) · 12, then the list.
+    static let listTop: CGFloat = Isle.headerHeight + Metrics.segment + 10 + Metrics.chip + 12
 }
 
 /// Snooze choices shared by the list, the detail panel and the notification.
@@ -500,6 +500,8 @@ final class RemindersView: NSView, CardContent {
             layoutSubtreeIfNeeded()
             onHeightChange?()
         }
+        // Opening an item (or a form) slides it in like a page; closing slides the list back.
+        if wasExpanded != expanded { Motion.page(expanded ? sidePanel : main, forward: expanded) }
     }
 
     @objc private func closeSide() {
@@ -914,9 +916,9 @@ final class RemindersView: NSView, CardContent {
         let bw = min(170, addButton.fittedWidth + 8)
         addButton.frame = NSRect(x: w - x - bw, y: 28, width: bw, height: 32)
 
-        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: 36)
+        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
         filters.fill = filters.preferredWidth > iw
-        filters.frame = NSRect(x: x, y: Isle.headerHeight + 36 + 10, width: filters.fill ? iw : filters.preferredWidth, height: 28)
+        filters.frame = NSRect(x: x, y: Isle.headerHeight + Metrics.segment + 10, width: filters.fill ? iw : filters.preferredWidth, height: Metrics.chip)
 
         let listBottom = h - 12
         let y = RS.listTop

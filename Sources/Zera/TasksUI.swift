@@ -91,7 +91,7 @@ enum FocusRing {
             p.lineCapStyle = .round
             switch s {
             case .done: Neon.green.setStroke(); p.stroke()
-            case .open: NSColor(srgbRed: 0.43, green: 0.55, blue: 1, alpha: 0.32).setStroke(); p.stroke()
+            case .open: Neon.textFaint.withAlphaComponent(0.55).setStroke(); p.stroke()
             case .focus: Neon.glowing(Neon.cyan, blur: 4) { Neon.cyan.withAlphaComponent(pulse ? 0.55 : 1).setStroke(); p.stroke() }
             }
         }
@@ -151,7 +151,7 @@ private func drawCap(_ s: String, _ font: NSFont, _ color: NSColor, x: CGFloat, 
     let w = a.size().width - kern
     a.draw(at: NSPoint(x: x - w / 2, y: capMid + font.capHeight / 2 - font.ascender))
 }
-private let sectionFont = TaskFont.clock(11)
+private let sectionFont = Typo.sectionLabel
 
 /// A borderless text field in the navy look, with a cyan caret.
 final class TaskField: NSTextField {
@@ -197,7 +197,8 @@ final class TaskRowView: NSView {
     var expanded = false { didSet { needsDisplay = true } }
     /// In a look back (Week, Month) done is a given: no strike-through, full-strength text.
     var history = false { didSet { needsDisplay = true } }
-    private var hovered = false { didSet { needsDisplay = true } }
+    /// Read live while drawing, so rows a scroll moved under the pointer don't stay lit.
+    private var hovered: Bool { isPointerInside }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -232,7 +233,7 @@ final class TaskRowView: NSView {
             tick.line(to: NSPoint(x: cr.minX + 8.2, y: cr.midY + 3.6))
             tick.line(to: NSPoint(x: cr.maxX - 4.6, y: cr.midY - 3.2))
             tick.lineWidth = 2.2; tick.lineCapStyle = .round; tick.lineJoinStyle = .round
-            NSColor(srgbRed: 0.02, green: 0.15, blue: 0.11, alpha: 1).setStroke(); tick.stroke()
+            Neon.fillBottom.withAlphaComponent(1).setStroke(); tick.stroke()
         } else {
             circle.lineWidth = 1.6
             (hovered ? Neon.accent : Neon.textDim.withAlphaComponent(0.8)).setStroke(); circle.stroke()
@@ -271,7 +272,8 @@ final class TaskRowView: NSView {
             let p = NSBezierPath(roundedRect: r, xRadius: 9, yRadius: 9)
             Neon.violet.withAlphaComponent(0.14).setFill(); p.fill()
             Neon.violet.withAlphaComponent(0.4).setStroke(); p.lineWidth = 1; p.stroke()
-            drawText(tag, f, NSColor(srgbRed: 0.78, green: 0.70, blue: 1, alpha: task.done ? 0.6 : 1), in: r.insetBy(dx: 7, dy: 0), align: .center)
+            drawText(tag, f, (Neon.violet.blended(withFraction: 0.45, of: .white) ?? Neon.violet).withAlphaComponent(task.done ? 0.6 : 1),
+                     in: r.insetBy(dx: 7, dy: 0), align: .center)
             titleRight = r.minX - 8
         }
         drawText(task.title, .systemFont(ofSize: 13.5, weight: .medium), task.done && !history ? Neon.textDim.withAlphaComponent(0.75) : Neon.text,
@@ -289,8 +291,8 @@ final class TaskRowView: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
-    override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseEntered(with event: NSEvent) { needsDisplay = true }
+    override func mouseExited(with event: NSEvent) { needsDisplay = true }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
@@ -331,7 +333,6 @@ enum TaskGlow { static let margin: CGFloat = 56 }
 private func glassRoot(_ root: NSView, margin: CGFloat, radius: CGFloat) -> OpenerGlass {
     let g = OpenerGlass(frame: root.bounds.insetBy(dx: margin, dy: margin))
     g.radius = radius
-    g.fill = NSColor(srgbRed: 0.024, green: 0.043, blue: 0.11, alpha: 0.985)
     g.glow = 0.5
     g.autoresizingMask = [.width, .height]
     root.addSubview(g)
@@ -358,6 +359,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     let projectBar = ProjectBar()
     /// Today · Week · Month: how far back the Done list goes.
     private var spanChoices: [TaskChoice] = []
+    private lazy var spanIndicator = SlidingIndicator(view: spanTrack)
     private let spanTrack = TaskPaint()
     private var viewSpan: TaskViewSpan = TaskViewSpan(rawValue: UserDefaults.standard.integer(forKey: "tasks.viewSpan")) ?? .today {
         didSet { UserDefaults.standard.set(viewSpan.rawValue, forKey: "tasks.viewSpan") }
@@ -377,7 +379,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     private let exportButton = TreeButton()
     private var listHeight: CGFloat = 0
 
-    private let pad: CGFloat = 18, barH: CGFloat = ProjectBar.height + 12, fieldH: CGFloat = 42, hintH: CGFloat = 30, footH: CGFloat = 58
+    private let pad: CGFloat = Metrics.sidePad, barH: CGFloat = ProjectBar.height + 12, fieldH: CGFloat = 42, hintH: CGFloat = 30, footH: CGFloat = 58
 
     init(store: TaskStore) {
         self.store = store
@@ -395,14 +397,17 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         projectBar.onSync = { [weak self] p in self?.onSync?(p) }
         projectBar.onRebuild = { [weak self] p, days in self?.onRebuild?(p, days) }
         addSubview(projectBar)
-        spanTrack.paint = { r in
-            let p = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: r.height / 2, yRadius: r.height / 2)
+        spanTrack.paint = { [weak self] r in
+            let p = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.m + 2, yRadius: Radius.m + 2)
             Neon.chip.setFill(); p.fill()
-            Neon.chipEdge.withAlphaComponent(0.5).setStroke(); p.lineWidth = 1; p.stroke()
+            Neon.divider.setStroke(); p.lineWidth = 1; p.stroke()
+            guard let self = self else { return }
+            drawTrackIndicator(self.spanIndicator, under: self.spanChoices.first { $0.selected }, in: self.spanTrack)
         }
         addSubview(spanTrack)
         for v in TaskViewSpan.allCases {
             let c = TaskChoice(v.title)
+            c.drawsSelection = false
             c.onClick = { [weak self] in
                 guard let self = self, self.viewSpan != v else { return }
                 self.viewSpan = v
@@ -455,8 +460,12 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         scroll.borderType = .noBorder
         scroll.contentView.drawsBackground = false
         scroll.documentView = doc
+        // Rows read the pointer while drawing; scrolling redraws them so none stays lit.
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(listScrolled), name: NSView.boundsDidChangeNotification,
+                                               object: scroll.contentView)
         addSubview(scroll)
-        footLine.paint = { r in NSColor(srgbRed: 0.33, green: 0.5, blue: 1, alpha: 0.16).setFill(); r.fill() }
+        footLine.paint = { r in Neon.divider.setFill(); r.fill() }
         addSubview(footLine)
         orbButton.title = "Hide orb"
         orbButton.key = "⌘O"
@@ -530,11 +539,20 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         }
     }
 
+    @objc private func listScrolled() {
+        func redraw(_ v: NSView) { v.needsDisplay = true; v.subviews.forEach(redraw) }
+        redraw(doc)
+    }
+
     private func updateSubtitle() {
         let f = DateFormatter()
         f.dateFormat = "EEE d MMM"
         let focus = store.focusedToday
         spanChoices.enumerated().forEach { $1.selected = TaskViewSpan.allCases[$0] == viewSpan }
+        if let c = spanChoices.first(where: { $0.selected }), spanTrack.frame.width > 0 {
+            spanIndicator.move(to: spanTrack.convert(c.frame, from: c.superview), animated: true)
+        }
+        spanTrack.needsDisplay = true
         if viewSpan == .today {
             let list = store.today(in: store.shownProject)
             setSubtitle("\(f.string(from: store.now())) · \(list.filter(\.done).count) of \(list.count) done")
@@ -557,8 +575,8 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         func section(_ t: String, _ right: String? = nil) {
             let l = TaskPaint(frame: NSRect(x: 0, y: y, width: w, height: 30))
             l.paint = { r in
-                drawText(t, sectionFont, Neon.textDim, in: NSRect(x: 10, y: 10, width: r.width - 20, height: 18), kern: 1.2)
-                if let right = right { drawText(right, sectionFont, Neon.cyan.withAlphaComponent(0.85), in: NSRect(x: 10, y: 10, width: r.width - 22, height: 18), align: .right, kern: 1.2) }
+                drawText(t, sectionFont, Neon.textDim, in: NSRect(x: 10, y: 10, width: r.width - 20, height: 18), kern: Typo.sectionKern)
+                if let right = right { drawText(right, sectionFont, Neon.cyan.withAlphaComponent(0.85), in: NSRect(x: 10, y: 10, width: r.width - 22, height: 18), align: .right, kern: Typo.sectionKern) }
             }
             doc.addSubview(l)
             y += 30
@@ -662,7 +680,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
             let box = TaskPaint(frame: NSRect(x: 40, y: y, width: w - 52, height: h))
             box.paint = { r in
                 let p = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 8, yRadius: 8)
-                NSColor(srgbRed: 0.012, green: 0.024, blue: 0.063, alpha: 0.9).setFill(); p.fill()
+                Neon.field.withAlphaComponent(0.9).setFill(); p.fill()
                 Neon.chipEdge.withAlphaComponent(0.35).setStroke(); p.lineWidth = 1; p.stroke()
                 for (i, n) in notes.enumerated() {
                     let y = 6 + CGFloat(i) * 20
@@ -671,7 +689,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
                     let repo = repos[i]
                     let rf = NSFont.systemFont(ofSize: 11, weight: .medium)
                     let rw = repo.isEmpty ? 0 : min(170, ceil((repo as NSString).size(withAttributes: [.font: rf]).width))
-                    drawText(n, .systemFont(ofSize: 12), NSColor(srgbRed: 0.77, green: 0.80, blue: 0.94, alpha: 1),
+                    drawText(n, .systemFont(ofSize: 12), Neon.text.withAlphaComponent(0.85),
                              in: NSRect(x: 24, y: y, width: r.width - 44 - rw, height: 20))
                     if rw > 0 { drawText(repo, rf, Neon.cyan.withAlphaComponent(0.7), in: NSRect(x: r.width - 10 - rw, y: y, width: rw, height: 20), align: .right) }
                 }
@@ -685,7 +703,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         super.layout()
         layoutHeader()
         let w = bounds.width
-        projectBar.frame = NSRect(x: pad, y: headerBottom - 4, width: w - pad * 2, height: ProjectBar.height)
+        projectBar.frame = NSRect(x: pad, y: headerBottom, width: w - pad * 2, height: ProjectBar.height)
         let top = headerBottom + barH
         fieldBox.frame = NSRect(x: pad, y: top, width: w - pad * 2, height: fieldH)
         field.frame = NSRect(x: pad + 32, y: top + (fieldH - 20) / 2, width: w - pad * 2 - 32 - 44, height: 20)
@@ -696,14 +714,15 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         let fy = bounds.height - footH
         footLine.frame = NSRect(x: pad, y: fy, width: w - pad * 2, height: 1)
         let ow = orbButton.fittedWidth + 8, ew = exportButton.fittedWidth + 16
-        orbButton.frame = NSRect(x: pad, y: fy + 12, width: ow, height: 34)
-        exportButton.frame = NSRect(x: w - pad - ew, y: fy + 12, width: ew, height: 34)
+        let by = fy + (footH - Metrics.segment) / 2
+        orbButton.frame = NSRect(x: pad, y: by, width: ow, height: Metrics.segment)
+        exportButton.frame = NSRect(x: w - pad - ew, y: by, width: ew, height: Metrics.segment)
         // Today · Week · Month in the middle of the footer.
-        let sw: CGFloat = 196, sh: CGFloat = 34
-        spanTrack.frame = NSRect(x: (w - sw) / 2, y: fy + 12, width: sw, height: sh)
-        let cw = (sw - 6) / CGFloat(spanChoices.count)
+        let sw: CGFloat = 196, sh = Metrics.segment, inset = Metrics.segmentInset
+        spanTrack.frame = NSRect(x: (w - sw) / 2, y: by, width: sw, height: sh)
+        let cw = (sw - inset * 2) / CGFloat(spanChoices.count)
         for (i, c) in spanChoices.enumerated() {
-            c.frame = NSRect(x: spanTrack.frame.minX + 3 + CGFloat(i) * cw, y: spanTrack.frame.minY + 3, width: cw, height: sh - 6)
+            c.frame = NSRect(x: spanTrack.frame.minX + inset + CGFloat(i) * cw, y: spanTrack.frame.minY + inset, width: cw, height: sh - inset * 2)
         }
     }
 
@@ -784,11 +803,9 @@ final class FocusOrbView: NSView {
         let r = Self.orb / 2 * (hovered ? 1.04 : 1)
         let disc = NSBezierPath(ovalIn: NSRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
         Neon.glowing(Neon.halo.withAlphaComponent(0.5), blur: 14) {
-            NSColor(srgbRed: 0.024, green: 0.039, blue: 0.11, alpha: 1).setFill(); disc.fill()
+            Neon.fillBottom.withAlphaComponent(1).setFill(); disc.fill()
         }
-        NSGradient(colors: [NSColor(srgbRed: 0.086, green: 0.137, blue: 0.31, alpha: 1),
-                            NSColor(srgbRed: 0.039, green: 0.067, blue: 0.19, alpha: 1),
-                            NSColor(srgbRed: 0.024, green: 0.039, blue: 0.11, alpha: 1)])?
+        NSGradient(colors: [Neon.track, Neon.fillTop.withAlphaComponent(1), Neon.fillBottom.withAlphaComponent(1)])?
             .draw(in: disc, relativeCenterPosition: NSPoint(x: 0, y: 0.3))
         Neon.edge.withAlphaComponent(0.8).setStroke(); disc.lineWidth = 1; disc.stroke()
         FocusRing.draw(center: c, outer: r - 5, outerWidth: 3.5, inner: r - 12, innerWidth: 4,
@@ -946,7 +963,7 @@ final class FocusCardView: NSView {
     private func paintCard(_ r: NSRect) {
         let f = store.focus
         let label = f == nil ? "TODAY" : (store.isRunning ? "FOCUSING" : "PAUSED")
-        drawText(label, sectionFont, store.isRunning ? Neon.cyan : Neon.textDim, in: NSRect(x: 20, y: 18, width: 200, height: 16), kern: 1.2)
+        drawText(label, sectionFont, store.isRunning ? Neon.cyan : Neon.textDim, in: NSRect(x: 20, y: 18, width: 200, height: 16), kern: Typo.sectionKern)
         let cr = closeRect.insetBy(dx: 0.5, dy: 0.5)
         let cp = NSBezierPath(roundedRect: cr, xRadius: 8, yRadius: 8)
         Neon.chip.setFill(); cp.fill(); Neon.chipEdge.setStroke(); cp.lineWidth = 1; cp.stroke()
@@ -963,15 +980,15 @@ final class FocusCardView: NSView {
 
         let x = 18 + dial + 18, sw = r.width - x - 16
         if let f = store.focus ?? store.open.first, store.projects.count > 1 {
-            drawText(store.project(of: f).uppercased(), sectionFont, NSColor(srgbRed: 0.78, green: 0.70, blue: 1, alpha: 1),
-                     in: NSRect(x: x, y: titleLabel.frame.minY - 20, width: sw, height: 14), kern: 1.2)
+            drawText(store.project(of: f).uppercased(), sectionFont, Neon.violet.blended(withFraction: 0.45, of: .white) ?? Neon.violet,
+                     in: NSRect(x: x, y: titleLabel.frame.minY - 20, width: sw, height: 14), kern: Typo.sectionKern)
         }
         let ty = titleLabel.frame.maxY + 10
         drawText("\(store.doneToday.count) of \(store.today.count) done today", .systemFont(ofSize: 12, weight: .medium), Neon.green,
                  in: NSRect(x: x, y: ty, width: sw, height: 16))
         drawText("\(TaskTime.short(store.focusedToday)) focused", .systemFont(ofSize: 12), Neon.textDim, in: NSRect(x: x, y: ty + 20, width: sw, height: 16))
 
-        drawText("UP NEXT", sectionFont, Neon.textDim, in: NSRect(x: 20, y: upNextTop, width: 120, height: 16), kern: 1.2)
+        drawText("UP NEXT", sectionFont, Neon.textDim, in: NSRect(x: 20, y: upNextTop, width: 120, height: 16), kern: Typo.sectionKern)
         if rows.isEmpty {
             let hint = shortcutLabel.map { "Nothing else today. \($0) adds one." } ?? "Nothing else today."
             drawText(hint, .systemFont(ofSize: 12.5), Neon.textDim, in: NSRect(x: 20, y: upNextTop + 30, width: r.width - 40, height: 18))
@@ -1021,7 +1038,6 @@ final class QuickAddView: NSView, NSTextFieldDelegate {
         super.init(frame: NSRect(origin: .zero, size: Self.size))
         glass = OpenerGlass(frame: .zero)
         glass.radius = 26
-        glass.fill = NSColor(srgbRed: 0.024, green: 0.043, blue: 0.11, alpha: 0.985)
         glass.glow = 0.5
         addSubview(glass)
         deco.paint = { r in
@@ -1068,6 +1084,8 @@ final class TaskChoice: NSView {
     var title: String
     var subtitle: String?
     var selected = false { didSet { needsDisplay = true; setAccessibilityValue(selected ? "selected" : "") } }
+    /// False for segments sitting in a track whose sliding indicator shows the choice.
+    var drawsSelection = true
     var onClick: (() -> Void)?
     private var hovered = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
@@ -1084,20 +1102,23 @@ final class TaskChoice: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {
-        let p = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: subtitle == nil ? 8 : 10, yRadius: subtitle == nil ? 8 : 10)
+        let radius: CGFloat = subtitle == nil ? Radius.m - 1 : Radius.m
+        let p = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
         if subtitle == nil {
-            // A segment in a track: flat until chosen or hovered.
-            if selected { Neon.accent.withAlphaComponent(0.18).setFill(); p.fill(); Neon.accent.withAlphaComponent(0.6).setStroke(); p.lineWidth = 1; p.stroke() }
-            else if hovered { Neon.chipHover.setFill(); p.fill() }
+            // A segment: flat until hovered. In a track, the track's sliding indicator shows the
+            // choice; on its own (Times / Repos) it wears the shared selected look.
+            if selected && drawsSelection { Pal.drawSelected(p) }
+            else if hovered && !selected { Neon.chipHover.setFill(); p.fill() }
         } else {
-            (selected ? Neon.accent.withAlphaComponent(0.16) : (hovered ? Neon.chipHover : Neon.chip)).setFill(); p.fill()
-            (selected ? Neon.accent.withAlphaComponent(0.75) : Neon.chipEdge.withAlphaComponent(0.6)).setStroke(); p.lineWidth = 1; p.stroke()
+            (hovered && !selected ? Neon.chipHover : Neon.chip).setFill(); p.fill()
+            if selected { Pal.drawSelected(p) } else { Neon.chipEdge.withAlphaComponent(0.6).setStroke(); p.lineWidth = 1; p.stroke() }
         }
         if let s = subtitle {
-            drawText(title, .systemFont(ofSize: 13, weight: .semibold), Neon.text, in: NSRect(x: 12, y: 12, width: bounds.width - 24, height: 18))
-            drawText(s, .systemFont(ofSize: 11.5), Neon.textDim, in: NSRect(x: 12, y: 34, width: bounds.width - 24, height: 16))
+            drawText(title, Typo.rowTitleStrong, selected ? Neon.accent : Neon.text, in: NSRect(x: 12, y: 12, width: bounds.width - 24, height: 18))
+            drawText(s, Typo.meta, Neon.textDim, in: NSRect(x: 12, y: 34, width: bounds.width - 24, height: 16))
         } else {
-            drawText(title, .systemFont(ofSize: 12.5, weight: .medium), selected ? Neon.text : Neon.textDim, in: bounds, align: .center)
+            let color = selected ? (drawsSelection ? Neon.accent : Neon.text) : Neon.textDim
+            drawText(title, Typo.chip, color, in: bounds, align: .center)
         }
     }
     override func updateTrackingAreas() {
@@ -1107,10 +1128,21 @@ final class TaskChoice: NSView {
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    // Segments pick on press, like every segmented control; tiles on release.
+    override func mouseDown(with event: NSEvent) { if subtitle == nil { onClick?() } }
+    override func mouseUp(with event: NSEvent) {
+        if subtitle != nil, bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+    }
     override func accessibilityPerformPress() -> Bool { onClick?(); return true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+}
+
+/// A sliding indicator drawn by a track under separate segment views (Tasks' Today / Week /
+/// Month, Export's range): it glides to whichever segment is selected.
+private func drawTrackIndicator(_ ind: SlidingIndicator, under segment: TaskChoice?, in track: NSView) {
+    guard let seg = segment, track.frame.width > 0 else { return }
+    ind.settle(at: track.convert(seg.frame, from: seg.superview))
+    Pal.drawSegmentIndicator(NSBezierPath(roundedRect: ind.rect, xRadius: Radius.m - 1, yRadius: Radius.m - 1))
 }
 
 final class TaskExportView: NSView {
@@ -1128,6 +1160,8 @@ final class TaskExportView: NSView {
     private var glass: OpenerGlass!
     private let paint = TaskPaint()
     private var spanChips: [TaskChoice] = []
+    /// Glides under the chosen range; drawn by `paint`, whose frame is the glass's bounds.
+    private lazy var spanIndicator = SlidingIndicator(view: paint)
     private var formatTiles: [TaskChoice] = []
     private let previewScroll = NSScrollView()
     private let preview = NSTextView()
@@ -1155,6 +1189,7 @@ final class TaskExportView: NSView {
         glass.addSubview(projectBar)
         for s in TaskExport.Span.allCases {
             let c = TaskChoice(s.title)
+            c.drawsSelection = false
             c.onClick = { [weak self] in self?.span = s }
             spanChips.append(c)
             glass.addSubview(c)
@@ -1170,7 +1205,7 @@ final class TaskExportView: NSView {
         preview.drawsBackground = false
         preview.textContainerInset = NSSize(width: 10, height: 10)
         preview.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        preview.textColor = NSColor(srgbRed: 0.77, green: 0.80, blue: 0.94, alpha: 1)
+        preview.textColor = Neon.text.withAlphaComponent(0.85)
         preview.isHorizontallyResizable = true
         preview.textContainer?.widthTracksTextView = false
         preview.textContainer?.containerSize = NSSize(width: 4000, height: CGFloat.greatestFiniteMagnitude)
@@ -1187,6 +1222,10 @@ final class TaskExportView: NSView {
         sheetScroll.hasHorizontalScroller = false
         sheetScroll.borderType = .noBorder
         sheetScroll.contentView.drawsBackground = false
+        // Scrolling moves the cards under a still pointer: redraw so only the one under it lights.
+        sheetScroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(sheetScrolled), name: NSView.boundsDidChangeNotification,
+                                               object: sheetScroll.contentView)
         glass.addSubview(sheetScroll)
         sheet.options = options
         sheet.onCopy = { [weak self] day in
@@ -1228,6 +1267,7 @@ final class TaskExportView: NSView {
         projectBar.selected = project
         projectBar.isHidden = store.projects.count < 2
         for (i, c) in spanChips.enumerated() { c.selected = TaskExport.Span.allCases[i] == span }
+        if let c = spanChips.first(where: { $0.selected }), c.frame.width > 0 { spanIndicator.move(to: c.frame, animated: true) }
         for (i, c) in formatTiles.enumerated() { c.selected = TaskExport.Format.allCases[i] == format }
         preview.string = rows.isEmpty ? "No tasks in this range yet." : (format == .text ? TaskExport.text(rows, project: project) : Self.table(rows))
         let isSheet = format == .timesheet
@@ -1241,6 +1281,8 @@ final class TaskExportView: NSView {
         paint.needsDisplay = true
         needsLayout = true
     }
+
+    @objc private func sheetScrolled() { sheet.cards.forEach { $0.needsDisplay = true } }
 
     /// Back to the top, where the newest day is, so it can be copied without scrolling.
     /// Not part of `refresh()`: a live refresh keeps wherever you scrolled to.
@@ -1282,9 +1324,11 @@ final class TaskExportView: NSView {
         super.layout()
         let w = glass.bounds.width, pad: CGFloat = 24
         paint.frame = glass.bounds
-        let n = CGFloat(spanChips.count)
-        let cw = (w - pad * 2 - 8 - (n - 1) * 4) / n
-        for (i, c) in spanChips.enumerated() { c.frame = NSRect(x: pad + 4 + CGFloat(i) * (cw + 4), y: 86, width: cw, height: 30) }
+        let n = CGFloat(spanChips.count), inset = Metrics.segmentInset
+        let cw = (w - pad * 2 - inset * 2) / n
+        for (i, c) in spanChips.enumerated() {
+            c.frame = NSRect(x: pad + inset + CGFloat(i) * cw, y: 84 + inset, width: cw, height: Metrics.segment - inset * 2)
+        }
         let tw = (w - pad * 2 - 3 * 10) / 4
         // The project row, when there's more than one project.
         let po = projectOffset
@@ -1321,14 +1365,16 @@ final class TaskExportView: NSView {
         drawText("Export tasks", .systemFont(ofSize: 19, weight: .semibold), Neon.text, in: NSRect(x: pad, y: 22, width: 300, height: 24))
         drawText("\(syncing ? "Reading commits… · " : "")\(project.map { $0 + " · " } ?? "")\(span.title) · \(rows.count) task\(rows.count == 1 ? "" : "s") · \(TaskExport.duration(mins)) focused",
                  .systemFont(ofSize: 12.5), Neon.textDim, in: NSRect(x: pad, y: 50, width: 400, height: 16))
-        // The range chips sit in one track.
-        let track = NSBezierPath(roundedRect: NSRect(x: pad, y: 82, width: r.width - pad * 2, height: 38), xRadius: 12, yRadius: 12)
+        // The range chips sit in one track, the shared segmented control's.
+        let track = NSBezierPath(roundedRect: NSRect(x: pad, y: 84, width: r.width - pad * 2, height: Metrics.segment).insetBy(dx: 0.5, dy: 0.5),
+                                 xRadius: Radius.m + 2, yRadius: Radius.m + 2)
         Neon.chip.setFill(); track.fill()
-        Neon.chipEdge.withAlphaComponent(0.5).setStroke(); track.lineWidth = 1; track.stroke()
+        Neon.divider.setStroke(); track.lineWidth = 1; track.stroke()
+        drawTrackIndicator(spanIndicator, under: spanChips.first { $0.selected }, in: paint)
         // Preview box.
         let box = NSRect(x: pad, y: 218 + po, width: r.width - pad * 2, height: r.height - 218 - po - 72)
         let bp = NSBezierPath(roundedRect: box, xRadius: 14, yRadius: 14)
-        NSColor(srgbRed: 0.012, green: 0.024, blue: 0.063, alpha: 0.9).setFill(); bp.fill()
+        Neon.field.withAlphaComponent(0.9).setFill(); bp.fill()
         Neon.chipEdge.withAlphaComponent(0.45).setStroke(); bp.lineWidth = 1; bp.stroke()
         if format == .timesheet {
             drawText("CLICK A DAY TO COPY IT", TaskFont.clock(11), Neon.textDim, in: NSRect(x: box.minX + 14, y: box.minY + 9, width: 240, height: 16), kern: 1.1)
@@ -1337,7 +1383,7 @@ final class TaskExportView: NSView {
             let name = "Downloads / " + TaskExport.fileName(span, format, project: project, now: store.now(), calendar: store.calendar)
             drawText(name, .monospacedSystemFont(ofSize: 10.5, weight: .medium), Neon.textDim, in: NSRect(x: box.minX + 120, y: box.minY + 9, width: box.width - 134, height: 16), align: .right)
         }
-        NSColor(srgbRed: 0.33, green: 0.5, blue: 1, alpha: 0.16).setFill()
+        Neon.divider.setFill()
         NSRect(x: box.minX, y: box.minY + 33, width: box.width, height: 1).fill()
         let note: String
         switch format {
@@ -1395,7 +1441,7 @@ final class OrbPlusView: NSView {
         let r = discRect
         let disc = NSBezierPath(ovalIn: r)
         Neon.glowing(Neon.halo.withAlphaComponent(0.6), blur: hovered ? 11 : 8) {
-            (hovered ? NSColor(srgbRed: 0.07, green: 0.13, blue: 0.3, alpha: 1) : NSColor(srgbRed: 0.035, green: 0.06, blue: 0.16, alpha: 1)).setFill()
+            (hovered ? Neon.chipHover : Neon.chip).setFill()
             disc.fill()
         }
         (hovered ? Neon.cyan : Neon.edge).setStroke(); disc.lineWidth = 1.2; disc.stroke()
@@ -1496,7 +1542,7 @@ final class ProjectChip: NSView {
     var onClick: (() -> Void)?
     var onMenu: ((NSEvent) -> Void)?
     private var hovered = false { didSet { needsDisplay = true } }
-    private static let font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+    private static let font = Typo.chip
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -1511,15 +1557,16 @@ final class ProjectChip: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     var fittedWidth: CGFloat {
-        isAdd ? 30 : ceil((title as NSString).size(withAttributes: [.font: Self.font]).width) + 26 + (isDefault ? 10 : 0) + (isLinked ? 16 : 0)
+        isAdd ? Metrics.chip : ceil((title as NSString).size(withAttributes: [.font: Self.font]).width) + 26 + (isDefault ? 10 : 0) + (isLinked ? 16 : 0)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let p = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
         if selected {
-            Neon.accent.withAlphaComponent(0.18).setFill(); p.fill()
-            Neon.accent.withAlphaComponent(0.7).setStroke()
+            Neon.chip.setFill(); p.fill()
+            Pal.selectedFill.setFill(); p.fill()
+            Pal.selectedEdge.setStroke()
         } else {
             (hovered ? Neon.chipHover : Neon.chip).setFill(); p.fill()
             Neon.chipEdge.withAlphaComponent(isAdd ? 0.5 : 0.6).setStroke()
@@ -1537,7 +1584,7 @@ final class ProjectChip: NSView {
             x += 10
         }
         let right: CGFloat = isLinked ? 26 : 12
-        drawText(title, Self.font, selected ? Neon.text : Neon.textDim, in: NSRect(x: x, y: 0, width: bounds.width - x - right, height: bounds.height))
+        drawText(title, Self.font, selected ? Neon.accent : Neon.textDim, in: NSRect(x: x, y: 0, width: bounds.width - x - right, height: bounds.height))
         if let p = sync {
             SyncRing.draw(center: NSPoint(x: bounds.width - 18, y: bounds.midY), radius: 5.5, progress: p.fraction, spin: spin)
         } else if isLinked {
@@ -1562,7 +1609,7 @@ final class ProjectChip: NSView {
 /// All · General · Zera · +: pick a project (nil is All). With editing on, + makes a new one
 /// in place and a right-click sets the default, renames or deletes.
 final class ProjectBar: NSView, NSTextFieldDelegate {
-    static let height: CGFloat = 30
+    static let height: CGFloat = Metrics.chip
     var allTitle = "All"
     var editable = true
     var projects: [String] = [] { didSet { rebuild() } }
@@ -1789,7 +1836,9 @@ final class TimesheetDayView: NSView {
     let rows: [TaskExport.Row]
     var options = TaskExport.SheetOptions() { didSet { needsDisplay = true } }
     var onCopy: ((TimesheetDayView) -> Void)?
-    private var hovered = false { didSet { needsDisplay = true } }
+    /// Read live while drawing: when the list scrolls under a still pointer, enter / exit events
+    /// go missing and every card it passed over used to stay lit as if selected.
+    private var hovered: Bool { isPointerInside }
     private var copiedUntil: Date?
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -1819,7 +1868,7 @@ final class TimesheetDayView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let copied = (copiedUntil ?? .distantPast) > Date()
         let card = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 12, yRadius: 12)
-        (hovered ? NSColor(srgbRed: 0.05, green: 0.09, blue: 0.22, alpha: 1) : NSColor(srgbRed: 0.03, green: 0.055, blue: 0.14, alpha: 1)).setFill()
+        (hovered ? Neon.chipHover : Neon.row).setFill()
         card.fill()
         (copied ? Neon.green.withAlphaComponent(0.6) : (hovered ? Neon.accent.withAlphaComponent(0.55) : Neon.chipEdge.withAlphaComponent(0.35))).setStroke()
         card.lineWidth = 1; card.stroke()
@@ -1848,7 +1897,7 @@ final class TimesheetDayView: NSView {
             let n = "\(rows.count) task\(rows.count == 1 ? "" : "s")"
             drawText(n, .systemFont(ofSize: 12), Neon.textDim, in: NSRect(x: cb.minX - 130, y: 0, width: 120, height: Self.headH), align: .right)
         }
-        NSColor(srgbRed: 0.33, green: 0.5, blue: 1, alpha: 0.14).setFill()
+        Neon.divider.setFill()
         NSRect(x: 14, y: Self.headH - 1, width: bounds.width - 28, height: 1).fill()
 
         // Tasks: dot · title · repo · time.
@@ -1876,7 +1925,7 @@ final class TimesheetDayView: NSView {
                 drawText(label, rf, Neon.cyan.withAlphaComponent(0.9), in: pr.insetBy(dx: 7, dy: 0), align: .center)
                 right = pr.minX - 10
             }
-            drawText(r.title, .systemFont(ofSize: 13), NSColor(srgbRed: 0.86, green: 0.89, blue: 1, alpha: 1),
+            drawText(r.title, .systemFont(ofSize: 13), Neon.text.withAlphaComponent(0.92),
                      in: NSRect(x: 34, y: y, width: max(0, right - 34), height: Self.lineH))
         }
     }
@@ -1886,8 +1935,8 @@ final class TimesheetDayView: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
-    override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseEntered(with event: NSEvent) { needsDisplay = true }
+    override func mouseExited(with event: NSEvent) { needsDisplay = true }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onCopy?(self) } }
     override func accessibilityPerformPress() -> Bool { onCopy?(self); return true }

@@ -332,37 +332,56 @@ final class ShelfFileRow: NSView, NSDraggingSource {
     enum Style { case recent, dropped }
     let path: String
     let style: Style
+    /// A tap: copy the item. The row's whole job is "see → tap → copied".
+    var onCopy: (() -> Void)?
+    /// › : open the file's page (summary, key points, Q&A).
     var onSelect: (() -> Void)?
     var onAction: (() -> Void)?
     var onMenu: ((NSView) -> Void)?
     var onDragBegan: (() -> Void)?
     var onDragEnded: (() -> Void)?
+    /// The item you last tapped: a quiet accent edge (the Summarize / Explain tiles act on it).
     var selected = false { didSet { if selected != oldValue { needsDisplay = true } } }
 
     private let tile = FileTypeTile()
-    private let name = dlabel(NSFont.systemFont(ofSize: 13.5, weight: .semibold), Pal.text)
-    private let meta = dlabel(NSFont.systemFont(ofSize: 11.5), Pal.textSecondary)
-    private let state = dlabel(NSFont.systemFont(ofSize: 11.5, weight: .medium), Pal.textTertiary)
+    private let name = dlabel(Typo.rowTitle, Pal.text)
+    private let meta = dlabel(Typo.meta, Pal.textSecondary)
     private var action: PRActionButton?
-    private var more: GHSquareButton!
-    private var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
+    private let copyButton = ShelfRowButton(symbol: "doc.on.doc", label: "Copy")
+    private let openButton = ShelfRowButton(symbol: "chevron.right", label: "Details")
+    private let more = ShelfRowButton(symbol: "ellipsis", label: "More")
+    private let sweep = CAGradientLayer()
+    private var hovered = false { didSet { if hovered != oldValue { needsDisplay = true; updateButtons() } } }
+    private var pressedDown = false { didSet { if pressedDown != oldValue { needsDisplay = true } } }
+    private var copiedUntil: Date?
     private var downPoint: NSPoint = .zero
     private var dragged = false
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    static func height(_ s: Style) -> CGFloat { s == .recent ? 58 : 66 }
+    static func height(_ s: Style) -> CGFloat { RowTier.standard.height }
 
     init(path: String, style: Style) {
         self.path = path
         self.style = style
         super.init(frame: .zero)
+        wantsLayer = true
+        sweep.startPoint = CGPoint(x: 0, y: 0.5)
+        sweep.endPoint = CGPoint(x: 0.75, y: 0.5)
+        sweep.cornerRadius = Radius.l
+        sweep.opacity = 0
+        layer?.insertSublayer(sweep, at: 0)
         tile.set(path: path)
         name.lineBreakMode = .byTruncatingMiddle
         name.stringValue = (path as NSString).lastPathComponent
         name.toolTip = path
-        more = GHSquareButton(symbol: "ellipsis", label: "More", target: self, action: #selector(moreTapped))
-        [tile, name, meta, state, more!].forEach { addSubview($0) }
+        meta.lineBreakMode = .byTruncatingTail
+        copyButton.onTap = { [weak self] in self?.onCopy?() }
+        openButton.onTap = { [weak self] in self?.onSelect?() }
+        more.onTap = { [weak self] in guard let self = self else { return }; self.onMenu?(self.more) }
+        copyButton.toolTip = "Copy (↩)"
+        openButton.toolTip = "Details (⌘↩)"
+        [tile, name, meta, copyButton, openButton, more].forEach { addSubview($0) }
         if style == .recent {
             let sug = ShelfKind(path: path).suggested
             let b = PRActionButton(sug.title, style: .secondary, symbol: sug.symbol, target: self, action: #selector(actionTapped))
@@ -370,81 +389,109 @@ final class ShelfFileRow: NSView, NSDraggingSource {
             addSubview(b)
         }
         setAccessibilityRole(.button)
+        updateButtons()
     }
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func actionTapped() { onAction?() }
-    @objc private func moreTapped() { onMenu?(more) }
+    override func accessibilityPerformPress() -> Bool { onCopy?(); return true }
 
     /// `status`: nil = show the time; otherwise a state line and its colour.
     func update(addedAt: Date, status: (String, NSColor)?) {
         let p = Pal
         let kind = ShelfKind(path: path)
         let exists = FileManager.default.fileExists(atPath: path)
-        let size = fileSize(path)
-        switch style {
-        case .recent:
-            meta.stringValue = [kind.label, size, relativeTime(addedAt)].compactMap { $0 }.joined(separator: "  ·  ")
-            if !exists { meta.stringValue = "No longer available"; meta.textColor = p.warning } else { meta.textColor = p.textSecondary }
-            action?.isEnabled = exists
-        case .dropped:
-            meta.stringValue = [kind.label, size].compactMap { $0 }.joined(separator: "  ·  ")
-            if !exists {
-                state.stringValue = "No longer available"; state.textColor = p.warning
-            } else if let s = status {
-                state.stringValue = s.0; state.textColor = s.1
-            } else {
-                state.stringValue = relativeTime(addedAt); state.textColor = p.textTertiary
-            }
+        let base = [kind.label, fileSize(path)].compactMap { $0 }.joined(separator: " · ")
+        if !exists {
+            meta.stringValue = "No longer available"; meta.textColor = p.warning
+        } else if let s = status {
+            meta.stringValue = "\(base) · \(s.0)"; meta.textColor = s.1
+        } else {
+            meta.stringValue = "\(base) · \(relativeTime(addedAt))"; meta.textColor = p.textSecondary
         }
+        action?.isEnabled = exists
+        copyButton.isEnabled = exists
         name.textColor = exists ? p.text : p.textSecondary
-        setAccessibilityLabel("\(name.stringValue), \(meta.stringValue)")
+        setAccessibilityLabel("\(name.stringValue), \(meta.stringValue). Press to copy.")
         needsLayout = true
+    }
+
+    /// Feedback after a copy: the copy icon turns into a green check, a green sweep crosses the
+    /// row and its edge turns green for a moment.
+    func flashCopied() {
+        copiedUntil = Date().addingTimeInterval(1.4)
+        updateButtons()
+        needsDisplay = true
+        let c = Pal.success
+        sweep.colors = [c.withAlphaComponent(0.24).cgColor, c.withAlphaComponent(0).cgColor]
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [0, 1, 0]
+        fade.keyTimes = [0, 0.25, 1]
+        fade.duration = Motion.reduced ? 0.4 : 0.9
+        sweep.add(fade, forKey: "fade")
+        if !Motion.reduced {
+            let move = CABasicAnimation(keyPath: "transform.translation.x")
+            move.fromValue = -bounds.width * 0.3
+            move.toValue = bounds.width * 0.1
+            move.duration = 0.9
+            move.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            sweep.add(move, forKey: "move")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.45) { [weak self] in
+            guard let self = self, let until = self.copiedUntil, until <= Date() else { return }
+            self.copiedUntil = nil
+            self.updateButtons()
+            self.needsDisplay = true
+        }
+    }
+
+    private var isCopied: Bool { (copiedUntil ?? .distantPast) > Date() }
+
+    private func updateButtons() {
+        let p = Pal
+        if isCopied {
+            copyButton.symbol = "checkmark"
+            copyButton.tint = p.success
+            copyButton.wash = p.success.withAlphaComponent(0.16)
+        } else {
+            copyButton.symbol = "doc.on.doc"
+            // Always there, faint until you point at the row, then the accent.
+            copyButton.tint = hovered ? p.accent : p.textTertiary
+            copyButton.wash = hovered ? p.accent.withAlphaComponent(0.14) : nil
+        }
     }
 
     override func layout() {
         super.layout()
         let w = bounds.width, h = bounds.height
-        more.frame = NSRect(x: w - 10 - 30, y: (h - 30) / 2, width: 30, height: 30)
-        var right = more.frame.minX - 8
-        switch style {
-        case .recent:
-            tile.frame = NSRect(x: 10, y: (h - 36) / 2, width: 36, height: 36)
-            if let a = action {
-                // The name gets at least 150 pt; otherwise the button folds to its icon.
-                let title = ShelfKind(path: path).suggested.title
-                a.setTitleText(title)
-                var aw = min(132, a.fittedWidth)
-                if right - aw - 10 - 56 < 150 { a.setTitleText(""); a.toolTip = title; aw = 34 } else { a.toolTip = nil }
-                a.frame = NSRect(x: right - aw, y: (h - 30) / 2, width: aw, height: 30)
-                right = a.frame.minX - 10
-            }
-            name.frame = NSRect(x: 56, y: 11, width: max(40, right - 56), height: 18)
-            meta.frame = NSRect(x: 56, y: 31, width: max(40, right - 56), height: 15)
-            state.isHidden = true
-        case .dropped:
-            tile.frame = NSRect(x: 10, y: (h - 38) / 2, width: 38, height: 38)
-            let tx: CGFloat = 58
-            name.frame = NSRect(x: tx, y: 10, width: max(40, right - tx), height: 18)
-            meta.frame = NSRect(x: tx, y: 29, width: max(40, right - tx), height: 15)
-            state.frame = NSRect(x: tx, y: 45, width: max(40, right - tx), height: 15)
-            state.isHidden = false
+        sweep.frame = bounds
+        let b = Metrics.rowButton
+        more.frame = NSRect(x: w - 8 - b, y: (h - b) / 2, width: b, height: b)
+        openButton.frame = NSRect(x: more.frame.minX - 2 - b, y: (h - b) / 2, width: b, height: b)
+        copyButton.frame = NSRect(x: openButton.frame.minX - 2 - b, y: (h - b) / 2, width: b, height: b)
+        var right = copyButton.frame.minX - 8
+        let ts = RowTier.standard.tile
+        tile.frame = NSRect(x: 10, y: (h - ts) / 2, width: ts, height: ts)
+        if let a = action {
+            // The name gets at least 150 pt; otherwise the button folds to its icon.
+            let title = ShelfKind(path: path).suggested.title
+            a.setTitleText(title)
+            var aw = min(132, a.fittedWidth)
+            if right - aw - 10 - 58 < 150 { a.setTitleText(""); a.toolTip = title; aw = Metrics.rowButton + 4 } else { a.toolTip = nil }
+            a.frame = NSRect(x: right - aw, y: (h - Metrics.rowButton) / 2, width: aw, height: Metrics.rowButton)
+            right = a.frame.minX - 10
         }
+        let tx = tile.frame.maxX + 12
+        name.frame = NSRect(x: tx, y: (h / 2 - 18).rounded(), width: max(40, right - tx), height: 18)
+        meta.frame = NSRect(x: tx, y: (h / 2 + 1).rounded(), width: max(40, right - tx), height: 16)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l, yRadius: Radius.l)
-        switch style {
-        case .recent:
-            if selected { p.accent.withAlphaComponent(0.14).setFill(); path.fill(); p.accentBorder.setStroke(); path.lineWidth = 1; path.stroke() }
-            else if hovered { p.surfaceHover.withAlphaComponent(0.6).setFill(); path.fill() }
-        case .dropped:
-            (selected ? p.selectedFill : (hovered ? p.surfaceHover : p.surfaceRow)).setFill(); path.fill()
-            (selected ? p.selectedEdge : (hovered ? p.accentBorder : p.border)).setStroke()
-            path.lineWidth = selected ? 1.5 : 1
-            path.stroke()
-        }
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5).pressed(pressedDown), xRadius: Radius.l, yRadius: Radius.l)
+        (hovered || pressedDown ? p.surfaceHover : p.surfaceRow).setFill(); path.fill()
+        let edge: NSColor = isCopied ? p.success.withAlphaComponent(0.5) : (selected ? p.selectedEdge : p.divider)
+        edge.setStroke(); path.lineWidth = 1; path.stroke()
     }
 
     override func updateTrackingAreas() {
@@ -453,22 +500,25 @@ final class ShelfFileRow: NSView, NSDraggingSource {
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseExited(with event: NSEvent) { hovered = false; pressedDown = false }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func mouseDown(with event: NSEvent) {
         downPoint = event.locationInWindow
         dragged = false
+        pressedDown = true
         if event.clickCount == 2, FileManager.default.fileExists(atPath: path) {
+            pressedDown = false
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
             dragged = true          // swallow the mouse-up
         }
     }
 
-    /// A click (press and release without moving) selects; a drag only carries the file.
+    /// A tap (press and release without moving) copies; a drag only carries the file.
     override func mouseUp(with event: NSEvent) {
+        pressedDown = false
         guard !dragged, NSPointInRect(convert(event.locationInWindow, from: nil), bounds) else { return }
-        onSelect?()
+        onCopy?()
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -476,6 +526,7 @@ final class ShelfFileRow: NSView, NSDraggingSource {
         let dx = event.locationInWindow.x - downPoint.x, dy = event.locationInWindow.y - downPoint.y
         guard dx * dx + dy * dy > 12 else { return }
         dragged = true
+        pressedDown = false
         let pbItem = NSPasteboardItem()
         pbItem.setString(URL(fileURLWithPath: path).absoluteString, forType: .fileURL)
         pbItem.setString(path, forType: shelfDragType)
@@ -495,6 +546,60 @@ final class ShelfFileRow: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         onDragEnded?()
     }
+}
+
+/// A 28 pt symbol button inside a row (copy, details, more): quiet until you point at it.
+final class ShelfRowButton: NSView {
+    var symbol: String { didSet { if symbol != oldValue { needsDisplay = true } } }
+    /// The glyph's colour; nil = secondary text.
+    var tint: NSColor? { didSet { needsDisplay = true } }
+    /// A soft fill behind the glyph (the copy button's accent / success wash).
+    var wash: NSColor? { didSet { needsDisplay = true } }
+    var isEnabled = true { didSet { needsDisplay = true } }
+    var onTap: (() -> Void)?
+    private var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
+    private var pressed = false { didSet { if pressed != oldValue { needsDisplay = true } } }
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    init(symbol: String, label: String) {
+        self.symbol = symbol
+        super.init(frame: .zero)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(label)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let p = Pal
+        let r = bounds.pressed(pressed)
+        let shape = NSBezierPath(roundedRect: r, xRadius: 8, yRadius: 8)
+        if isEnabled, hovered || pressed { (pressed ? p.surfacePressed : p.surfaceStrong).setFill(); shape.fill() }
+        else if let w = wash { w.setFill(); shape.fill() }
+        let color = (isEnabled ? (hovered && tint == nil ? p.text : (tint ?? p.textSecondary)) : p.textTertiary)
+        guard let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold).applying(.init(paletteColors: [color]))) else { return }
+        let s = img.size
+        img.draw(in: NSRect(x: r.midX - s.width / 2, y: r.midY - s.height / 2, width: s.width, height: s.height),
+                 from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false; pressed = false }
+    override func mouseDown(with event: NSEvent) { if isEnabled { pressed = true } }
+    override func mouseUp(with event: NSEvent) {
+        let inside = NSPointInRect(convert(event.locationInWindow, from: nil), bounds)
+        pressed = false
+        if inside, isEnabled { onTap?() }
+    }
+    override func accessibilityPerformPress() -> Bool { if isEnabled { onTap?() }; return isEnabled }
+    override func resetCursorRects() { if isEnabled { addCursorRect(bounds, cursor: .pointingHand) } }
 }
 
 // MARK: - Drop Bin
@@ -761,6 +866,9 @@ final class DropFilesView: NSView, CardContent {
     var onEscape: (() -> Void)?
 
     private static var selectedPath: String?
+    /// True once you've tapped or opened an item: only then does it show a (quiet) highlight.
+    /// The first item is still the default target for Summarize / Explain / Extract.
+    private static var userFocused = false
     private static var tab = 0
     /// The file the current request was started for (before its payload exists).
     private static var runningPath: String?
@@ -777,7 +885,7 @@ final class DropFilesView: NSView, CardContent {
     private let bubble = ZeraGitHubBubble()
     private let zone = FileDropZone()
     private var actionTiles: [FileActionTile] = []
-    private let recentTitle = dlabel(NSFont.systemFont(ofSize: 15, weight: .semibold), Pal.text)
+    private let recentTitle = dlabel(Typo.sectionLabel, Pal.textTertiary)
     private var clearRecent: PRActionButton!
     private let recentScroll = NSScrollView()
     private let recentList = FlippedView()
@@ -847,7 +955,7 @@ final class DropFilesView: NSView, CardContent {
         guard !expanded else { return Isle.maxContentHeight }
         // Header, slim drop zone, one row of actions, up to three dropped files (more scroll).
         let rows = min(3, recentOrder.count)
-        let list: CGFloat = rows == 0 ? 40 : CGFloat(rows) * (ShelfFileRow.height(.dropped) + 8) - 8
+        let list: CGFloat = rows == 0 ? 40 : CGFloat(rows) * (ShelfFileRow.height(.dropped) + Metrics.rowGap) - Metrics.rowGap
         return Isle.headerHeight + 60 + 12 + 40 + 16 + 26 + list + 16
     }
     /// The island shows one panel at a time: the Shelf, or the file you picked.
@@ -864,6 +972,8 @@ final class DropFilesView: NSView, CardContent {
         layoutSubtreeIfNeeded()
         onHeightChange?()
         delegate?.shelfHeightChanged()
+        // The file's page slides in; Back slides the Shelf back from the left.
+        Motion.page(on ? center : left, forward: on)
     }
 
     /// Called each time the card is shown: tapping Zera opens just Drop Files; a fresh drop or
@@ -904,7 +1014,7 @@ final class DropFilesView: NSView, CardContent {
             actionTiles.append(a)
             left.addSubview(a)
         }
-        recentTitle.stringValue = "Recent files"
+        recentTitle.stringValue = "RECENT FILES"
         left.addSubview(recentTitle)
         clearRecent = PRActionButton("Clear all", style: .secondary, target: self, action: #selector(clearRecentTapped))
         left.addSubview(clearRecent)
@@ -924,7 +1034,7 @@ final class DropFilesView: NSView, CardContent {
         removeButton.toolTip = "Remove from Shelf (the file stays on your Mac)"
         removeButton.setAccessibilityLabel("Remove from Shelf")
         fileMore = GHSquareButton(symbol: "ellipsis", label: "More", target: self, action: #selector(fileMoreTapped))
-        collapseButton = GHSquareButton(symbol: "xmark", label: "Close file view", target: self, action: #selector(collapseTapped))
+        collapseButton = GHSquareButton(symbol: "chevron.left", label: "Back to the Shelf", target: self, action: #selector(collapseTapped))
         [finder!, removeButton!, fileMore!, collapseButton!].forEach { center.addSubview($0) }
         tabs.onSelect = { [weak self] i in Self.tab = i; self?.reloadCenter() }
         center.addSubview(tabs)
@@ -1118,7 +1228,7 @@ final class DropFilesView: NSView, CardContent {
         let hasSel = selectedPath.map { FileManager.default.fileExists(atPath: $0) } ?? false
         actionTiles.forEach { $0.enabled = hasSel }
         // Two-pane: the left list shows the Shelf (there's no right panel); otherwise Recent.
-        recentTitle.stringValue = leftShowsRecent ? "Recent files" : "Dropped Files"
+        recentTitle.stringValue = leftShowsRecent ? "RECENT FILES" : "DROPPED FILES"
         let entries: [(String, Date)] = leftShowsRecent ? store.recent.map { ($0.path, $0.addedAt) } : store.items.map { ($0.path, $0.addedAt) }
         let ids = entries.map { $0.0 }
         for (id, r) in recentRows where !ids.contains(id) { r.removeFromSuperview(); recentRows.removeValue(forKey: id) }
@@ -1131,7 +1241,7 @@ final class DropFilesView: NSView, CardContent {
                 recentList.addSubview(r)
                 recentRows[path] = r
             }
-            r.selected = path == selectedPath
+            r.selected = Self.userFocused && path == selectedPath
             r.update(addedAt: at, status: style == .dropped ? status(for: path) : nil)
         }
         recentOrder = ids
@@ -1141,10 +1251,10 @@ final class DropFilesView: NSView, CardContent {
         // Zera over the zone: excited when files are on the Shelf, peeking when it's empty.
         peek.image = SpriteLibrary.shared.sprite(zone.isTargeted ? "card_catch_pdf" : "card_peek_down")?.image
             ?? SpriteLibrary.shared.sprite("peek")?.image
-        bubble.text = zone.isTargeted ? "Drop it here! ✨" : (store.items.isEmpty ? "Drop a file here\nand I'll take a look! ✨" : "Drag a file out,\nor tap it for more 👇")
+        bubble.text = zone.isTargeted ? "Drop it here! ✨" : (store.items.isEmpty ? "Drop a file here\nand I'll take a look! ✨" : "Tap a file to copy it,\nor drag it out 👇")
         let n = store.items.count
-        leftSub.stringValue = n == 0 ? "Drop files on Zera or below" : "\(n) file\(n == 1 ? "" : "s") · drag one out to use it"
-        recentTitle.stringValue = "Dropped files"
+        leftSub.stringValue = n == 0 ? "Drop files on Zera or below" : "\(n) file\(n == 1 ? "" : "s") · tap to copy, drag to use"
+        recentTitle.stringValue = leftShowsRecent ? "RECENT FILES" : "DROPPED FILES"
     }
 
     private func reloadRight() {
@@ -1163,7 +1273,7 @@ final class DropFilesView: NSView, CardContent {
                 shelfList.addSubview(r)
                 shelfRows[item.path] = r
             }
-            r.selected = item.path == selectedPath
+            r.selected = Self.userFocused && item.path == selectedPath
             r.update(addedAt: item.addedAt, status: status(for: item.path))
         }
         shelfOrder = ids
@@ -1176,6 +1286,7 @@ final class DropFilesView: NSView, CardContent {
 
     private func makeRow(path: String, style: ShelfFileRow.Style) -> ShelfFileRow {
         let r = ShelfFileRow(path: path, style: style)
+        r.onCopy = { [weak self] in self?.copyItem(path) }
         r.onSelect = { [weak self] in self?.select(path) }
         r.onAction = { [weak self] in self?.runSuggested(path) }
         r.onMenu = { [weak self] v in self?.showRowMenu(path: path, style: style, from: v) }
@@ -1487,7 +1598,7 @@ final class DropFilesView: NSView, CardContent {
             guard let r = recentRows[path] else { continue }
             let rh = ShelfFileRow.height(r.style)
             r.frame = NSRect(x: 4, y: y, width: iw, height: rh)
-            y += rh + (r.style == .recent ? 2 : 8)
+            y += rh + Metrics.rowGap
         }
         recentList.frame = NSRect(x: 0, y: 0, width: iw + 8, height: max(y, recentScroll.frame.height))
     }
@@ -1513,7 +1624,7 @@ final class DropFilesView: NSView, CardContent {
         fileName.frame = NSRect(x: tx, y: 24, width: max(40, half - tx), height: 22)
         fileMeta.frame = NSRect(x: tx, y: 46, width: max(40, half - tx), height: 16)
 
-        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: 36)
+        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
 
         // Bottom: suggestions, then the input.
         let sy = h - 16 - 30
@@ -1529,7 +1640,7 @@ final class DropFilesView: NSView, CardContent {
 
         // The answer fills the rest; Zera's reaction lives in the header now (she hangs there).
         reaction.isHidden = true
-        let cy = Isle.headerHeight + 36 + 10
+        let cy = Isle.headerHeight + Metrics.segment + 10
         content.frame = NSRect(x: x, y: cy, width: iw, height: max(80, inputY - 10 - cy))
     }
 
@@ -1555,17 +1666,44 @@ final class DropFilesView: NSView, CardContent {
         for path in shelfOrder {
             guard let r = shelfRows[path] else { continue }
             r.frame = NSRect(x: 0, y: ry, width: iw, height: ShelfFileRow.height(.dropped))
-            ry += ShelfFileRow.height(.dropped) + 8
+            ry += ShelfFileRow.height(.dropped) + Metrics.rowGap
         }
         shelfList.frame = NSRect(x: 0, y: 0, width: iw, height: max(ry, shelfScroll.frame.height))
     }
 
     // MARK: Actions
 
+    /// Opens the item's page (summary, key points, Q&A): › on a row, ⌘↩, or "Open details".
     private func select(_ path: String) {
         Self.selectedPath = path
+        Self.userFocused = true
         reload()
         setExpanded(true)
+    }
+
+    /// The Shelf's main gesture: tap an item and it's on your clipboard, in the form that pastes
+    /// best (see `ShelfCopier`). The row confirms it; Zera says what was copied.
+    private func copyItem(_ path: String) {
+        guard let how = ShelfCopier.copy(path) else {
+            NSSound.beep()
+            delegate?.shelfSays("that file isn't there any more 😕", mood: .worried, for: 2)
+            return
+        }
+        Self.selectedPath = path
+        Self.userFocused = true
+        for (p, r) in recentRows { r.selected = p == path; if p == path { r.flashCopied() } }
+        for (p, r) in shelfRows { r.selected = p == path; if p == path { r.flashCopied() } }
+        SoundService.shared.play(.clipCopy)
+        var name = (path as NSString).lastPathComponent
+        if name.count > 28 { name = String(name.prefix(25)) + "…" }
+        let line: String
+        switch how {
+        case .file: line = "copied “\(name)” ✓"
+        case .image: line = "copied the image ✓"
+        case .text: line = "copied the note's text ✓"
+        case .link: line = "copied the link ✓"
+        }
+        delegate?.shelfSays(line, mood: .happy, for: 1.6)
     }
 
     private func selectNewest(excluding before: Set<String>) {
@@ -1683,7 +1821,10 @@ final class DropFilesView: NSView, CardContent {
         ])
         analyze.isEnabled = exists
         var items: [NSMenuItem] = [
-            ClosureMenuItem("Open", symbol: "arrow.up.forward.app", enabled: exists) { _ = NSWorkspace.shared.open(URL(fileURLWithPath: path)) },
+            ClosureMenuItem("Copy", symbol: "doc.on.doc", enabled: exists) { [weak self] in self?.copyItem(path) },
+            ClosureMenuItem("Open details", symbol: "doc.text.magnifyingglass", enabled: exists) { [weak self] in self?.select(path) },
+            .separator(),
+            ClosureMenuItem("Open in app", symbol: "arrow.up.forward.app", enabled: exists) { _ = NSWorkspace.shared.open(URL(fileURLWithPath: path)) },
             analyze,
             ClosureMenuItem("Reveal in Finder", symbol: "folder", enabled: exists) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) },
             ClosureMenuItem("Copy path", symbol: "doc.on.doc") {
@@ -1768,6 +1909,9 @@ final class DropFilesView: NSView, CardContent {
         switch event.keyCode {
         case 53: onEscape?()
         case 51, 117: if let p = selectedPath, store.items.contains(where: { $0.path == p }) { removePaths([p]) }
+        // ↩ copies the item you're on; ⌘↩ opens its page.
+        case 36, 76:
+            if !expanded, let p = selectedPath { if cmd { select(p) } else { copyItem(p) } } else { super.keyDown(with: event) }
         case 9 where cmd: paste()
         default: super.keyDown(with: event)
         }

@@ -31,11 +31,11 @@ class CardBase: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: 200))
         let p = Pal
         titleLabel.stringValue = title
-        titleLabel.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.font = Typo.screenTitle
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.textColor = p.text
         addSubview(titleLabel)
-        subtitleLabel.font = Typo.caption
+        subtitleLabel.font = Typo.screenSubtitle
         subtitleLabel.textColor = p.textSecondary
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.isHidden = true
@@ -93,7 +93,7 @@ final class ListRow: NSView {
     var badge = 0 { didSet { needsDisplay = true; needsLayout = true } }
     var showsChevron = false { didSet { needsDisplay = true; needsLayout = true } }
     var selected = false { didSet { restyle() } }
-    var emphasized = false { didSet { title.font = emphasized ? Typo.bodyStrong : Typo.bodyMedium } }
+    var emphasized = false { didSet { title.font = emphasized ? Typo.rowTitleStrong : Typo.rowTitle } }
     /// A control shown at the right edge, vertically centred (e.g. Toggle, CardButton).
     var accessory: NSView? {
         didSet {
@@ -113,12 +113,12 @@ final class ListRow: NSView {
         roundLayer(Radius.l)
         addSubview(tile)
         title.stringValue = t
-        title.font = Typo.bodyMedium
+        title.font = Typo.rowTitle
         title.textColor = Pal.text
         title.lineBreakMode = .byTruncatingTail
         addSubview(title)
         subtitle.stringValue = s
-        subtitle.font = Typo.caption
+        subtitle.font = Typo.meta
         subtitle.textColor = Pal.textSecondary
         subtitle.lineBreakMode = .byTruncatingTail
         addSubview(subtitle)
@@ -141,24 +141,23 @@ final class ListRow: NSView {
         needsLayout = true
     }
 
-    /// Glass row: a navy step up with a soft blue edge that lights up under the pointer.
+    /// Glass row: one step up from the glass, a step brighter under the pointer.
     private func restyle() {
         let p = Pal
         let hot = hovered && onTap != nil
         layer?.backgroundColor = (selected ? p.accentSoft : (hot ? p.surfaceHover : p.surfaceRow)).cgColor
         layer?.borderWidth = 1
-        layer?.borderColor = (selected ? p.selectedEdge : (hot ? p.accent.withAlphaComponent(0.45) : p.divider)).cgColor
+        layer?.borderColor = (selected ? p.selectedEdge : p.divider).cgColor
         layer?.masksToBounds = false
-        layer?.shadowColor = p.accent.cgColor
-        layer?.shadowRadius = 8
-        layer?.shadowOffset = .zero
-        layer?.shadowOpacity = hot ? 0.25 : 0
+        layer?.shadowOpacity = 0
     }
 
     override func layout() {
         super.layout()
         let h = bounds.height
-        tile.frame = NSRect(x: Space.m, y: (h - Metrics.icon) / 2, width: Metrics.icon, height: Metrics.icon)
+        // Standard rows (52) carry the standard 36 pt tile; shorter ones keep the compact one.
+        let ts: CGFloat = h >= RowTier.standard.height - 2 ? RowTier.standard.tile : Metrics.icon
+        tile.frame = NSRect(x: Space.m, y: (h - ts) / 2, width: ts, height: ts)
         var right = bounds.width - Space.m
         if let a = accessory {
             let aw = (a as? CardButton)?.fittedWidth ?? a.frame.width
@@ -171,14 +170,14 @@ final class ListRow: NSView {
         let trW: CGFloat = trailing.stringValue.isEmpty ? 0 : min(150, ceil((trailing.stringValue as NSString).size(withAttributes: [.font: Typo.caption]).width) + 4)
         trailing.frame = NSRect(x: right - trW, y: (h - 14) / 2, width: trW, height: 14)
         if trW > 0 { right -= trW + Space.s }
-        let textX = Space.m + Metrics.icon + Space.m
+        let textX = tile.frame.maxX + Space.m
         let textW = max(20, right - textX)
         if subtitle.stringValue.isEmpty {
-            title.frame = NSRect(x: textX, y: (h - 16) / 2, width: textW, height: 16)
+            title.frame = NSRect(x: textX, y: (h - 18) / 2, width: textW, height: 18)
             subtitle.isHidden = true
         } else {
-            title.frame = NSRect(x: textX, y: h / 2 - 16, width: textW, height: 16)
-            subtitle.frame = NSRect(x: textX, y: h / 2 + 1, width: textW, height: 14)
+            title.frame = NSRect(x: textX, y: (h / 2 - 18).rounded(), width: textW, height: 18)
+            subtitle.frame = NSRect(x: textX, y: (h / 2 + 1).rounded(), width: textW, height: 16)
             subtitle.isHidden = false
         }
     }
@@ -239,9 +238,10 @@ final class NavRow: NSView {
         layer?.backgroundColor = (selected ? p.selectedFill : (hovered ? p.surfaceHover : .clear)).cgColor
         layer?.borderWidth = selected ? 1 : 0
         layer?.borderColor = p.selectedEdge.cgColor
-        icon.contentTintColor = selected ? p.selectedAccent : p.textSecondary
-        title.textColor = selected ? p.text : p.text(0.8)
-        title.font = selected ? Typo.bodyStrong : Typo.nav
+        icon.contentTintColor = selected ? p.accent : p.textSecondary
+        title.textColor = selected ? p.accent : p.textSecondary
+        // One weight in both states, so the label never shifts when you pick a pane.
+        title.font = Typo.chip
     }
 
     override func layout() {
@@ -269,8 +269,8 @@ final class ActionTile: NSView {
     private let title = NSTextField(labelWithString: "")
     private var hovered = false {
         didSet {
+            // Hover brightens the tile, like every row; no accent outline.
             layer?.backgroundColor = (hovered ? Pal.surfaceHover : Pal.surfaceRow).cgColor
-            layer?.borderColor = (hovered ? Pal.accent.withAlphaComponent(0.45) : Pal.divider).cgColor
         }
     }
 
@@ -290,6 +290,8 @@ final class ActionTile: NSView {
         title.textColor = Pal.text(0.9)
         title.alignment = .center
         title.lineBreakMode = .byTruncatingTail
+        // "Screenshot" in a 73 pt tile: tighten a touch rather than cut it off.
+        title.allowsDefaultTighteningForTruncation = true
         addSubview(title)
         setAccessibilityRole(.button)
         setAccessibilityLabel(t)
@@ -300,7 +302,7 @@ final class ActionTile: NSView {
     override func layout() {
         super.layout()
         tile.frame = NSRect(x: (bounds.width - 26) / 2, y: Space.s, width: 26, height: 26)
-        title.frame = NSRect(x: Space.xs, y: bounds.height - 20, width: bounds.width - Space.s, height: 14)
+        title.frame = NSRect(x: 2, y: bounds.height - 20, width: bounds.width - 4, height: 14)
     }
 
     override func updateTrackingAreas() {
@@ -324,8 +326,7 @@ final class SectionHeader: NSView {
     init(_ t: String, link l: String? = nil) {
         super.init(frame: .zero)
         // Small caps label, quiet, so the rows carry the weight.
-        title.attributedStringValue = NSAttributedString(string: t.uppercased(), attributes: [
-            .font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: Pal.textTertiary, .kern: 0.8])
+        title.attributedStringValue = Typo.sectionText(t)
         addSubview(title)
         link.isBordered = false
         link.isHidden = l == nil
@@ -415,7 +416,8 @@ enum QuickAction {
 /// "What does Zera want me to know right now?" Greeting in the header → ask Zera → what needs
 /// you (up to three) → one row of quick actions. Recent files live on the Files tab.
 final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
-    var cardWidth: CGFloat { 540 }
+    /// Wide enough for seven quick-action labels ("Clipboard", "Screenshot") in full.
+    var cardWidth: CGFloat { 600 }
     var onOpen: ((CardKind) -> Void)?
     var onAction: ((QuickAction) -> Void)?
     var onOpenURL: ((URL) -> Void)?
@@ -461,13 +463,13 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     func focusSearch() { window?.makeKey(); window?.makeFirstResponder(search.field) }
 
     private let tileHeight: CGFloat = 54
-    private let rowH: CGFloat = 46
+    private let rowH: CGFloat = RowTier.standard.height
     private static let maxAttention = 3
 
-    private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (rowH + 6) - 6 }
+    private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (rowH + Metrics.rowGap) - Metrics.rowGap }
 
     var desiredHeight: CGFloat {
-        var h = headerBottom + 36 + Space.l
+        var h = headerBottom + Metrics.field + Space.l
         h += 18 + Space.s + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.l
         h += 18 + Space.s + tileHeight + Metrics.cardPad
         return h
@@ -587,13 +589,12 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         layoutHeader()
         let x = Metrics.cardPad, w = bounds.width - x * 2
         var y = headerBottom
-        search.frame = NSRect(x: x, y: y, width: w, height: 36)
-        y += 36 + Space.l
+        search.frame = NSRect(x: x, y: y, width: w, height: Metrics.field)
+        y += Metrics.field + Space.l
 
         // While searching, the matches take the place of "Needs you".
         let searching = !query.isEmpty
-        attentionHeader.title.attributedStringValue = NSAttributedString(string: searching ? "MATCHES" : "NEEDS YOU", attributes: [
-            .font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: Pal.textTertiary, .kern: 0.8])
+        attentionHeader.title.attributedStringValue = Typo.sectionText(searching ? "Matches" : "Needs you")
         let shown = searching ? recentRows : attentionRows
         attentionRows.forEach { $0.isHidden = searching }
         recentRows.forEach { $0.isHidden = !searching }
@@ -605,8 +606,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             y += 20
         } else {
             allClear.isHidden = true
-            for r in shown { r.frame = NSRect(x: x, y: y, width: w, height: rowH); y += rowH + 6 }
-            y -= 6
+            for r in shown { r.frame = NSRect(x: x, y: y, width: w, height: rowH); y += rowH + Metrics.rowGap }
+            y -= Metrics.rowGap
         }
         y += Space.l
 
@@ -687,7 +688,7 @@ final class SettingsCard: CardBase, CardContent {
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
         var isDetail: Bool { rawValue >= Pane.claude.rawValue }
-        static let nav: [Pane] = [.general, .sounds, .clipboard, .integrations, .shortcuts, .about]
+        static let nav: [Pane] = [.general, .appearance, .sounds, .clipboard, .integrations, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
@@ -751,6 +752,11 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     func select(_ p: Pane) {
+        // A detail pane (Claude, GitHub…) comes in like a page and Back reverses it; switching
+        // between sidebar panes just settles the new one in.
+        if p != current, window != nil {
+            if p.isDetail != current.isDetail { Motion.page(paneScroll, forward: p.isDetail) } else { Motion.refresh(paneScroll) }
+        }
         current = p
         paneScroll.contentView.scroll(to: .zero)
         let highlight: Pane = p.isDetail ? .integrations : p
@@ -1021,19 +1027,40 @@ final class SettingsCard: CardBase, CardContent {
         rebuildPane()
     }
 
+    private func themeRow(_ t: ZeraTheme, _ s: inout Stack) {
+        let row = ThemeRow(theme: t)
+        row.selected = t.id == ThemeStore.shared.current.id
+        row.onTap = { ThemeStore.shared.select(t) }
+        pane.addSubview(row)
+        s.place(row, height: ThemeRow.height, gap: Space.xs)
+    }
+
+    @objc private func newThemeTapped() {
+        guard let url = ThemeStore.shared.makeCustom() else { NSSound.beep(); return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func openThemesTapped() { ThemeStore.shared.revealFolder() }
+
     @objc private func soundVolumeChanged(_ sender: NSSlider) {
         SoundService.shared.volume = Float(sender.doubleValue)
         SoundService.shared.play(.reminderDone)
     }
 
     private func buildAppearance(_ s: inout Stack) {
-        let t = PillTabs(titles: Appearance.allCases.map { $0.title })
-        t.selected = Palette.appearance.rawValue
-        t.onSelect = { i in Palette.appearance = Appearance(rawValue: i) ?? .system }
-        pane.addSubview(t)
-        s.place(t, height: Metrics.control + 2, gap: Space.m)
-        hint(Palette.appearance == .system ? "Following macOS — \(Palette.systemIsDark ? "dark" : "light") right now. Zera, the pill and her bubble keep their own look."
-                                           : "Zera, the pill and her bubble keep their own look.", &s)
+        let store = ThemeStore.shared
+        sectionLabel("Theme", &s)
+        for t in store.builtIns { themeRow(t, &s) }
+        if !store.custom.isEmpty {
+            s.y += Space.s
+            sectionLabel("Your themes", &s)
+            for t in store.custom { themeRow(t, &s) }
+        }
+        s.y += Space.s
+        buttonRow("New custom theme", style: .secondary, status: "Copies \(store.current.name) to a file you can edit", &s, action: #selector(newThemeTapped))
+        buttonRow("Open themes folder", style: .tertiary, status: "Add or edit .json theme files; Zera picks up saved changes", &s, action: #selector(openThemesTapped))
+        for problem in store.problems { hint("⚠︎ " + problem, &s) }
+        hint("Zera herself and her bubble keep their own look in every theme.", &s)
         toggleRow("Reduce motion (system setting)", on: Motion.reduced, &s, enabled: false) { _ in }
         hint("Change it in System Settings → Accessibility → Display.", &s)
     }
@@ -1125,7 +1152,8 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private func sectionLabel(_ text: String, _ s: inout Stack) {
-        let l = label(text, font: Typo.section, color: Pal.textSecondary, in: pane)
+        let l = label("", in: pane)
+        l.attributedStringValue = Typo.sectionText(text)
         s.place(l, height: 18, gap: Space.xs)
     }
 
@@ -1155,7 +1183,7 @@ final class SettingsCard: CardBase, CardContent {
             self?.rebuildPane()
         }
         pane.addSubview(tabs)
-        s.place(tabs, height: Metrics.control + 2, gap: Space.m)
+        s.place(tabs, height: Metrics.segment, gap: Space.m)
 
         switch a.provider {
         case .claudeCode:
@@ -1726,7 +1754,8 @@ final class ApprovalCard: CardBase, CardContent {
 
 /// Compact: "New PR opened · repo #125 · 2 min ago" with Review Now / Later.
 final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
-    var cardWidth: CGFloat { 520 }
+    /// The same width as the reminder banner, so both have room for a full title.
+    var cardWidth: CGFloat { 620 }
     let countdownLine = BannerCountdownLine()
     var onDismiss: (() -> Void)?
     var onOpenURL: ((URL) -> Void)?
@@ -1801,12 +1830,12 @@ final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
         zera.isHidden = true
         when.isHidden = true
         tile.frame = NSRect(x: x, y: 26, width: 36, height: 36)
-        let half = bounds.width / 2 - Isle.zeraGap / 2
-        titleLabel.frame = NSRect(x: x + 46, y: 25, width: max(0, half - x - 46), height: 20)
-        subtitleLabel.frame = NSRect(x: x + 46, y: 46, width: max(0, half - x - 46), height: 16)
-        let pw = primary.fittedWidth
-        dismiss.frame = NSRect(x: bounds.width - x - Metrics.control, y: 30, width: Metrics.control, height: Metrics.control)
-        primary.frame = NSRect(x: dismiss.frame.minX - Space.s - pw, y: 29, width: pw, height: 30)
+        let half = bounds.width / 2 - Isle.zeraGap / 2 - 8, tx = x + 36 + 12
+        titleLabel.frame = NSRect(x: tx, y: 25, width: max(0, half - tx), height: 18)
+        subtitleLabel.frame = NSRect(x: tx, y: 45, width: max(0, half - tx), height: 16)
+        let pw = max(84, primary.fittedWidth), bh = Metrics.button, db = Metrics.rowButton
+        dismiss.frame = NSRect(x: bounds.width - x - db, y: 28 + (bh - db) / 2, width: db, height: db)
+        primary.frame = NSRect(x: dismiss.frame.minX - Space.s - pw, y: 28, width: pw, height: bh)
         countdownLine.frame = NSRect(x: 18, y: bounds.height - 8, width: max(0, bounds.width - 36), height: 2)
     }
 }

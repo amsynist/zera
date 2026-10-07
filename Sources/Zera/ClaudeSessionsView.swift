@@ -24,8 +24,8 @@ private enum S {
     static let gap: CGFloat = 14
     static let pad: CGFloat = 20
     static let radius: CGFloat = 22
-    static let rowH: CGFloat = 76
-    static let rowGap: CGFloat = 8
+    static let rowH: CGFloat = RowTier.rich.height
+    static let rowGap: CGFloat = Metrics.rowGap
     static let tipH: CGFloat = 72
     static let maxWidth: CGFloat = 1240
     static let maxHeight: CGFloat = 840
@@ -139,7 +139,7 @@ final class SessionProgressBar: NSView {
         running = r
         let pal = Pal
         if let t = t { fill.colors = [t.cgColor, t.cgColor] }
-        else { fill.colors = [NSColor(srgbRed: 0.40, green: 0.52, blue: 0.98, alpha: 1).cgColor, pal.accent.cgColor, NSColor(srgbRed: 0.70, green: 0.46, blue: 0.98, alpha: 1).cgColor] }
+        else { fill.colors = [pal.accent.cgColor, (pal.accent.blended(withFraction: 0.5, of: pal.accentDeep) ?? pal.accent).cgColor, pal.accentDeep.cgColor] }
         let reduce = Motion.reduced
         if changedMode || fill.animation(forKey: "glide") == nil && progress == nil && running {
             fill.removeAllAnimations(); shimmer.removeAllAnimations()
@@ -209,7 +209,7 @@ final class SessionIconTile: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.width * 0.26, yRadius: bounds.width * 0.26)
-        (p.isDark ? NSColor(srgbRed: 0.07, green: 0.07, blue: 0.14, alpha: 1) : p.tileGitHub).setFill(); path.fill()
+        (p.isDark ? p.surfaceStrong : p.tileGitHub).setFill(); path.fill()
         NSColor.white.withAlphaComponent(0.12).setStroke(); path.lineWidth = 1; path.stroke()
         drawIcon(icon(symbol, bounds.width * 0.38, .semibold, tint), centeredIn: bounds)
     }
@@ -320,7 +320,8 @@ final class ClaudeSessionRow: NSView {
         super.layout()
         let w = bounds.width, h = bounds.height
         let mid = (h / 2).rounded()
-        tile.frame = NSRect(x: 14, y: mid - 22, width: 44, height: 44)
+        let ts = RowTier.rich.tile
+        tile.frame = NSRect(x: 14, y: mid - ts / 2, width: ts, height: ts)
         more.frame = NSRect(x: w - 14 - 34, y: mid - 17, width: 34, height: 34)
         action.frame = NSRect(x: more.frame.minX - 8 - 34, y: mid - 17, width: 34, height: 34)
         // Without a stop / review button the status column moves up against the menu button.
@@ -335,7 +336,7 @@ final class ClaudeSessionRow: NSView {
         // as a block on the row so the text lines up with the tile and the buttons.
         let third = (kind == .running && !bar.isHidden) || kind == .waiting
         let top = (mid - (third ? 30 : 19)).rounded()
-        let tx: CGFloat = 72, tw = max(60, sx - 12 - tx)
+        let tx: CGFloat = tile.frame.maxX + 12, tw = max(60, sx - 12 - tx)
         title.frame = NSRect(x: tx, y: top, width: tw, height: 20)
         meta.frame = NSRect(x: tx, y: top + 22, width: tw, height: 16)
         // The chip sits on the title's line; completed rows put the note under it.
@@ -358,10 +359,10 @@ final class ClaudeSessionRow: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: Radius.l, yRadius: Radius.l)
-        if selected { p.selectedFill.setFill() } else { (hovered ? p.surfaceHover : p.surfaceRow).setFill() }
-        path.fill()
-        (selected ? p.selectedEdge : (hovered ? p.accentBorder : p.border)).setStroke()
-        path.lineWidth = selected ? 1.5 : 1
+        (hovered ? p.surfaceHover : p.surfaceRow).setFill(); path.fill()
+        if selected { p.selectedFill.setFill(); path.fill() }
+        (selected ? p.selectedEdge : p.divider).setStroke()
+        path.lineWidth = 1
         path.stroke()
     }
 
@@ -622,12 +623,12 @@ final class ClaudeActivityConsole: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l, yRadius: Radius.l)
-        (p.isDark ? NSColor(srgbRed: 0.05, green: 0.05, blue: 0.11, alpha: 0.85) : p.codeBox).setFill(); box.fill()
+        (p.isDark ? p.codeBox.withAlphaComponent(0.85) : p.codeBox).setFill(); box.fill()
         p.border.setStroke(); box.lineWidth = 1; box.stroke()
 
-        let textColor = NSColor(srgbRed: 0.86, green: 0.86, blue: 0.95, alpha: 1)
+        let textColor = p.text.withAlphaComponent(0.9)
         let dim = textColor.withAlphaComponent(0.55)
-        let fileColor = NSColor(srgbRed: 0.45, green: 0.72, blue: 1.0, alpha: 1)
+        let fileColor = p.info
         let x0: CGFloat = 18, top: CGFloat = 16
         let rightLimit = copyButton.frame.minX - 10
         guard !lines.isEmpty else {
@@ -983,6 +984,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         reload()
         layoutSubtreeIfNeeded()
         onHeightChange?()
+        // The session comes in like a page; Back slides the list back in from the left.
+        Motion.page(on ? right : left, forward: on)
     }
 
     /// Each time the screen opens: just the list, unless it was opened from the live bar.
@@ -1426,11 +1429,11 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         // Filters and search on one line.
         var y = Isle.headerHeight
         let segW = min(iw, filters.preferredWidth)
-        filters.frame = NSRect(x: x, y: y, width: segW, height: 40)
+        filters.frame = NSRect(x: x, y: y, width: segW, height: Metrics.segment)
         let besideW = iw - segW - 10
         search.isHidden = besideW < 120
-        search.frame = NSRect(x: x + segW + 10, y: y + 2, width: max(0, besideW), height: 36)
-        y += 40 + 12
+        search.frame = NSRect(x: x + segW + 10, y: y, width: max(0, besideW), height: Metrics.field)
+        y += Metrics.segment + 12
 
         tip.isHidden = true
         let listBottom = h - 14
@@ -1472,7 +1475,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         sessionChipView.frame = NSRect(x: chipRight - chipW, y: 32, width: chipW, height: 24)
 
         // Tabs.
-        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: 36)
+        tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
 
         // Bottom: quick asks, then the ask field above them.
         let qh: CGFloat = 30
@@ -1490,7 +1493,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         reaction.isHidden = true
 
         // Body between the tabs and the ask field.
-        let bodyTop = Isle.headerHeight + 36 + 10
+        let bodyTop = Isle.headerHeight + Metrics.segment + 10
         let bodyBottom = inputY - 10
         let bodyH = max(0, bodyBottom - bodyTop)
         infoScroll.frame = NSRect(x: x, y: bodyTop, width: iw, height: bodyH)
