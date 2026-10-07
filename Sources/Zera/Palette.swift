@@ -24,9 +24,48 @@ enum Radius {
 enum Metrics {
     static let row: CGFloat = 44        // list rows
     static let control: CGFloat = 28    // fields, popups, inline buttons
-    static let button: CGFloat = 32     // primary actions at the bottom of a card
+    static let button: CGFloat = 32     // every text button
     static let icon: CGFloat = 30       // icon tile in a row
     static let cardPad: CGFloat = Space.l
+
+    // v2: one set of sizes every screen shares.
+    /// Side padding inside the island; floating panels (Export, Focus card, App opener) use `panelPad`.
+    static let sidePad: CGFloat = 20
+    static let panelPad: CGFloat = 24
+    /// Segmented controls (Clipboard, Claude, GitHub, Reminders, file tabs, Tasks, Export).
+    static let segment: CGFloat = 34
+    static let segmentInset: CGFloat = 3
+    /// Filter and project chips.
+    static let chip: CGFloat = 28
+    /// Search boxes and single-line fields.
+    static let field: CGFloat = 34
+    /// Square icon buttons in a header, and the smaller ones inside a row.
+    static let headerButton: CGFloat = 32
+    static let rowButton: CGFloat = 28
+    /// Gap between list rows.
+    static let rowGap: CGFloat = 6
+}
+
+/// The three list-row heights, each with its icon-tile size.
+enum RowTier {
+    case compact, standard, rich
+    /// Tasks, settings, themes, clipboard · home, shelf · Claude sessions, pull requests, agenda.
+    var height: CGFloat {
+        switch self {
+        case .compact: return 40
+        case .standard: return 52
+        case .rich: return 68
+        }
+    }
+    var tile: CGFloat {
+        switch self {
+        case .compact: return 28
+        case .standard: return 36
+        case .rich: return 40
+        }
+    }
+    /// Corner radius for this tier's icon tile.
+    var tileRadius: CGFloat { (tile * 0.28).rounded() }
 }
 
 enum Typo {
@@ -37,10 +76,23 @@ enum Typo {
     static let bodyStrong = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     static let secondary = NSFont.systemFont(ofSize: 11.5, weight: .regular)
     static let caption = NSFont.systemFont(ofSize: 11, weight: .regular)
-    static let button = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    static let button = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     static let badge = NSFont.systemFont(ofSize: 10.5, weight: .bold)
     static let nav = NSFont.systemFont(ofSize: 12, weight: .medium)
     static let mono = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .medium)
+
+    // v2: the seven roles every screen shares.
+    static let screenTitle = NSFont.systemFont(ofSize: 16, weight: .semibold)
+    static let screenSubtitle = NSFont.systemFont(ofSize: 12, weight: .regular)
+    /// Upper-cased with `sectionKern`.
+    static let sectionLabel = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
+    static let sectionKern: CGFloat = 0.8
+    static let rowTitle = NSFont.systemFont(ofSize: 13.5, weight: .medium)
+    static let rowTitleStrong = NSFont.systemFont(ofSize: 13.5, weight: .semibold)
+    static let meta = NSFont.systemFont(ofSize: 12, weight: .regular)
+    /// Segments and chips: the same weight selected or not, so nothing shifts when you pick one.
+    static let chip = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+    static let count = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
 }
 
 /// Light / dark / follow-the-system, chosen in Settings → Appearance.
@@ -160,10 +212,9 @@ var Pal: Palette { Palette.current }
 
 // MARK: - Buttons
 
-/// The island's one button family: rounded pills. A quiet chip by default; colour only as an
-/// outline with a soft tint — the theme's accent for the main action, green for done / approve,
-/// red for stop / reject / delete, amber for a warning. No bright fills, so buttons never shout
-/// over the content.
+/// The island's one button family: rounded 32 pt buttons. A quiet chip by default. The main
+/// action is filled with the theme's accent gradient and done / approve is filled green, so what
+/// to press stands out; stop / reject / delete and warnings stay a soft tint with an edge.
 enum ButtonTone { case neutral, accent, success, danger, warning }
 
 extension Palette {
@@ -177,50 +228,82 @@ extension Palette {
         }
     }
 
-    /// Draws a button pill and returns the colour its title should use.
+    /// Dark ink or white, whichever reads better on `c`.
+    func ink(on c: NSColor) -> NSColor {
+        guard let rgb = c.usingColorSpace(.sRGB) else { return .white }
+        func lin(_ v: CGFloat) -> CGFloat { v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+        let lum = 0.2126 * lin(rgb.redComponent) + 0.7152 * lin(rgb.greenComponent) + 0.0722 * lin(rgb.blueComponent)
+        return lum > 0.3 ? (cardBottom.blended(withFraction: 0.4, of: .black) ?? .black).withAlphaComponent(1) : .white
+    }
+
+    /// Draws a button and returns the colour its title should use.
     @discardableResult
     func drawButton(_ path: NSBezierPath, tone t: ButtonTone, hovered: Bool, pressed: Bool, enabled: Bool = true) -> NSColor {
         let dim: CGFloat = enabled ? 1 : 0.45
-        guard let c = tone(t) else {
-            (pressed ? surfacePressed : (hovered ? surfaceHover : surface)).withAlphaComponent(dim).setFill(); path.fill()
-            fieldBorder.withAlphaComponent(fieldBorder.alphaComponent * (hovered ? 1 : 0.8) * dim).setStroke(); path.lineWidth = 1; path.stroke()
+        let lit = hovered && enabled
+        switch t {
+        case .neutral:
+            (pressed ? surfacePressed : (lit ? surfaceHover : surface)).withAlphaComponent(dim).setFill(); path.fill()
+            border.withAlphaComponent(min(1, border.alphaComponent * (lit ? 2 : 1.3)) * dim).setStroke()
+            path.lineWidth = 1; path.stroke()
             return text.withAlphaComponent(enabled ? 1 : 0.55)
+        case .accent, .success:
+            let c = t == .accent ? accent : success
+            let end = t == .accent ? accentDeep : (success.blended(withFraction: 0.18, of: .black) ?? success)
+            let lift: NSColor = pressed ? .black : .white
+            let top = lit || pressed ? (c.blended(withFraction: pressed ? 0.14 : 0.1, of: lift) ?? c) : c
+            if enabled {
+                NSGraphicsContext.saveGraphicsState()
+                let glow = NSShadow()
+                glow.shadowColor = c.withAlphaComponent(lit ? 0.42 : 0.2)
+                glow.shadowBlurRadius = lit ? 12 : 7
+                glow.shadowOffset = NSSize(width: 0, height: -2)
+                glow.set()
+                top.setFill(); path.fill()
+                NSGraphicsContext.restoreGraphicsState()
+            }
+            NSGradient(starting: top.withAlphaComponent(dim), ending: end.withAlphaComponent(dim))?.draw(in: path, angle: 0)
+            // A faint sheen on the edge so it reads as glass rather than flat paint.
+            NSColor.white.withAlphaComponent(lit ? 0.2 : 0.12).setStroke(); path.lineWidth = 1; path.stroke()
+            let label = t == .accent ? onAccent : ink(on: c)
+            return label.withAlphaComponent(enabled ? 1 : 0.7)
+        case .danger, .warning:
+            let c = t == .danger ? danger : warning
+            c.withAlphaComponent((pressed ? 0.26 : (lit ? 0.2 : 0.13)) * dim).setFill(); path.fill()
+            c.withAlphaComponent((lit ? 0.6 : 0.35) * dim).setStroke(); path.lineWidth = 1; path.stroke()
+            return c.withAlphaComponent(enabled ? 1 : 0.55)
         }
-        if hovered && enabled {
-            NSGraphicsContext.saveGraphicsState()
-            let glow = NSShadow(); glow.shadowColor = c.withAlphaComponent(0.35); glow.shadowBlurRadius = 10; glow.shadowOffset = .zero; glow.set()
-            c.withAlphaComponent(pressed ? 0.26 : 0.18).setFill(); path.fill()
-            NSGraphicsContext.restoreGraphicsState()
-        } else {
-            c.withAlphaComponent((pressed ? 0.24 : 0.09) * dim).setFill(); path.fill()
-        }
-        c.withAlphaComponent((hovered ? 0.8 : 0.58) * dim).setStroke(); path.lineWidth = 1; path.stroke()
-        let label = c.blended(withFraction: 0.18, of: .white) ?? c
-        return label.withAlphaComponent(enabled ? 1 : 0.55)
     }
 }
 
 // MARK: - The selected look
 
 extension Palette {
-    /// One "selected" look everywhere — segments, chips, settings nav, list rows: dark navy with a
-    /// thin blue edge and a faint glow. Primary actions keep the blue → violet gradient; a
+    /// One "selected" look everywhere — chips, list rows, settings nav, theme rows: a soft wash of
+    /// the accent with an accent edge, no glow. Primary actions keep the filled gradient; a
     /// selection never does, so "what's chosen" and "what to do" never look alike.
-    var selectedFill: NSColor { accentSoft }
-    var selectedEdge: NSColor { accent.withAlphaComponent(0.5) }
-    /// Counts and icons inside a selected segment.
-    var selectedAccent: NSColor { info }
+    var selectedFill: NSColor { accent.withAlphaComponent(0.14) }
+    var selectedEdge: NSColor { accent.withAlphaComponent(0.4) }
+    /// Counts and icons inside a selected chip or row.
+    var selectedAccent: NSColor { accent }
 
     func drawSelected(_ path: NSBezierPath) {
-        NSGraphicsContext.saveGraphicsState()
-        let glow = NSShadow()
-        glow.shadowColor = accent.withAlphaComponent(0.28)
-        glow.shadowBlurRadius = 8
-        glow.shadowOffset = .zero
-        glow.set()
         selectedFill.setFill(); path.fill()
-        NSGraphicsContext.restoreGraphicsState()
         selectedEdge.setStroke(); path.lineWidth = 1; path.stroke()
+    }
+
+    /// The sliding pill inside a segmented control: one step up from the track, with a soft
+    /// accent edge and a little depth.
+    func drawSegmentIndicator(_ path: NSBezierPath) {
+        NSGraphicsContext.saveGraphicsState()
+        let depth = NSShadow()
+        depth.shadowColor = NSColor.black.withAlphaComponent(0.3)
+        depth.shadowBlurRadius = 6
+        depth.shadowOffset = NSSize(width: 0, height: -1)
+        depth.set()
+        surfaceStrong.setFill(); path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        accent.withAlphaComponent(0.35).setStroke(); path.lineWidth = 1; path.stroke()
     }
 }
 
@@ -302,7 +385,9 @@ final class CardButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let pressed = isHighlighted
-        let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
+        let box = bounds.insetBy(dx: 0.5, dy: 0.5).pressed(pressed && isEnabled)
+        let radius = min(Radius.m, box.height / 2)
+        let shape = NSBezierPath(roundedRect: box, xRadius: radius, yRadius: radius)
         var titleColor: NSColor? = nil
         switch style {
         case .primary: titleColor = p.drawButton(shape, tone: .accent, hovered: hovered, pressed: pressed, enabled: isEnabled)
@@ -390,12 +475,19 @@ final class IconButton: NSButton {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
-/// Segmented pill tabs.
+/// Segmented pill tabs: the same look and gliding indicator as the island's segmented controls.
 final class PillTabs: NSView {
     var titles: [String] { didSet { needsDisplay = true } }
-    var selected = 0 { didSet { needsDisplay = true } }
+    var selected = 0 {
+        didSet {
+            guard selected != oldValue else { return }
+            indicator.move(to: slot(selected), animated: true)
+            needsDisplay = true
+        }
+    }
     var onSelect: ((Int) -> Void)?
     private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
+    private lazy var indicator = SlidingIndicator(view: self)
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -409,25 +501,28 @@ final class PillTabs: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     private func slot(_ i: Int) -> NSRect {
-        let n = CGFloat(max(1, titles.count)), inset: CGFloat = 3
+        let n = CGFloat(max(1, titles.count)), inset = Metrics.segmentInset
         let w = (bounds.width - inset * 2) / n
         return NSRect(x: inset + CGFloat(i) * w, y: inset, width: w, height: bounds.height - inset * 2)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.m, yRadius: Radius.m)
+        let radius = Radius.m + 2, inner = Radius.m - 1
+        let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
         p.surface.setFill(); box.fill()
         p.divider.setStroke(); box.lineWidth = 1; box.stroke()
+        if let h = hoverIndex, h != selected {
+            p.surfaceHover.setFill()
+            NSBezierPath(roundedRect: slot(h), xRadius: inner, yRadius: inner).fill()
+        }
+        if !titles.isEmpty {
+            indicator.settle(at: slot(selected))
+            p.drawSegmentIndicator(NSBezierPath(roundedRect: indicator.rect, xRadius: inner, yRadius: inner))
+        }
         for (i, t) in titles.enumerated() {
-            let r = slot(i).insetBy(dx: 1, dy: 0)
-            let on = i == selected
-            let path = NSBezierPath(roundedRect: r, xRadius: Radius.m - 2, yRadius: Radius.m - 2)
-            if on { p.drawSelected(path) } else if hoverIndex == i { p.surfaceHover.setFill(); path.fill() }
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: on ? Typo.bodyStrong : Typo.bodyMedium,
-                .foregroundColor: on ? p.text : p.textSecondary
-            ]
+            let r = slot(i)
+            let attrs: [NSAttributedString.Key: Any] = [.font: Typo.chip, .foregroundColor: i == selected ? p.text : p.textSecondary]
             let s = (t as NSString).size(withAttributes: attrs)
             (t as NSString).draw(at: NSPoint(x: r.midX - s.width / 2, y: r.midY - s.height / 2), withAttributes: attrs)
         }
@@ -619,10 +714,8 @@ final class IconTile: NSView {
         wantsLayer = true
         layer?.cornerRadius = size * 0.32
         layer?.cornerCurve = .continuous
-        let tint = color.blended(withFraction: 0.25, of: .white) ?? color
-        layer?.backgroundColor = color.withAlphaComponent(0.14).cgColor
-        layer?.borderWidth = 1
-        layer?.borderColor = color.withAlphaComponent(0.45).cgColor
+        let tint = color.blended(withFraction: 0.12, of: .white) ?? color
+        layer?.backgroundColor = color.withAlphaComponent(0.18).cgColor
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .semibold))
         icon.contentTintColor = tint

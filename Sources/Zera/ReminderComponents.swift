@@ -376,7 +376,7 @@ final class ChoiceChips: NSView {
     var fill = false
     var onChange: ((Set<Int>) -> Void)?
     private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
-    private static let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+    private static let font = Typo.chip
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -412,10 +412,10 @@ final class ChoiceChips: NSView {
             if on {
                 p.drawSelected(path)
             } else {
-                (hoverIndex == i ? p.surfaceHover : p.surfaceRow).setFill(); path.fill()
+                (hoverIndex == i ? p.surfaceHover : p.surface).setFill(); path.fill()
                 p.border.setStroke(); path.lineWidth = 1; path.stroke()
             }
-            let color: NSColor = on ? p.text : p.text(0.8)
+            let color: NSColor = on ? p.accent : p.textSecondary
             let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color]
             let tw = ceil((it.title as NSString).size(withAttributes: attrs).width)
             let extra: CGFloat = (it.dot != nil ? 14 : 0) + (it.symbol != nil ? 18 : 0)
