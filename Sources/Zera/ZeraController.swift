@@ -313,6 +313,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         _ = ClipboardStore.shared   // starts watching the clipboard, if history is on
         registerClipboardHotKey()
         setUpOpener()
+        tasks.onSay = { [weak self] line in self?.say(line, mood: .happy, for: 2.6) }
+        tasks.onShowList = { [weak self] in self?.suppressUntil = .distantPast; self?.show(.tasks) }
+        tasks.onShortcutChanged = { [weak self] label in (self?.cards[.tasks] as? TasksCard)?.shortcutLabel = label }
+        tasks.start()
         MainActor.assumeIsolated {
             GitHubService.shared.startPolling()
             ClaudeHookService.shared.start()
@@ -726,12 +730,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     /// A recorded shortcut kept in defaults under `key`: the default until you record another,
     /// nil once you turn it off.
-    private static func storedShortcut(_ key: String, default d: HotKeyShortcut) -> HotKeyShortcut? {
+    static func storedShortcut(_ key: String, default d: HotKeyShortcut) -> HotKeyShortcut? {
         let u = UserDefaults.standard
         if u.bool(forKey: key + "Off") { return nil }
         return u.data(forKey: key).flatMap { try? JSONDecoder().decode(HotKeyShortcut.self, from: $0) } ?? d
     }
-    private static func store(_ s: HotKeyShortcut?, _ key: String) {
+    static func store(_ s: HotKeyShortcut?, _ key: String) {
         let u = UserDefaults.standard
         u.set(s == nil, forKey: key + "Off")
         if let s = s, let data = try? JSONEncoder().encode(s) { u.set(data, forKey: key) }
@@ -742,6 +746,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         get { Self.storedShortcut("clipboard.shortcut", default: .default) }
         set { Self.store(newValue, "clipboard.shortcut") }
     }
+
+    // MARK: - Tasks
+
+    /// The menu bar list, the focus orb, quick add and export.
+    let tasks = TasksController()
 
     // MARK: - App opener
 
@@ -1277,8 +1286,35 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                 if on { self?.openerHotKey = nil } else { self?.registerOpenerHotKey() }
             }
             s.onOpenerEnabledChanged = { [weak self] _ in self?.registerOpenerHotKey() }
+            s.tasksShortcut = tasks.shortcut
+            s.onTasksShortcutChanged = { [weak self] c in self?.tasks.setShortcut(c) ?? false }
+            s.onTasksShortcutRecording = { [weak self] on in self?.tasks.pauseHotKey(on) }
+            s.onTasksSettingsChanged = { [weak self] in self?.tasks.applySettings() }
             s.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 3) }
             c = s
+        case .tasks:
+            let t = TasksCard(store: tasks.store)
+            t.shortcutLabel = tasks.shortcut?.label
+            t.orbShown = TasksSettings.orb
+            t.onToggleOrb = { [weak self, weak t] in
+                self?.tasks.toggleOrbSetting()
+                t?.orbShown = TasksSettings.orb
+            }
+            t.onExport = { [weak self] in
+                self?.dismissCardByUser()
+                self?.tasks.openExport()
+            }
+            t.onLinkFolder = { [weak self] p in
+                self?.dismissCardByUser()
+                self?.tasks.linkFolder(for: p)
+            }
+            t.onSync = { [weak self] p in self?.tasks.syncCommits(project: p, quiet: p == nil) }
+            t.onRebuild = { [weak self] p, days in self?.tasks.rebuildFromCommits(p, days: days) }
+            t.onAdded = { [weak self] task, focus in
+                self?.sound(.tap)
+                if focus { self?.say("focusing on “\(task.title)” ✨", mood: .happy, for: 2.4) }
+            }
+            c = t
         case .approval:
             let a = ApprovalCard()
             a.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 2.5) }
@@ -1422,6 +1458,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             claudeOpenExpanded = false
         case .settings: break
         case .clipboard: (cards[.clipboard] as? ClipboardView)?.willShow()
+        case .tasks:
+            let t = cards[.tasks] as? TasksCard
+            t?.orbShown = TasksSettings.orb
+            t?.willShow()
         }
 
         if !cardVisible { islandVisited = false }
@@ -1443,6 +1483,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         if isNotificationBanner { startBannerCountdown() }
         else { bannerCountdown = nil }
         if kind == .approval { cardPanel.makeKey() }
+        if kind == .tasks, let t = cards[.tasks] as? TasksCard {
+            // Type a task straight away (the panel doesn't take focus from your app).
+            cardPanel.makeKey()
+            cardPanel.makeFirstResponder(t.field)
+        }
         if kind == .clipboard {
             // Arrow keys, ⏎ and ⌘1–⌘9 work straight away. The panel doesn't activate Zera, so the
             // app you came from is still the one ⌘V pastes into once the island folds away.
