@@ -509,7 +509,7 @@ private final class GHHeaderTile: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 13, yRadius: 13)
-        (p.isDark ? NSColor(srgbRed: 0.09, green: 0.09, blue: 0.17, alpha: 1) : p.tileGitHub).setFill(); path.fill()
+        (p.isDark ? p.surfaceStrong : p.tileGitHub).setFill(); path.fill()
         NSColor.white.withAlphaComponent(0.14).setStroke(); path.lineWidth = 1; path.stroke()
         let side = bounds.width * 0.54
         let r = NSRect(x: (bounds.width - side) / 2, y: (bounds.height - side) / 2, width: side, height: side)

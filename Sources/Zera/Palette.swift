@@ -55,59 +55,66 @@ enum Appearance: Int, CaseIterable {
     }
 }
 
-/// Semantic colours. The notch island is always dark: navy-black glass with blue neon, the live
-/// wings' look. (The light values remain for the icon tool and older renders.) Surfaces are
-/// opaque so stacking never washes out.
+/// Semantic colours, from the chosen theme (Settings → Appearance; see `ThemeStore`). The notch
+/// island is always dark. (The light values remain for the icon tool and older renders.)
+/// Surfaces are opaque so stacking never washes out.
 struct Palette {
     let isDark: Bool
+    private var t: ZeraTheme { ThemeStore.shared.current }
 
-    // Card chrome — deep navy glass in dark mode, soft lavender in light.
-    var cardTop: NSColor { isDark ? rgb(0.039, 0.071, 0.173, 0.97) : rgb(0.955, 0.950, 0.995, 0.97) }
-    var cardBottom: NSColor { isDark ? rgb(0.016, 0.031, 0.071, 0.97) : rgb(0.925, 0.915, 0.985, 0.98) }
-    /// Hairline edges carry a hint of violet so they read as glass, not grey.
-    var border: NSColor { isDark ? rgb(0.33, 0.50, 1.0, 0.30) : rgb(0.36, 0.26, 0.70, 0.14) }
+    // Card chrome — the theme's glass, top to bottom.
+    var cardTop: NSColor { isDark ? t.glassTop.withAlphaComponent(0.97) : rgb(0.955, 0.950, 0.995, 0.97) }
+    var cardBottom: NSColor { isDark ? t.glassBottom.withAlphaComponent(0.97) : rgb(0.925, 0.915, 0.985, 0.98) }
+    /// Hairline edges: soft, so rows and fields read as glass, not as outlines.
+    var border: NSColor { isDark ? t.border : rgb(0.36, 0.26, 0.70, 0.14) }
     var blurMaterial: NSVisualEffectView.Material { isDark ? .hudWindow : .popover }
     var nsAppearance: NSAppearance? { NSAppearance(named: isDark ? .darkAqua : .aqua) }
 
-    // Text — white, then muted lavender-grey for metadata.
-    var text: NSColor { isDark ? rgb(0.953, 0.961, 1.0) : rgb(0.14, 0.12, 0.30) }
+    // Text — then muted for metadata.
+    var text: NSColor { isDark ? t.text : rgb(0.14, 0.12, 0.30) }
     func text(_ alpha: CGFloat) -> NSColor { text.withAlphaComponent(alpha) }
-    var textSecondary: NSColor { isDark ? rgb(0.545, 0.588, 0.776) : text(0.64) }
-    var textTertiary: NSColor { isDark ? rgb(0.40, 0.44, 0.62) : text(0.44) }
+    var textSecondary: NSColor { isDark ? t.textSecondary : text(0.64) }
+    var textTertiary: NSColor { isDark ? t.textTertiary : text(0.44) }
 
-    // Surfaces — indigo steps above the navy card.
-    var surface: NSColor { isDark ? rgb(0.043, 0.071, 0.165) : rgb(1, 1, 1, 0.82) }
-    var surfaceHover: NSColor { isDark ? rgb(0.063, 0.106, 0.271) : rgb(0.93, 0.91, 1.0) }
-    var surfaceStrong: NSColor { isDark ? rgb(0.090, 0.133, 0.294) : rgb(0.88, 0.86, 0.98) }
-    var surfacePressed: NSColor { isDark ? rgb(0.035, 0.055, 0.130) : rgb(0.85, 0.83, 0.96) }
-    var field: NSColor { isDark ? rgb(0.030, 0.050, 0.120) : rgb(1, 1, 1) }
-    var fieldBorder: NSColor { isDark ? rgb(0.33, 0.50, 1.0, 0.32) : rgb(0.36, 0.26, 0.70, 0.14) }
-    var divider: NSColor { isDark ? rgb(0.33, 0.50, 1.0, 0.14) : rgb(0.36, 0.26, 0.70, 0.10) }
-    var codeBox: NSColor { isDark ? rgb(0.008, 0.016, 0.043) : rgb(0.16, 0.14, 0.32) }
-    var codeText: NSColor { rgb(0.85, 0.95, 0.85) }
+    // Surfaces — neutral steps above the glass.
+    var surface: NSColor { isDark ? t.surface : rgb(1, 1, 1, 0.82) }
+    var surfaceHover: NSColor { isDark ? t.surfaceHover : rgb(0.93, 0.91, 1.0) }
+    var surfaceStrong: NSColor { isDark ? t.surfaceStrong : rgb(0.88, 0.86, 0.98) }
+    var surfacePressed: NSColor { isDark ? t.glassBottom : rgb(0.85, 0.83, 0.96) }
+    var field: NSColor { isDark ? t.field : rgb(1, 1, 1) }
+    var fieldBorder: NSColor { isDark ? t.border : rgb(0.36, 0.26, 0.70, 0.14) }
+    var divider: NSColor { isDark ? t.divider : rgb(0.36, 0.26, 0.70, 0.10) }
+    var codeBox: NSColor { isDark ? (t.glassBottom.blended(withFraction: 0.35, of: .black) ?? t.glassBottom) : rgb(0.16, 0.14, 0.32) }
+    var codeText: NSColor { isDark ? (t.success.blended(withFraction: 0.55, of: t.text) ?? t.text) : rgb(0.85, 0.95, 0.85) }
 
-    // Accent — neon blue flowing into violet (primary buttons, selected tab), as on the wings.
-    var accent: NSColor { isDark ? rgb(0.38, 0.72, 1.0) : rgb(0.447, 0.310, 0.980) }
-    var accentHover: NSColor { isDark ? rgb(0.50, 0.79, 1.0) : rgb(0.520, 0.390, 1.0) }
-    var accentPressed: NSColor { isDark ? rgb(0.28, 0.60, 0.93) : rgb(0.380, 0.250, 0.880) }
-    var accentSoft: NSColor { isDark ? rgb(0.090, 0.133, 0.294) : rgb(0.88, 0.84, 1.0) }
-    /// The violet end of the gradient, drawn left → right from `accent`.
-    var accentDeep: NSColor { isDark ? rgb(0.58, 0.40, 1.0) : rgb(0.560, 0.300, 0.960) }
-    /// Violet edge for selected / highlighted surfaces.
+    // Accent — main actions, the selected tab, toggles; a gradient from `accent` to `accentDeep`.
+    var accent: NSColor { isDark ? t.accent : rgb(0.447, 0.310, 0.980) }
+    var accentHover: NSColor { isDark ? (t.accent.blended(withFraction: 0.15, of: .white) ?? t.accent) : rgb(0.520, 0.390, 1.0) }
+    var accentPressed: NSColor { isDark ? (t.accent.blended(withFraction: 0.15, of: .black) ?? t.accent) : rgb(0.380, 0.250, 0.880) }
+    /// The accent washed into the surface: selected chips, tabs and rows.
+    var accentSoft: NSColor { isDark ? (t.surface.blended(withFraction: 0.16, of: t.accent) ?? t.surface) : rgb(0.88, 0.84, 1.0) }
+    /// The far end of the accent gradient.
+    var accentDeep: NSColor { isDark ? t.accentDeep : rgb(0.560, 0.300, 0.960) }
+    /// Edge for selected / highlighted surfaces.
     var accentBorder: NSColor { accent.withAlphaComponent(isDark ? 0.55 : 0.45) }
-    /// List rows on the island: one navy step up from the glass.
-    var surfaceRow: NSColor { isDark ? rgb(0.047, 0.078, 0.180, 0.95) : rgb(1, 1, 1, 0.74) }
+    /// The theme's second colour, paired with the accent.
+    var highlight: NSColor { isDark ? t.highlight : rgb(0.95, 0.45, 0.35) }
+    /// List rows on the island: one step up from the glass.
+    var surfaceRow: NSColor { isDark ? t.row : rgb(1, 1, 1, 0.74) }
     /// Raised panels (insight card, speech bubble).
-    var surfaceElevated: NSColor { isDark ? rgb(0.063, 0.098, 0.230) : rgb(1, 1, 1, 0.96) }
-    var onAccent: NSColor { .white }
-    var success: NSColor { rgb(0.21, 0.89, 0.67) }
-    var warning: NSColor { rgb(1.00, 0.74, 0.26) }
-    var danger: NSColor { rgb(1.00, 0.33, 0.41) }
-    var dangerPressed: NSColor { rgb(0.88, 0.30, 0.36) }
-    var info: NSColor { rgb(0.30, 0.74, 1.00) }
-    var muted: NSColor { isDark ? rgb(0.40, 0.44, 0.62) : rgb(0.60, 0.58, 0.74) }
+    var surfaceElevated: NSColor { isDark ? t.surfaceHover : rgb(1, 1, 1, 0.96) }
+    /// Text and icons on a filled accent.
+    var onAccent: NSColor { isDark ? t.onAccent : .white }
+    var success: NSColor { isDark ? t.success : rgb(0.21, 0.89, 0.67) }
+    var warning: NSColor { isDark ? t.warning : rgb(1.00, 0.74, 0.26) }
+    var danger: NSColor { isDark ? t.danger : rgb(1.00, 0.33, 0.41) }
+    var dangerPressed: NSColor { danger.blended(withFraction: 0.15, of: .black) ?? danger }
+    var info: NSColor { isDark ? t.info : rgb(0.30, 0.74, 1.00) }
+    var muted: NSColor { isDark ? t.textTertiary : rgb(0.60, 0.58, 0.74) }
+    /// The island's outline and glow.
+    var edge: NSColor { isDark ? t.edge : rgb(0.36, 0.26, 0.70, 0.30) }
 
-    // Fixed identity colours for icon tiles (same in both modes so they stay recognisable)
+    // Fixed identity colours for icon tiles (same in every theme so they stay recognisable)
     var tileGitHub: NSColor { rgb(0.20, 0.20, 0.27) }
     var tileClaude: NSColor { rgb(0.85, 0.45, 0.35) }
     var tileNote: NSColor { rgb(1.00, 0.72, 0.30) }
@@ -153,9 +160,10 @@ var Pal: Palette { Palette.current }
 
 // MARK: - Buttons
 
-/// The island's one button family: rounded pills. A quiet navy chip by default; colour only as an
-/// outline with a soft tint — blue for the main action, green for done / approve, red for stop /
-/// reject / delete, amber for a warning. No bright fills, so buttons never shout over the content.
+/// The island's one button family: rounded pills. A quiet chip by default; colour only as an
+/// outline with a soft tint — the theme's accent for the main action, green for done / approve,
+/// red for stop / reject / delete, amber for a warning. No bright fills, so buttons never shout
+/// over the content.
 enum ButtonTone { case neutral, accent, success, danger, warning }
 
 extension Palette {
@@ -175,7 +183,7 @@ extension Palette {
         let dim: CGFloat = enabled ? 1 : 0.45
         guard let c = tone(t) else {
             (pressed ? surfacePressed : (hovered ? surfaceHover : surface)).withAlphaComponent(dim).setFill(); path.fill()
-            fieldBorder.withAlphaComponent((hovered ? 1 : 0.8) * dim).setStroke(); path.lineWidth = 1; path.stroke()
+            fieldBorder.withAlphaComponent(fieldBorder.alphaComponent * (hovered ? 1 : 0.8) * dim).setStroke(); path.lineWidth = 1; path.stroke()
             return text.withAlphaComponent(enabled ? 1 : 0.55)
         }
         if hovered && enabled {

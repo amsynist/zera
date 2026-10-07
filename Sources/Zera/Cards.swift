@@ -687,7 +687,7 @@ final class SettingsCard: CardBase, CardContent {
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
         var isDetail: Bool { rawValue >= Pane.claude.rawValue }
-        static let nav: [Pane] = [.general, .sounds, .clipboard, .integrations, .shortcuts, .about]
+        static let nav: [Pane] = [.general, .appearance, .sounds, .clipboard, .integrations, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
@@ -1021,19 +1021,40 @@ final class SettingsCard: CardBase, CardContent {
         rebuildPane()
     }
 
+    private func themeRow(_ t: ZeraTheme, _ s: inout Stack) {
+        let row = ThemeRow(theme: t)
+        row.selected = t.id == ThemeStore.shared.current.id
+        row.onTap = { ThemeStore.shared.select(t) }
+        pane.addSubview(row)
+        s.place(row, height: ThemeRow.height, gap: Space.xs)
+    }
+
+    @objc private func newThemeTapped() {
+        guard let url = ThemeStore.shared.makeCustom() else { NSSound.beep(); return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func openThemesTapped() { ThemeStore.shared.revealFolder() }
+
     @objc private func soundVolumeChanged(_ sender: NSSlider) {
         SoundService.shared.volume = Float(sender.doubleValue)
         SoundService.shared.play(.reminderDone)
     }
 
     private func buildAppearance(_ s: inout Stack) {
-        let t = PillTabs(titles: Appearance.allCases.map { $0.title })
-        t.selected = Palette.appearance.rawValue
-        t.onSelect = { i in Palette.appearance = Appearance(rawValue: i) ?? .system }
-        pane.addSubview(t)
-        s.place(t, height: Metrics.control + 2, gap: Space.m)
-        hint(Palette.appearance == .system ? "Following macOS — \(Palette.systemIsDark ? "dark" : "light") right now. Zera, the pill and her bubble keep their own look."
-                                           : "Zera, the pill and her bubble keep their own look.", &s)
+        let store = ThemeStore.shared
+        sectionLabel("Theme", &s)
+        for t in store.builtIns { themeRow(t, &s) }
+        if !store.custom.isEmpty {
+            s.y += Space.s
+            sectionLabel("Your themes", &s)
+            for t in store.custom { themeRow(t, &s) }
+        }
+        s.y += Space.s
+        buttonRow("New custom theme", style: .secondary, status: "Copies \(store.current.name) to a file you can edit", &s, action: #selector(newThemeTapped))
+        buttonRow("Open themes folder", style: .tertiary, status: "Add or edit .json theme files; Zera picks up saved changes", &s, action: #selector(openThemesTapped))
+        for problem in store.problems { hint("⚠︎ " + problem, &s) }
+        hint("Zera herself and her bubble keep their own look in every theme.", &s)
         toggleRow("Reduce motion (system setting)", on: Motion.reduced, &s, enabled: false) { _ in }
         hint("Change it in System Settings → Accessibility → Display.", &s)
     }

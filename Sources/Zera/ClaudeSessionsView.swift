@@ -139,7 +139,7 @@ final class SessionProgressBar: NSView {
         running = r
         let pal = Pal
         if let t = t { fill.colors = [t.cgColor, t.cgColor] }
-        else { fill.colors = [NSColor(srgbRed: 0.40, green: 0.52, blue: 0.98, alpha: 1).cgColor, pal.accent.cgColor, NSColor(srgbRed: 0.70, green: 0.46, blue: 0.98, alpha: 1).cgColor] }
+        else { fill.colors = [pal.accent.cgColor, (pal.accent.blended(withFraction: 0.5, of: pal.accentDeep) ?? pal.accent).cgColor, pal.accentDeep.cgColor] }
         let reduce = Motion.reduced
         if changedMode || fill.animation(forKey: "glide") == nil && progress == nil && running {
             fill.removeAllAnimations(); shimmer.removeAllAnimations()
@@ -209,7 +209,7 @@ final class SessionIconTile: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.width * 0.26, yRadius: bounds.width * 0.26)
-        (p.isDark ? NSColor(srgbRed: 0.07, green: 0.07, blue: 0.14, alpha: 1) : p.tileGitHub).setFill(); path.fill()
+        (p.isDark ? p.surfaceStrong : p.tileGitHub).setFill(); path.fill()
         NSColor.white.withAlphaComponent(0.12).setStroke(); path.lineWidth = 1; path.stroke()
         drawIcon(icon(symbol, bounds.width * 0.38, .semibold, tint), centeredIn: bounds)
     }
@@ -622,12 +622,12 @@ final class ClaudeActivityConsole: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l, yRadius: Radius.l)
-        (p.isDark ? NSColor(srgbRed: 0.05, green: 0.05, blue: 0.11, alpha: 0.85) : p.codeBox).setFill(); box.fill()
+        (p.isDark ? p.codeBox.withAlphaComponent(0.85) : p.codeBox).setFill(); box.fill()
         p.border.setStroke(); box.lineWidth = 1; box.stroke()
 
-        let textColor = NSColor(srgbRed: 0.86, green: 0.86, blue: 0.95, alpha: 1)
+        let textColor = p.text.withAlphaComponent(0.9)
         let dim = textColor.withAlphaComponent(0.55)
-        let fileColor = NSColor(srgbRed: 0.45, green: 0.72, blue: 1.0, alpha: 1)
+        let fileColor = p.info
         let x0: CGFloat = 18, top: CGFloat = 16
         let rightLimit = copyButton.frame.minX - 10
         guard !lines.isEmpty else {

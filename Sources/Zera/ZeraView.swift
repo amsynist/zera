@@ -414,9 +414,10 @@ final class ZeraView: NSView {
         return (last.1, last.2, last.3)
     }
 
-    private static let violet = NSColor(srgbRed: 0.58, green: 0.40, blue: 1.0, alpha: 1)
-    private static let cyan = NSColor(srgbRed: 0.30, green: 0.74, blue: 1.0, alpha: 1)
-    private static let green = NSColor(srgbRed: 0.21, green: 0.89, blue: 0.67, alpha: 1)
+    // Her activity marks follow the theme's accent gradient and success colour.
+    private static var violet: NSColor { Neon.violet }
+    private static var cyan: NSColor { Neon.cyan }
+    private static var green: NSColor { Neon.green }
 
     /// Eyebrows follow the tilted face of hang_climb; small steam clouds stay in her window.
     private func drawAngryReaction(around rect: NSRect, alpha: CGFloat) {
