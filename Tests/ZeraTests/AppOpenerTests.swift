@@ -68,6 +68,52 @@ final class AppOpenerTests: XCTestCase {
         XCTAssertEqual(discoveredSafari.name, "Safari")
     }
 
+    func testYourUsualPutsPinsFirstThenTheAppYouWereJustIn() {
+        func app(_ n: String) -> AppEntry {
+            let u = URL(fileURLWithPath: "/Applications/\(n).app")
+            return AppEntry(name: n, url: u, bundleID: "test.\(n)", canonicalURL: u)
+        }
+        let apps = ["Safari", "Code", "Terminal", "Mail", "Slack"].map(app)
+        let now = Date().timeIntervalSince1970
+        let recent = ["/Applications/Code.app": now - 5, "/Applications/Terminal.app": now - 60, "/Applications/Slack.app": now - 1]
+        // You're in Slack: Code (the app before it) comes first, Slack goes to the end.
+        var order = AppCatalog.rankUsual(apps, pins: [], recent: recent, weights: ["/Applications/Mail.app": 9], running: [],
+                                         current: URL(fileURLWithPath: "/Applications/Slack.app"), runningFirst: true).map(\.name)
+        XCTAssertEqual(order.first, "Code")
+        XCTAssertEqual(order[1], "Terminal")
+        XCTAssertEqual(order.last, "Slack")
+        XCTAssertEqual(order.firstIndex(of: "Mail"), 2, "often opened from Zera comes after recently used")
+        // Pins lead, in your order, even the app you're in.
+        order = AppCatalog.rankUsual(apps, pins: ["/Applications/Slack.app", "/Applications/Safari.app"], recent: recent, weights: [:],
+                                     running: [], current: URL(fileURLWithPath: "/Applications/Slack.app"), runningFirst: true).map(\.name)
+        XCTAssertEqual(Array(order.prefix(3)), ["Slack", "Safari", "Code"])
+        // Long ago doesn't count as recent.
+        order = AppCatalog.rankUsual(apps, pins: [], recent: ["/Applications/Terminal.app": now - 30 * 86400], weights: [:],
+                                     running: [], current: nil, runningFirst: true).map(\.name)
+        XCTAssertNotEqual(order.first, "Terminal")
+    }
+
+    func testPinUnpinAndReorder() {
+        let cat = AppCatalog.shared
+        let saved = UserDefaults.standard.object(forKey: "appOpener.pinned")
+        defer { UserDefaults.standard.set(saved, forKey: "appOpener.pinned") }
+        UserDefaults.standard.removeObject(forKey: "appOpener.pinned")
+        func app(_ n: String) -> AppEntry {
+            let u = URL(fileURLWithPath: "/Applications/\(n).app")
+            return AppEntry(name: n, url: u, bundleID: nil, canonicalURL: u)
+        }
+        let a = app("A"), b = app("B"), c = app("C")
+        [a, b, c, a].forEach(cat.pin)
+        XCTAssertEqual(cat.pins.count, 3, "pinning twice doesn't add twice")
+        cat.movePin(c, by: -1)
+        XCTAssertEqual(cat.pins.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent }, ["A", "C", "B"])
+        cat.movePin(a, by: -1)
+        XCTAssertEqual(cat.pinIndex(a), 0, "the top one can't go higher")
+        cat.unpin(c)
+        XCTAssertFalse(cat.isPinned(c))
+        XCTAssertEqual(KeyCombo.code(KeyCombo.upKey, [.command, .option]).label, "⌥⌘↑")
+    }
+
     func testHelperAppsStayOutOfTheList() {
         func ok(_ p: String) -> Bool { AppCatalog.isUserFacing(URL(fileURLWithPath: p), nil) }
         XCTAssertTrue(ok("/Applications/Safari.app"))

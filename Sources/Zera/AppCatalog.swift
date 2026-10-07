@@ -59,7 +59,16 @@ final class AppCatalog {
     private let icons = NSCache<NSURL, NSImage>()
     private static let usageKey = "appOpener.usage"
 
-    private init() { icons.countLimit = 128 }
+    private init() {
+        icons.countLimit = 128
+        // Remember when each app was last in front, so Your usual can put the one you were
+        // just in first (like ⌘Tab).
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.processIdentifier != getpid(), let url = app.bundleURL else { return }
+            self?.noteActive(url)
+        }
+    }
 
     private static var folders: [URL] {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -190,6 +199,80 @@ final class AppCatalog {
         forgetUsage(app)
     }
 
+    // MARK: Pins and recency
+
+    private static let pinsKey = "appOpener.pinned"
+    private static let recentKey = "appOpener.recent"
+
+    /// Pinned apps (paths), in the order you put them. They lead Your usual.
+    private(set) var pins: [String] {
+        get { UserDefaults.standard.stringArray(forKey: Self.pinsKey) ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.pinsKey) }
+    }
+
+    func isPinned(_ app: AppEntry) -> Bool { pins.contains(app.url.path) }
+    func pinIndex(_ app: AppEntry) -> Int? { pins.firstIndex(of: app.url.path) }
+
+    func pin(_ app: AppEntry) {
+        guard !isPinned(app) else { return }
+        pins.append(app.url.path)
+    }
+
+    func unpin(_ app: AppEntry) { pins.removeAll { $0 == app.url.path } }
+
+    /// Moves a pinned app up (-1) or down (+1) among the pins.
+    func movePin(_ app: AppEntry, by d: Int) {
+        var p = pins
+        guard let i = p.firstIndex(of: app.url.path) else { return }
+        let j = max(0, min(p.count - 1, i + d))
+        guard j != i else { return }
+        p.remove(at: i)
+        p.insert(app.url.path, at: j)
+        pins = p
+    }
+
+    /// When each app (by its real location) was last in front.
+    private var recent: [String: Double] {
+        get { (UserDefaults.standard.dictionary(forKey: Self.recentKey) as? [String: Double]) ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.recentKey) }
+    }
+
+    private func noteActive(_ url: URL) {
+        var r = recent
+        r[url.resolvingSymlinksInPath().standardizedFileURL.path] = Date().timeIntervalSince1970
+        // Only the last few dozen matter.
+        if r.count > 60 { for (k, _) in r.sorted(by: { $0.value < $1.value }).prefix(r.count - 60) { r[k] = nil } }
+        recent = r
+    }
+
+    /// The app in front when the opener came down: it goes to the end of Your usual, so the
+    /// one before it is first and switching back and forth is ⌥Space, ⏎.
+    var current: URL?
+
+    /// Your usual, in order: pins (your order), then the apps you used most recently (not the
+    /// one you're in), then the ones you open most from here, running ones, everyday ones.
+    static func rankUsual(_ apps: [AppEntry], pins: [String], recent: [String: Double], weights: [String: Double],
+                          running: Set<URL>, current: URL?, runningFirst: Bool) -> [AppEntry] {
+        let everyday = ["Safari", "Mail", "Notes", "Calendar", "Messages", "Finder", "Music", "System Settings"]
+        let cutoff = Date().timeIntervalSince1970 - 7 * 86400
+        let cur = current?.resolvingSymlinksInPath().standardizedFileURL
+        let rows = apps.map { app -> (app: AppEntry, pin: Int, isCurrent: Bool, last: Double, weight: Double, running: Bool, everyday: Int) in
+            let last = recent[app.canonicalURL.path] ?? 0
+            return (app, pins.firstIndex(of: app.url.path) ?? Int.max, app.canonicalURL == cur,
+                    last > cutoff ? last : 0, weights[app.url.path] ?? 0, running.contains(app.canonicalURL),
+                    everyday.firstIndex(of: app.name) ?? 99)
+        }
+        return rows.sorted { a, b in
+            if a.pin != b.pin { return a.pin < b.pin }
+            if a.isCurrent != b.isCurrent { return !a.isCurrent }
+            if a.last != b.last { return a.last > b.last }
+            if a.weight != b.weight { return a.weight > b.weight }
+            if runningFirst, a.running != b.running { return a.running }
+            if a.everyday != b.everyday { return a.everyday < b.everyday }
+            return a.app.name < b.app.name
+        }.map(\.app)
+    }
+
     /// Results for a query: best first, with the letters that matched.
     func results(for query: String, runningFirst: Bool, limit: Int = 7) -> [(app: AppEntry, hits: [Int], running: Bool, score: Int)] {
         let running = runningURLs
@@ -200,17 +283,10 @@ final class AppCatalog {
         }
         let q = query.trimmingCharacters(in: .whitespaces)
         if q.isEmpty {
-            // Your usual: most-opened from here, then running apps, then a few everyday ones.
-            let everyday = ["Safari", "Mail", "Notes", "Calendar", "Messages", "Finder", "Music", "System Settings"]
-            let ranked = apps.map { app in
-                (app: app, weight: weights[app.url.path] ?? 0, running: isRunning(app, running), everyday: everyday.firstIndex(of: app.name) ?? 99)
-            }.sorted { a, b in
-                if a.weight != b.weight { return a.weight > b.weight }
-                if runningFirst, a.running != b.running { return a.running }
-                if a.everyday != b.everyday { return a.everyday < b.everyday }
-                return a.app.name < b.app.name
-            }
-            return ranked.prefix(limit).map { ($0.app, [], $0.running, 0) }
+            let ranked = Self.rankUsual(apps, pins: pins, recent: recent, weights: weights, running: running,
+                                        current: current, runningFirst: runningFirst)
+            // Every pin shows, plus a few more.
+            return ranked.prefix(max(limit, pins.count + 4)).map { ($0, [], isRunning($0, running), 0) }
         }
         let scored = apps.compactMap { app -> (AppEntry, Int, [Int], Bool)? in
             guard let m = AppMatcher.match(app.name, q) else { return nil }
