@@ -18,8 +18,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private let live = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
     private var liveVisible = false
     private var liveHideWork: DispatchWorkItem?
-    /// Minimize keeps the readout hidden until you open the Claude tab (its count shows the sessions).
+    /// Minimize keeps the readout hidden until something needs you (an approval, or a finished
+    /// turn you can reply to) or you open the Claude tab; then it stays up until the next minimize.
     private var liveDismissed = false
+    /// The finished turn ("session id|prompt time") that last brought minimized wings back, so
+    /// minimizing again keeps that same turn tucked away.
+    private var surfacedFinish: String?
     /// A finished session has already had its ten seconds on screen.
     private var finishedLiveHidden = false
     /// The notch island: every screen opens out of the notch inside this window. It is a fixed
@@ -122,7 +126,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                 return
             }
             self.sound(.tap)
-            // Minimized wings stay minimized: only the Claude tab brings them back.
             if self.zera.mood == .error || self.zera.mood == .worried { return }
             
             // Tap her: open the default card, or tuck away whatever is open so you can get back
@@ -441,6 +444,14 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             // Idle sessions stay visible for a few minutes after their last activity.
             let stale = s.map { $0.status == .ended || ($0.status == .idle && Date().timeIntervalSince($0.lastEventAt) > 600) } ?? true
             let offer = s.flatMap { $0.replyUntil != nil || $0.replyHeld ? $0 : nil }
+            // A turn that just finished brings minimized wings back (once), so you can see it and reply.
+            if let s = s, s.status == .done, !stale {
+                let key = "\(s.id)|\(s.promptAt?.timeIntervalSince1970 ?? 0)"
+                if key != self.surfacedFinish {
+                    self.surfacedFinish = key
+                    self.liveDismissed = false
+                }
+            }
             if stale && pending == nil { return (false, false, offer) }
             self.live.replyWindow = Double(ClaudeActivityService.shared.replyWindow)
             self.live.update(session: stale ? nil : s, pending: pending)
@@ -460,7 +471,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             finishedLiveHidden = false
         }
         // Folded away while a card is open (the card carries the same information), while the
-        // notch has widened to show the tabs, and until Zera is tapped after minimizing.
+        // notch has widened to show the tabs, and after minimizing until an approval or a finished
+        // turn needs you (or the Claude tab is opened).
         // Also folded away while she's down with the app opener.
         guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed, !finishedLiveHidden, !openerOpen else {
             // Nobody can see the Reply button: let the waiting session finish now.
@@ -968,16 +980,16 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     @objc private func hookRequest(_ note: Notification) {
-        guard let req = note.userInfo?["request"] as? HookRequest else { return }
-        let what = req.toolName == "Bash" ? "a command" : req.toolName
+        guard note.userInfo?["request"] is HookRequest else { return }
         sound(.claudeApproval)
+        // An approval brings minimized wings back; they stay up until the next minimize.
+        liveDismissed = false
+        finishedLiveHidden = false
         if cardVisible && currentCard == .approval {
             react(.thinking, for: 0)
             (cards[.approval] as? ApprovalCard)?.reload()
             return
         }
-        // Keep a minimized readout tucked away; her caption and the tab badge announce it.
-        if liveDismissed { say("Claude wants to run \(what) 🤔", mood: .thinking, for: 0); return }
         // The wing (or the approval screen) shows the command; she just perks up.
         react(.thinking, for: 0)
         // Approve / Reject right on the wing when it can show it; otherwise the approval card.

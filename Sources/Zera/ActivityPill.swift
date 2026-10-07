@@ -18,7 +18,7 @@ final class LiveActivityView: NSView {
 
     /// ⌄ on the left wing: open the session. The wing bodies themselves don't react to clicks.
     var onTap: (() -> Void)?
-    /// Minimize button or right-click: hide until the Claude tab is opened.
+    /// Minimize button or right-click: hide until an approval, a finished turn or the Claude tab.
     var onMinimize: (() -> Void)?
     /// Approve (true) / Reject (false) on the right wing.
     var onDecide: ((HookRequest, Bool) -> Void)?
@@ -133,7 +133,7 @@ final class LiveActivityView: NSView {
         expand.toolTip = "Open the session"
         minimize.onTap = { [weak self] in self?.onMinimize?() }
         minimize.setAccessibilityLabel("Minimize Claude activity")
-        minimize.toolTip = "Minimize — open the Claude tab to show again"
+        minimize.toolTip = "Minimize — back for approvals, finished sessions or the Claude tab"
         prompt.onTap = { [weak self] in self?.copyCommand() }
         // Clicking the command itself copies it too.
         command.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(commandClicked)))
