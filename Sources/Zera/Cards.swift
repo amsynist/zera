@@ -269,8 +269,8 @@ final class ActionTile: NSView {
     private let title = NSTextField(labelWithString: "")
     private var hovered = false {
         didSet {
+            // Hover brightens the tile, like every row; no accent outline.
             layer?.backgroundColor = (hovered ? Pal.surfaceHover : Pal.surfaceRow).cgColor
-            layer?.borderColor = (hovered ? Pal.accent.withAlphaComponent(0.45) : Pal.divider).cgColor
         }
     }
 
@@ -290,6 +290,8 @@ final class ActionTile: NSView {
         title.textColor = Pal.text(0.9)
         title.alignment = .center
         title.lineBreakMode = .byTruncatingTail
+        // "Screenshot" in a 73 pt tile: tighten a touch rather than cut it off.
+        title.allowsDefaultTighteningForTruncation = true
         addSubview(title)
         setAccessibilityRole(.button)
         setAccessibilityLabel(t)
@@ -300,7 +302,7 @@ final class ActionTile: NSView {
     override func layout() {
         super.layout()
         tile.frame = NSRect(x: (bounds.width - 26) / 2, y: Space.s, width: 26, height: 26)
-        title.frame = NSRect(x: Space.xs, y: bounds.height - 20, width: bounds.width - Space.s, height: 14)
+        title.frame = NSRect(x: 2, y: bounds.height - 20, width: bounds.width - 4, height: 14)
     }
 
     override func updateTrackingAreas() {
