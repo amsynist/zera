@@ -91,6 +91,10 @@ final class ScreenRenderTests: XCTestCase {
     func testRenderEveryScreen() throws {
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
         let tasks = sampleTasks()
+        // Home's vitals strip shows this machine's readings.
+        SystemVitals.shared.watch()
+        defer { SystemVitals.shared.unwatch() }
+        RunLoop.main.run(until: Date().addingTimeInterval(2.2))
 
         island(HomeCard(), tab: .home, "01-home")
         island(ClaudeSessionsView(), tab: .claude, "02-claude")
@@ -308,5 +312,177 @@ final class ScreenRenderTests: XCTestCase {
         UserDefaults.standard.set(1, forKey: "tasks.viewSpan")
         island(TasksCard(store: month), tab: .tasks, "29-tasks-week")
         UserDefaults.standard.set(0, forKey: "tasks.viewSpan")
+    }
+
+    // MARK: Tour frames
+
+    /// Records the new screens moving, for the site's film: `ZERA_TOUR_FRAMES=1` with
+    /// ZERA_RENDER_SCREENS pointing at an empty folder. Writes frames/NNNNN.jpg, times.json and
+    /// scenes.json (when each scene starts).
+    func testRecordTour() throws {
+        guard ProcessInfo.processInfo.environment["ZERA_TOUR_FRAMES"] != nil else { throw XCTSkip("set ZERA_TOUR_FRAMES to record") }
+        ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
+        let frames = out.appendingPathComponent("frames", isDirectory: true)
+        try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
+
+        // One window for everything: the island on top, room below for Export.
+        let size = NSSize(width: 900, height: 860)
+        let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 40, y: 40), size: size), styleMask: .borderless, backing: .buffered, defer: false)
+        w.backgroundColor = desk
+        w.appearance = NSAppearance(named: .darkAqua)
+        let root = FlippedView(frame: NSRect(origin: .zero, size: size))
+        w.contentView = root
+        w.orderFrontRegardless()
+        let iv = IslandView(frame: NSRect(x: 0, y: 0, width: size.width, height: band + Isle.maxContentHeight + 40))
+        iv.band = band
+        iv.notchWidth = 190
+        iv.centerX = size.width / 2
+        root.addSubview(iv)
+
+        var times: [Double] = []
+        var scenes: [[String: Any]] = []
+        let start = CACurrentMediaTime()
+        let encode = DispatchQueue(label: "tour-encode")
+        let group = DispatchGroup()
+        func capture() {
+            guard let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), .bestResolution) else { return }
+            let n = times.count
+            times.append(CACurrentMediaTime() - start)
+            group.enter()
+            encode.async {
+                let rep = NSBitmapImageRep(cgImage: cg)
+                try? rep.representation(using: .jpeg, properties: [.compressionFactor: 0.93])?
+                    .write(to: frames.appendingPathComponent(String(format: "%05d.jpg", n)))
+                group.leave()
+            }
+        }
+        func run(_ seconds: Double) {
+            let end = CACurrentMediaTime() + seconds
+            var next = CACurrentMediaTime()
+            while CACurrentMediaTime() < end {
+                next += 1.0 / 30
+                RunLoop.main.run(until: Date().addingTimeInterval(max(0.001, next - CACurrentMediaTime())))
+                capture()
+            }
+        }
+        func scene(_ name: String) { scenes.append(["name": name, "t": CACurrentMediaTime() - start]) }
+        func show(_ c: NSView & CardContent, tab: CardKind?, direction: CGFloat) {
+            c.setFrameSize(NSSize(width: c.cardWidth, height: 400))
+            c.needsLayout = true
+            c.layoutSubtreeIfNeeded()
+            iv.present(c, size: NSSize(width: c.cardWidth, height: min(c.desiredHeight, Isle.maxContentHeight)), direction: direction, animated: true)
+            iv.activeTab = tab
+        }
+
+        // Data: live vitals, sample PRs, sessions, clipboard, a month of tasks, fresh downloads.
+        SystemVitals.shared.watch()
+        GitHubService.shared.preview(login: "you", pulls: samplePRs())
+        let month = sampleMonth()
+        ClipboardStore.shared.preview([
+            ClipItem(kind: .text, text: "Ship the theme picker before Friday — Theo has the review.", bytes: 60, sourceApp: "Slack", fingerprint: "a"),
+            ClipItem(kind: .link, text: "https://github.com/amsynist/zera/pull/11", bytes: 40, sourceApp: "Safari", fingerprint: "b"),
+            ClipItem(kind: .code, text: "swift test --filter ScreenRenderTests", bytes: 38, sourceApp: "Terminal", fingerprint: "c"),
+            ClipItem(kind: .color, text: "#9D8CFF", bytes: 7, sourceApp: "Figma", fingerprint: "d")])
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let downloads = home.appendingPathComponent("Downloads", isDirectory: true)
+        for (folder, names) in [("Downloads", ["Invoice-October.pdf", "team-offsite-photos.zip", "design-review.mov"]),
+                                ("Desktop", ["Q3 roadmap.key"])] {
+            let dir = home.appendingPathComponent(folder, isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            for n in names where !FileManager.default.fileExists(atPath: dir.appendingPathComponent(n).path) {
+                try Data(repeating: 7, count: 240_000).write(to: dir.appendingPathComponent(n))
+            }
+        }
+        let arriving = downloads.appendingPathComponent("Screenshot 2026-10-08 at 09.41.12.png")
+        try? FileManager.default.removeItem(at: arriving)
+        UserDefaults.standard.set(true, forKey: "zera.shelf.freshTab")
+        FreshFiles.shared.start()
+        RunLoop.main.run(until: Date().addingTimeInterval(2.2))   // vitals have a minute to fill in a little
+
+        // 1. Home with the vitals strip.
+        let homeCard = HomeCard()
+        scene("home")
+        show(homeCard, tab: .home, direction: 0)
+        run(3.6)
+        // 2. Tap the strip: This Mac.
+        scene("thismac")
+        homeCard.setVitals(true)
+        homeCard.layoutSubtreeIfNeeded()
+        show(homeCard, tab: .home, direction: 0)
+        run(4.2)
+        // 3. Shelf · Fresh, and a download lands.
+        let shelf = DropFilesView()
+        shelf.willShow()
+        scene("fresh")
+        show(shelf, tab: .shelf, direction: 1)
+        run(1.6)
+        try Data(repeating: 9, count: 1_900_000).write(to: arriving)
+        run(2.8)
+        // 4. Clipboard.
+        let clip = ClipboardView()
+        clip.willShow()
+        scene("clipboard")
+        show(clip, tab: .clipboard, direction: 1)
+        run(2.4)
+        // 5. Tasks, the week.
+        UserDefaults.standard.set(1, forKey: "tasks.viewSpan")
+        let tasksCard = TasksCard(store: month)
+        scene("tasks")
+        show(tasksCard, tab: .tasks, direction: 1)
+        run(2.6)
+        UserDefaults.standard.set(0, forKey: "tasks.viewSpan")
+        // 6. Pull requests: Approvals, then a PR's page.
+        let gh = GitHubCard()
+        gh.selectTab(3)
+        scene("approvals")
+        show(gh, tab: .github, direction: 1)
+        run(2.4)
+        scene("prpage")
+        gh.openDetail(samplePRs()[0])
+        show(gh, tab: .github, direction: 0)
+        run(2.6)
+        gh.selectTab(0)
+        // 7. Claude sessions.
+        func session(_ id: String, _ title: String, _ status: ClaudeSession.Status, _ ago: TimeInterval) -> ClaudeSession {
+            let s = ClaudeSession(id: id, cwd: "/Users/you/\(id)", at: Date().addingTimeInterval(-ago))
+            s.title = title; s.status = status; s.promptAt = Date().addingTimeInterval(-ago); s.branch = "main"
+            return s
+        }
+        ClaudeActivityService.shared.preview([session("aurora", "Fix the theme picker", .running, 90),
+                                              session("portal", "Why does the nightly export time out?", .waiting, 400),
+                                              session("zera", "Write release notes for v0.1.4", .done, 3000)])
+        scene("claude")
+        show(ClaudeSessionsView(), tab: .claude, direction: -1)
+        run(2.6)
+        // 8. The battery banner.
+        var warned = false, critical = false
+        if let low = BatteryAlerts.lowAlert(VitalsSample.Battery(percent: 18, charging: false, onPower: false, toEmpty: 64),
+                                            threshold: 20, enabled: true, warned: &warned, warnedCritical: &critical) {
+            ReminderService.shared.preview(low)
+        }
+        scene("battery")
+        show(ReminderAlertCard(), tab: nil, direction: 0)
+        run(2.8)
+        // 9. Export: Timesheet, then Excel.
+        let export = TaskExportView(store: month)
+        export.span = .all
+        export.frame = NSRect(x: (size.width - TaskExportView.size.width) / 2, y: (size.height - TaskExportView.size.height) / 2,
+                              width: TaskExportView.size.width, height: TaskExportView.size.height)
+        iv.isHidden = true
+        root.addSubview(export)
+        scene("export")
+        run(1.8)
+        export.format = .xlsx
+        run(2.2)
+        scene("end")
+        run(0.3)
+
+        group.wait()
+        SystemVitals.shared.unwatch()
+        UserDefaults.standard.set(false, forKey: "zera.shelf.freshTab")
+        w.orderOut(nil)
+        try JSONSerialization.data(withJSONObject: times).write(to: out.appendingPathComponent("times.json"))
+        try JSONSerialization.data(withJSONObject: scenes).write(to: out.appendingPathComponent("scenes.json"))
+        print("tour: \(times.count) frames, \(String(format: "%.1f", times.last ?? 0)) s")
     }
 }
