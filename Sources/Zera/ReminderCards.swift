@@ -10,7 +10,8 @@ import AppKit
 /// is a call link) or Got it; break nudges get Taking it.
 final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
     var cardWidth: CGFloat {
-        max(540, ceil((max(80, primary.fittedWidth) + snooze.fittedWidth + 8 + 20 + Isle.zeraGap / 2) * 2))
+        // Wide enough that a meeting's title isn't cut off left of Zera (540 left it ~144 pt).
+        max(620, ceil((max(80, primary.fittedWidth) + snooze.fittedWidth + 8 + Metrics.sidePad + Isle.zeraGap / 2) * 2))
     }
     let countdownLine = BannerCountdownLine()
     var say: ((String, ZeraMood) -> Void)?
@@ -94,6 +95,8 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
 
         headline.stringValue = a.hydration && a.kind != .snoozed ? a.headline + " 💧" : a.headline
         detail.stringValue = a.detail
+        headline.toolTip = headline.stringValue
+        detail.toolTip = a.detail
         counter.stringValue = svc.pendingAlerts.count > 1 ? "1 of \(svc.pendingAlerts.count)" : ""
         setAccessibilityLabel("\(a.headline). \(a.detail)")
 
@@ -162,16 +165,20 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         dismissButton.isHidden = false
         dismissButton.frame = NSRect(x: w - 20 - 22, y: 4, width: 22, height: 22)
         counter.isHidden = true
-        let x: CGFloat = 20
-        tile.frame = NSRect(x: x, y: 27, width: 34, height: 34)
-        let tx = x + 44, half = w / 2 - Isle.zeraGap / 2
-        headline.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
+        let x = Metrics.sidePad
+        tile.frame = NSRect(x: x, y: 26, width: 36, height: 36)
+        let tx = x + 36 + 12, half = w / 2 - Isle.zeraGap / 2 - 8
+        headline.font = Typo.rowTitleStrong
+        detail.font = Typo.meta
         detail.maximumNumberOfLines = 1
-        headline.frame = NSRect(x: tx, y: 25, width: max(60, half - tx), height: 20)
-        detail.frame = NSRect(x: tx, y: 46, width: max(60, half - tx), height: 16)
-        primary.frame = NSRect(x: w - x - max(80, primary.fittedWidth), y: 29, width: max(80, primary.fittedWidth), height: 30)
+        headline.lineBreakMode = .byTruncatingTail
+        detail.lineBreakMode = .byTruncatingTail
+        headline.frame = NSRect(x: tx, y: 25, width: max(60, half - tx), height: 18)
+        detail.frame = NSRect(x: tx, y: 45, width: max(60, half - tx), height: 16)
+        let pw = max(84, primary.fittedWidth), bh = Metrics.button
+        primary.frame = NSRect(x: w - x - pw, y: 28, width: pw, height: bh)
         let sw = snooze.fittedWidth
-        snooze.frame = NSRect(x: primary.frame.minX - 8 - sw, y: 29, width: sw, height: 30)
+        snooze.frame = NSRect(x: primary.frame.minX - 8 - sw, y: 28, width: sw, height: bh)
         countdownLine.frame = NSRect(x: 18, y: bounds.height - 8, width: max(0, w - 36), height: 2)
     }
 }
