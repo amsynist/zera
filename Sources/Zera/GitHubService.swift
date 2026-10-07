@@ -207,6 +207,16 @@ final class GitHubService {
 
     var isConnected: Bool { token != nil && login != nil }
 
+    /// Shows sample PRs without a token or a request (the screen renders).
+    func preview(login: String, pulls: [GHPullRequest]) {
+        cachedToken = .some("preview")
+        self.login = login
+        self.pulls = pulls
+        lastChecked = Date().addingTimeInterval(-60)
+        lastError = nil
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+
     private func save(token: String) throws {
         guard KeychainStore.write(token, to: .githubToken) else { throw GHError.badResponse }
         cachedToken = .some(token)
