@@ -190,14 +190,14 @@ final class ScreenRenderTests: XCTestCase {
         let quick = QuickAddView()
         quick.frame = NSRect(origin: .zero, size: QuickAddView.size)
         panel(quick, "19d-quick-add")
-        let opener = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: 900))
-        opener.prepare()
-        panel(opener, "20-app-opener")
-        // A real (built-in) app's actions: wait for the app list first.
+        // Capture the starting state after discovery, so Your Usual contains real apps.
         var catalogReady = !AppCatalog.shared.apps.isEmpty
         AppCatalog.shared.refreshIfNeeded { catalogReady = true }
         let until = Date().addingTimeInterval(8)
         while !catalogReady, Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        let opener = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: 900))
+        opener.prepare()
+        panel(opener, "20-app-opener")
         let ring = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: 900))
         ring.prepare()
         ring.previewType("safari")

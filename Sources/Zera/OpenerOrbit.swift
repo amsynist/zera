@@ -147,6 +147,7 @@ final class ActionBubble: NSView {
     var asking = false { didSet { needsDisplay = true } }
     var chosen = false { didSet { if chosen != oldValue { needsDisplay = true } } }
     var onClick: (() -> Void)?
+    var onHover: (() -> Void)?
     private var hovered = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -185,7 +186,7 @@ final class ActionBubble: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: disc, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil))
     }
-    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseEntered(with event: NSEvent) { hovered = true; onHover?() }
     override func mouseExited(with event: NSEvent) { hovered = false }
     override func hitTest(_ point: NSPoint) -> NSView? {
         let p = superview.map { convert(point, from: $0) } ?? point

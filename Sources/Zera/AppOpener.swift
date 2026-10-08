@@ -316,6 +316,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private var confirming: Int?
     private var savedQuery = ""
     private var flashToken = UUID()
+    private var exitAnimationID = 0
 
     private var versions: [URL: String] = [:]
 
@@ -363,7 +364,8 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         guard let img = zera.image, img.size.width > 0 else { return 117 }
         return OP.zeraW * img.size.height / img.size.width
     }
-    private var cardTop: CGFloat { band + OP.ropeGap + zeraH - OP.paws }
+    private var verticalOffset: CGFloat { min(100, max(0, (bounds.height - 760) / 2)) }
+    private var cardTop: CGFloat { band + OP.ropeGap + verticalOffset + zeraH - OP.paws }
     private var cx: CGFloat { ropeX > 0 ? ropeX : bounds.width / 2 }
     func panelHeight(band: CGFloat) -> CGFloat { self.band = band; return cardTop + OP.cardH + OP.margin }
 
@@ -629,7 +631,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         for (i, e) in entries.enumerated() {
             // The arc wraps round, so the chosen one always has neighbours on both sides.
             var k = i - selected
-            if n >= 4 {
+            if n >= 3 {
                 k = ((k % n) + n) % n
                 if k > n / 2 { k -= n }
             }
@@ -736,6 +738,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
                 b.asking = ask
                 b.chosen = k == leaf
                 b.onClick = { [weak self] in self?.triggerLeaf(k) }
+                b.onHover = { [weak self] in self?.hoverAction(k) }
                 // Evenly round the item, starting at the top and going clockwise.
                 let ang = -CGFloat.pi / 2 + CGFloat(k) / CGFloat(want) * 2 * .pi
                 let p = NSPoint(x: c.x + cos(ang) * radius, y: c.y + sin(ang) * radius)
@@ -959,16 +962,14 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         switch mode {
         case .root where actionsOpen: foot.stringValue = "↑↓ choose   ⏎ run   type to search actions   esc back"
         case .root:
-            if let a = chosenApp, AppCatalog.shared.isPinned(a) {
-                foot.stringValue = "↑↓ choose   ⇥ next branch   ⇧⌘P unpin   ⌥⌘↑↓ move"
-            } else {
-                foot.stringValue = "↑↓ choose   ⇥ next branch   ⇧⌘P pin   ⌘1–⌘6 quick open"
+            foot.stringValue = results.isEmpty ? "⏎ search the web   esc close" : "← → choose   ⇥ next branch   ⌘1–⌘6 quick open"
+            if let a = chosenApp {
+                foot.stringValue += AppCatalog.shared.isPinned(a) ? "   ⇧⌘P unpin   ⌥⌘↑↓ move" : "   ⇧⌘P pin"
             }
         case .command(.quitAll): foot.stringValue = "↑↓ choose   space or click to keep   esc back"
         case .command(.custom): foot.stringValue = "esc back"
         case .command: foot.stringValue = "↑↓ choose   ⌘⏎ force   ⌘R refresh   esc back"
         }
-        if mode == .root, !actionsOpen { foot.stringValue = foot.stringValue.replacingOccurrences(of: "↑↓ choose", with: "← → choose") }
         footOpen.title = mode == .command(.quitAll) ? "Quit all" : (actionsOpen ? "Run" : (mode == .root ? (results.isEmpty ? "Search the web" : verb) : (mode == .command(.killPort) ? "Stop" : "Quit")))
         footActions.isHidden = mode == .command(.custom) || (mode == .root && results.isEmpty)
         footActions.title = actionsOpen ? "Close" : "Actions"
@@ -1361,6 +1362,19 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         actionsOpen ? closeActions() : openActions()
     }
 
+    private func hoverAction(_ k: Int) {
+        guard actionsOpen, shownActions.indices.contains(k), leaf != k else { return }
+        leaf = k
+        confirming = nil
+        for (i, bubble) in bubbles.enumerated() {
+            bubble.chosen = i == k
+            bubble.asking = false
+            bubble.title = shownActions[i].title
+        }
+        orbit.addSubview(bubbles[k], positioned: .above, relativeTo: nil)
+        updateDetail()
+    }
+
     /// Grows the chosen item's actions under it; the search field now searches them.
     private func openActions(confirming ask: Int? = nil) {
         guard let (name, actions) = currentActions(), !actions.isEmpty else { NSSound.beep(); return }
@@ -1555,9 +1569,9 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         veil.frame = bounds
         veil.glowCenter = NSPoint(x: c, y: cardTop + 200)
         // Her picture's own rope sits exactly on the drawn one; her paws rest on the search.
-        zera.frame = NSRect(x: (c - ropeFraction * OP.zeraW).rounded(), y: band + OP.ropeGap, width: OP.zeraW, height: zeraH)
+        zera.frame = NSRect(x: (c - ropeFraction * OP.zeraW).rounded(), y: band + OP.ropeGap + verticalOffset, width: OP.zeraW, height: zeraH)
         if rope.layer?.animation(forKey: "grow") == nil {
-            rope.frame = NSRect(x: (c - ropeWidth / 2).rounded(), y: 0, width: ropeWidth, height: band + OP.ropeGap + 14)
+            rope.frame = NSRect(x: (c - ropeWidth / 2).rounded(), y: 0, width: ropeWidth, height: band + OP.ropeGap + verticalOffset + 14)
         }
 
         // The search.
@@ -1608,7 +1622,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         dEmpty.frame = NSRect(x: c - 260, y: orbit.frame.minY + 40, width: 520, height: 60)
 
         // The hints, along the bottom.
-        let fw = min(OV.footW, bounds.width - 40), fx0 = c - fw / 2, fy = y + 36 + 46
+        let fw = min(OV.footW, bounds.width - 40), fx0 = c - fw / 2, fy = y + 36 + (bounds.height < 820 ? 28 : 46)
         let ow2 = footOpen.fittedWidth, aw = footActions.isHidden ? 0 : footActions.fittedWidth
         footActions.frame = NSRect(x: fx0 + fw - aw, y: fy, width: aw, height: 28)
         footOpen.frame = NSRect(x: (footActions.isHidden ? fx0 + fw : footActions.frame.minX - 8) - ow2, y: fy, width: ow2, height: 28)
@@ -1619,6 +1633,10 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
 
     /// The screen dims; she rappels down with the search; the items fan out from the middle.
     func animateIn() {
+        exitAnimationID += 1
+        holder.layer?.removeAllAnimations()
+        rope.layer?.removeAllAnimations()
+        veil.layer?.removeAllAnimations()
         window?.makeFirstResponder(field)
         holder.alphaValue = 1
         guard !Motion.reduced, let hl = holder.layer else { return }
@@ -1666,6 +1684,8 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     /// Back up the rope; the screen brightens again.
     func animateOut(_ done: @escaping () -> Void) {
         guard !Motion.reduced, let hl = holder.layer else { done(); return }
+        exitAnimationID += 1
+        let animationID = exitAnimationID
         CATransaction.begin()
         CATransaction.setCompletionBlock(done)
         let up = CABasicAnimation(keyPath: "transform.translation.y")
@@ -1682,9 +1702,10 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         veil.layer?.add(fade, forKey: "fade")
         CATransaction.commit()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.holder.layer?.removeAllAnimations()
-            self?.rope.layer?.removeAllAnimations()
-            self?.veil.layer?.removeAllAnimations()
+            guard let self = self, self.exitAnimationID == animationID else { return }
+            self.holder.layer?.removeAllAnimations()
+            self.rope.layer?.removeAllAnimations()
+            self.veil.layer?.removeAllAnimations()
         }
     }
 

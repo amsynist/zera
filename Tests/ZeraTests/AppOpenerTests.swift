@@ -197,6 +197,20 @@ final class AppOpenerTests: XCTestCase {
         XCTAssertFalse(view.visibleRowTitles.contains("Clipboard History"))
     }
 
+    func testThreeSearchResultsSurroundTheSelectedTile() throws {
+        let (view, field) = try opener()
+        type("kill", view, field)
+        let tiles = descendants(view).compactMap { $0 as? OrbitTile }.filter { $0.alphaValue > 0 }
+        XCTAssertEqual(tiles.count, 3)
+        let chosen = try XCTUnwrap(tiles.first { $0.chosen })
+        XCTAssertEqual(tiles.filter { $0.frame.midX < chosen.frame.midX }.count, 1)
+        XCTAssertEqual(tiles.filter { $0.frame.midX > chosen.frame.midX }.count, 1)
+    }
+
+    private func descendants(_ parent: NSView) -> [NSView] {
+        parent.subviews.flatMap { [$0] + descendants($0) }
+    }
+
     func testShortcutLabelsAndMatching() throws {
         XCTAssertEqual(KeyCombo.cmd("c", .shift).label, "⇧⌘C")
         XCTAssertEqual(KeyCombo.code(KeyCombo.deleteKey, [.command, .control]).label, "⌃⌘⌫")
@@ -269,6 +283,10 @@ final class AppOpenerTests: XCTestCase {
         XCTAssertEqual(view.chosenActionTitle, "Copy Process ID")
         XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveUp(_:))))
         XCTAssertEqual(view.chosenActionTitle, "Force Quit Process")
+        let copyBubble = try XCTUnwrap(descendants(view).compactMap { $0 as? ActionBubble }.first { $0.title == "Copy Process ID" })
+        copyBubble.mouseEntered(with: cmdK)
+        XCTAssertEqual(view.chosenActionTitle, "Copy Process ID", "hovering an action updates the name before clicking")
+        XCTAssertTrue(copyBubble.chosen)
         // Typing narrows them; ⏎ runs the chosen one (copying the PID here) and folds them away.
         type("copy process", view, field)
         XCTAssertEqual(view.chosenActionTitle, "Copy Process ID")
