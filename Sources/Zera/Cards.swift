@@ -485,7 +485,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             tiles.append(t)
         }
         for name in [ShelfStore.changed, GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ClaudeActivityService.changed] {
-            NotificationCenter.default.addObserver(self, selector: #selector(refresh), name: name, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(refreshIfVisible), name: name, object: nil)
         }
         refresh()
     }
@@ -639,6 +639,11 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         needsLayout = true
         layoutSubtreeIfNeeded()
         onHeightChange?()
+    }
+
+    @objc private func refreshIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        refresh()
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -891,7 +896,17 @@ final class SettingsCard: CardBase, CardContent {
 
     /// Service notifications rebuild the pane — except while you are typing into a field,
     /// so a background GitHub poll cannot wipe a half-pasted token.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { refreshServicePane() }
+    }
+
     @objc private func serviceChanged() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        refreshServicePane()
+    }
+
+    private func refreshServicePane() {
         // Only panes that show a service's state need rebuilding. Claude sessions report changes
         // every second, and a rebuild would throw away whatever you're in the middle of.
         guard [.integrations, .claude, .github, .calendar, .shelf, .diagnostics].contains(current) else { return }
@@ -1468,7 +1483,7 @@ final class SettingsCard: CardBase, CardContent {
         kvRow("Active provider", active, &s)
         let health = a.lastRunSummary.isEmpty ? (cli.status == .connected ? "Healthy" : cli.status.label) : a.lastRunSummary
         kvRow("Zera connection", health, &s)
-        kvRow("Shell PATH entries", "\(ShellEnvironment.shared.path.count)", &s)
+        kvRow("Shell PATH entries", ShellEnvironment.shared.cachedPathCount.map(String.init) ?? "Not checked", &s)
         kvRow("Last checked", cli.checkedAt.map { relativeTime($0) } ?? "never", &s)
         if a.debugLogging, !a.lastStderr.isEmpty {
             sectionLabel("Last error output", &s)

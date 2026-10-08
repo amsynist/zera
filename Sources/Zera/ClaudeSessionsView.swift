@@ -1144,7 +1144,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         right.addSubview(rightState)
 
         for name in [ClaudeActivityService.changed, ClaudeHookService.changed] {
-            NotificationCenter.default.addObserver(self, selector: #selector(reload), name: name, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: name, object: nil)
         }
         reload()
     }
@@ -1161,7 +1161,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         ticker?.invalidate(); ticker = nil
         guard window != nil else { return }
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.reload() }
+            Task { @MainActor in self?.reloadIfVisible() }
         }
         RunLoop.main.add(t, forMode: .common)
         ticker = t
@@ -1215,6 +1215,11 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     }
 
     // MARK: Reload
+
+    @objc private func reloadIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        reload()
+    }
 
     @objc func reload() {
         let p = Pal

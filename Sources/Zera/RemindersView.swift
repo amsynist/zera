@@ -309,7 +309,7 @@ final class RemindersView: NSView, CardContent {
         detailList.addSubview(dots)
         detailList.addSubview(dotsLabel)
 
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: ReminderService.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: ReminderService.changed, object: nil)
         reload()
     }
 
@@ -325,7 +325,7 @@ final class RemindersView: NSView, CardContent {
         ticker?.invalidate(); ticker = nil
         guard window != nil else { ZeraDropdown.shared.dismiss(); return }
         let t = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.reload() }
+            Task { @MainActor in self?.reloadIfVisible() }
         }
         RunLoop.main.add(t, forMode: .common)
         ticker = t
@@ -348,6 +348,11 @@ final class RemindersView: NSView, CardContent {
     }
 
     // MARK: Data
+
+    @objc private func reloadIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        reload()
+    }
 
     private func filtered(_ items: [AgendaItem]) -> [AgendaItem] { items.filter { Self.filter.matches($0) } }
 

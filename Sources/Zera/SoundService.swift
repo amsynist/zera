@@ -93,6 +93,10 @@ final class SoundService {
 
     /// Two players per file, so a sound can restart while its last play is still ringing out.
     private var players: [String: [AVAudioPlayer]] = [:]
+    private let directory: URL?
+    private let loadQueue = DispatchQueue(label: "ai.zera.sounds", qos: .userInitiated)
+    private var loading: Set<String> = []
+    var preparedFileCount: Int { players.count }
     private var tapIndex = 0
     private var lastPlayAt: CFTimeInterval = 0
     private var lastPlayed: [ZeraSound: CFTimeInterval] = [:]
@@ -102,19 +106,9 @@ final class SoundService {
     /// The same sound won't repeat faster than this.
     static let minRepeat: CFTimeInterval = 0.4
 
-    private init() {
-        guard let dir = Self.locate() else { return }
-        for sound in ZeraSound.allCases {
-            for name in sound.files {
-                let url = dir.appendingPathComponent(name + ".wav")
-                let pair = (0..<2).compactMap { _ in try? AVAudioPlayer(contentsOf: url) }
-                pair.forEach { $0.prepareToPlay() }
-                if !pair.isEmpty { players[name] = pair }
-            }
-        }
-    }
+    init(directory: URL? = SoundService.locate()) { self.directory = directory }
 
-    private static func locate() -> URL? {
+    static func locate() -> URL? {
         var candidates: [URL] = []
         if let r = Bundle.main.resourceURL { candidates.append(r.appendingPathComponent("Sounds")) }
         // `swift run` from the repository.
@@ -128,7 +122,7 @@ final class SoundService {
     }
 
     /// Plays `sound` unless sounds are off for it, or another sound has just started.
-    /// Returns whether it played.
+    /// Returns whether it started or was queued for preparation.
     @discardableResult
     func play(_ sound: ZeraSound) -> Bool {
         guard enabled, isOn(sound.family) else { return false }
@@ -137,13 +131,39 @@ final class SoundService {
         if let last = lastPlayed[sound], now - last < Self.minRepeat { return false }
         let name: String
         if sound == .tap { name = sound.files[tapIndex % 3]; tapIndex += 1 } else { name = sound.rawValue }
-        guard let pair = players[name], let player = pair.first(where: { !$0.isPlaying }) ?? pair.first else { return false }
-        player.volume = volume * sound.gain
-        player.currentTime = 0
-        player.play()
+        if let pair = players[name] {
+            start(pair, sound: sound)
+        } else {
+            guard let directory = directory, loading.insert(name).inserted else { return false }
+            let url = directory.appendingPathComponent(name + ".wav")
+            loadQueue.async { [weak self] in
+                let pair = autoreleasepool { () -> [AVAudioPlayer] in
+                    let result = (0..<2).compactMap { _ in try? AVAudioPlayer(contentsOf: url) }
+                    result.forEach { $0.prepareToPlay() }
+                    return result
+                }
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.loading.remove(name)
+                    guard !pair.isEmpty else { return }
+                    self.players[name] = pair
+                    // Don't play an old request after a newer sound or a long initialization.
+                    guard self.enabled, self.isOn(sound.family), self.lastPlayAt == now,
+                          CACurrentMediaTime() - now < 1 else { return }
+                    self.start(pair, sound: sound)
+                }
+            }
+        }
         lastPlayAt = now
         lastPlayed[sound] = now
         return true
+    }
+
+    private func start(_ pair: [AVAudioPlayer], sound: ZeraSound) {
+        guard let player = pair.first(where: { !$0.isPlaying }) ?? pair.first else { return }
+        player.volume = volume * sound.gain
+        player.currentTime = 0
+        player.play()
     }
 
     /// For quiet extras (the caption tick): only when nothing has played for a moment.

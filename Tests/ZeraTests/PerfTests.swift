@@ -3,7 +3,7 @@ import XCTest
 @testable import Zera
 
 /// How long each screen takes to come up, the way a tab press runs it (`willShow`, size, layout,
-/// present), with a realistic amount of data. Prints a table; fails nothing.
+/// present), with a realistic amount of data. Prints timings and checks navigation memory.
 /// `ZERA_PERF=1 swift test --filter PerfTests` (use a throwaway CFFIXED_USER_HOME).
 @MainActor
 final class PerfTests: XCTestCase {
@@ -148,6 +148,61 @@ final class PerfTests: XCTestCase {
         return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : 0
     }
 
+    func testAuxiliarySurfacesAndOpenerLifecycle() throws {
+        let store = TaskStore(url: nil)
+        for i in 0..<30 { store.add("Task \(i) #P\(i % 3)") }
+        let surfaces: [(String, () -> NSView)] = [
+            ("Result", { ResultCard() }), ("Approval", { ApprovalCard() }),
+            ("Alert", { ReminderAlertCard() }), ("Toast", { ToastCard() }),
+            ("Vitals", { VitalsPage() }), ("Task orb", { FocusOrbView(store: store) }),
+            ("Mini task", { FocusCardView(store: store) }), ("Quick add", { QuickAddView() }),
+            ("Export", { TaskExportView(store: store) }),
+            ("Event form", { EventFormView(editing: nil) }),
+            ("Reminder form", { ReminderFormView(editing: nil) }),
+            ("Water form", { HydrationFormView(editing: nil) }),
+        ]
+        print("\nauxiliary surface create + layout:")
+        for (name, make) in surfaces {
+            let duration = ms { autoreleasepool {
+                let view = make()
+                if view.frame.size == .zero { view.frame = NSRect(x: 0, y: 0, width: 880, height: 600) }
+                view.layoutSubtreeIfNeeded()
+            } }
+            print(String(format: "%@ %.1f ms", name, duration))
+        }
+        let settings = SettingsCard(defaultKind: .shelf, showingZera: true, loginEnabled: false)
+        for pane in SettingsCard.Pane.allCases {
+            let duration = ms { settings.select(pane); settings.layoutSubtreeIfNeeded() }
+            print(String(format: "Settings %@ %.1f ms", String(describing: pane), duration))
+        }
+        let saved = AppOpenerSettings.style
+        defer { AppOpenerSettings.style = saved }
+        for style in [AppOpenerSettings.Style.orbit, .tree] {
+            AppOpenerSettings.style = style
+            let manager = AppOpener()
+            let screen = NSRect(x: 0, y: 0, width: 1280, height: 800)
+            let notch = NSRect(x: 540, y: 770, width: 200, height: 30)
+            func cycle() { autoreleasepool {
+                manager.open(notch: notch, screen: screen)
+                manager.panel.display()
+                manager.close()
+                let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                    windowNumber: manager.panel.windowNumber, context: nil, characters: "\u{1b}",
+                    charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+                manager.panel.sendEvent(escape)
+            } }
+            for _ in 0..<5 { cycle() }
+            let warm = footprintMB()
+            for _ in 0..<50 { cycle() }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            let growth = footprintMB() - warm
+            print(String(format: "Opener %@: %+.1f MB after 50 reopens", String(describing: style), growth))
+            XCTAssertLessThan(growth, 32)
+            XCTAssertFalse(manager.panel.isVisible)
+            XCTAssertNil(manager.panel.contentView)
+        }
+    }
+
     /// Switching through every tab many times shouldn't keep growing memory.
     func testRepeatedNavigationMemory() throws {
         try fillClipboard()
@@ -196,5 +251,8 @@ final class PerfTests: XCTestCase {
         print("island host views: \(island.subviews.map { $0.subviews.count })")
         print(String(format: "\nnavigation: %.0f MB after warm-up, %.0f MB after 420 more tab switches (%+.1f MB), %.1f ms per switch\n",
                      warm, after, after - warm, per))
+        XCTAssertLessThan(after - warm, 32, "repeated navigation must reach a memory plateau")
+        XCTAssertLessThan(after, 512, "the populated fixture must not retain gigabytes of outgoing screens")
+        window.contentView = nil
     }
 }

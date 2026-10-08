@@ -1177,7 +1177,7 @@ final class DropFilesView: NSView, CardContent {
         right.addSubview(bin)
 
         let nc = NotificationCenter.default
-        nc.addObserver(self, selector: #selector(reload), name: ShelfStore.changed, object: nil)
+        nc.addObserver(self, selector: #selector(reloadIfVisible), name: ShelfStore.changed, object: nil)
         nc.addObserver(self, selector: #selector(assistantChanged), name: ZeraAssistant.changed, object: nil)
         lastShelfPaths = store.items.map { $0.path }
         reload()
@@ -1204,7 +1204,7 @@ final class DropFilesView: NSView, CardContent {
         super.viewDidMoveToWindow()
         ticker?.invalidate(); ticker = nil
         guard window != nil else { return }
-        let t = Timer(timeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in self?.reload() } }
+        let t = Timer(timeInterval: 30, repeats: true) { [weak self] _ in Task { @MainActor in self?.reloadIfVisible() } }
         RunLoop.main.add(t, forMode: .common)
         ticker = t
     }
@@ -1297,6 +1297,7 @@ final class DropFilesView: NSView, CardContent {
             if window?.isVisible != true { pendingExpand = true }
             Self.runningPath = nil
         }
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
         for (path, r) in shelfRows { r.update(addedAt: store.items.first { $0.path == path }?.addedAt ?? Date(), status: status(for: path)) }
         reloadCenter()
     }
@@ -1319,6 +1320,11 @@ final class DropFilesView: NSView, CardContent {
         reloadRight()
         reloadCenter()
         needsLayout = true
+    }
+
+    @objc private func reloadIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        reload()
     }
 
     private func reloadLeft() {

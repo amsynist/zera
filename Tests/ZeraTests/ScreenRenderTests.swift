@@ -19,13 +19,14 @@ final class ScreenRenderTests: XCTestCase {
 
     // MARK: Capturing
 
-    private func shot(_ v: NSView, _ name: String) {
+    private func shot(_ v: NSView, _ name: String, afterShown: (() -> Void)? = nil) {
         if let only = ProcessInfo.processInfo.environment["ZERA_RENDER_ONLY"], only != name { return }
         let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 60, y: 60), size: v.frame.size), styleMask: .borderless, backing: .buffered, defer: false)
         w.backgroundColor = desk
         w.appearance = NSAppearance(named: .darkAqua)
         w.contentView = v
         w.orderFrontRegardless()
+        afterShown?()
         v.needsLayout = true
         v.layoutSubtreeIfNeeded()
         v.display()
@@ -45,7 +46,7 @@ final class ScreenRenderTests: XCTestCase {
     }
 
     /// A screen inside the real island: glass, edge, the tab bar in the notch band.
-    private func island(_ screen: NSView & CardContent, tab: CardKind?, _ name: String) {
+    private func island(_ screen: NSView & CardContent, tab: CardKind?, _ name: String, afterShown: (() -> Void)? = nil) {
         screen.frame = NSRect(x: 0, y: 0, width: screen.cardWidth, height: 400)
         screen.layoutSubtreeIfNeeded()
         let h = min(screen.desiredHeight, Isle.maxContentHeight)
@@ -56,7 +57,7 @@ final class ScreenRenderTests: XCTestCase {
         iv.centerX = width / 2
         iv.present(screen, size: NSSize(width: screen.cardWidth, height: h), direction: 0, animated: false)
         iv.activeTab = tab
-        shot(iv, name)
+        shot(iv, name, afterShown: afterShown)
     }
 
     private func panel(_ v: NSView, _ name: String) { shot(v, name) }
@@ -88,6 +89,73 @@ final class ScreenRenderTests: XCTestCase {
     }
 
     // MARK: Renders
+
+    /// Short local preview of the actual Core Animation transition; never runs in CI.
+    func testRenderOpenerActionMotion() async throws {
+        guard ProcessInfo.processInfo.environment["ZERA_RENDER_OPENER_MOTION"] != nil else {
+            throw XCTSkip("set ZERA_RENDER_OPENER_MOTION for a local animated preview")
+        }
+        var ready = !AppCatalog.shared.apps.isEmpty
+        AppCatalog.shared.refreshIfNeeded { ready = true }
+        for _ in 0..<160 where !ready { try await Task.sleep(nanoseconds: 50_000_000) }
+        let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800))
+        view.prepare(); view.previewType("safari")
+        let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = view
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil); window.contentView = nil }
+        view.layoutSubtreeIfNeeded(); view.display()
+        let url = out.appendingPathComponent("opener-action-motion.gif")
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "com.compuserve.gif" as CFString, 60, nil))
+        CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        let started = CACurrentMediaTime()
+        for frame in 0..<60 {
+            if frame == 10 || frame == 36 { view.previewActions() }
+            CATransaction.flush()
+            let image = try XCTUnwrap(CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(window.windowNumber), .bestResolution))
+            let context = try XCTUnwrap(CGContext(data: nil, width: 960, height: 600, bitsPerComponent: 8,
+                bytesPerRow: 960 * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.interpolationQuality = .high
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 960, height: 600))
+            CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()),
+                [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.04]] as CFDictionary)
+            let remaining = started + Double(frame + 1) * 0.04 - CACurrentMediaTime()
+            if remaining > 0 { try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000)) }
+        }
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+    }
+
+    func testRenderClipboardAfterGridSwitch() throws {
+        let name = "24b-clipboard-after-grid-switch"
+        if let only = ProcessInfo.processInfo.environment["ZERA_RENDER_ONLY"], only != name { return }
+        let store = ClipboardStore.shared
+        store.enabled = true
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 128, pixelsHigh: 80,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        let data = bitmap.representation(using: .png, properties: [:])!
+        let items = try (0..<3).map { i -> ClipItem in
+            var item = ClipItem(kind: .image, text: "Sample screenshot \(i)", fingerprint: "switch-\(i)")
+            item.imageFile = "switch-\(i).png"
+            let url = store.imageURL(item)!
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url)
+            return item
+        }
+        store.preview(items + [ClipItem(kind: .text, text: "A sample note", fingerprint: "switch-note")])
+        let view = ClipboardView()
+        func descendants(_ root: NSView) -> [NSView] { root.subviews.flatMap { [$0] + descendants($0) } }
+        let filters = try XCTUnwrap(descendants(view).compactMap { $0 as? GitHubSegmentedControl }.first)
+        island(view, tab: .clipboard, name, afterShown: {
+            for _ in 0..<10 {
+                filters.onSelect?(ClipboardStore.Filter.images.rawValue)
+                view.display()
+                filters.onSelect?(ClipboardStore.Filter.all.rawValue)
+                view.display()
+            }
+        })
+    }
 
     func testRenderEveryScreen() throws {
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])

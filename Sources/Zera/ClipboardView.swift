@@ -230,6 +230,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
         // new views. Opening the tab with nothing new builds nothing.
         if filter == .images {
             rows.forEach { $0.removeFromSuperview() }
+            rows.removeAll()
             var pool = Dictionary(thumbs.map { ($0.item.id, $0) }, uniquingKeysWith: { a, _ in a })
             thumbs = shown.enumerated().map { i, item in
                 let t: ClipThumb
@@ -245,6 +246,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
             pool.values.forEach { $0.removeFromSuperview() }
         } else {
             thumbs.forEach { $0.removeFromSuperview() }
+            thumbs.removeAll()
             var pool = Dictionary(rows.map { ($0.item.id, $0) }, uniquingKeysWith: { a, _ in a })
             rows = shown.enumerated().map { i, item in
                 let r: ClipRow
@@ -264,6 +266,8 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
             }
             pool.values.forEach { $0.removeFromSuperview() }
         }
+        // Removed layer-backed tiles can leave pixels in the scroll view's backing store.
+        doc.needsDisplay = true
         if shown.isEmpty {
             let q = search.field.stringValue
             empty.stringValue = !q.isEmpty ? "Nothing matches “\(q)”."
@@ -293,6 +297,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
         introBullets.forEach { $0.isHidden = !intro }
         introButton.isHidden = !intro
         if detail { plainButton.isHidden = !detailAllowsPlain; shelfButton.isHidden = !detailAllowsShelf }
+        else { previewImage.image = nil }
     }
 
     private var detailItem: ClipItem? {
@@ -330,11 +335,18 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
         pinButton.toolTip = item.pinned ? "Unpin" : "Pin"
         pinButton.setAccessibilityLabel(item.pinned ? "Unpin" : "Pin")
         let p = Pal
-        if item.kind == .image, let url = store.imageURL(item) {
-            previewImage.image = NSImage(contentsOf: url)
+        if item.kind == .image, store.imageURL(item) != nil {
+            // The preview is only 150pt tall; never decode a full screenshot for this tile.
+            let size = min(cardWidth, 640)
+            previewImage.image = store.cachedThumbnail(item, size: size)
+            store.loadThumbnail(item, size: size) { [weak self] image in
+                guard let self = self, self.detailItem?.id == item.id else { return }
+                self.previewImage.image = image
+            }
             previewImage.isHidden = false
             preview.isHidden = true
         } else {
+            previewImage.image = nil
             previewImage.isHidden = true
             preview.isHidden = false
             let mono = item.kind == .code || item.kind == .files || item.kind == .color

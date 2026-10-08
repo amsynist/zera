@@ -2,6 +2,12 @@ import XCTest
 @testable import Zera
 
 final class SoundKitTests: XCTestCase {
+    func testOpeningSoundSettingsDoesNotPrepareTheEntireAudioLibrary() {
+        let service = SoundService(directory: dir)
+        _ = service.enabled
+        _ = service.volume
+        XCTAssertEqual(service.preparedFileCount, 0)
+    }
     private let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .appendingPathComponent("../../Resources/Sounds").standardizedFileURL
 

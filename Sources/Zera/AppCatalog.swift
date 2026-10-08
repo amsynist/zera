@@ -61,6 +61,7 @@ final class AppCatalog {
 
     private init() {
         icons.countLimit = 128
+        icons.totalCostLimit = 8 * 1024 * 1024
         // Remember when each app was last in front, so Your usual can put the one you were
         // just in first (like ⌘Tab).
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
@@ -152,8 +153,8 @@ final class AppCatalog {
     func icon(_ app: AppEntry) -> NSImage {
         if let i = icons.object(forKey: app.url as NSURL) { return i }
         // From where it really lives: an alias (Safari's, in /Applications) would wear an arrow badge.
-        let i = NSWorkspace.shared.icon(forFile: app.canonicalURL.path)
-        icons.setObject(i, forKey: app.url as NSURL)
+        let i = NSWorkspace.shared.icon(forFile: app.canonicalURL.path).rasterizedIcon(size: 64)
+        icons.setObject(i, forKey: app.url as NSURL, cost: 128 * 128 * 4)
         return i
     }
 
