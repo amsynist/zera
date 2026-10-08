@@ -15,11 +15,11 @@ import AppKit
 // Images get a grid; Space or ⋯ opens one item in place with a back button.
 
 private enum CL {
-    static let pad: CGFloat = 20
+    static let pad: CGFloat = Metrics.sidePad
     static let rowH: CGFloat = 52
     static let rowGap: CGFloat = 6
     static let groupH: CGFloat = 26
-    static let toolsH: CGFloat = 34
+    static let toolsH: CGFloat = Metrics.segment
     static let footH: CGFloat = 26
     /// Tallest the list gets; longer lists scroll.
     static let listMax: CGFloat = 296
@@ -27,7 +27,7 @@ private enum CL {
 }
 
 final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
-    var cardWidth: CGFloat { 600 }
+    var cardWidth: CGFloat { Isle.lensWidth }
     /// Copied back to the clipboard: the controller says so and folds the island away.
     var onCopied: ((ClipItem) -> Void)?
     var onOpenSettings: (() -> Void)?
@@ -88,12 +88,14 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
         [pauseButton, moreButton, backButton, pinButton, deleteButton].forEach { addSubview($0!) }
 
         filters.fitToContent = true
+        filters.chipStyle = true
         filters.onSelect = { [weak self] i in
             guard let self = self else { return }
             self.filter = ClipboardStore.Filter(rawValue: i) ?? .all
             self.cursor = 0
             self.reload()
         }
+        filters.switches = { [weak self] in self.map { [$0.scroll] } ?? [] }
         addSubview(filters)
         search.field.delegate = self
         addSubview(search)

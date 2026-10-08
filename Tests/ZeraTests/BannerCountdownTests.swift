@@ -57,7 +57,7 @@ final class BannerCountdownTests: XCTestCase {
             XCTAssertFalse(dismiss.isHidden)
             XCTAssertTrue(card.bounds.contains(dismiss.frame))
             XCTAssertTrue(card.bounds.contains(card.countdownLine.frame))
-            XCTAssertEqual(card.countdownLine.frame.height, 2)
+            XCTAssertEqual(card.countdownLine.frame.height, 3)   // v2: the drain along the bottom edge
             XCTAssertGreaterThan(card.countdownLine.frame.minY, 62)
             let point = NSPoint(x: dismiss.frame.midX, y: dismiss.frame.midY)
             XCTAssertTrue(card.hitTest(point) === dismiss)

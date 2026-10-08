@@ -164,13 +164,14 @@ final class BubbleView: NSView {
     var tailX: CGFloat = 0 { didSet { needsDisplay = true } }
     private let label = NSTextField(wrappingLabelWithString: "")
 
-    static let font = Theme.font(12.5, .medium)
-    static let leadPad: CGFloat = 10
-    static let trailPad: CGFloat = 13
-    static let vPad: CGFloat = 7
-    static let dot: CGFloat = 7
-    static let dotGap: CGFloat = 8
-    static let radius: CGFloat = 14
+    // v2 (the design's whisper): a capsule, 14 pt sides, a 9 pt glowing dot, semibold text.
+    static let font = Theme.font(13.5, .semibold)
+    static let leadPad: CGFloat = 13
+    static let trailPad: CGFloat = 15
+    static let vPad: CGFloat = 8
+    static let dot: CGFloat = 8
+    static let dotGap: CGFloat = 9
+    static let radius: CGFloat = 16
     static let tail: CGFloat = 6
     /// Widest the tag gets before it wraps to a second line.
     static let maxWidth: CGFloat = 280
@@ -178,7 +179,7 @@ final class BubbleView: NSView {
     /// Space between her (or the wings) and the tag.
     static let gap: CGFloat = 8
     /// Room around the tag for its halo and shadow.
-    static let halo: CGFloat = 14
+    static let halo: CGFloat = 20
     // NSTextField reserves two points at either side of its text cell.
     private static let cellInset: CGFloat = 4
     private static var textLead: CGFloat { leadPad + dot + dotGap }
@@ -244,45 +245,58 @@ final class BubbleView: NSView {
                              height: b.height - Self.vPad * 2)
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        let b = body
-        let path = NSBezierPath(roundedRect: b.insetBy(dx: 0.5, dy: 0.5), xRadius: Self.radius, yRadius: Self.radius)
-        // The tail: a small notch up toward her, sliding along the top edge.
-        let tx = max(b.minX + Self.radius + 2, min(b.maxX - Self.radius - 2, tailX))
-        let tailPath = NSBezierPath()
-        tailPath.move(to: NSPoint(x: tx - Self.tail - 1, y: b.minY + 0.5))
-        tailPath.line(to: NSPoint(x: tx, y: b.minY - Self.tail + 0.5))
-        tailPath.line(to: NSPoint(x: tx + Self.tail + 1, y: b.minY + 0.5))
-        tailPath.close()
-        path.append(tailPath)
-        path.windingRule = .nonZero
+    /// One continuous outline: the capsule with the tail rising out of its top edge, so the
+    /// border runs round the tail instead of cutting across its base.
+    private func outline(_ b: NSRect, tailX tx: CGFloat) -> NSBezierPath {
+        let r = min(Self.radius, b.height / 2), t = Self.tail
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: b.minX + r, y: b.minY))
+        p.line(to: NSPoint(x: tx - t, y: b.minY))
+        p.line(to: NSPoint(x: tx, y: b.minY - t))
+        p.line(to: NSPoint(x: tx + t, y: b.minY))
+        p.line(to: NSPoint(x: b.maxX - r, y: b.minY))
+        p.appendArc(from: NSPoint(x: b.maxX, y: b.minY), to: NSPoint(x: b.maxX, y: b.minY + r), radius: r)
+        p.line(to: NSPoint(x: b.maxX, y: b.maxY - r))
+        p.appendArc(from: NSPoint(x: b.maxX, y: b.maxY), to: NSPoint(x: b.maxX - r, y: b.maxY), radius: r)
+        p.line(to: NSPoint(x: b.minX + r, y: b.maxY))
+        p.appendArc(from: NSPoint(x: b.minX, y: b.maxY), to: NSPoint(x: b.minX, y: b.maxY - r), radius: r)
+        p.line(to: NSPoint(x: b.minX, y: b.minY + r))
+        p.appendArc(from: NSPoint(x: b.minX, y: b.minY), to: NSPoint(x: b.minX + r, y: b.minY), radius: r)
+        p.close()
+        p.lineJoinStyle = .round
+        return p
+    }
 
+    override func draw(_ dirtyRect: NSRect) {
+        let b = body.insetBy(dx: 0.5, dy: 0.5)
+        let r = min(Self.radius, b.height / 2)
+        let tx = max(b.minX + r + Self.tail + 2, min(b.maxX - r - Self.tail - 2, tailX))
+        let path = outline(b, tailX: tx)
+
+        // A soft drop shadow, then the accent glow round it (the design's whisper).
         NSGraphicsContext.saveGraphicsState()
         let shade = NSShadow()
-        shade.shadowColor = NSColor.black.withAlphaComponent(0.55)
-        shade.shadowOffset = NSSize(width: 0, height: -4)
-        shade.shadowBlurRadius = 9
+        shade.shadowColor = NSColor.black.withAlphaComponent(0.5)
+        shade.shadowOffset = NSSize(width: 0, height: -3)
+        shade.shadowBlurRadius = 10
         shade.set()
-        Neon.fillBottom.setFill()
+        Neon.fillBottom.withAlphaComponent(1).setFill()
         path.fill()
         let glow = NSShadow()
-        glow.shadowColor = Neon.halo.withAlphaComponent(0.55)
-        glow.shadowBlurRadius = 10
+        glow.shadowColor = Neon.accent.withAlphaComponent(0.3)
+        glow.shadowBlurRadius = 16
         glow.set()
         path.fill()
         NSGraphicsContext.restoreGraphicsState()
 
-        NSGradient(starting: Neon.fillTop, ending: Neon.fillBottom)?.draw(in: path, angle: 90)
+        NSGradient(starting: Neon.fillTop.withAlphaComponent(1), ending: Neon.fillBottom.withAlphaComponent(1))?.draw(in: path, angle: 90)
+        // A hairline of black just outside the edge keeps it crisp on any wallpaper.
+        NSColor.black.withAlphaComponent(0.6).setStroke()
+        path.lineWidth = 2.5
+        path.stroke()
         Neon.edge.setStroke()
         path.lineWidth = 1
         path.stroke()
-        // Cover the seam between the tail and the body.
-        Neon.fillTop.setStroke()
-        let seam = NSBezierPath()
-        seam.move(to: NSPoint(x: tx - Self.tail + 0.5, y: b.minY + 0.5))
-        seam.line(to: NSPoint(x: tx + Self.tail - 0.5, y: b.minY + 0.5))
-        seam.lineWidth = 1.2
-        seam.stroke()
 
         // Mood dot, centred on the first line.
         let d = Self.dot
@@ -290,7 +304,7 @@ final class BubbleView: NSView {
         NSGraphicsContext.saveGraphicsState()
         let dotGlow = NSShadow()
         dotGlow.shadowColor = tone.withAlphaComponent(0.9)
-        dotGlow.shadowBlurRadius = 5
+        dotGlow.shadowBlurRadius = 8
         dotGlow.set()
         tone.setFill()
         NSBezierPath(ovalIn: dotRect).fill()
