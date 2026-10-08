@@ -68,14 +68,14 @@ final class ScreenLayoutTests: XCTestCase {
         for (name, screen) in screens() {
             guard let card = screen as? CardBase else { continue }
             laidOut(screen)
-            XCTAssertEqual(card.titleLabel.frame.minX, Metrics.sidePad + 4, accuracy: 0.5, "\(name): header title x")
+            XCTAssertEqual(card.titleLabel.frame.minX, Metrics.sidePad, accuracy: 0.5, "\(name): header title x")
         }
     }
 
     func testRowTiersAreTheSharedSizes() {
-        XCTAssertEqual(RowTier.compact.height, 40)
-        XCTAssertEqual(RowTier.standard.height, 52)
-        XCTAssertEqual(RowTier.rich.height, 68)
+        XCTAssertEqual(RowTier.compact.height, 46)
+        XCTAssertEqual(RowTier.standard.height, 58)
+        XCTAssertEqual(RowTier.rich.height, 70)
         XCTAssertEqual(ShelfFileRow.height(.dropped), RowTier.standard.height)
         XCTAssertEqual(AgendaRow.height, RowTier.rich.height)
     }

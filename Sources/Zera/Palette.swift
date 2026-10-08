@@ -16,8 +16,8 @@ enum Space {
 
 enum Radius {
     static let s: CGFloat = 6      // chips, badges
-    static let m: CGFloat = 10     // buttons, fields, tabs
-    static let l: CGFloat = 14     // rows, tiles
+    static let m: CGFloat = 12     // buttons, fields, tabs
+    static let l: CGFloat = 16     // rows, tiles
     static let card: CGFloat = 18  // the card itself
 }
 
@@ -31,20 +31,20 @@ enum Metrics {
 
     // v2: one set of sizes every screen shares.
     /// Side padding inside the island; floating panels (Export, Focus card, App opener) use `panelPad`.
-    static let sidePad: CGFloat = 20
+    static let sidePad: CGFloat = 32
     static let panelPad: CGFloat = 24
     /// Segmented controls (Clipboard, Claude, GitHub, Reminders, file tabs, Tasks, Export).
-    static let segment: CGFloat = 34
+    static let segment: CGFloat = 36
     static let segmentInset: CGFloat = 3
     /// Filter and project chips.
-    static let chip: CGFloat = 28
+    static let chip: CGFloat = 30
     /// Search boxes and single-line fields.
-    static let field: CGFloat = 34
+    static let field: CGFloat = 38
     /// Square icon buttons in a header, and the smaller ones inside a row.
-    static let headerButton: CGFloat = 32
+    static let headerButton: CGFloat = 34
     static let rowButton: CGFloat = 28
     /// Gap between list rows.
-    static let rowGap: CGFloat = 6
+    static let rowGap: CGFloat = 8
 }
 
 /// The three list-row heights, each with its icon-tile size.
@@ -53,16 +53,16 @@ enum RowTier {
     /// Tasks, settings, themes, clipboard · home, shelf · Claude sessions, pull requests, agenda.
     var height: CGFloat {
         switch self {
-        case .compact: return 40
-        case .standard: return 52
-        case .rich: return 68
+        case .compact: return 46
+        case .standard: return 58
+        case .rich: return 70
         }
     }
     var tile: CGFloat {
         switch self {
-        case .compact: return 28
-        case .standard: return 36
-        case .rich: return 40
+        case .compact: return 30
+        case .standard: return 40
+        case .rich: return 44
         }
     }
     /// Corner radius for this tier's icon tile.
@@ -83,16 +83,20 @@ enum Typo {
     static let mono = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .medium)
 
     // v2: the seven roles every screen shares.
-    static let screenTitle = NSFont.systemFont(ofSize: 16, weight: .semibold)
-    static let screenSubtitle = NSFont.systemFont(ofSize: 12, weight: .regular)
+    /// v2: the lens title — large and tight, like the design's display face.
+    static let screenTitle = NSFont.systemFont(ofSize: 25, weight: .bold)
+    static let screenSubtitle = NSFont.systemFont(ofSize: 13, weight: .regular)
+    /// A banner's headline and its line under it.
+    static let bannerTitle = NSFont.systemFont(ofSize: 16, weight: .bold)
+    static let bannerDetail = NSFont.systemFont(ofSize: 13, weight: .regular)
     /// Upper-cased with `sectionKern`.
     static let sectionLabel = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
     static let sectionKern: CGFloat = 0.8
-    static let rowTitle = NSFont.systemFont(ofSize: 13.5, weight: .medium)
-    static let rowTitleStrong = NSFont.systemFont(ofSize: 13.5, weight: .semibold)
-    static let meta = NSFont.systemFont(ofSize: 12, weight: .regular)
+    static let rowTitle = NSFont.systemFont(ofSize: 14, weight: .semibold)
+    static let rowTitleStrong = NSFont.systemFont(ofSize: 14, weight: .semibold)
+    static let meta = NSFont.systemFont(ofSize: 12.5, weight: .regular)
     /// Segments and chips: the same weight selected or not, so nothing shifts when you pick one.
-    static let chip = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+    static let chip = NSFont.systemFont(ofSize: 13, weight: .semibold)
     static let count = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
 
     /// A section label ("NEEDS YOU", "TO DO · 4"): upper-cased, quiet, slightly spaced.
@@ -254,36 +258,31 @@ extension Palette {
             border.withAlphaComponent(min(1, border.alphaComponent * (lit ? 2 : 1.3)) * dim).setStroke()
             path.lineWidth = 1; path.stroke()
             return text.withAlphaComponent(enabled ? 1 : 0.55)
-        case .accent, .success:
-            // One hue, shaded like a macOS push button: a touch lighter at the top, a hairline of
-            // light along the top edge, a soft neutral shadow under it. Hover lifts, press sinks.
-            let c0 = t == .accent ? accent : success
-            let c = pressed && enabled ? (c0.blended(withFraction: 0.14, of: .black) ?? c0)
-                : (lit ? (c0.blended(withFraction: 0.08, of: .white) ?? c0) : c0)
-            let top = (c.blended(withFraction: 0.07, of: .white) ?? c).withAlphaComponent(dim)
-            let bottom = (c.blended(withFraction: 0.07, of: .black) ?? c).withAlphaComponent(dim)
-            // Visual top → bottom whichever way the view is flipped.
-            let down: CGFloat = (NSGraphicsContext.current?.isFlipped ?? false) ? 90 : -90
+        case .accent:
+            // v2: the main action is a diagonal gradient from the accent to its deep end, with a
+            // soft glow in the accent under it. Hover lifts it a touch, press sinks it.
+            let lift: CGFloat = pressed && enabled ? -0.12 : (lit ? 0.08 : 0)
+            func adj(_ c: NSColor) -> NSColor { (lift >= 0 ? c.blended(withFraction: lift, of: .white) : c.blended(withFraction: -lift, of: .black)) ?? c }
+            let a = adj(accent).withAlphaComponent(dim), b = adj(accentDeep).withAlphaComponent(dim)
             if enabled && !pressed {
                 NSGraphicsContext.saveGraphicsState()
-                let drop = NSShadow()
-                drop.shadowColor = NSColor.black.withAlphaComponent(lit ? 0.32 : 0.24)
-                drop.shadowBlurRadius = lit ? 4 : 3
-                drop.shadowOffset = NSSize(width: 0, height: -1)
-                drop.set()
-                bottom.setFill(); path.fill()
+                let glow = NSShadow()
+                glow.shadowColor = accent.withAlphaComponent(lit ? 0.5 : 0.35)
+                glow.shadowBlurRadius = lit ? 14 : 11
+                glow.shadowOffset = NSSize(width: 0, height: (NSGraphicsContext.current?.isFlipped ?? false) ? 3 : -3)
+                glow.set()
+                b.setFill(); path.fill()
                 NSGraphicsContext.restoreGraphicsState()
             }
-            NSGradient(starting: top, ending: bottom)?.draw(in: path, angle: down)
-            NSGraphicsContext.saveGraphicsState()
-            path.addClip()
-            NSGradient(colors: [NSColor.white.withAlphaComponent(pressed ? 0.06 : 0.2), NSColor.white.withAlphaComponent(0)],
-                       atLocations: [0, 0.14], colorSpace: .sRGB)?.draw(in: path.bounds, angle: down)
-            NSGraphicsContext.restoreGraphicsState()
-            (c.blended(withFraction: 0.3, of: .black) ?? c).withAlphaComponent(0.55 * dim).setStroke()
-            path.lineWidth = 1; path.stroke()
-            let label = t == .accent ? onAccent : ink(on: c)
-            return label.withAlphaComponent(enabled ? 1 : 0.7)
+            let flipped = NSGraphicsContext.current?.isFlipped ?? false
+            NSGradient(starting: a, ending: b)?.draw(in: path, angle: flipped ? 35 : -35)
+            return onAccent.withAlphaComponent(enabled ? 1 : 0.7)
+        case .success:
+            // Done / approve: a tint of green with a green edge, like the design's quiet "good".
+            let c = success
+            c.withAlphaComponent((pressed ? 0.28 : (lit ? 0.24 : 0.18)) * dim).setFill(); path.fill()
+            c.withAlphaComponent((lit ? 0.6 : 0.4) * dim).setStroke(); path.lineWidth = 1; path.stroke()
+            return c.withAlphaComponent(enabled ? 1 : 0.55)
         case .danger, .warning:
             let c = t == .danger ? danger : warning
             c.withAlphaComponent((pressed ? 0.26 : (lit ? 0.2 : 0.13)) * dim).setFill(); path.fill()
@@ -312,15 +311,22 @@ extension Palette {
     /// The sliding pill inside a segmented control: one step up from the track, with a soft
     /// accent edge and a little depth.
     func drawSegmentIndicator(_ path: NSBezierPath) {
+        // v2: one step up from the track, with a hairline of light along its top edge.
         NSGraphicsContext.saveGraphicsState()
         let depth = NSShadow()
-        depth.shadowColor = NSColor.black.withAlphaComponent(0.3)
-        depth.shadowBlurRadius = 6
+        depth.shadowColor = NSColor.black.withAlphaComponent(0.28)
+        depth.shadowBlurRadius = 4
         depth.shadowOffset = NSSize(width: 0, height: -1)
         depth.set()
         surfaceStrong.setFill(); path.fill()
         NSGraphicsContext.restoreGraphicsState()
-        accent.withAlphaComponent(0.35).setStroke(); path.lineWidth = 1; path.stroke()
+        NSGraphicsContext.saveGraphicsState()
+        path.addClip()
+        let b = path.bounds
+        let flipped = NSGraphicsContext.current?.isFlipped ?? false
+        NSColor.white.withAlphaComponent(0.08).setFill()
+        NSRect(x: b.minX, y: flipped ? b.minY : b.maxY - 1, width: b.width, height: 1).fill()
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
 
@@ -465,6 +471,11 @@ final class IconButton: NSButton {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// A clean line icon (`LineIcon`) in place of the symbol.
+    func setLine(_ name: String) {
+        if let g = LineIcon.image(name, size: 15) { image = g; needsDisplay = true }
+    }
+
     /// Swap the glyph (e.g. + ↔ ✕) and keep the label in step.
     func setSymbol(_ symbol: String, label: String) {
         image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
@@ -503,6 +514,8 @@ final class PillTabs: NSView {
         }
     }
     var onSelect: ((Int) -> Void)?
+    /// What each tab shows: after a switch these page in from the side you moved toward.
+    var switches: (() -> [NSView])?
     private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
     private lazy var indicator = SlidingIndicator(view: self)
 
@@ -558,8 +571,10 @@ final class PillTabs: NSView {
     override func mouseDown(with event: NSEvent) {
         let pt = convert(event.locationInWindow, from: nil)
         if let i = titles.indices.first(where: { NSPointInRect(pt, slot($0)) }) {
+            let old = selected
             selected = i
             onSelect?(i)
+            if let views = switches?() { Motion.tabSwitch(views, from: old, to: i) }
         }
     }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
@@ -672,9 +687,24 @@ func stylePopup(_ pop: NSPopUpButton) {
     pop.wantsLayer = true
     pop.layer?.cornerRadius = Radius.m
     pop.layer?.cornerCurve = .continuous
-    pop.layer?.backgroundColor = p.surfaceStrong.cgColor
+    // v2 select: the surface with a hairline edge and one ⌄ on the right (no stepper arrows).
+    pop.layer?.backgroundColor = p.surface.cgColor
+    pop.layer?.borderWidth = 1
+    pop.layer?.borderColor = p.border.cgColor
+    (pop.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+    let chevronID = NSUserInterfaceItemIdentifier("zera.select.chevron")
+    if !pop.subviews.contains(where: { $0.identifier == chevronID }) {
+        let chev = NSImageView()
+        chev.identifier = chevronID
+        chev.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .bold).applying(.init(paletteColors: [p.textSecondary])))
+        chev.translatesAutoresizingMaskIntoConstraints = false
+        pop.addSubview(chev)
+        NSLayoutConstraint.activate([chev.trailingAnchor.constraint(equalTo: pop.trailingAnchor, constant: -10),
+                                     chev.centerYAnchor.constraint(equalTo: pop.centerYAnchor)])
+    }
     for item in pop.itemArray {
-        item.attributedTitle = NSAttributedString(string: item.title, attributes: [.font: Typo.nav, .foregroundColor: p.text])
+        item.attributedTitle = NSAttributedString(string: item.title, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: p.text])
     }
 }
 
@@ -741,6 +771,14 @@ final class IconTile: NSView {
         addSubview(icon)
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    /// A clean line icon (`LineIcon`) in place of the symbol.
+    func setLine(_ name: String) {
+        guard let g = LineIcon.image(name, size: bounds.width * 0.5) else { return }
+        icon.image = g
+        icon.imageScaling = .scaleNone
+        icon.frame = bounds
+    }
 }
 
 /// On/off switch in the accent colour. 40 × 22.

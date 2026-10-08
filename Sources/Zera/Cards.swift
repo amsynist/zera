@@ -22,6 +22,9 @@ class CardBase: NSView {
     var whispering = false { didSet { if whispering != oldValue { needsLayout = true } } }
     /// Y where content starts, under the header row Zera hangs in.
     var headerBottom: CGFloat { Isle.headerHeight }
+    /// v2: the title sits under the rail, which hangs in the header's top 44 pt.
+    static let titleTop: CGFloat = 56
+    static var subtitleTop: CGFloat { titleTop + 34 }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -54,15 +57,15 @@ class CardBase: NSView {
     /// Zera's spot in the middle; `trailingWidth` is room kept free on the right for buttons.
     func layoutHeader(trailingWidth: CGFloat = 0) {
         let w = min(bounds.width - Metrics.cardPad * 2 - trailingWidth, bounds.width / 2 - Isle.zeraGap / 2 - Metrics.cardPad)
-        let top: CGFloat = subtitleLabel.isHidden && !whispering ? 33 : 24
-        titleLabel.frame = NSRect(x: Metrics.cardPad + 4, y: top, width: max(0, w), height: 22)
-        subtitleLabel.frame = NSRect(x: Metrics.cardPad + 4, y: top + 22, width: max(0, w), height: 16)
+        let top: CGFloat = subtitleLabel.isHidden && !whispering ? Self.titleTop + 8 : Self.titleTop
+        titleLabel.frame = NSRect(x: Metrics.cardPad, y: top, width: max(0, w), height: 32)
+        subtitleLabel.frame = NSRect(x: Metrics.cardPad, y: top + 34, width: max(0, w), height: 18)
     }
 
     /// The header's right side, for buttons: everything right of Zera's spot.
     var headerTrailingRect: NSRect {
         let x = bounds.width / 2 + Isle.zeraGap / 2
-        return NSRect(x: x, y: 26, width: bounds.width - Metrics.cardPad - x, height: 36)
+        return NSRect(x: x, y: Self.titleTop + 2, width: bounds.width - Metrics.cardPad - x, height: 36)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -212,6 +215,8 @@ final class NavRow: NSView {
     var onTap: (() -> Void)?
     var badge = 0 { didSet { needsDisplay = true } }
     var selected = false { didSet { restyle() } }
+    /// The sidebar draws the selected wash itself, gliding from row to row.
+    var washManaged = false { didSet { restyle() } }
     private var hovered = false { didSet { restyle() } }
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
@@ -235,11 +240,12 @@ final class NavRow: NSView {
 
     private func restyle() {
         let p = Pal
-        layer?.backgroundColor = (selected ? p.selectedFill : (hovered ? p.surfaceHover : .clear)).cgColor
-        layer?.borderWidth = selected ? 1 : 0
+        let wash = selected && !washManaged
+        layer?.backgroundColor = (wash ? p.selectedFill : (hovered && !selected ? p.surfaceHover : .clear)).cgColor
+        layer?.borderWidth = wash ? 1 : 0
         layer?.borderColor = p.selectedEdge.cgColor
-        icon.contentTintColor = selected ? p.accent : p.textSecondary
-        title.textColor = selected ? p.accent : p.textSecondary
+        icon.contentTintColor = selected ? p.text : p.textSecondary
+        title.textColor = selected ? p.text : p.textSecondary
         // One weight in both states, so the label never shifts when you pick a pane.
         title.font = Typo.chip
     }
@@ -265,33 +271,24 @@ final class NavRow: NSView {
 /// Square tile for the Quick Actions grid.
 final class ActionTile: NSView {
     var onTap: (() -> Void)?
-    private let tile: IconTile
+    private let symbol: String
+    private let tint: NSColor
     private let title = NSTextField(labelWithString: "")
-    private var hovered = false {
-        didSet {
-            // Hover brightens the tile, like every row; no accent outline.
-            layer?.backgroundColor = (hovered ? Pal.surfaceHover : Pal.surfaceRow).cgColor
-        }
-    }
+    private var hovered = false { didSet { needsDisplay = true } }
+    private var pressed = false { didSet { needsDisplay = true } }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    /// v2: a pill chip — the action's glyph in its colour, then its name.
     init(symbol: String, color: NSColor, title t: String) {
-        tile = IconTile(symbol: symbol, color: color, size: 26, pointSize: 12)
+        self.symbol = symbol
+        self.tint = color
         super.init(frame: .zero)
-        roundLayer(Radius.l)
-        layer?.backgroundColor = Pal.surfaceRow.cgColor
-        layer?.borderWidth = 1
-        layer?.borderColor = Pal.divider.cgColor
-        addSubview(tile)
         title.stringValue = t
-        title.font = Typo.caption
-        title.textColor = Pal.text(0.9)
-        title.alignment = .center
-        title.lineBreakMode = .byTruncatingTail
-        // "Screenshot" in a 73 pt tile: tighten a touch rather than cut it off.
-        title.allowsDefaultTighteningForTruncation = true
+        title.font = Typo.chip
+        title.textColor = Pal.text(0.88)
+        title.lineBreakMode = .byClipping
         addSubview(title)
         setAccessibilityRole(.button)
         setAccessibilityLabel(t)
@@ -299,10 +296,22 @@ final class ActionTile: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    static let height: CGFloat = 34
+    private static let glyph: CGFloat = 16
+    var fittedWidth: CGFloat { ceil(14 + Self.glyph + 8 + title.intrinsicContentSize.width + 16) }
+
     override func layout() {
         super.layout()
-        tile.frame = NSRect(x: (bounds.width - 26) / 2, y: Space.s, width: 26, height: 26)
-        title.frame = NSRect(x: 2, y: bounds.height - 20, width: bounds.width - 4, height: 14)
+        let th = title.intrinsicContentSize.height
+        title.frame = NSRect(x: 14 + Self.glyph + 8, y: ((bounds.height - th) / 2).rounded(), width: max(0, bounds.width - 14 - Self.glyph - 8 - 12), height: th)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let p = Pal
+        let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
+        (pressed ? p.surfacePressed : (hovered ? p.surfaceHover : p.surface)).setFill(); shape.fill()
+        Neon.symbol(symbol, in: NSRect(x: 14, y: 0, width: Self.glyph, height: bounds.height), size: 12, weight: .semibold,
+                    color: tint.blended(withFraction: 0.25, of: .white) ?? tint)
     }
 
     override func updateTrackingAreas() {
@@ -311,8 +320,13 @@ final class ActionTile: NSView {
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) { onTap?() }
+    override func mouseExited(with event: NSEvent) { hovered = false; pressed = false }
+    override func mouseDown(with event: NSEvent) { pressed = true }
+    override func mouseUp(with event: NSEvent) {
+        pressed = false
+        if bounds.contains(convert(event.locationInWindow, from: nil)) { onTap?() }
+    }
+    override func accessibilityPerformPress() -> Bool { onTap?(); return true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
@@ -417,7 +431,7 @@ enum QuickAction {
 /// you (up to three) → one row of quick actions. Recent files live on the Files tab.
 final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     /// Wide enough for seven quick-action labels ("Clipboard", "Screenshot") in full.
-    var cardWidth: CGFloat { 600 }
+    var cardWidth: CGFloat { Isle.lensWidth }
     var onOpen: ((CardKind) -> Void)?
     var onAction: ((QuickAction) -> Void)?
     var onOpenURL: ((URL) -> Void)?
@@ -432,8 +446,10 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     private let quickHeader = SectionHeader("Quick actions")
     private var tiles: [ActionTile] = []
     private var query = ""
-    /// The Mac's vitals: a strip under the search box that opens the This Mac page.
-    private let vitalsStrip = VitalsStrip()
+    /// The Mac's vitals (v2): five tiles under "This Mac"; any of them opens the This Mac page.
+    private let vitalsStrip = VitalsOrgans()
+    private let macHeader = SectionHeader("This Mac")
+    private let macHint = NSTextField(labelWithString: "tap a vital to open it")
     private let vitalsPage = VitalsPage()
     private var backButton: GHSquareButton!
     private var showingVitals = false
@@ -446,6 +462,9 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         addSubview(search)
         vitalsStrip.onOpen = { [weak self] in self?.setVitals(true) }
         addSubview(vitalsStrip)
+        addSubview(macHeader)
+        macHint.font = Typo.caption; macHint.textColor = p.textTertiary; macHint.alignment = .right
+        addSubview(macHint)
         vitalsPage.isHidden = true
         addSubview(vitalsPage)
         backButton = GHSquareButton(symbol: "chevron.left", label: "Back", target: self, action: #selector(backTapped))
@@ -487,12 +506,17 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     func setVitals(_ on: Bool, animated: Bool = true) {
         guard on != showingVitals else { return }
         showingVitals = on
-        [search, vitalsStrip, attentionHeader, allClear, quickHeader].forEach { $0.isHidden = on }
+        [search, vitalsStrip, macHeader, macHint, attentionHeader, allClear, quickHeader].forEach { $0.isHidden = on }
         (attentionRows + recentRows + tiles).forEach { $0.isHidden = on }
         vitalsPage.isHidden = !on
         backButton.isHidden = !on
-        if animated { Motion.page(on ? vitalsPage : search, forward: on) }
+        let tiles = vitalsStrip.frame
         refresh()
+        if animated {
+            // A vital grows into This Mac; Back slides Home back in.
+            layoutSubtreeIfNeeded()
+            if on { Motion.grow(vitalsPage, from: tiles) } else { Motion.page(search, forward: false) }
+        }
     }
 
     override func cancelOperation(_ sender: Any?) {
@@ -509,18 +533,19 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     }
     deinit { if watchingVitals { SystemVitals.shared.unwatch() } }
 
-    private let tileHeight: CGFloat = 54
+    private let tileHeight: CGFloat = ActionTile.height
     private let rowH: CGFloat = RowTier.standard.height
-    /// Two rows fit under the vitals strip; the subtitle still counts everything waiting.
-    private static let maxAttention = 2
+    /// Up to three rows; the subtitle still counts everything waiting.
+    private static let maxAttention = 3
 
     private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (rowH + Metrics.rowGap) - Metrics.rowGap }
 
     var desiredHeight: CGFloat {
         if showingVitals { return headerBottom + VitalsPage.height + Metrics.cardPad }
-        var h = headerBottom + Metrics.field + Space.l + VitalsStrip.height + Space.l
-        h += 18 + Space.s + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.l
-        h += 18 + Space.s + tileHeight + Metrics.cardPad
+        var h = headerBottom
+        h += 18 + Space.m + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.xxl
+        h += 18 + Space.m + VitalsOrgans.height + Space.xxl
+        h += 18 + Space.m + tileHeight + Space.xxl + 4
         return h
     }
 
@@ -640,6 +665,11 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         layoutHeader()
         let x = Metrics.cardPad, w = bounds.width - x * 2
         var y = headerBottom
+        if !showingVitals {
+            // Ask Zera sits right of her, level with the greeting.
+            let t = headerTrailingRect
+            search.frame = NSRect(x: t.minX + 8, y: t.midY - Metrics.field / 2, width: t.width - 8, height: Metrics.field)
+        }
         if showingVitals {
             // Back button first; the title and subtitle move over for it.
             let mid = headerTrailingRect.midY
@@ -650,18 +680,13 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             vitalsPage.frame = NSRect(x: x, y: y, width: w, height: VitalsPage.height)
             return
         }
-        search.frame = NSRect(x: x, y: y, width: w, height: Metrics.field)
-        y += Metrics.field + Space.l
-        vitalsStrip.frame = NSRect(x: x, y: y, width: w, height: VitalsStrip.height)
-        y += VitalsStrip.height + Space.l
-
         // While searching, the matches take the place of "Needs you".
         let searching = !query.isEmpty
         attentionHeader.title.attributedStringValue = Typo.sectionText(searching ? "Matches" : "Needs you")
         let shown = searching ? recentRows : attentionRows
         attentionRows.forEach { $0.isHidden = searching }
         recentRows.forEach { $0.isHidden = !searching }
-        attentionHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.s
+        attentionHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.m
         if shown.isEmpty {
             allClear.isHidden = false
             allClear.stringValue = searching ? "No match — press Return to ask Zera." : "All clear — nothing needs you right now ✨"
@@ -672,13 +697,21 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             for r in shown { r.frame = NSRect(x: x, y: y, width: w, height: rowH); y += rowH + Metrics.rowGap }
             y -= Metrics.rowGap
         }
-        y += Space.l
+        y += Space.xxl
 
-        quickHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.s
-        let n = CGFloat(max(1, tiles.count))
-        let tw = (w - Space.s * (n - 1)) / n
-        for (i, t) in tiles.enumerated() {
-            t.frame = NSRect(x: x + CGFloat(i) * (tw + Space.s), y: y, width: tw, height: tileHeight)
+        macHeader.frame = NSRect(x: x, y: y, width: w, height: 18)
+        macHint.frame = NSRect(x: x + w - 220, y: y + 1, width: 220, height: 16)
+        y += 18 + Space.m
+        vitalsStrip.frame = NSRect(x: x, y: y, width: w, height: VitalsOrgans.height)
+        y += VitalsOrgans.height + Space.xxl
+
+        quickHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.m
+        var tx = x
+        for t in tiles {
+            let tw = t.fittedWidth
+            t.isHidden = showingVitals || tx + tw > x + w
+            t.frame = NSRect(x: tx, y: y, width: tw, height: tileHeight)
+            tx += tw + Space.s
         }
         recentHeader.isHidden = true
         recentEmpty.isHidden = true
@@ -692,7 +725,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 // MARK: - Settings
 
 final class SettingsCard: CardBase, CardContent {
-    var cardWidth: CGFloat { 560 }
+    var cardWidth: CGFloat { Isle.lensWidth }
     var onDefaultChanged: ((CardKind?) -> Void)?
     var onShowZeraChanged: ((Bool) -> Void)?
     /// The shortcut that opens Clipboard from any app.
@@ -764,7 +797,10 @@ final class SettingsCard: CardBase, CardContent {
     private(set) var current: Pane = .general
     private var defaultKind: CardKind?
     private let showingZera: Bool
-    private let sidebarW: CGFloat = 150
+    private let sidebarW: CGFloat = 180
+    private let navWash = GlideWash()
+    /// Which provider tab the Claude pane last showed, so a rebuild can glide from it.
+    private var providerShown: Int?
     private var paneHeight: CGFloat = 200
 
     init(defaultKind: CardKind?, showingZera: Bool, loginEnabled: Bool) {
@@ -772,7 +808,8 @@ final class SettingsCard: CardBase, CardContent {
         self.showingZera = showingZera
         backButton = CardButton("Integrations", style: .tertiary, symbol: "chevron.left", target: nil, action: #selector(SettingsCard.backTapped))
         closeButton = IconButton(symbol: "xmark", label: "Close", target: nil, action: #selector(SettingsCard.closeTapped))
-        super.init(width: 560, title: "Settings")
+        super.init(width: Isle.lensWidth, title: "Settings")
+        setSubtitle("Everything stays on this Mac")
         backButton.target = self
         closeButton.target = self
         addSubview(closeButton)
@@ -782,10 +819,15 @@ final class SettingsCard: CardBase, CardContent {
             let row = NavRow(symbol: pn.symbol, title: pn.title)
             row.selected = pn == current
             row.onTap = { [weak self] in self?.select(pn) }
+            row.washManaged = true
             addSubview(row)
             navRows.append(row)
         }
-        paneTitle.font = Typo.section
+        navWash.radius = 11
+        navWash.edged = false
+        navWash.target = { [weak self] in self?.navRows.first { $0.selected }?.frame }
+        addSubview(navWash)
+        paneTitle.font = NSFont.systemFont(ofSize: 17, weight: .bold)
         paneTitle.textColor = Pal.text
         addSubview(paneTitle)
         paneScroll.drawsBackground = false
@@ -805,25 +847,31 @@ final class SettingsCard: CardBase, CardContent {
     required init?(coder: NSCoder) { fatalError() }
 
     var desiredHeight: CGFloat {
-        let nav = headerBottom + CGFloat(Pane.nav.count) * (Metrics.control + Space.xs) + Metrics.cardPad
-        return max(nav, headerBottom + 24 + visiblePaneHeight + Metrics.cardPad)
+        let nav = headerBottom + CGFloat(Pane.nav.count) * (38 + Space.xs) + Metrics.cardPad
+        return max(nav, headerBottom + 40 + visiblePaneHeight + Metrics.cardPad)
     }
 
     /// As much of the pane as fits in the island; the rest scrolls.
     private var visiblePaneHeight: CGFloat {
-        min(paneHeight, Isle.maxContentHeight - headerBottom - 24 - Metrics.cardPad)
+        min(paneHeight, Isle.maxContentHeight - headerBottom - 40 - Metrics.cardPad)
     }
 
     func select(_ p: Pane) {
         // A detail pane (Claude, GitHub…) comes in like a page and Back reverses it; switching
         // between sidebar panes just settles the new one in.
         if p != current, window != nil {
-            if p.isDetail != current.isDetail { Motion.page(paneScroll, forward: p.isDetail) } else { Motion.refresh(paneScroll) }
+            if p.isDetail != current.isDetail { Motion.page(paneScroll, forward: p.isDetail) }
+            else {
+                // Sidebar panes switch like tabs: down the list comes in from the right.
+                let a = Pane.nav.firstIndex(of: current) ?? 0, b = Pane.nav.firstIndex(of: p) ?? 0
+                Motion.tabSwitch([paneScroll], from: a, to: b)
+            }
         }
         current = p
         paneScroll.contentView.scroll(to: .zero)
         let highlight: Pane = p.isDetail ? .integrations : p
         for (i, row) in navRows.enumerated() { row.selected = Pane.nav[i] == highlight }
+        navWash.glide()
         rebuildPane()
     }
 
@@ -858,7 +906,7 @@ final class SettingsCard: CardBase, CardContent {
         paneTitle.stringValue = current.title
         backButton.isHidden = !current.isDetail
         backButton.setTitleText(current.parent.title)
-        var s = Stack(width: cardWidth - sidebarW - Metrics.cardPad * 2 - Space.m)
+        var s = Stack(width: cardWidth - sidebarW - Metrics.cardPad * 2 - Space.xxl)
         switch current {
         case .general: buildGeneral(&s)
         case .sounds: buildSounds(&s)
@@ -880,20 +928,33 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private func hint(_ text: String, _ s: inout Stack) {
-        let l = label(text, font: Typo.caption, color: Pal.textSecondary, in: pane, wraps: true)
-        let h = (text as NSString).boundingRect(with: NSSize(width: s.width, height: 200), options: [.usesLineFragmentOrigin], attributes: [.font: Typo.caption]).height
-        s.place(l, height: ceil(h) + 2, gap: Space.m)
+        let f = NSFont.systemFont(ofSize: 12.5)
+        let l = label(text, font: f, color: Pal.textTertiary, in: pane, wraps: true)
+        let w = min(s.width, 520)
+        let h = (text as NSString).boundingRect(with: NSSize(width: w, height: 200), options: [.usesLineFragmentOrigin], attributes: [.font: f]).height
+        s.y += 10
+        l.frame = NSRect(x: 4, y: s.y, width: w, height: ceil(h) + 2)
+        s.y += ceil(h) + 2 + Space.m
     }
 
+    /// v2: one setting per row — its name left, its control right, a hairline under it.
+    private static let rowH: CGFloat = 50
     private func settingRow(_ title: String, _ s: inout Stack, control: NSView, controlWidth: CGFloat) {
         let row = FlippedView()
-        let l = label(title, font: Typo.bodyMedium, in: row)
-        l.frame = NSRect(x: 0, y: 7, width: s.width - controlWidth - Space.m, height: 18)
-        let ch: CGFloat = control is Toggle ? 22 : Metrics.control
-        control.frame = NSRect(x: s.width - controlWidth, y: (Metrics.button - ch) / 2, width: controlWidth, height: ch)
+        let h = Self.rowH
+        let l = label(title, font: NSFont.systemFont(ofSize: 14, weight: .semibold), in: row)
+        l.frame = NSRect(x: 4, y: (h - 18) / 2, width: s.width - controlWidth - Space.m - 4, height: 18)
+        let toggle = control is Toggle
+        let ch: CGFloat = toggle ? 24 : Metrics.control
+        let cw = toggle ? 44 : controlWidth
+        control.frame = NSRect(x: s.width - cw, y: ((h - ch) / 2).rounded(), width: cw, height: ch)
         row.addSubview(control)
+        let rule = NSView(frame: NSRect(x: 0, y: h - 1, width: s.width, height: 1))
+        rule.wantsLayer = true
+        rule.layer?.backgroundColor = Pal.divider.cgColor
+        row.addSubview(rule)
         pane.addSubview(row)
-        s.place(row, height: Metrics.button)
+        s.place(row, height: h, gap: 0)
     }
 
     private func toggleRow(_ title: String, on: Bool, _ s: inout Stack, enabled: Bool = true, onChange: @escaping (Bool) -> Void) {
@@ -911,7 +972,9 @@ final class SettingsCard: CardBase, CardContent {
         pop.target = self
         pop.action = action
         stylePopup(pop)
-        settingRow(title, &s, control: pop, controlWidth: 150)
+        // Wide enough for the longest choice and the ⌄ beside it.
+        let longest = items.map { ($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium)]).width }.max() ?? 0
+        settingRow(title, &s, control: pop, controlWidth: max(150, ceil(longest) + 52))
         return pop
     }
 
@@ -1007,6 +1070,9 @@ final class SettingsCard: CardBase, CardContent {
         }
         recorder.onRecording = { [weak self] on in self?.onOpenerShortcutRecording?(on) }
         settingRow("Open apps with", &s, control: recorder, controlWidth: 150)
+        let style = popupRow("Opener style", items: ["Orbit (centred)", "Classic tree"], selected: AppOpenerSettings.style.rawValue, &s,
+                             action: #selector(openerStyleChanged))
+        style.isEnabled = AppOpenerSettings.enabled
         toggleRow("Show running apps first", on: AppOpenerSettings.runningFirst, &s, enabled: AppOpenerSettings.enabled) { on in
             AppOpenerSettings.runningFirst = on
         }
@@ -1272,11 +1338,18 @@ final class SettingsCard: CardBase, CardContent {
         hint("Summarize, Explain, Extract and Ask run in the background and answer inside Zera — no terminal window, ever.", &s)
 
         let tabs = PillTabs(titles: ["Existing Claude Code", "Anthropic API"])
-        tabs.selected = a.provider.rawValue
+        // The pane is rebuilt on a switch: the new tabs start where the old pill was and glide.
+        tabs.selected = providerShown ?? a.provider.rawValue
+        if providerShown != nil, providerShown != a.provider.rawValue {
+            DispatchQueue.main.async { tabs.selected = a.provider.rawValue }
+        }
+        providerShown = a.provider.rawValue
         tabs.onSelect = { [weak self] i in
             ZeraAssistant.shared.provider = ZeraAssistant.Provider(rawValue: i) ?? .claudeCode
             if i == 0 { ClaudeCLI.shared.ensureProbed { _ in } }
             self?.rebuildPane()
+            // Only what's under the tabs moves; the rest of the pane stays put.
+            if let self = self { for v in self.pane.subviews where v.frame.minY > tabs.frame.maxY { Motion.page(v, forward: i == 1) } }
         }
         pane.addSubview(tabs)
         s.place(tabs, height: Metrics.segment, gap: Space.m)
@@ -1550,6 +1623,11 @@ final class SettingsCard: CardBase, CardContent {
         onDefaultChanged?(defaultKind)
     }
 
+    @objc private func openerStyleChanged(_ pop: NSPopUpButton) {
+        AppOpenerSettings.style = AppOpenerSettings.Style(rawValue: pop.indexOfSelectedItem) ?? .orbit
+        say?(AppOpenerSettings.style == .orbit ? "the opener comes down in the middle now ✨" : "back to the classic tree 🌳", .happy)
+    }
+
     @objc private func breakChanged() {
         guard let pop = breakPopup else { return }
         let m = Self.breakChoices[max(0, min(Self.breakChoices.count - 1, pop.indexOfSelectedItem))]
@@ -1715,24 +1793,28 @@ final class SettingsCard: CardBase, CardContent {
 
     override func layout() {
         super.layout()
-        layoutHeader(trailingWidth: 40)
+        layoutHeader()
         let x = Metrics.cardPad
-        closeButton.frame = NSRect(x: bounds.width - x - Metrics.control, y: 30, width: Metrics.control, height: Metrics.control)
+        // v2: the island's own ✕ at notch level closes the lens.
+        closeButton.isHidden = true
         var y = headerBottom
+        let navH: CGFloat = 38
         for row in navRows {
-            row.frame = NSRect(x: x, y: y, width: sidebarW, height: Metrics.control)
-            y += Metrics.control + Space.xs
+            row.frame = NSRect(x: x, y: y, width: sidebarW, height: navH)
+            y += navH + Space.xs
         }
-        let px = x + sidebarW + Space.m
+        navWash.frame = bounds
+        navWash.needsDisplay = true
+        let px = x + sidebarW + Space.xxl
         let pw = bounds.width - px - x
         if backButton.isHidden {
-            paneTitle.frame = NSRect(x: px, y: headerBottom, width: pw, height: 18)
+            paneTitle.frame = NSRect(x: px, y: headerBottom + 4, width: pw, height: 24)
         } else {
             let bw = backButton.fittedWidth
-            backButton.frame = NSRect(x: px - Space.s, y: headerBottom - 5, width: bw, height: Metrics.control)
-            paneTitle.frame = NSRect(x: px + bw, y: headerBottom, width: pw - bw, height: 18)
+            backButton.frame = NSRect(x: px - Space.s, y: headerBottom + 2, width: bw, height: Metrics.control)
+            paneTitle.frame = NSRect(x: px + bw, y: headerBottom + 4, width: pw - bw, height: 24)
         }
-        paneScroll.frame = NSRect(x: px, y: headerBottom + 24, width: pw, height: visiblePaneHeight)
+        paneScroll.frame = NSRect(x: px, y: headerBottom + 40, width: pw, height: visiblePaneHeight)
         pane.frame = NSRect(x: 0, y: 0, width: pw, height: paneHeight)
     }
 }
@@ -1885,6 +1967,53 @@ final class ApprovalCard: CardBase, CardContent {
     }
 }
 
+// MARK: - Banner layout
+
+/// v2 banners share one neat row: a 40 pt icon tile, a one-line heading over a one-line detail
+/// (the pair centred on the buttons), and the buttons on the right, all on `midY`.
+enum BannerLayout {
+    static let midY: CGFloat = 46
+    static let tile: CGFloat = 40
+
+    /// One line each; a long heading steps down to 14 pt before it truncates.
+    static func text(_ title: NSTextField, _ detail: NSTextField, x: CGFloat, width: CGFloat) {
+        for l in [title, detail] {
+            l.maximumNumberOfLines = 1
+            l.lineBreakMode = .byTruncatingTail
+            l.cell?.truncatesLastVisibleLine = true
+            l.cell?.wraps = false
+            l.toolTip = l.stringValue
+        }
+        var size: CGFloat = 16
+        func fits(_ s: CGFloat) -> Bool {
+            (title.stringValue as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: s, weight: .bold)]).width <= width
+        }
+        while size > 14, !fits(size) { size -= 0.5 }
+        title.font = .systemFont(ofSize: size, weight: .bold)
+        detail.font = Typo.bannerDetail
+        title.frame = NSRect(x: x, y: midY - 21, width: max(0, width), height: 21)
+        detail.frame = NSRect(x: x, y: midY + 2, width: max(0, width), height: 18)
+    }
+
+    static func tileFrame(x: CGFloat) -> NSRect { NSRect(x: x, y: midY - tile / 2, width: tile, height: tile) }
+    static func buttonY(_ h: CGFloat) -> CGFloat { (midY - h / 2).rounded() }
+}
+
+extension GHEvent.Kind {
+    /// The banner's line icon for the event.
+    var lineIcon: String {
+        switch self {
+        case .prOpened: return "branch"
+        case .reviewRequested: return "eye"
+        case .ciFailed: return "alert"
+        case .ciPassed, .prApproved: return "check"
+        case .ciRunning: return "clock"
+        case .needsApproval: return "bell"
+        case .prChangesRequested, .prCommented: return "message"
+        }
+    }
+}
+
 // MARK: - Notification toast
 
 /// Compact: "New PR opened · repo #125 · 2 min ago" with Review Now / Later.
@@ -1908,6 +2037,7 @@ final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
         dismiss = IconButton(symbol: "xmark", label: "Dismiss notification", target: nil, action: #selector(ToastCard.dismissTapped))
         super.init(width: 520, title: "")
         primary.target = self; dismiss.target = self
+        dismiss.setLine("x")
         addSubview(tile)
         when.font = Typo.caption; when.textColor = Pal.textTertiary; when.alignment = .right; addSubview(when)
         addSubview(zera)
@@ -1918,11 +2048,14 @@ final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
     required init?(coder: NSCoder) { fatalError() }
 
     /// A banner: just the header row (Zera hangs in its middle), plus a little air.
+    /// Banners stay a slim band under the notch (v2 lenses have a taller header).
+    override var headerBottom: CGFloat { Isle.bannerHeight }
     var desiredHeight: CGFloat { headerBottom + 6 }
 
     func show(event e: GHEvent) {
         tile.removeFromSuperview()
-        tile = IconTile(symbol: e.symbol, color: e.tint, size: 36, pointSize: 16)
+        tile = IconTile(symbol: e.symbol, color: e.tint, size: 40, pointSize: 16)
+        tile.setLine(e.kind.lineIcon)
         addSubview(tile)
         let heading: String, button: String, pose: String, line: String
         switch e.kind {
@@ -1964,13 +2097,12 @@ final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
         let x = Metrics.cardPad
         zera.isHidden = true
         when.isHidden = true
-        tile.frame = NSRect(x: x, y: 26, width: 36, height: 36)
-        let half = bounds.width / 2 - Isle.zeraGap / 2 - 8, tx = x + 36 + 12
-        titleLabel.frame = NSRect(x: tx, y: 25, width: max(0, half - tx), height: 18)
-        subtitleLabel.frame = NSRect(x: tx, y: 45, width: max(0, half - tx), height: 16)
+        tile.frame = BannerLayout.tileFrame(x: x)
+        let half = bounds.width / 2 - Isle.zeraGap / 2 - 12, tx = x + BannerLayout.tile + 14
+        BannerLayout.text(titleLabel, subtitleLabel, x: tx, width: half - tx)
         let pw = max(84, primary.fittedWidth), bh = Metrics.button, db = Metrics.rowButton
-        dismiss.frame = NSRect(x: bounds.width - x - db, y: 28 + (bh - db) / 2, width: db, height: db)
-        primary.frame = NSRect(x: dismiss.frame.minX - Space.s - pw, y: 28, width: pw, height: bh)
-        countdownLine.frame = NSRect(x: 18, y: bounds.height - 8, width: max(0, bounds.width - 36), height: 2)
+        dismiss.frame = NSRect(x: bounds.width - x - db, y: BannerLayout.buttonY(db), width: db, height: db)
+        primary.frame = NSRect(x: dismiss.frame.minX - Space.s - pw, y: BannerLayout.buttonY(bh), width: pw, height: bh)
+        countdownLine.frame = NSRect(x: 0, y: bounds.height - 3, width: bounds.width, height: 3)
     }
 }

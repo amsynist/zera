@@ -209,6 +209,14 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         bubblePanel.ignoresMouseEvents = true
         bubblePanel.alphaValue = 0
 
+        island.onClose = { [weak self] in self?.dismissCardByUser() }
+        island.onSearch = { [weak self] in
+            guard let self = self else { return }
+            self.suppressUntil = .distantPast
+            if self.cardVisible { self.hideCard() }
+            if self.pillVisible { self.hidePill() }
+            self.toggleOpener()
+        }
         island.onTab = { [weak self] kind in
             guard let self = self else { return }
             self.suppressUntil = .distantPast
@@ -285,6 +293,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         nc.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         nc.addObserver(self, selector: #selector(storeChanged), name: ShelfStore.changed, object: nil)
         nc.addObserver(self, selector: #selector(githubChanged), name: GitHubService.changed, object: nil)
+        nc.addObserver(self, selector: #selector(vitalsChanged), name: SystemVitals.changed, object: nil)
         nc.addObserver(self, selector: #selector(githubNews(_:)), name: GitHubService.newEvents, object: nil)
         nc.addObserver(self, selector: #selector(hookRequest(_:)), name: ClaudeHookService.newRequest, object: nil)
         nc.addObserver(self, selector: #selector(hookChanged), name: ClaudeHookService.changed, object: nil)
@@ -548,7 +557,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     /// The island's shape on screen (empty when it is closed).
     private var islandScreenRect: NSRect {
         guard island.mode != .closed, cardPanel.isVisible else { return .zero }
-        let r = island.islandRect, f = cardPanel.frame
+        let r = island.hoverRect, f = cardPanel.frame
         return NSRect(x: f.minX + r.minX, y: f.maxY - r.maxY, width: r.width, height: r.height)
     }
 
@@ -566,7 +575,15 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let t = Timer(timeInterval: 1.0 / 30.0, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
         RunLoop.main.add(t, forMode: .common)
         pollTimer = t
+        // The motes and the rail's rings follow the clock too (a meeting comes within the hour).
+        badgeTimer?.invalidate()
+        let b = Timer(timeInterval: 30, repeats: true) { [weak self] _ in self?.refreshBadges() }
+        b.tolerance = 5
+        RunLoop.main.add(b, forMode: .common)
+        badgeTimer = b
+        refreshBadges()
     }
+    private var badgeTimer: Timer?
 
     private var mouseButtonDown: Bool { NSEvent.pressedMouseButtons & 0x1 != 0 }
 
@@ -655,6 +672,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     /// Hovering her: the notch widens to show the tabs (an open island already shows them).
     private func showPill() {
         pillVisible = true
+        railVitals(true)
         hideLive()
         refreshBadges()
         guard !cardVisible else { return }
@@ -676,6 +694,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private func closeIsland() {
         island.close { [weak self] in
             guard let self = self, !self.cardVisible, !self.pillVisible else { return }
+            self.railVitals(false)
             self.cardPanel.orderOut(nil)
         }
     }
@@ -692,6 +711,57 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         }
         // How many Claude sessions are running: with the wings minimized, this is where you see them.
         island.counts[.claude] = MainActor.assumeIsolated { ClaudeActivityService.shared.active.count }
+        island.counts[.shelf] = ShelfStore.shared.items.count
+        island.counts[.github] = MainActor.assumeIsolated { GitHubService.shared.pulls.filter { $0.reviewRequested }.count }
+        island.instruments = MainActor.assumeIsolated { Self.railInstruments() }
+        zera.motes = MainActor.assumeIsolated { Self.motes() }
+    }
+
+    /// What needs you, as motes round her: one per kind.
+    @MainActor
+    private static func motes(now: Date = Date()) -> [NSColor] {
+        var out: [NSColor] = []
+        if !ClaudeHookService.shared.pending.isEmpty || ClaudeActivityService.shared.active.contains(where: { $0.status == .waiting }) {
+            out.append(Neon.warning)
+        }
+        if GitHubService.shared.pulls.contains(where: { $0.reviewRequested }) || !GitHubService.shared.unseen.isEmpty { out.append(Neon.violet) }
+        if ReminderService.shared.nextEvent(within: 3600, now: now) != nil || !ReminderService.shared.pendingAlerts.isEmpty {
+            out.append(Neon.cyan.blended(withFraction: 0.5, of: NSColor.systemBlue) ?? Neon.cyan)
+        }
+        if let b = SystemVitals.readBattery(), b.percent <= 20, !b.charging, !b.onPower { out.append(Neon.red) }
+        return out
+    }
+
+    /// The nodes' live rings (v2): CPU with the battery inside on Home, the running session's
+    /// progress on Claude, today's tasks done, minutes to the next event within the hour.
+    @MainActor
+    private static func railInstruments(now: Date = Date()) -> [CardKind: IslandInstrument] {
+        var out: [CardKind: IslandInstrument] = [:]
+        let v = SystemVitals.shared.now
+        if v.cpu > 0 || v.battery != nil {
+            out[.home] = IslandInstrument(progress: CGFloat(v.cpu), text: v.battery.map { "\($0.percent)" },
+                                          tone: (v.battery?.percent ?? 100) <= 20 && !(v.battery?.charging ?? false) ? Neon.red : nil)
+        }
+        if let s = ClaudeActivityService.shared.active.first {
+            out[.claude] = IslandInstrument(progress: CGFloat(s.progress), text: nil, tone: s.status == .waiting ? Neon.warning : nil)
+        }
+        let tasks = TaskStore.shared.today
+        if !tasks.isEmpty {
+            out[.tasks] = IslandInstrument(progress: CGFloat(TaskStore.shared.doneToday.count) / CGFloat(tasks.count), text: nil, tone: Neon.green)
+        }
+        if let next = ReminderService.shared.nextEvent(within: 3600, now: now) {
+            let m = max(1, Int(ceil(next.start.timeIntervalSince(now) / 60)))
+            out[.reminders] = IslandInstrument(progress: 1 - CGFloat(m) / 60, text: "\(m)m", tone: m <= 15 ? Neon.warning : nil)
+        }
+        return out
+    }
+
+    /// The rail's Home ring reads the CPU: sample while the island is out.
+    private var railWatchesVitals = false
+    private func railVitals(_ on: Bool) {
+        guard on != railWatchesVitals else { return }
+        railWatchesVitals = on
+        if on { SystemVitals.shared.watch() } else { SystemVitals.shared.unwatch() }
     }
 
     // MARK: - Talking
@@ -960,6 +1030,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     // MARK: - Events from services
 
     @objc private func githubChanged() { refreshBadges() }
+    @objc private func vitalsChanged() { if pillVisible || cardVisible { refreshBadges() } }
 
     @objc private func githubNews(_ note: Notification) {
         guard let fresh = note.userInfo?["events"] as? [GHEvent], let top = fresh.first else { return }
@@ -1507,6 +1578,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
         if !cardVisible { islandVisited = false }
         cardVisible = true
+        railVitals(true)
+        refreshBadges()
         hideLive()   // the island takes the space; the readout comes back when it closes
         positionIsland()
         orderIslandFront()

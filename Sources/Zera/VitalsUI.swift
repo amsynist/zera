@@ -320,6 +320,158 @@ final class VitalsStrip: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
+// MARK: - The organs on Home (v2)
+
+/// Five vitals as tiles — CPU · Memory · GPU · Wi-Fi · Battery — each with its label, a large
+/// number and a small live picture (per-core bars, memory by kind, a minute of GPU or network,
+/// the battery cell). Tap any tile to open This Mac.
+final class VitalsOrgans: NSView {
+    static let height: CGFloat = 128
+    var onOpen: (() -> Void)?
+    private let tween = VitalsTween()
+    private let coreTween = VitalsTween()
+    private var hoverIndex: Int?
+    private var pressedIndex: Int?
+    private var lastUpdate: CFTimeInterval = 0
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        tween.duration = 1.1
+        coreTween.duration = 1.1
+        tween.onStep = { [weak self] in self?.needsDisplay = true }
+        coreTween.onStep = { [weak self] in self?.needsDisplay = true }
+        NotificationCenter.default.addObserver(self, selector: #selector(changed), name: SystemVitals.changed, object: nil)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("This Mac")
+        changed()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func changed() {
+        let now = CACurrentMediaTime()
+        guard tween.to.isEmpty || now - lastUpdate >= VitalsStrip.interval else { return }
+        lastUpdate = now
+        let s = SystemVitals.shared.now
+        tween.set([s.cpu, s.memTotal > 0 ? s.memUsed / s.memTotal : 0, s.gpu ?? 0, s.down, s.up, Double(s.battery?.percent ?? 0)])
+        coreTween.set(Array(s.cores.prefix(8)))
+        let net = VitalsFormat.rate(s.down)
+        setAccessibilityValue("CPU \(Int(s.cpu * 100))%, memory \(VitalsFormat.gb(s.memUsed)) GB, download \(net.0) \(net.1)")
+        needsDisplay = true
+    }
+
+    private var kinds: [Int] { SystemVitals.shared.now.battery != nil ? [0, 1, 2, 3, 4] : [0, 1, 2, 3] }
+
+    private func tiles() -> [NSRect] {
+        let n = CGFloat(kinds.count), gap: CGFloat = 12
+        let w = ((bounds.width - gap * (n - 1)) / n).rounded(.down)
+        return (0..<kinds.count).map { NSRect(x: CGFloat($0) * (w + gap), y: 0, width: $0 == kinds.count - 1 ? bounds.width - CGFloat($0) * (w + gap) : w, height: bounds.height) }
+    }
+
+    private static let valueFont = NSFont.systemFont(ofSize: 24, weight: .bold)
+
+    override func draw(_ dirtyRect: NSRect) {
+        let p = Pal
+        let s = SystemVitals.shared.now
+        let v = tween.values.count == 6 ? tween.values : [0, 0, 0, 0, 0, 0]
+        let target = tween.to.count == 6 ? tween.to : v
+        for (i, r) in tiles().enumerated() {
+            let kind = kinds[i]
+            let shape = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 20, yRadius: 20)
+            (pressedIndex == i ? p.surfacePressed : (hoverIndex == i ? p.surfaceHover : p.surfaceRow)).setFill(); shape.fill()
+            (hoverIndex == i ? p.border.withAlphaComponent(min(1, p.border.alphaComponent * 2)) : NSColor.clear).setStroke()
+            shape.lineWidth = 1; shape.stroke()
+            let x = r.minX + 16, w = r.width - 32
+            // Label.
+            let label: String
+            switch kind {
+            case 0: label = "CPU"
+            case 1: label = "Memory"
+            case 2: label = "GPU"
+            case 3: label = "\(s.wifiLink == nil ? "Net" : "Wi-Fi") ↑\(VitalsFormat.rate(target[4]).0)"
+            default: label = "Battery"
+            }
+            VDraw.label(label, at: NSPoint(x: x, y: r.minY + 14))
+            // Value.
+            let big: String, small: String?
+            switch kind {
+            case 0: big = "\(Int((target[0] * 100).rounded()))%"; small = nil
+            case 1: big = VitalsFormat.gb(target[1] * s.memTotal); small = "/ \(Int((s.memTotal / 1_073_741_824).rounded())) GB"
+            case 2: big = s.gpu == nil ? "—" : "\(Int((target[2] * 100).rounded()))%"; small = nil
+            case 3: let d = VitalsFormat.rate(target[3]); big = "↓\(d.0)"; small = d.1
+            default: big = "\(Int(target[5].rounded()))%"; small = nil
+            }
+            VDraw.text(big, Self.valueFont, p.text, at: NSPoint(x: x, y: r.minY + 32))
+            if let small = small {
+                VDraw.text(small, Typo.meta, p.textSecondary, at: NSPoint(x: x + VDraw.width(big, Self.valueFont) + 4, y: r.minY + 42))
+            }
+            // Picture, along the bottom.
+            let viz = NSRect(x: x, y: r.maxY - 16 - 38, width: w, height: 38)
+            switch kind {
+            case 0:
+                let cores = coreTween.values.isEmpty ? [v[0]] : coreTween.values
+                let n = CGFloat(cores.count), gap: CGFloat = 3
+                let bw = (viz.width - gap * (n - 1)) / n
+                for (j, c) in cores.enumerated() {
+                    let h = max(3, viz.height * CGFloat(min(1, c)))
+                    let bar = NSRect(x: viz.minX + CGFloat(j) * (bw + gap), y: viz.maxY - h, width: bw, height: h)
+                    (c > 0.8 ? p.warning : p.vCPU).setFill()
+                    NSBezierPath(roundedRect: bar, xRadius: 2.5, yRadius: 2.5).fill()
+                }
+            case 1:
+                let bar = NSRect(x: viz.minX, y: viz.maxY - 10, width: viz.width, height: 10)
+                let track = NSBezierPath(roundedRect: bar, xRadius: 5, yRadius: 5)
+                p.text.withAlphaComponent(0.08).setFill(); track.fill()
+                NSGraphicsContext.saveGraphicsState(); track.addClip()
+                let total = max(1, s.memTotal)
+                var bx = bar.minX
+                for (part, color) in [(s.memApps, p.vMemory), (s.memWired, p.accent), (s.memCompressed, p.highlight)] {
+                    let pw = bar.width * CGFloat(part / total)
+                    color.setFill(); NSRect(x: bx, y: bar.minY, width: pw, height: bar.height).fill()
+                    bx += pw
+                }
+                NSGraphicsContext.restoreGraphicsState()
+            case 2:
+                let hist = Array(SystemVitals.shared.gpuHistory.suffix(30))
+                VDraw.spark(hist.count > 1 ? hist : [v[2], v[2]], in: viz, max: 1, color: p.vGPU, area: true, width: 2)
+            case 3:
+                let hist = Array(SystemVitals.shared.downHistory.suffix(30))
+                VDraw.spark(hist.count > 1 ? hist : [v[3], v[3]], in: viz, max: max(1e6, hist.max() ?? 1), color: p.vNet, area: true, width: 2)
+            default:
+                if let b = s.battery {
+                    VDraw.battery(in: NSRect(x: viz.minX, y: viz.maxY - 26, width: 58, height: 26), level: v[5] / 100, color: p.vBattery(b), charging: b.charging)
+                }
+            }
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    private func index(at e: NSEvent) -> Int? {
+        let pt = convert(e.locationInWindow, from: nil)
+        return tiles().firstIndex { $0.contains(pt) }
+    }
+    override func mouseMoved(with event: NSEvent) {
+        let i = index(at: event)
+        if i != hoverIndex { hoverIndex = i; needsDisplay = true }
+    }
+    override func mouseExited(with event: NSEvent) { hoverIndex = nil; pressedIndex = nil; needsDisplay = true }
+    override func mouseDown(with event: NSEvent) { pressedIndex = index(at: event); needsDisplay = true }
+    override func mouseUp(with event: NSEvent) {
+        let hit = pressedIndex != nil && index(at: event) == pressedIndex
+        pressedIndex = nil; needsDisplay = true
+        if hit { onOpen?() }
+    }
+    override func accessibilityPerformPress() -> Bool { onOpen?(); return true }
+    override func resetCursorRects() { for r in tiles() { addCursorRect(r, cursor: .pointingHand) } }
+}
+
 // MARK: - This Mac
 
 /// The full page: CPU and GPU rings with the per-core bars and a minute of graphics load, the

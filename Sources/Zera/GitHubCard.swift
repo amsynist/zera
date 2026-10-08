@@ -18,11 +18,11 @@ import AppKit
 // All geometry lives in `L`; every frame below is derived from it, so nothing can overlap.
 
 private enum L {
-    static let width: CGFloat = 620
-    static let pad: CGFloat = 20
+    static let width: CGFloat = Isle.lensWidth
+    static let pad: CGFloat = Metrics.sidePad
     static let headerTop: CGFloat = 20
     /// Under the island header Zera hangs in.
-    static let segY: CGFloat = 88
+    static let segY: CGFloat = Isle.headerHeight
     static let segH: CGFloat = Metrics.segment
     static let filterH: CGFloat = 34
     static let rowH: CGFloat = RowTier.rich.height
@@ -665,11 +665,13 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         addSubview(moreButton)
 
         segmented.selected = Self.tab
+        segmented.chipStyle = true
         segmented.onSelect = { [weak self] i in
             Self.tab = i
             self?.detailID = nil
             self?.reload()
         }
+        segmented.switches = { [weak self] in self.map { [$0.scroll] } ?? [] }
         addSubview(segmented)
         // Zera sits on the bar, so she goes above it.
         zeraHead.imageScaling = .scaleProportionallyUpOrDown
@@ -846,7 +848,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
             addSubview(d)
             detailView = d
             // A PR you just opened comes in like a page (data refreshes don't replay it).
-            if shownDetailID != id { Motion.page(d, forward: true) }
+            if shownDetailID != id { Motion.open(d) }
         }
         if detailView == nil, shownDetailID != nil { Motion.page(list, forward: false) }
         shownDetailID = detailView == nil ? nil : detailID
@@ -1019,8 +1021,8 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         // more on the right. Her own pictures and the insight box stay hidden in the island.
         [headerTile, zeraHead, bubble, insight, insightZera].forEach { $0.isHidden = true }
         layoutHeader()
-        moreButton.frame = NSRect(x: w - x - 34, y: 27, width: 34, height: 34)
-        refreshButton.frame = NSRect(x: moreButton.frame.minX - 8 - 34, y: 27, width: 34, height: 34)
+        moreButton.frame = NSRect(x: w - x - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
+        refreshButton.frame = NSRect(x: moreButton.frame.minX - 8 - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
 
         if mode == .disconnected {
             state.frame = NSRect(x: x, y: L.segY, width: iw, height: GHStateView.height)

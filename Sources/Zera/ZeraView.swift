@@ -85,6 +85,10 @@ final class ZeraView: NSView {
     }
     /// The pointer is on her; while Claude is active she wiggles.
     var hovered = false
+    /// v2: things that need you orbit her as small glowing motes — amber for Claude, violet for
+    /// a review, blue for a meeting soon, red for a low battery. Hidden while you look at her.
+    var motes: [NSColor] = [] { didSet { needsDisplay = true } }
+    private var moteAlpha: CGFloat = 0
 
     /// A tap: a little jump with a burst of sparkles, and a swing on the rope that settles.
     /// Each tap kicks her the other way, so a few taps rock her back and forth.
@@ -198,6 +202,7 @@ final class ZeraView: NSView {
         blend(&burstAmt, !angry && activity == .approval ? 1 : 0, 0.15)
         let sparkling = !angry && (activity == .done || CACurrentMediaTime() - bumpAt < 1.4)
         blend(&starsAmt, sparkling ? 1 : 0, 0.15)
+        blend(&moteAlpha, motes.isEmpty || hovered || islandPose != nil ? 0 : 1, 0.12)
         look.x += (lookTarget.x - look.x) * 0.18
         look.y += (lookTarget.y - look.y) * 0.18
         needsDisplay = true
@@ -286,6 +291,30 @@ final class ZeraView: NSView {
         drawSprite(sprite, alpha: t, lift: lift, effects: true)
         ctx.restoreGState()
         if t >= 1 { previousSprite = nil }
+        drawMotes()
+    }
+
+    private func drawMotes() {
+        guard moteAlpha > 0.02, !motes.isEmpty, style == .hanging else { return }
+        let n = motes.count
+        let cy = bottomPad + (bounds.height - hangInset - bottomPad) * 0.45
+        let rx = min(bounds.width / 2 - 10, 62), ry: CGFloat = 16
+        let speed = Self.reduceMotion ? 0.0 : 0.55
+        for (i, c) in motes.enumerated() {
+            let a = phase * speed + Double(i) / Double(n) * 2 * .pi
+            let p = NSPoint(x: bounds.midX + CGFloat(cos(a)) * rx, y: cy + CGFloat(sin(a)) * ry)
+            // Behind her (the far side of the orbit) they dim a little.
+            let near = 0.55 + 0.45 * (CGFloat(sin(a)) * -0.5 + 0.5)
+            let d: CGFloat = 8
+            NSGraphicsContext.saveGraphicsState()
+            let glow = NSShadow()
+            glow.shadowColor = c.withAlphaComponent(0.8 * moteAlpha)
+            glow.shadowBlurRadius = 8
+            glow.set()
+            c.withAlphaComponent(moteAlpha * near).setFill()
+            NSBezierPath(ovalIn: NSRect(x: p.x - d / 2, y: p.y - d / 2, width: d, height: d)).fill()
+            NSGraphicsContext.restoreGraphicsState()
+        }
     }
 
     private func drawSprite(_ sprite: Sprite, alpha: CGFloat, lift: CGFloat, effects: Bool) {
