@@ -367,8 +367,24 @@ final class AppOpenerTests: XCTestCase {
             let delays = rows.compactMap { $0.layer?.animation(forKey: "actionFade")?.beginTime }
             XCTAssertGreaterThan(delays.count, 1)
             XCTAssertEqual(delays, delays.sorted(), "options unfold in order")
+            let flight = try XCTUnwrap(flights().first)
+            let holder = try XCTUnwrap(flight.superview)
+            let header = try XCTUnwrap(descendants(view).compactMap { $0 as? NSImageView }.first {
+                $0 !== flight && $0.image === flight.image && $0.bounds.width == 34
+            })
+            let flyingLayer = try XCTUnwrap(flight.layer)
+            let restingPosition = flyingLayer.position
+            view.needsLayout = true
+            view.layoutSubtreeIfNeeded(); window.display(); CATransaction.flush()
+            try await Task.sleep(nanoseconds: 120_000_000)
+            let target = holder.convert(header.bounds, from: header)
+            XCTAssertEqual(flight.frame.minX, target.minX, accuracy: 0.01)
+            XCTAssertEqual(flight.frame.minY, target.minY, accuracy: 0.01)
+            XCTAssertEqual(flight.frame.size, target.size)
+            XCTAssertEqual(flyingLayer.position, restingPosition, "AppKit must not readjust the landing position")
         }
         for _ in 0..<6 {
+            try await Task.sleep(nanoseconds: 16_000_000)
             view.previewActions() // Reverse before the flight finishes.
             view.previewActions()
             XCTAssertLessThanOrEqual(flights().count, 1)
