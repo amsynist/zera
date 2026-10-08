@@ -4,7 +4,7 @@ import XCTest
 
 /// Renders every screen to PNGs so the UI can be reviewed without running the app:
 /// `ZERA_RENDER_SCREENS=/some/folder swift test --filter ScreenRenderTests`.
-/// CI's render job runs this on every pull request and publishes the images.
+/// Run locally when a still image helps diagnose a layout.
 @MainActor
 final class ScreenRenderTests: XCTestCase {
     private var out: URL!
@@ -20,6 +20,7 @@ final class ScreenRenderTests: XCTestCase {
     // MARK: Capturing
 
     private func shot(_ v: NSView, _ name: String) {
+        if let only = ProcessInfo.processInfo.environment["ZERA_RENDER_ONLY"], only != name { return }
         let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 60, y: 60), size: v.frame.size), styleMask: .borderless, backing: .buffered, defer: false)
         w.backgroundColor = desk
         w.appearance = NSAppearance(named: .darkAqua)
