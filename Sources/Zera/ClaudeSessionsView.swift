@@ -22,7 +22,7 @@ import AppKit
 
 private enum S {
     static let gap: CGFloat = 14
-    static let pad: CGFloat = 20
+    static let pad: CGFloat = Metrics.sidePad
     static let radius: CGFloat = 22
     static let rowH: CGFloat = RowTier.rich.height
     static let rowGap: CGFloat = Metrics.rowGap
@@ -55,7 +55,7 @@ private func sessionChip(_ s: ClaudeSession) -> (symbol: String, text: String, c
     let p = Pal
     if s.stopRequested { return ("stop.circle.fill", "Stopping…", p.warning) }
     switch s.status {
-    case .running: return ("play.circle.fill", "Running", p.success)
+    case .running: return ("play.circle.fill", "Running", p.accent)
     case .waiting: return ("exclamationmark.circle.fill", "Waiting", p.warning)
     case .done: return ("checkmark.circle.fill", "Completed", p.success)
     case .idle: return s.promptAt == nil ? ("moon.zzz.fill", "Idle", p.muted) : ("checkmark.circle.fill", "Completed", p.success)
@@ -197,6 +197,9 @@ final class SessionProgressBar: NSView {
 final class SessionIconTile: NSView {
     var symbol = "terminal" { didSet { needsDisplay = true } }
     var tint: NSColor = .white { didSet { needsDisplay = true } }
+    /// v2: draw as a progress ring (0…1) instead of a tile; `ringText` replaces the glyph.
+    var ring: Double? { didSet { needsDisplay = true } }
+    var ringText: String? { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
 
     static func symbol(for s: ClaudeSession) -> String {
@@ -208,6 +211,29 @@ final class SessionIconTile: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
+        if let progress = ring {
+            let d = min(bounds.width, bounds.height) - 6
+            let c = NSPoint(x: bounds.midX, y: bounds.midY)
+            let track = NSBezierPath(ovalIn: NSRect(x: c.x - d / 2, y: c.y - d / 2, width: d, height: d))
+            track.lineWidth = 3
+            p.text.withAlphaComponent(0.1).setStroke(); track.stroke()
+            let v = max(0, min(1, progress))
+            if v > 0.005 {
+                let arc = NSBezierPath()
+                // Flipped view: clockwise from twelve o'clock.
+                arc.appendArc(withCenter: c, radius: d / 2, startAngle: -90, endAngle: -90 + 360 * v, clockwise: false)
+                arc.lineWidth = 3; arc.lineCapStyle = .round
+                tint.setStroke(); arc.stroke()
+            }
+            if let t = ringText, !t.isEmpty {
+                let a: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: t.count > 2 ? 10 : 11, weight: .bold), .foregroundColor: p.text]
+                let sz = (t as NSString).size(withAttributes: a)
+                (t as NSString).draw(at: NSPoint(x: c.x - sz.width / 2, y: c.y - sz.height / 2), withAttributes: a)
+            } else {
+                drawIcon(icon(symbol, bounds.width * 0.3, .semibold, tint), centeredIn: bounds)
+            }
+            return
+        }
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.width * 0.26, yRadius: bounds.width * 0.26)
         (p.isDark ? p.surfaceStrong : p.tileGitHub).setFill(); path.fill()
         NSColor.white.withAlphaComponent(0.12).setStroke(); path.lineWidth = 1; path.stroke()
@@ -262,7 +288,15 @@ final class ClaudeSessionRow: NSView {
         let p = Pal
         kind = bucket(s)
         tile.symbol = SessionIconTile.symbol(for: s)
-        tile.tint = kind == .running ? p.accent : (kind == .waiting ? p.warning : p.textSecondary)
+        tile.tint = kind == .running ? p.accent : (kind == .waiting ? p.warning : p.success)
+        // v2: the tile is the session's ring — progress while it runs, full when it's done.
+        switch kind {
+        case .running:
+            tile.ring = s.hasRealProgress ? s.progress : 0.08
+            tile.ringText = s.hasRealProgress ? "\(Int((s.progress * 100).rounded()))" : nil
+        case .waiting: tile.ring = 0; tile.ringText = nil; tile.symbol = "hand.raised.fill"
+        case .completed: tile.ring = 1; tile.ringText = nil; tile.symbol = "checkmark"
+        }
         title.stringValue = sessionTitle(s)
         title.toolTip = s.fullPrompt.isEmpty ? nil : s.fullPrompt
         title.textColor = kind == .completed && !selected ? p.text(0.85) : p.text
@@ -368,6 +402,13 @@ final class ClaudeSessionRow: NSView {
         (selected ? p.selectedEdge : p.divider).setStroke()
         path.lineWidth = 1
         path.stroke()
+        // v2: a status stripe down the left edge — accent running, amber waiting, green done.
+        NSGraphicsContext.saveGraphicsState()
+        path.addClip()
+        let tone = kind == .running ? p.accent : (kind == .waiting ? p.warning : p.success)
+        tone.withAlphaComponent(kind == .completed ? 0.7 : 1).setFill()
+        NSRect(x: 0, y: 0, width: 3, height: bounds.height).fill()
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     override func updateTrackingAreas() {
@@ -909,8 +950,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
 
     // Left
     private let claudeTile = ScreenIconTile.claude()
-    private let leftTitle = label(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
-    private let leftSub = label(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
+    private let leftTitle = label(Typo.screenTitle, Pal.text)
+    private let leftSub = label(Typo.screenSubtitle, Pal.textSecondary)
     private let peek = NSImageView()
     private let bubble = ZeraGitHubBubble()
     private var newSession: PRActionButton!
@@ -969,7 +1010,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     private(set) var expanded = false
     private var fullWidth: CGFloat { min(S.maxWidth, screen.width - 40) }
     /// One compact island width for the list and the session.
-    var cardWidth: CGFloat { min(620, fullWidth) }
+    var cardWidth: CGFloat { min(Isle.lensWidth, fullWidth) }
     var desiredHeight: CGFloat {
         // Session: header, tabs, progress, console, ask, quick asks.
         guard !expanded else { return Isle.maxContentHeight }
@@ -989,7 +1030,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         layoutSubtreeIfNeeded()
         onHeightChange?()
         // The session comes in like a page; Back slides the list back in from the left.
-        Motion.page(on ? right : left, forward: on)
+        Motion.open(on ? right : left, forward: on)
     }
 
     /// Each time the screen opens: just the list, unless it was opened from the live bar.
@@ -1022,7 +1063,9 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         left.addSubview(newSession)
 
         filters.fitToContent = true
+        filters.chipStyle = true
         filters.onSelect = { [weak self] i in Self.filter = i; self?.reload() }
+        filters.switches = { [weak self] in self.map { [$0.scroll] } ?? [] }
         left.addSubview(filters)
         search.field.font = NSFont.systemFont(ofSize: 13)
         search.field.stringValue = Self.query
@@ -1066,6 +1109,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         collapse = GHSquareButton(symbol: "xmark", label: "Close session view", target: self, action: #selector(collapseTapped))
         right.addSubview(collapse)
         tabs.onSelect = { [weak self] i in self?.tab = i; self?.infoSignature = ""; self?.reload() }
+        tabs.switches = { [weak self] in self.map { [$0.console, $0.infoScroll, $0.details] } ?? [] }
         right.addSubview(tabs)
         right.addSubview(progressCard)
         right.addSubview(reaction)
@@ -1425,10 +1469,10 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         // hidden — she hangs in the middle of the header.
         [claudeTile, peek, bubble, tipZera].forEach { $0.isHidden = true }
         let half = w / 2 - Isle.zeraGap / 2
-        leftTitle.frame = NSRect(x: x + 4, y: 24, width: half - x - 4, height: 22)
-        leftSub.frame = NSRect(x: x + 4, y: 46, width: half - x - 4, height: 16)
+        leftTitle.frame = NSRect(x: x, y: CardBase.titleTop, width: half - x, height: 32)
+        leftSub.frame = NSRect(x: x, y: CardBase.subtitleTop, width: half - x, height: 18)
         let bw = newSession.fittedWidth + 8
-        newSession.frame = NSRect(x: w - x - bw, y: 28, width: bw, height: 32)
+        newSession.frame = NSRect(x: w - x - bw, y: CardBase.titleTop + 2, width: bw, height: 32)
 
         // Filters and search on one line.
         var y = Isle.headerHeight
@@ -1459,24 +1503,24 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         rightState.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: max(0, h - Isle.headerHeight - 20))
         // Island header: back · title / time and folder on the left; status, Stop, more on the right.
         back.isHidden = false
-        back.frame = NSRect(x: x, y: 27, width: 34, height: 34)
+        back.frame = NSRect(x: x, y: CardBase.titleTop + 1, width: 34, height: 34)
         sessionTile.isHidden = true
         collapse.isHidden = true
         let tx = x + 44
-        sessionTitleLabel.frame = NSRect(x: tx, y: 24, width: max(40, half - tx), height: 22)
+        sessionTitleLabel.frame = NSRect(x: tx, y: CardBase.titleTop - 2, width: max(40, half - tx), height: 22)
         let elapsed = sessionElapsed.stringValue
         sessionElapsed.isHidden = true
         if !elapsed.isEmpty, !sessionMetaLabel.stringValue.hasPrefix(elapsed) {
             sessionMetaLabel.stringValue = elapsed + " · " + sessionMetaLabel.stringValue
         }
-        sessionMetaLabel.frame = NSRect(x: tx, y: 46, width: max(40, half - tx), height: 16)
-        sessionMore.frame = NSRect(x: w - x - 34, y: 27, width: 34, height: 34)
+        sessionMetaLabel.frame = NSRect(x: tx, y: CardBase.titleTop + 20, width: max(40, half - tx), height: 16)
+        sessionMore.frame = NSRect(x: w - x - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
         let pw = primary.isHidden ? 0 : max(76, primary.fittedWidth)
-        primary.frame = NSRect(x: sessionMore.frame.minX - 8 - pw, y: 28, width: pw, height: 32)
+        primary.frame = NSRect(x: sessionMore.frame.minX - 8 - pw, y: CardBase.titleTop + 2, width: pw, height: 32)
         let chipRight = (primary.isHidden ? sessionMore.frame.minX : primary.frame.minX) - 8
         let chipW = min(chipRight - (w / 2 + Isle.zeraGap / 2), sessionChipView.fittedWidth)
         sessionChipView.isHidden = chipW < 60
-        sessionChipView.frame = NSRect(x: chipRight - chipW, y: 32, width: chipW, height: 24)
+        sessionChipView.frame = NSRect(x: chipRight - chipW, y: CardBase.titleTop + 6, width: chipW, height: 24)
 
         // Tabs.
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)

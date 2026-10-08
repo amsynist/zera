@@ -96,6 +96,20 @@ final class ScreenRenderTests: XCTestCase {
         defer { SystemVitals.shared.unwatch() }
         RunLoop.main.run(until: Date().addingTimeInterval(2.2))
 
+        // Hovering her: the nodes bloom out round the rope.
+        let bloomView = IslandView(frame: NSRect(x: 0, y: 0, width: 760, height: 400))
+        bloomView.band = band
+        bloomView.notchWidth = 190
+        bloomView.centerX = 380
+        bloomView.counts = [.claude: 1, .shelf: 4, .github: 2]
+        bloomView.badges = [.claude]
+        bloomView.instruments = [.home: IslandInstrument(progress: 0.34, text: "78", tone: nil),
+                                 .claude: IslandInstrument(progress: 0.62, text: nil, tone: nil),
+                                 .tasks: IslandInstrument(progress: 0.25, text: nil, tone: nil),
+                                 .reminders: IslandInstrument(progress: 0.8, text: "12m", tone: nil)]
+        bloomView.peek()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.9))
+        shot(bloomView, "00-bloom")
         island(HomeCard(), tab: .home, "01-home")
         island(ClaudeSessionsView(), tab: .claude, "02-claude")
         island(DropFilesView(), tab: .shelf, "03-shelf-empty")
@@ -105,6 +119,10 @@ final class ScreenRenderTests: XCTestCase {
         let detail = DropFilesView()
         detail.setExpanded(true)
         island(detail, tab: .shelf, "05-shelf-file")
+        // Sample copies only: the render never shows (or watches) the real clipboard.
+        ClipboardStore.shared.preview([
+            ClipItem(kind: .link, text: "https://example.com/aurora/pull/214", bytes: 40, sourceApp: "Safari", fingerprint: "s1"),
+            ClipItem(kind: .text, text: "Ship the theme picker before Friday", bytes: 36, sourceApp: "Slack", fingerprint: "s2")])
         island(ClipboardView(), tab: .clipboard, "06-clipboard")
         island(TasksCard(store: tasks), tab: .tasks, "07-tasks")
         island(GitHubCard(), tab: .github, "08-pull-requests")
@@ -129,6 +147,7 @@ final class ScreenRenderTests: XCTestCase {
         let toast = ToastCard()
         toast.show(event: GHEvent(id: "render", kind: .prOpened, title: "Add themes: seven built in, plus your own",
             subtitle: "acme/aurora #11", date: Date(), url: URL(string: "https://example.com/pr/11")!, approval: nil))
+        toast.countdownLine.progress = 0.55   // part-way through its reading time
         island(toast, tab: nil, "15-banner-pr")
 
         // The Claude wings.
@@ -145,6 +164,12 @@ final class ScreenRenderTests: XCTestCase {
         running.centerX = LiveActivityView.panelSize.width / 2
         running.update(session: session, pending: nil)
         panel(running, "17-wings-running")
+        let bubble = BubbleView(frame: .zero)
+        bubble.text = "all green! ✅"
+        let tag = BubbleView.size(for: bubble.text)
+        bubble.frame = NSRect(origin: .zero, size: BubbleView.panelFrame(for: NSRect(origin: .zero, size: tag)).size)
+        bubble.tailX = bubble.frame.width / 2
+        panel(bubble, "17b-caption")
 
         // Floating panels.
         let export = TaskExportView(store: tasks)
@@ -154,9 +179,42 @@ final class ScreenRenderTests: XCTestCase {
         let focus = FocusCardView(store: tasks)
         focus.setFrameSize(NSSize(width: focus.frame.width, height: focus.desiredHeight))
         panel(focus, "19-focus-card")
-        let opener = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 860, height: 760))
+        let orb = FocusOrbView(store: tasks)
+        orb.frame = NSRect(x: 0, y: 0, width: FocusOrbView.size, height: FocusOrbView.size)
+        panel(orb, "19b-focus-orb")
+        let pill = OrbPlusView()
+        pill.setInfo(big: orb.info.big, small: orb.info.small)
+        pill.frame = NSRect(x: 0, y: 0, width: pill.fittedWidth, height: OrbPlusView.size)
+        panel(pill, "19c-orb-pill")
+        let quick = QuickAddView()
+        quick.frame = NSRect(origin: .zero, size: QuickAddView.size)
+        panel(quick, "19d-quick-add")
+        let opener = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: 900))
         opener.prepare()
         panel(opener, "20-app-opener")
+        // A real (built-in) app's actions: wait for the app list first.
+        var catalogReady = !AppCatalog.shared.apps.isEmpty
+        AppCatalog.shared.refreshIfNeeded { catalogReady = true }
+        let until = Date().addingTimeInterval(8)
+        while !catalogReady, Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        let ring = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: 900))
+        ring.prepare()
+        ring.previewType("safari")
+        ring.previewActions()
+        panel(ring, "20b-app-opener-actions")
+        let lane = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: 900))
+        lane.prepare()
+        lane.previewType("kill")
+        panel(lane, "20c-app-opener-typing")
+        let tree = TreeOpenerView(frame: NSRect(x: 0, y: 0, width: 860, height: 760))
+        tree.prepare()
+        tree.previewType("safari")
+        panel(tree, "20d-app-opener-classic")
+        let treeActions = TreeOpenerView(frame: NSRect(x: 0, y: 0, width: 860, height: 760))
+        treeActions.prepare()
+        treeActions.previewType("safari")
+        treeActions.previewActions()
+        panel(treeActions, "20e-app-opener-classic-actions")
 
         // Every theme on two busy screens.
         for t in ThemeStore.shared.builtIns {
@@ -287,10 +345,12 @@ final class ScreenRenderTests: XCTestCase {
             island(ReminderAlertCard(), tab: nil, "34-banner-battery")
         }
 
-        // Shelf · Fresh: new files in the (render home's) Downloads and Desktop.
+        // Shelf · Fresh: new files in the (render home's) Downloads and Desktop. Only ever into a
+        // sample home (CFFIXED_USER_HOME), never a real Desktop or Downloads.
         let home = FileManager.default.homeDirectoryForCurrentUser
+        let sampleHome = ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil
         for (folder, names) in [("Downloads", ["Invoice-October.pdf", "team-offsite-photos.zip", "design-review.mov"]),
-                                ("Desktop", ["Screenshot 2026-10-07 at 20.41.12.png", "Q3 roadmap.key"])] {
+                                ("Desktop", ["Screenshot 2026-10-07 at 20.41.12.png", "Q3 roadmap.key"])] where sampleHome {
             let dir = home.appendingPathComponent(folder, isDirectory: true)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             for n in names where !FileManager.default.fileExists(atPath: dir.appendingPathComponent(n).path) {
@@ -308,6 +368,19 @@ final class ScreenRenderTests: XCTestCase {
         shelfSettings.select(.shelf)
         island(shelfSettings, tab: .settings, "33-settings-shelf")
 
+        // Reminders with a day in it (saved events: a sample home only).
+        if sampleHome {
+            let rs = ReminderService.shared, now = Date()
+            var sync = CalendarEvent(title: "Design sync", startAt: now.addingTimeInterval(12 * 60))
+            sync.url = "https://meet.example.com/design"
+            rs.save(event: sync)
+            rs.save(event: CalendarEvent(title: "1:1 with Theo", startAt: now.addingTimeInterval(3 * 3600)))
+            rs.addOneOff(title: "Review the Q4 roadmap", at: now.addingTimeInterval(45 * 60))
+            let rem = RemindersView()
+            rem.willShow()
+            island(rem, tab: .reminders, "36-reminders")
+        }
+
         // Tasks, the week view.
         UserDefaults.standard.set(1, forKey: "tasks.viewSpan")
         island(TasksCard(store: month), tab: .tasks, "29-tasks-week")
@@ -320,6 +393,8 @@ final class ScreenRenderTests: XCTestCase {
     /// ZERA_RENDER_SCREENS pointing at an empty folder. Writes frames/NNNNN.jpg, times.json and
     /// scenes.json (when each scene starts).
     func testRecordTour() throws {
+        // It writes sample downloads into the home folder: only a sample one (CFFIXED_USER_HOME).
+        guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else { throw XCTSkip("set CFFIXED_USER_HOME to a sample home") }
         guard ProcessInfo.processInfo.environment["ZERA_TOUR_FRAMES"] != nil else { throw XCTSkip("set ZERA_TOUR_FRAMES to record") }
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
         let frames = out.appendingPathComponent("frames", isDirectory: true)
@@ -489,6 +564,8 @@ final class ScreenRenderTests: XCTestCase {
     /// The full tour: every screen of the current app, for the site and the README.
     /// `ZERA_FULL_TOUR=1` with ZERA_RENDER_SCREENS pointing at an empty folder.
     func testRecordFullTour() throws {
+        // It writes sample downloads into the home folder: only a sample one (CFFIXED_USER_HOME).
+        guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else { throw XCTSkip("set CFFIXED_USER_HOME to a sample home") }
         guard ProcessInfo.processInfo.environment["ZERA_FULL_TOUR"] != nil else { throw XCTSkip("set ZERA_FULL_TOUR to record") }
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
         let frames = out.appendingPathComponent("frames", isDirectory: true)
@@ -673,7 +750,7 @@ final class ScreenRenderTests: XCTestCase {
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
         iv.themeChanged()
         // The app opener: a search, then ⌘K.
-        let opener = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 860, height: 760))
+        let opener = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: 900))
         opener.prepare()
         // Searched before it shows, so the list on camera is just Safari, not this Mac's apps.
         opener.previewType("safari")

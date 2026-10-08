@@ -218,8 +218,8 @@ final class PRStatusChip: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let path = NSBezierPath(roundedRect: r, xRadius: Radius.s + 1, yRadius: Radius.s + 1)
-        color.withAlphaComponent(Pal.isDark ? 0.16 : 0.14).setFill(); path.fill()
-        color.withAlphaComponent(0.32).setStroke(); path.lineWidth = 1; path.stroke()
+        // v2 pill: a soft tint of its colour, no outline.
+        color.withAlphaComponent(0.16).setFill(); path.fill()
         var x: CGFloat = 8
         if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .bold))?
@@ -350,6 +350,10 @@ final class GHSquareButton: NSButton {
         spinner.isDisplayedWhenStopped = false
         addSubview(spinner)
     }
+    /// A clean line icon (`LineIcon`) in place of the symbol.
+    func setLine(_ name: String) {
+        if let g = LineIcon.image(name, size: 15) { glyph = g; needsDisplay = true }
+    }
     required init?(coder: NSCoder) { fatalError() }
 
     override func layout() {
@@ -363,7 +367,7 @@ final class GHSquareButton: NSButton {
         (isHighlighted ? p.surfacePressed : (hovered && isEnabled ? p.surfaceHover : p.surface)).setFill()
         path.fill()
         p.border.setStroke(); path.lineWidth = 1; path.stroke()
-        guard !spinning, let g = glyph?.withSymbolConfiguration(.init(paletteColors: [hovered ? p.text : p.textSecondary])) else { return }
+        guard !spinning, let g = glyph.flatMap({ LineIcon.tint($0, hovered ? p.text : p.textSecondary) }) else { return }
         let s = g.size
         g.draw(in: NSRect(x: (bounds.width - s.width) / 2, y: (bounds.height - s.height) / 2, width: s.width, height: s.height),
                from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
@@ -429,6 +433,12 @@ class PRActionButton: NSButton {
         needsDisplay = true
     }
 
+    /// A clean line icon (`LineIcon`) in place of the symbol.
+    func setLine(_ name: String?) {
+        glyph = name.flatMap { LineIcon.image($0, size: 15) }
+        needsDisplay = true
+    }
+
     var fittedWidth: CGFloat {
         let w = ceil((titleText as NSString).size(withAttributes: [.font: Self.font]).width)
         return w + 36 + (glyph.map { ceil($0.size.width) + 7 } ?? 0)
@@ -468,7 +478,7 @@ class PRActionButton: NSButton {
         let iconW = glyph.map { ceil($0.size.width) + (titleText.isEmpty ? 0 : 7) } ?? 0
         let textW = min(bounds.width - 24 - iconW, ceil((titleText as NSString).size(withAttributes: attrs).width))
         var x = (bounds.width - iconW - max(0, textW)) / 2
-        if let g = glyph?.withSymbolConfiguration(.init(paletteColors: [color])) {
+        if let g = glyph.flatMap({ LineIcon.tint($0, color) }) {
             let s = g.size
             g.draw(in: NSRect(x: x, y: (bounds.height - s.height) / 2, width: s.width, height: s.height),
                    from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
@@ -559,6 +569,11 @@ final class GitHubSegmentedControl: NSView {
     var items: [Item] { didSet { needsDisplay = true } }
     /// Segments sized to their content (proportionally) instead of equal widths.
     var fitToContent = false { didSet { needsDisplay = true } }
+    /// v2: a row of separate pill chips (Claude and Clipboard filters, PR and Reminders tabs)
+    /// instead of one boxed track. The selected chip's accent wash still glides between them.
+    var chipStyle = false { didSet { needsDisplay = true } }
+    private static let chipGap: CGFloat = 8
+    private static let countFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .bold)
     /// The chosen segment. Changing it glides the indicator over (`setSelected(_:animated:)`).
     var selected = 0 {
         didSet {
@@ -568,6 +583,8 @@ final class GitHubSegmentedControl: NSView {
         }
     }
     var onSelect: ((Int) -> Void)?
+    /// What each tab shows: after a switch these page in from the side you moved toward.
+    var switches: (() -> [NSView])?
     private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
     private lazy var indicator = SlidingIndicator(view: self)
     override var isFlipped: Bool { true }
@@ -598,9 +615,23 @@ final class GitHubSegmentedControl: NSView {
     }
 
     /// Smallest width that shows every segment in full.
-    var preferredWidth: CGFloat { items.reduce(Metrics.segmentInset * 2) { $0 + contentWidth($1) } }
+    var preferredWidth: CGFloat {
+        if chipStyle { return items.reduce(0) { $0 + contentWidth($1) + 4 } + CGFloat(max(0, items.count - 1)) * Self.chipGap }
+        return items.reduce(Metrics.segmentInset * 2) { $0 + contentWidth($1) }
+    }
 
     private func slot(_ i: Int) -> NSRect {
+        if chipStyle {
+            guard !items.isEmpty else { return .zero }
+            let i = min(max(0, i), items.count - 1), gap = Self.chipGap
+            if fitToContent {
+                // Left-aligned pills, each as wide as its words.
+                let x = items.prefix(i).reduce(0) { $0 + contentWidth($1) + 4 + gap }
+                return NSRect(x: x, y: 0, width: contentWidth(items[i]) + 4, height: bounds.height)
+            }
+            let w = (bounds.width - gap * CGFloat(items.count - 1)) / CGFloat(items.count)
+            return NSRect(x: CGFloat(i) * (w + gap), y: 0, width: w, height: bounds.height)
+        }
         let inset = Metrics.segmentInset
         let avail = bounds.width - inset * 2
         guard !items.isEmpty else { return .zero }
@@ -620,11 +651,11 @@ final class GitHubSegmentedControl: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        if chipStyle { drawChips(); return }
         let p = Pal
         let radius = Radius.m + 2, inner = Radius.m - 1
         let outer = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
         p.surface.setFill(); outer.fill()
-        p.divider.setStroke(); outer.lineWidth = 1; outer.stroke()
 
         // Hover sits under the indicator; the indicator glides between segments.
         if let h = hoverIndex, h != selected {
@@ -674,6 +705,51 @@ final class GitHubSegmentedControl: NSView {
         }
     }
 
+    /// The chip row: filled pills; the selected one's accent wash glides; counts in a small box.
+    private func drawChips() {
+        let p = Pal
+        for (i, _) in items.enumerated() {
+            let r = slot(i).insetBy(dx: 0.5, dy: 0.5)
+            let pill = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+            (hoverIndex == i && i != selected ? p.surfaceHover : p.surface).setFill(); pill.fill()
+        }
+        if !items.isEmpty {
+            indicator.settle(at: slot(selected))
+            let r = indicator.rect.insetBy(dx: 0.5, dy: 0.5)
+            let wash = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+            p.accent.withAlphaComponent(0.18).setFill(); wash.fill()
+            p.accent.withAlphaComponent(0.45).setStroke(); wash.lineWidth = 1; wash.stroke()
+        }
+        for (i, it) in items.enumerated() {
+            let r = slot(i), on = i == selected
+            let titleW = ceil((it.title as NSString).size(withAttributes: [.font: Self.font]).width)
+            let cnt = hasBadge(it) ? "\(it.count)" : nil
+            let cw = cnt.map { ceil(($0 as NSString).size(withAttributes: [.font: Self.countFont]).width) + 12 } ?? 0
+            let icon = self.icon(it)
+            let iconW = icon.map { ceil($0.size.width) + 7 } ?? 0
+            let total = iconW + titleW + (cw > 0 ? 7 + cw : 0)
+            var x = r.midX - total / 2
+            if let ic = icon?.withSymbolConfiguration(.init(hierarchicalColor: it.tint ?? (on ? p.text : p.textSecondary))) {
+                let s = ic.size
+                ic.draw(in: NSRect(x: x, y: r.midY - s.height / 2, width: s.width, height: s.height),
+                        from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                x += iconW
+            }
+            let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: on ? p.text : p.textSecondary]
+            let th = ceil(Self.font.ascender - Self.font.descender) + 1
+            (it.title as NSString).draw(in: NSRect(x: x, y: r.midY - th / 2, width: titleW + 1, height: th), withAttributes: attrs)
+            x += titleW + 7
+            if let c = cnt {
+                let br = NSRect(x: x, y: r.midY - 9, width: cw, height: 18)
+                (on ? p.accent : NSColor.black.withAlphaComponent(0.35)).setFill()
+                NSBezierPath(roundedRect: br, xRadius: 6, yRadius: 6).fill()
+                let ba: [NSAttributedString.Key: Any] = [.font: Self.countFont, .foregroundColor: on ? p.onAccent : (it.badgeTint ?? p.textSecondary)]
+                let sz = (c as NSString).size(withAttributes: ba)
+                (c as NSString).draw(at: NSPoint(x: br.midX - sz.width / 2, y: br.midY - sz.height / 2), withAttributes: ba)
+            }
+        }
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
@@ -687,8 +763,10 @@ final class GitHubSegmentedControl: NSView {
     override func mouseDown(with event: NSEvent) {
         let pt = convert(event.locationInWindow, from: nil)
         if let i = items.indices.first(where: { NSPointInRect(pt, slot($0)) }) {
+            let old = selected
             selected = i
             onSelect?(i)
+            if let views = switches?() { Motion.tabSwitch(views, from: old, to: i) }
         }
     }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }

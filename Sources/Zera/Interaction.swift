@@ -108,8 +108,96 @@ extension Motion {
     /// Forward slides in from the right; back from the left.
     static func page(_ view: NSView, forward: Bool) { arrive(view, direction: forward ? 1 : -1, distance: 18) }
 
+    /// v2 morph: opening a row's page by clicking the row, the page grows out of that row — the
+    /// row becomes the page. Opened from the keyboard (or going back), it slides like `page`.
+    static func open(_ view: NSView, forward: Bool = true) {
+        guard forward, !reduced, let row = clickedRow(in: view.window), let parent = view.superview,
+              view.frame.width > 0, view.frame.height > 0 else { page(view, forward: forward); return }
+        let r = parent.convert(row.bounds, from: row)
+        grow(view, from: r)
+    }
+
+    /// Grows `view` from `rect` (in its superview's coordinates) to its own frame.
+    static func grow(_ view: NSView, from rect: NSRect) {
+        view.wantsLayer = true
+        guard let layer = view.layer, !reduced, view.frame.width > 0, view.frame.height > 0 else { return }
+        let f = view.frame
+        let sx = max(0.2, rect.width / f.width), sy = max(0.06, rect.height / f.height)
+        // AppKit's layers hang from their frame's origin, so scale there and move onto the row.
+        var from = CATransform3DMakeTranslation(rect.minX - f.minX, rect.minY - f.minY, 0)
+        from = CATransform3DScale(from, sx, sy, 1)
+        let grow = CASpringAnimation(keyPath: "transform")
+        grow.fromValue = NSValue(caTransform3D: from)
+        grow.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        grow.mass = 1; grow.stiffness = 260; grow.damping = 26
+        grow.duration = grow.settlingDuration
+        layer.add(grow, forKey: "zera.morph")
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0.25; fade.toValue = 1
+        fade.duration = 0.2
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(fade, forKey: "zera.morph.fade")
+    }
+
+    /// The list row the current click landed in: the nearest view up from the click that's
+    /// shaped like a row (wide, 30–130 pt tall).
+    private static func clickedRow(in window: NSWindow?) -> NSView? {
+        guard let e = NSApp.currentEvent, [.leftMouseDown, .leftMouseUp].contains(e.type),
+              let w = window, e.window === w, let content = w.contentView else { return nil }
+        var v = content.hitTest(content.convert(e.locationInWindow, from: nil))
+        while let cur = v {
+            let b = cur.bounds
+            if b.width >= 180, b.height >= 30, b.height <= 130, !(cur is NSScrollView), !(cur is NSClipView) { return cur }
+            v = cur.superview
+        }
+        return nil
+    }
+
     /// A list whose contents were swapped (a filter changed): a quick settle from just above.
     static func refresh(_ view: NSView) { arrive(view, direction: 0) }
+
+    /// The one tab switch (Shelf ↔ Fresh everywhere): the pill glides in the control, and what
+    /// the tab shows comes in from the side you moved toward. Hidden views are skipped.
+    static func tabSwitch(_ views: [NSView], from old: Int, to new: Int) {
+        guard old != new else { return }
+        for v in views where !v.isHidden && v.window != nil { page(v, forward: new > old) }
+    }
+
+    /// v2: a lens's content grows in row by row — each block below the header rises 10 pt and
+    /// fades in, 40 ms after the one above it (rows inside a list count one by one).
+    static func stagger(_ container: NSView, below top: CGFloat, delay: CFTimeInterval = 0.06) {
+        guard !reduced else { return }
+        var items: [(CGFloat, NSView)] = []
+        for v in container.subviews where !v.isHidden && v.frame.minY >= top - 4 && v.frame.height > 0 {
+            if let sv = v as? NSScrollView, let doc = sv.documentView {
+                let visible = sv.contentView.bounds
+                for r in doc.subviews where !r.isHidden && r.frame.intersects(visible) {
+                    items.append((v.frame.minY + r.frame.minY - visible.minY, r))
+                }
+            } else {
+                items.append((v.frame.minY, v))
+            }
+        }
+        items.sort { $0.0 < $1.0 }
+        let now = CACurrentMediaTime()
+        for (i, (_, v)) in items.prefix(14).enumerated() {
+            v.wantsLayer = true
+            guard let layer = v.layer else { continue }
+            let begin = now + delay + min(0.32, Double(i) * 0.04)
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0; fade.toValue = 1
+            fade.duration = 0.26
+            fade.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+            fade.beginTime = begin; fade.fillMode = .backwards
+            layer.add(fade, forKey: "zera.stagger.fade")
+            let rise = CASpringAnimation(keyPath: "transform.translation.y")
+            rise.fromValue = 10; rise.toValue = 0
+            rise.mass = 1; rise.stiffness = 260; rise.damping = 20
+            rise.duration = rise.settlingDuration
+            rise.beginTime = begin; rise.fillMode = .backwards
+            layer.add(rise, forKey: "zera.stagger.rise")
+        }
+    }
 }
 
 // MARK: - Hover
@@ -133,5 +221,35 @@ extension NSRect {
         guard isPressed else { return self }
         let dx = max(1, width * 0.015), dy = max(0.6, height * 0.03)
         return insetBy(dx: dx, dy: dy)
+    }
+}
+
+
+/// The selected look for a row of separate chips (projects, filters), drawn over them and
+/// gliding from one chip to the next like a segmented control's pill. Never takes a click.
+final class GlideWash: NSView {
+    private lazy var indicator = SlidingIndicator(view: self)
+    /// Where the wash belongs now (the selected chip's frame here), or nil for none.
+    var target: (() -> NSRect?)?
+    /// Corner radius; nil draws a pill.
+    var radius: CGFloat?
+    /// The accent edge round the wash (the Settings sidebar has none).
+    var edged = true
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func glide(animated: Bool = true) {
+        guard let r = target?() else { needsDisplay = true; return }
+        indicator.move(to: r, animated: animated)
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let r = target?() else { return }
+        indicator.settle(at: r)
+        let rect = indicator.rect.insetBy(dx: 0.5, dy: 0.5)
+        let corner = radius ?? rect.height / 2
+        let path = NSBezierPath(roundedRect: rect, xRadius: corner, yRadius: corner)
+        if edged { Pal.drawSelected(path) } else { Pal.accent.withAlphaComponent(0.16).setFill(); path.fill() }
     }
 }

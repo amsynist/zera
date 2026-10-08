@@ -20,7 +20,7 @@ import PDFKit
 
 private enum D {
     static let gap: CGFloat = 14
-    static let pad: CGFloat = 20
+    static let pad: CGFloat = Metrics.sidePad
     static let leftW: CGFloat = 380
     static let rightW: CGFloat = 270
     static let maxWidth: CGFloat = 1260
@@ -880,8 +880,8 @@ final class DropFilesView: NSView, CardContent {
 
     // Left
     private let docTile = ScreenIconTile.dropFiles()
-    private let leftTitle = dlabel(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
-    private let leftSub = dlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
+    private let leftTitle = dlabel(Typo.screenTitle, Pal.text)
+    private let leftSub = dlabel(Typo.screenSubtitle, Pal.textSecondary)
     private let peek = NSImageView()
     private let bubble = ZeraGitHubBubble()
     private let zone = FileDropZone()
@@ -962,7 +962,7 @@ final class DropFilesView: NSView, CardContent {
     private var pendingExpand = false
     private var fullWidth: CGFloat { min(D.maxWidth, screen.width - 40) }
     /// One compact island width for the Shelf and the file view.
-    var cardWidth: CGFloat { min(600, fullWidth) }
+    var cardWidth: CGFloat { min(Isle.lensWidth, fullWidth) }
     var desiredHeight: CGFloat {
         guard !expanded else { return Isle.maxContentHeight }
         // Header, slim drop zone, one row of actions, up to three dropped files (more scroll).
@@ -992,7 +992,7 @@ final class DropFilesView: NSView, CardContent {
         onHeightChange?()
         delegate?.shelfHeightChanged()
         // The file's page slides in; Back slides the Shelf back from the left.
-        Motion.page(on ? center : left, forward: on)
+        Motion.open(on ? center : left, forward: on)
     }
 
     /// Called each time the card is shown: tapping Zera opens just Drop Files; a fresh drop or
@@ -1133,6 +1133,7 @@ final class DropFilesView: NSView, CardContent {
         collapseButton = GHSquareButton(symbol: "chevron.left", label: "Back to the Shelf", target: self, action: #selector(collapseTapped))
         [finder!, removeButton!, fileMore!, collapseButton!].forEach { center.addSubview($0) }
         tabs.onSelect = { [weak self] i in Self.tab = i; self?.reloadCenter() }
+        tabs.switches = { [weak self] in self.map { [$0.content] } ?? [] }
         center.addSubview(tabs)
         center.addSubview(reaction)
         content.onCopy = { [weak self] in self?.copyContent() }
@@ -1686,10 +1687,10 @@ final class DropFilesView: NSView, CardContent {
         // stay hidden — she hangs in the middle of the header.
         [docTile, peek, bubble].forEach { $0.isHidden = true }
         let half = w / 2 - Isle.zeraGap / 2
-        leftTitle.frame = NSRect(x: x + 4, y: 24, width: half - x - 4, height: 22)
-        leftSub.frame = NSRect(x: x + 4, y: 46, width: half - x - 4, height: 16)
+        leftTitle.frame = NSRect(x: x, y: CardBase.titleTop, width: half - x, height: 32)
+        leftSub.frame = NSRect(x: x, y: CardBase.subtitleTop, width: half - x, height: 18)
         let cw = clearRecent.isHidden ? 0 : max(80, clearRecent.fittedWidth)
-        clearRecent.frame = NSRect(x: w - x - cw, y: 30, width: cw, height: 28)
+        clearRecent.frame = NSRect(x: w - x - cw, y: CardBase.titleTop + 4, width: cw, height: 28)
 
         // Shelf · Fresh under the header.
         var top = Isle.headerHeight
@@ -1751,20 +1752,20 @@ final class DropFilesView: NSView, CardContent {
         centerState.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: max(0, h - Isle.headerHeight - 20))
 
         // Island header: back · name / meta on the left of Zera; Finder, remove, ••• on the right.
-        collapseButton.frame = NSRect(x: x, y: 27, width: 34, height: 34)
+        collapseButton.frame = NSRect(x: x, y: CardBase.titleTop + 1, width: 34, height: 34)
         collapseButton.setAccessibilityLabel("Back to the Shelf")
         fileTile.isHidden = true
-        fileMore.frame = NSRect(x: w - x - 34, y: 27, width: 34, height: 34)
+        fileMore.frame = NSRect(x: w - x - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
         var right = fileMore.frame.minX - 8
         if !removeButton.isHidden {
-            removeButton.frame = NSRect(x: right - 34, y: 27, width: 34, height: 34)
+            removeButton.frame = NSRect(x: right - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
             right = removeButton.frame.minX - 8
         }
         finder.setTitleText("")
-        finder.frame = NSRect(x: right - 34, y: 27, width: 34, height: 34)
+        finder.frame = NSRect(x: right - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
         let tx = x + 44
-        fileName.frame = NSRect(x: tx, y: 24, width: max(40, half - tx), height: 22)
-        fileMeta.frame = NSRect(x: tx, y: 46, width: max(40, half - tx), height: 16)
+        fileName.frame = NSRect(x: tx, y: CardBase.titleTop - 2, width: max(40, half - tx), height: 22)
+        fileMeta.frame = NSRect(x: tx, y: CardBase.titleTop + 20, width: max(40, half - tx), height: 16)
 
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
 

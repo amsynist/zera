@@ -38,7 +38,7 @@ final class TasksController: NSObject, NSWindowDelegate {
         orbPanel = FloatingPanel.make(size: orbView.frame.size, level: .floating, keyable: false)
         cardView = FocusCardView(store: store)
         cardPanel = FloatingPanel.make(size: cardView.frame.size, level: NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1), keyable: true)
-        plusPanel = FloatingPanel.make(size: NSSize(width: OrbPlusView.size, height: OrbPlusView.size), level: .floating, keyable: false)
+        plusPanel = FloatingPanel.make(size: NSSize(width: 200, height: OrbPlusView.size), level: .floating, keyable: false)
         quickPanel = FloatingPanel.make(size: QuickAddView.size, level: NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1), keyable: true)
         exportView = TaskExportView(store: store)
         exportPanel = FloatingPanel.make(size: TaskExportView.size, level: top, keyable: true)
@@ -187,6 +187,7 @@ final class TasksController: NSObject, NSWindowDelegate {
     @objc private func ticked() {
         if cardOpen { cardView.tick() }
         if orbShown { orbView.tick() }
+        if plusShown { let i = orbView.info; plusView.setInfo(big: i.big, small: i.small) }
     }
 
     @objc private func screensChanged() { if orbShown { placeOrb() } }
@@ -247,19 +248,21 @@ final class TasksController: NSObject, NSWindowDelegate {
         return (orbShown && orbPanel.frame.contains(m)) || (plusShown && plusPanel.frame.contains(m))
     }
 
-    /// Where the + sits: just inside the orb, level with its middle.
+    /// Where the hover pill sits: 10 pt off the orb's edge, level with its middle.
     private var plusFrame: NSRect {
-        let orb = orbPanel.frame, s = OrbPlusView.size
-        // The +'s middle sits 8 pt off the orb's edge plus its own radius.
-        let om = (FocusOrbView.size - FocusOrbView.orb) / 2, gap: CGFloat = 8 + 17
-        let cx = TasksSettings.orbOnLeft ? orb.maxX - om + gap : orb.minX + om - gap
-        return NSRect(x: cx - s / 2, y: orb.midY - s / 2, width: s, height: s)
+        let orb = orbPanel.frame, h = OrbPlusView.size, w = plusView.fittedWidth
+        let om = (FocusOrbView.size - FocusOrbView.orb) / 2, gap: CGFloat = 10 - OrbPlusView.pad
+        let x = TasksSettings.orbOnLeft ? orb.maxX - om + gap : orb.minX + om - gap - w
+        return NSRect(x: x, y: orb.midY - h / 2, width: w, height: h)
     }
 
     private func showPlus() {
         // Not while quick add (which the + opens) or the card is up.
         guard orbShown, !cardOpen, !plusShown, !quickPanel.isVisible else { return }
         plusShown = true
+        let info = orbView.info
+        plusView.setInfo(big: info.big, small: info.small)
+        plusView.leftSide = TasksSettings.orbOnLeft
         let end = plusFrame
         // Slides out from behind the orb.
         let start = end.offsetBy(dx: TasksSettings.orbOnLeft ? -22 : 22, dy: 0)
@@ -403,7 +406,7 @@ final class TasksController: NSObject, NSWindowDelegate {
         // Beside the orb, its capsule level with the orb's middle.
         let om = (FocusOrbView.size - FocusOrbView.orb) / 2, qm = QuickAddView.margin
         let x = TasksSettings.orbOnLeft ? orb.maxX - om + 10 - qm : orb.minX + om - 10 - (s.width - qm)
-        let y = orb.midY - (s.height - qm - 26)
+        let y = orb.midY - (s.height - qm - 32)
         quickPanel.setFrame(NSRect(x: x, y: y, width: s.width, height: s.height), display: true)
         quickView.field.stringValue = ""
         quickPanel.alphaValue = 0
@@ -475,6 +478,7 @@ final class TasksController: NSObject, NSWindowDelegate {
             if !on { self?.schedulePlusHide() }
         }
         plusView.onClick = { [weak self] in self?.showQuickAdd() }
+        plusView.onOpen = { [weak self] in self?.hidePlus(); self?.openCard() }
         cardView.onClose = { [weak self] in self?.closeCard() }
         cardView.onFinished = { [weak self] t in
             SoundService.shared.play(.claudeDone)

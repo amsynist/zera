@@ -128,9 +128,15 @@ final class ClipboardStore {
 
     /// Shows sample items without watching or saving anything (the screen renders).
     func preview(_ list: [ClipItem]) {
+        previewing = true
+        timer?.invalidate()
+        timer = nil
+        saveWork?.cancel()
         items = list
         post()
     }
+    /// Showing sample items: the real clipboard is never read or saved.
+    private var previewing = false
     /// Private copies skipped since launch (counted, never stored).
     private(set) var skipped = 0
 
@@ -179,7 +185,7 @@ final class ClipboardStore {
     private func restartWatching() {
         timer?.invalidate()
         timer = nil
-        guard enabled else { return }
+        guard enabled, !previewing else { return }
         lastChange = pasteboard.changeCount
         // The change counter is cheap to read; nothing else is touched until it moves.
         let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.poll() }
@@ -198,6 +204,7 @@ final class ClipboardStore {
 
     /// Reads what's on the clipboard now and keeps it, unless it's private or from an ignored app.
     func capture() {
+        guard !previewing else { return }
         let types = pasteboard.types ?? []
         let front = NSWorkspace.shared.frontmostApplication
         if types.contains(where: { Self.privateTypes.contains($0) })
