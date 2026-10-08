@@ -1564,10 +1564,10 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     /// Opens the chosen item's action node; the search field now filters its rows.
     private func openActions(confirming ask: Int? = nil) {
         guard let (name, actions) = currentActions(), !actions.isEmpty else { NSSound.beep(); return }
-        resetActionTransition()
         let oldFrames = actionMotionFrames()
-        let source = selectedIconFrame()
-        let image = tiles.values.first(where: { $0.chosen })?.icon
+        let source = actionFlight.map { renderedFrame($0, in: holder) } ?? selectedIconFrame()
+        let image = actionFlight?.image ?? tiles.values.first(where: { $0.chosen })?.icon
+        resetActionTransition()
         let outgoing = actionBrowsingViews.filter { !$0.isHidden }
         let wasOpen = actionsOpen
         SoundService.shared.play(.openerTick)
@@ -1609,10 +1609,10 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
 
     private func closeActions(refocus: Bool = true, rebuildTree: Bool = true) {
         guard actionsOpen else { return }
-        resetActionTransition()
         let oldFrames = actionMotionFrames()
-        let source = holder.convert(actionIcon.bounds, from: actionIcon)
-        let image = actionIcon.image
+        let source = renderedFrame(actionFlight ?? actionIcon, in: holder)
+        let image = actionFlight?.image ?? actionIcon.image
+        resetActionTransition()
         actionsOpen = false
         confirming = nil
         field.stringValue = savedQuery
@@ -1647,14 +1647,36 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private var actionMotionViews: [NSView] { [searchBar, zera, rope, foot] }
     private var actionBrowsingViews: [NSView] { [orbit, lanes, detailCard, detailIcon, dName, dMeta, dPrimary, dSecondary, dPin, dEmpty] }
 
-    private func actionMotionFrames() -> [NSRect] { actionMotionViews.map(\.frame) }
+    private let actionMotionDuration = 0.48
+    private var actionMotionTiming: CAMediaTimingFunction { CAMediaTimingFunction(controlPoints: 0.3, 0, 0.2, 1) }
+
+    private func renderedFrame(_ view: NSView, in parent: NSView) -> NSRect {
+        if let model = view.layer, let visible = model.presentation(), let owner = view.superview {
+            // AppKit inserts flipped hosting layers. Read the presentation delta in the
+            // view's own layer space, then let NSView convert between view hierarchies.
+            let base = CGRect(x: model.position.x - model.anchorPoint.x * model.bounds.width,
+                              y: model.position.y - model.anchorPoint.y * model.bounds.height,
+                              width: model.bounds.width, height: model.bounds.height)
+            let frame = visible.frame
+            let rect = NSRect(x: view.frame.minX + frame.minX - base.minX,
+                              y: view.frame.minY + frame.minY - base.minY,
+                              width: view.frame.width * frame.width / max(1, base.width),
+                              height: view.frame.height * frame.height / max(1, base.height))
+            return parent.convert(rect, from: owner)
+        }
+        return parent.convert(view.bounds, from: view)
+    }
+
+    private func actionMotionFrames() -> [NSRect] {
+        actionMotionViews.map { view in view.superview.map { renderedFrame(view, in: $0) } ?? view.frame }
+    }
 
     private func animateActionLayout(from frames: [NSRect]) {
         for (view, frame) in zip(actionMotionViews, frames) {
-            actionShift(view, from: CGPoint(x: frame.minX - view.frame.minX, y: frame.minY - view.frame.minY), duration: 0.4)
+            actionShift(view, from: CGPoint(x: frame.minX - view.frame.minX, y: frame.minY - view.frame.minY), duration: actionMotionDuration)
         }
         let id = actionTransitionID
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + actionMotionDuration + 0.08) { [weak self] in
             guard let self = self, self.actionTransitionID == id else { return }
             for view in self.actionBrowsingViews + [self.actionPanel] where view.alphaValue == 0 {
                 view.isHidden = true
@@ -1671,7 +1693,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         move.duration = duration
         move.beginTime = CACurrentMediaTime() + delay
         move.fillMode = .backwards
-        move.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.8, 0.25, 1)
+        move.timingFunction = actionMotionTiming
         layer.add(move, forKey: "actionMove")
     }
 
@@ -1690,7 +1712,8 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
 
     private func selectedIconFrame() -> NSRect? {
         guard let tile = tiles.values.first(where: { $0.chosen }), tile.style == .icon else { return nil }
-        return holder.convert(tile.bounds.insetBy(dx: tile.bounds.width * 0.125, dy: tile.bounds.height * 0.125), from: tile)
+        let frame = renderedFrame(tile, in: holder)
+        return frame.insetBy(dx: frame.width * 0.125, dy: frame.height * 0.125)
     }
 
     private func flyActionIcon(_ image: NSImage, from source: NSRect, to destination: NSRect, opening: Bool) {
@@ -1704,27 +1727,32 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         if opening { actionIcon.alphaValue = 0 }
         else if let tile = tiles.values.first(where: { $0.chosen }) { fadeActionSurface(tile, entering: true, delay: 0.3) }
         guard let layer = flight.layer else { return }
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        layer.position = CGPoint(x: destination.midX, y: destination.midY)
-        CATransaction.commit()
-        // A curved rise followed by a gentle settle, with no spring overshoot or glow pulse.
+        // AppKit owns this layer's anchor and position. Keep them intact so the moving
+        // image and real header icon have identical geometry at the handoff.
         let end = layer.position
-        let start = CGPoint(x: end.x + source.midX - destination.midX, y: end.y + source.midY - destination.midY)
+        let anchor = layer.anchorPoint
+        let start = CGPoint(x: end.x + source.minX - destination.minX + anchor.x * (source.width - destination.width),
+                            y: end.y + source.minY - destination.minY + anchor.y * (source.height - destination.height))
+        let dx = end.x - start.x, dy = end.y - start.y
         let path = CGMutablePath()
         path.move(to: start)
-        path.addQuadCurve(to: end, control: CGPoint(x: start.x + (end.x - start.x) * 0.18, y: end.y))
+        path.addCurve(to: end, control1: CGPoint(x: start.x + dx * 0.22, y: start.y + dy * 0.4),
+                      control2: CGPoint(x: start.x + dx * 0.72, y: start.y + dy * 0.95))
         let travel = CAKeyframeAnimation(keyPath: "position")
         travel.path = path
-        travel.duration = 0.4
-        travel.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.75, 0.25, 1)
-        layer.add(travel, forKey: "actionFlight")
-        let size = CABasicAnimation(keyPath: "bounds.size")
-        size.fromValue = NSValue(size: source.size); size.toValue = NSValue(size: destination.size)
-        size.duration = travel.duration; size.timingFunction = travel.timingFunction
-        layer.add(size, forKey: "actionSize")
+        travel.calculationMode = .paced
+        travel.duration = actionMotionDuration
+        let size = CABasicAnimation(keyPath: "transform")
+        size.fromValue = NSValue(caTransform3D: CATransform3DMakeScale(source.width / destination.width, source.height / destination.height, 1))
+        size.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        size.duration = actionMotionDuration
+        let motion = CAAnimationGroup()
+        motion.animations = [travel, size]
+        motion.duration = actionMotionDuration
+        motion.timingFunction = actionMotionTiming
+        layer.add(motion, forKey: "actionFlight")
         let id = actionTransitionID
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) { [weak self, weak flight] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + actionMotionDuration + 0.02) { [weak self, weak flight] in
             flight?.removeFromSuperview()
             guard let self = self, self.actionTransitionID == id else { return }
             self.actionFlight = nil
