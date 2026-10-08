@@ -54,9 +54,21 @@ func byteString(_ bytes: Int64) -> String {
 final class FloatingPanel: NSPanel {
     /// Whether this panel may take keyboard focus (the shelf does, for ⎋ and ⌫).
     var keyable = false
+    /// Window-scoped commands that must also work when a control takes first responder.
+    var onKeyDown: ((NSEvent) -> Bool)?
 
     override var canBecomeKey: Bool { keyable }
     override var canBecomeMain: Bool { false }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, onKeyDown?(event) == true { return }
+        super.sendEvent(event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if onKeyDown?(event) == true { return true }
+        return super.performKeyEquivalent(with: event)
+    }
 
     static func make(size: NSSize, level: NSWindow.Level, keyable: Bool) -> FloatingPanel {
         let p = FloatingPanel(contentRect: NSRect(origin: .zero, size: size),

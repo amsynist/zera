@@ -395,12 +395,23 @@ final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
         addSubview(send)
         addSubview(copyButton); addSubview(saveNote); addSubview(stop)
 
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: ZeraAssistant.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: ZeraAssistant.changed, object: nil)
         reload()
     }
 
     required init?(coder: NSCoder) { fatalError() }
     deinit { caretTimer?.invalidate() }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { stopCaret() }
+        else if busy && ZeraAssistant.shared.liveText != nil { startCaret() }
+    }
+
+    @objc private func reloadIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        reload()
+    }
 
     // MARK: Sizing
 
@@ -565,10 +576,10 @@ final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     private func startCaret() {
-        guard caretTimer == nil else { return }
+        guard caretTimer == nil, window != nil else { return }
         caretTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self = self else { return }
+                guard let self = self, self.window?.isVisible == true, !self.isHiddenOrHasHiddenAncestor else { return }
                 self.caretOn.toggle()
                 self.reload()
             }

@@ -4,7 +4,7 @@ Branch: `v2-design`. Zera is a native macOS AppKit companion in the notch for Ma
 
 ## Inventory
 
-There are **8 main notch screens**, a hover/navigation shell, an app opener, and floating states. Settings has **12 panes**: 7 top-level and 5 detail panes. Review states below are interactions within those surfaces, not new top-level screens.
+There are **8 main notch screens**, a hover/navigation shell, an app opener, and floating states. Settings has **12 panes**, with 8 navigation entries and 4 other detail panes. Review states below are interactions within those surfaces, not new top-level screens.
 
 | Order | Surface | Live states and actions to review |
 | --- | --- | --- |
@@ -38,8 +38,8 @@ The real app is the source of truth for hover, clicks, keyboard focus, scroll, d
 
 ## Phases
 
-1. **Orbit app opener (current pass):** Search and results, the action ring, hover and keyboard selection, pin/quit paths, spacing, and entrance/exit motion. The design places larger icons on one shared arc, with clickable app names and shortcut badges below them, an app detail/action bar using Zera's existing glass controls, and one keyboard guidance line. Arrow keys browse during search. The native build and on-demand captures cover populated default, compact, actions, and three-result search states. The global shortcut still needs a hands-on check because automated keystrokes do not reach its macOS hotkey handler.
-2. **Classic app opener (next):** Review its tree layout, search, action menus, keyboard navigation, pin/quit paths, and transitions with the same loop.
+1. **Orbit app opener (current pass):** Apply the compact refinement spec: no top-left branding, matching 720-point search/detail widths, a 52-point search bar, 36-point neutral tabs, consistent rounded app containers (80/64/56 points), shallow arc, and a 76-point detail bar. The bar uses one metadata line and 32-point Pin → More → Open controls. Shortcut badges appear on the selected item or while holding Command; ⌘1–⌘9 follow the visible left-to-right order. Footer hints cover arrows, Tab, Enter, ⌘M and Escape, with rounded keycaps in both browsing and action states. ⌘K remains an alias for ⌘M. The primary button uses a muted indigo gradient. Hover grows 4% from the icon centre over 200 ms; reduced motion skips the transition. ⌘K opens the searchable action tree with clickable rows, arrow/Enter selection, and Escape/query restoration. Native type, colors and dimensions are defined in AppKit, with shared opener style values. On-demand local captures cover default, compact, and compact actions; 27 opener tests cover layout bounds, navigation, shortcut mapping, window-level keyboard routing after focus changes, ⌘M/Escape restoration, centered hover and interrupted action transitions. The selected icon follows a curved path to the action header, options unfold beneath it, and Escape reverses the movement. An optional local GIF preview uses `ZERA_RENDER_OPENER_MOTION=1`. The global shortcut and live animation feel still need a hands-on check.
+2. **Classic app opener (after this screen is approved):** Review its tree layout, search, action menus, keyboard navigation, pin/quit paths, and transitions with the same loop.
 3. **Shell:** Companion idle/hover, bloom, badges, island open/switch/dismiss, search node, wings placement. This affects every screen.
 4. **Main screens, one at a time:** Home → Claude → Shelf → Clipboard → Tasks and mini task/focus orb → Pull requests → Reminders → Settings. Finish each live interaction pass before moving on.
 5. **Shipping pass:** All seven themes, small display/no-notch, reduced motion, accessibility, empty/error/permission states, full tests, and distributable build.

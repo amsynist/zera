@@ -178,7 +178,10 @@ final class GitHubService {
     private static let seenKey = "zera.github.seen"
     private static let loginKey = "zera.github.login"
 
-    private init() {
+    private let tokenReader: @Sendable (URL) -> String?
+
+    init(tokenReader: @escaping @Sendable (URL) -> String? = { GitHubService.loadToken(from: $0) }) {
+        self.tokenReader = tokenReader
         seen = Set(UserDefaults.standard.stringArray(forKey: Self.seenKey) ?? [])
         reviewed = Set(UserDefaults.standard.stringArray(forKey: Self.reviewedKey) ?? [])
         login = UserDefaults.standard.string(forKey: Self.loginKey)
@@ -195,20 +198,34 @@ final class GitHubService {
 
     /// Kept in memory after the first Keychain read so polling doesn't hit the Keychain each time.
     private var cachedToken: String??
+    private var tokenLoading = false
+    private var tokenGeneration = 0
+    private nonisolated static let credentialQueue = DispatchQueue(label: "ai.zera.github-credentials", qos: .userInitiated)
 
     var token: String? {
         if let c = cachedToken { return c }
-        migrateLegacyToken()
-        let t = KeychainStore.read(.githubToken)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let value = (t?.isEmpty ?? true) ? nil : t
-        cachedToken = .some(value)
-        return value
+        guard !tokenLoading else { return nil }
+        tokenLoading = true
+        let generation = tokenGeneration, url = legacyTokenURL, reader = tokenReader
+        Self.credentialQueue.async { [weak self] in
+            // Keychain can wait for an unlock/access dialog. Never hold the UI thread.
+            let value = reader(url)
+            Task { @MainActor [weak self] in
+                guard let self = self, self.tokenGeneration == generation else { return }
+                self.tokenLoading = false
+                self.cachedToken = .some(value)
+                self.startPolling()
+                NotificationCenter.default.post(name: Self.changed, object: nil)
+            }
+        }
+        return nil
     }
 
     var isConnected: Bool { token != nil && login != nil }
 
     /// Shows sample PRs without a token or a request (the screen renders).
     func preview(login: String, pulls: [GHPullRequest]) {
+        tokenGeneration += 1; tokenLoading = false
         cachedToken = .some("preview")
         self.login = login
         self.pulls = pulls
@@ -217,19 +234,27 @@ final class GitHubService {
         NotificationCenter.default.post(name: Self.changed, object: nil)
     }
 
-    private func save(token: String) throws {
-        guard KeychainStore.write(token, to: .githubToken) else { throw GHError.badResponse }
+    private func save(token: String) async throws {
+        tokenGeneration += 1; tokenLoading = false
+        let generation = tokenGeneration
+        let saved: Bool = await withCheckedContinuation { continuation in
+            Self.credentialQueue.async { continuation.resume(returning: KeychainStore.write(token, to: .githubToken)) }
+        }
+        guard saved else { throw GHError.badResponse }
+        guard tokenGeneration == generation else { throw CancellationError() }
         cachedToken = .some(token)
     }
 
-    private func migrateLegacyToken() {
+    nonisolated static func loadToken(from legacyTokenURL: URL) -> String? {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: legacyTokenURL.path) else { return }
         if let s = try? String(contentsOf: legacyTokenURL, encoding: .utf8) {
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !t.isEmpty, !KeychainStore.has(.githubToken) { KeychainStore.write(t, to: .githubToken) }
+            if !t.isEmpty, KeychainStore.has(.githubToken) || KeychainStore.write(t, to: .githubToken) {
+                try? fm.removeItem(at: legacyTokenURL)
+            }
         }
-        try? fm.removeItem(at: legacyTokenURL)
+        let t = KeychainStore.read(.githubToken)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (t?.isEmpty ?? true) ? nil : t
     }
 
     /// Verifies the token, remembers who you are, and starts polling.
@@ -238,7 +263,7 @@ final class GitHubService {
         guard !t.isEmpty else { throw GHError.noToken }
         let user = try await get("/user", token: t)
         guard let name = user["login"] as? String else { throw GHError.badResponse }
-        try save(token: t)
+        try await save(token: t)
         login = name
         UserDefaults.standard.set(name, forKey: Self.loginKey)
         lastError = nil
@@ -251,9 +276,13 @@ final class GitHubService {
 
     func disconnect() {
         timer?.invalidate(); timer = nil
-        KeychainStore.delete(.githubToken)
+        tokenGeneration += 1; tokenLoading = false
+        let legacy = legacyTokenURL
+        Self.credentialQueue.async {
+            KeychainStore.delete(.githubToken)
+            try? FileManager.default.removeItem(at: legacy)
+        }
         cachedToken = .some(nil)
-        try? FileManager.default.removeItem(at: legacyTokenURL)
         login = nil
         events = []
         pulls = []

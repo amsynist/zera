@@ -518,6 +518,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     @objc private func storeChanged() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
         let h = desiredHeight
         reload()
         if desiredHeight != h { onHeightChange?() }
@@ -535,6 +536,13 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     private var spin: CGFloat = 0
     private var spinTimer: Timer?
 
+    deinit { spinTimer?.invalidate() }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        syncChanged()
+    }
+
     /// The sync to show in the header: the shown project's, else any.
     private var syncShown: (String, SyncProgress)? {
         let all = TaskGitSync.shared.progress
@@ -543,6 +551,10 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     @objc private func syncChanged() {
+        guard window != nil, !isHiddenOrHasHiddenAncestor else {
+            spinTimer?.invalidate(); spinTimer = nil
+            return
+        }
         let all = TaskGitSync.shared.progress
         projectBar.syncing = all
         total.isHidden = syncShown == nil && store.focusedToday < 60
@@ -569,7 +581,6 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     private func updateSubtitle() {
         let f = DateFormatter()
         f.dateFormat = "EEE d MMM"
-        let focus = store.focusedToday
         spanChoices.enumerated().forEach { $1.selected = TaskViewSpan.allCases[$0] == viewSpan }
         if let c = spanChoices.first(where: { $0.selected }), spanTrack.frame.width > 0 {
             spanIndicator.move(to: spanTrack.convert(c.frame, from: c.superview), animated: true)
@@ -2288,4 +2299,3 @@ final class TaskTableView: NSView {
         }
     }
 }
-

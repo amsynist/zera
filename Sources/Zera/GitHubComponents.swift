@@ -92,13 +92,15 @@ final class AvatarCache {
     static let shared = AvatarCache()
     nonisolated static let loaded = Notification.Name("ZeraAvatarLoaded")
 
-    private var images: [URL: NSImage] = [:]
+    private let images = NSCache<NSURL, NSImage>()
     private var inflight: Set<URL> = []
     private var failed: Set<URL> = []
 
+    private init() { images.countLimit = 128; images.totalCostLimit = 8 * 1024 * 1024 }
+
     func image(for url: URL?) -> NSImage? {
         guard let url = url else { return nil }
-        if let i = images[url] { return i }
+        if let i = images.object(forKey: url as NSURL) { return i }
         guard !inflight.contains(url), !failed.contains(url),
               url.scheme == "https", url.host?.hasSuffix("githubusercontent.com") == true else { return nil }
         inflight.insert(url)
@@ -106,10 +108,11 @@ final class AvatarCache {
             let result = try? await URLSession.shared.data(from: url)
             self.inflight.remove(url)
             guard let r = result, (r.1 as? HTTPURLResponse)?.statusCode == 200, let img = NSImage(data: r.0) else {
+                if self.failed.count >= 256 { self.failed.removeAll() }
                 self.failed.insert(url)
                 return
             }
-            self.images[url] = img
+            self.images.setObject(img.rasterizedIcon(size: 64), forKey: url as NSURL, cost: 128 * 128 * 4)
             NotificationCenter.default.post(name: Self.loaded, object: nil)
         }
         return nil

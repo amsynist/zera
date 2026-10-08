@@ -36,8 +36,11 @@ final class VitalsTween {
     var duration: CFTimeInterval = 0.55
     var onStep: (() -> Void)?
 
-    func set(_ v: [Double]) {
-        guard v.count == values.count, !Motion.reduced else { values = v; to = v; onStep?(); return }
+    func set(_ v: [Double], animated: Bool = true) {
+        guard animated, v.count == values.count, !Motion.reduced else {
+            timer?.invalidate(); timer = nil
+            values = v; to = v; onStep?(); return
+        }
         guard v != to else { return }
         from = values; to = v
         start = CACurrentMediaTime()
@@ -176,7 +179,8 @@ final class VitalsStrip: NSView {
         guard tween.to.isEmpty || now - lastUpdate >= Self.interval else { return }
         lastUpdate = now
         let s = SystemVitals.shared.now
-        tween.set([s.cpu, s.memTotal > 0 ? s.memUsed / s.memTotal : 0, s.gpu ?? 0, s.down, s.up, Double(s.battery?.percent ?? 0)])
+        tween.set([s.cpu, s.memTotal > 0 ? s.memUsed / s.memTotal : 0, s.gpu ?? 0, s.down, s.up, Double(s.battery?.percent ?? 0)],
+                  animated: window?.isVisible == true && !isHiddenOrHasHiddenAncestor)
         let net = VitalsFormat.rate(s.down)
         setAccessibilityValue("CPU \(Int(s.cpu * 100))%, memory \(VitalsFormat.gb(s.memUsed)) GB, download \(net.0) \(net.1)")
     }
@@ -356,8 +360,9 @@ final class VitalsOrgans: NSView {
         guard tween.to.isEmpty || now - lastUpdate >= VitalsStrip.interval else { return }
         lastUpdate = now
         let s = SystemVitals.shared.now
-        tween.set([s.cpu, s.memTotal > 0 ? s.memUsed / s.memTotal : 0, s.gpu ?? 0, s.down, s.up, Double(s.battery?.percent ?? 0)])
-        coreTween.set(Array(s.cores.prefix(8)))
+        let animated = window?.isVisible == true && !isHiddenOrHasHiddenAncestor
+        tween.set([s.cpu, s.memTotal > 0 ? s.memUsed / s.memTotal : 0, s.gpu ?? 0, s.down, s.up, Double(s.battery?.percent ?? 0)], animated: animated)
+        coreTween.set(Array(s.cores.prefix(8)), animated: animated)
         let net = VitalsFormat.rate(s.down)
         setAccessibilityValue("CPU \(Int(s.cpu * 100))%, memory \(VitalsFormat.gb(s.memUsed)) GB, download \(net.0) \(net.1)")
         needsDisplay = true
@@ -504,8 +509,9 @@ final class VitalsPage: NSView {
 
     @objc private func changed() {
         let s = SystemVitals.shared.now
-        tween.set([s.cpu, s.gpu ?? 0, s.down, s.up, s.memApps, s.memWired, s.memCompressed, Double(s.battery?.percent ?? 0), s.battery?.watts ?? 0])
-        coreTween.set(s.cores)
+        let animated = window?.isVisible == true && !isHiddenOrHasHiddenAncestor
+        tween.set([s.cpu, s.gpu ?? 0, s.down, s.up, s.memApps, s.memWired, s.memCompressed, Double(s.battery?.percent ?? 0), s.battery?.watts ?? 0], animated: animated)
+        coreTween.set(s.cores, animated: animated)
     }
 
     @objc private func runSpeed() { SystemVitals.shared.runSpeedTest() }
@@ -514,7 +520,7 @@ final class VitalsPage: NSView {
         let testing = SystemVitals.shared.speedTesting
         speedButton.isHidden = testing
         spinTimer?.invalidate(); spinTimer = nil
-        if testing, !Motion.reduced {
+        if testing, !Motion.reduced, window?.isVisible == true, !isHiddenOrHasHiddenAncestor {
             let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
                 self?.spinPhase += 0.012
                 self?.needsDisplay = true
@@ -708,4 +714,8 @@ final class VitalsPage: NSView {
             VDraw.text("On power · no battery", Typo.caption, p.textTertiary, at: NSPoint(x: ax, y: R.batt.minY + 68))
         }
     }
+
+    override func viewDidHide() { super.viewDidHide(); spinTimer?.invalidate(); spinTimer = nil }
+    override func viewDidUnhide() { super.viewDidUnhide(); speedChanged() }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); speedChanged() }
 }

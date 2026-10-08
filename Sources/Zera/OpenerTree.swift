@@ -1,5 +1,7 @@
 import AppKit
 
+extension TreeOpenerView: OpenerSurface { var searchField: NSTextField { field } }
+
 // The App Opener's classic look, kept as a choice in Settings → General (Opener style):
 // a window held by Zera whose search is the root of a tree — Your usual, Commands and Actions
 // fold open under it, the chosen item's details sit on the right. Same data, commands, ⌘K
@@ -17,6 +19,7 @@ private enum OP {
 }
 
 final class TreeOpenerView: NSView, NSTextFieldDelegate {
+    private var exitAnimationID = 0
     var onLaunch: ((AppEntry, Bool) -> Void)?
     var onSearchWeb: ((String) -> Void)?
     var onClose: (() -> Void)?
@@ -1446,6 +1449,9 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     /// She rappels down holding the opener; the branches draw down from the root and the rows
     /// slide in after them.
     func animateIn() {
+        exitAnimationID += 1
+        holder.layer?.removeAllAnimations()
+        rope.layer?.removeAllAnimations()
         window?.makeFirstResponder(field)
         guard !Motion.reduced, let hl = holder.layer else { holder.alphaValue = 1; return }
         holder.alphaValue = 1
@@ -1500,6 +1506,8 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     /// Back up the rope.
     func animateOut(_ done: @escaping () -> Void) {
         guard !Motion.reduced, let hl = holder.layer else { done(); return }
+        exitAnimationID += 1
+        let id = exitAnimationID
         CATransaction.begin()
         CATransaction.setCompletionBlock(done)
         let up = CABasicAnimation(keyPath: "transform.translation.y")
@@ -1515,8 +1523,9 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         rope.layer?.add(fade, forKey: "fade")
         CATransaction.commit()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.holder.layer?.removeAllAnimations()
-            self?.rope.layer?.removeAllAnimations()
+            guard let self = self, self.exitAnimationID == id else { return }
+            self.holder.layer?.removeAllAnimations()
+            self.rope.layer?.removeAllAnimations()
         }
     }
 

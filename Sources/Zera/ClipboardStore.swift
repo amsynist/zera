@@ -147,6 +147,7 @@ final class ClipboardStore {
     private let saveQueue = DispatchQueue(label: "ai.zera.clipboard-save", qos: .utility)
     private let fm = FileManager.default
     private let thumbs = NSCache<NSString, NSImage>()
+    private var pendingThumbnails: [NSString: [(NSImage?) -> Void]] = [:]
 
     /// Types apps put on the clipboard to say "don't keep this" (nspasteboard.org).
     private static let privateTypes: [NSPasteboard.PasteboardType] = [
@@ -172,6 +173,7 @@ final class ClipboardStore {
 
     private init() {
         thumbs.countLimit = 100
+        thumbs.totalCostLimit = 16 * 1024 * 1024
         load()
         prune()
         lastChange = pasteboard.changeCount
@@ -435,7 +437,7 @@ final class ClipboardStore {
         guard let url = imageURL(item) else { return nil }
         if let t = cachedThumbnail(item, size: size) { return t }
         let img = Self.decodeThumbnail(url, size: size)
-        if let img = img { thumbs.setObject(img, forKey: Self.thumbKey(url, size)) }
+        if let img = img { thumbs.setObject(img, forKey: Self.thumbKey(url, size), cost: Self.thumbnailCost(img)) }
         return img
     }
 
@@ -450,15 +452,25 @@ final class ClipboardStore {
     func loadThumbnail(_ item: ClipItem, size: CGFloat, done: @escaping (NSImage?) -> Void) {
         guard let url = imageURL(item) else { done(nil); return }
         if let t = thumbs.object(forKey: Self.thumbKey(url, size)) { done(t); return }
+        let key = Self.thumbKey(url, size)
+        if pendingThumbnails[key] != nil { pendingThumbnails[key]?.append(done); return }
+        pendingThumbnails[key] = [done]
         let cache = thumbs
-        Self.thumbQueue.async {
-            let img = Self.decodeThumbnail(url, size: size)
-            if let img = img { cache.setObject(img, forKey: Self.thumbKey(url, size)) }
-            DispatchQueue.main.async { done(img) }
+        Self.thumbQueue.async { [weak self] in
+            let img = autoreleasepool { Self.decodeThumbnail(url, size: size) }
+            if let img = img { cache.setObject(img, forKey: Self.thumbKey(url, size), cost: Self.thumbnailCost(img)) }
+            DispatchQueue.main.async {
+                let callbacks = self?.pendingThumbnails.removeValue(forKey: key) ?? []
+                callbacks.forEach { $0(img) }
+            }
         }
     }
 
-    private static let thumbQueue = DispatchQueue(label: "ai.zera.clipboard-thumbs", qos: .userInitiated, attributes: .concurrent)
+    private static let thumbQueue = DispatchQueue(label: "ai.zera.clipboard-thumbs", qos: .userInitiated)
+    private static func thumbnailCost(_ image: NSImage) -> Int {
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return 0 }
+        return cg.bytesPerRow * cg.height
+    }
     private static func thumbKey(_ url: URL, _ size: CGFloat) -> NSString { "\(url.lastPathComponent)@\(Int(size))" as NSString }
     private static func decodeThumbnail(_ url: URL, size: CGFloat) -> NSImage? {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),

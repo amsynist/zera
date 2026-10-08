@@ -711,7 +711,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         insightZera.imageAlignment = .alignBottom
         addSubview(insightZera)
 
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: GitHubService.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: GitHubService.changed, object: nil)
         reload()
     }
 
@@ -719,6 +719,11 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
     deinit { NotificationCenter.default.removeObserver(self) }
 
     // MARK: Data
+
+    @objc private func reloadIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        reload()
+    }
 
     private var gh: GitHubService { GitHubService.shared }
 

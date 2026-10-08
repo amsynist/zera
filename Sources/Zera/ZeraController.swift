@@ -1153,22 +1153,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         if cardVisible, currentCard == .reminders { (cards[.reminders] as? RemindersView)?.reload() }
     }
 
-    /// Builds the island's screens a moment after launch (and after a theme change), one per turn
-    /// of the run loop, so the first tap on a tab only has to show it. Clipboard goes first: with a
-    /// full history it's the one that takes a while to build.
-    func prewarmScreens() {
-        let order: [CardKind] = [.clipboard, .home, .shelf, .tasks, .claude, .github, .reminders]
-        func step(_ i: Int) {
-            guard i < order.count else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                guard let self = self else { return }
-                if self.cards[order[i]] == nil { _ = self.content(for: order[i]) }
-                step(i + 1)
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { step(0) }
-    }
-
     /// Light ↔ dark: throw the cards away and rebuild the visible one in the new colours.
     @objc private func paletteChanged() {
         let showing = cardVisible ? currentCard : nil
@@ -1184,7 +1168,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             show(k, instant: true)
             if k == .settings, let pane = settingsPane { (cards[.settings] as? SettingsCard)?.select(pane) }
         }
-        prewarmScreens()
     }
 
     // MARK: - Quick actions & Claude
