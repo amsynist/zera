@@ -38,9 +38,10 @@ The real app is the source of truth for hover, clicks, keyboard focus, scroll, d
 
 ## Phases
 
-1. **Shell:** Companion idle/hover, bloom, badges, island open/switch/dismiss, search node, wings placement. This affects every screen.
-2. **Main screens, one at a time:** Home → Claude → Shelf → Clipboard → Tasks and mini task/focus orb → Pull requests → Reminders → Settings. Finish each live interaction pass before moving on.
-3. **App opener:** Orbit and classic tree, search, actions, hover menus, keyboard, pin, and quit paths.
-4. **Shipping pass:** All seven themes, small display/no-notch, reduced motion, accessibility, empty/error/permission states, full tests, and distributable build.
+1. **Orbit app opener (current pass):** Search and results, the action ring, hover and keyboard selection, pin/quit paths, spacing, and entrance/exit motion. The design places larger icons on one shared arc, with clickable app names and shortcut badges below them, an app detail/action bar using Zera's existing glass controls, and one keyboard guidance line. Arrow keys browse during search. The native build and on-demand captures cover populated default, compact, actions, and three-result search states. The global shortcut still needs a hands-on check because automated keystrokes do not reach its macOS hotkey handler.
+2. **Classic app opener (next):** Review its tree layout, search, action menus, keyboard navigation, pin/quit paths, and transitions with the same loop.
+3. **Shell:** Companion idle/hover, bloom, badges, island open/switch/dismiss, search node, wings placement. This affects every screen.
+4. **Main screens, one at a time:** Home → Claude → Shelf → Clipboard → Tasks and mini task/focus orb → Pull requests → Reminders → Settings. Finish each live interaction pass before moving on.
+5. **Shipping pass:** All seven themes, small display/no-notch, reduced motion, accessibility, empty/error/permission states, full tests, and distributable build.
 
 Record a defect here with the surface, exact action, and observed result. Keep fixes local unless the same cause affects a shared component.

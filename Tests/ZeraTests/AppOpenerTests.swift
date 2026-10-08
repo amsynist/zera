@@ -205,10 +205,57 @@ final class AppOpenerTests: XCTestCase {
         let chosen = try XCTUnwrap(tiles.first { $0.chosen })
         XCTAssertEqual(tiles.filter { $0.frame.midX < chosen.frame.midX }.count, 1)
         XCTAssertEqual(tiles.filter { $0.frame.midX > chosen.frame.midX }.count, 1)
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveRight(_:))))
+        XCTAssertNotEqual(tiles.first { $0.chosen }?.title, chosen.title, "arrows browse while a search query is present")
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveLeft(_:))))
+        XCTAssertEqual(tiles.first { $0.chosen }?.title, chosen.title)
     }
 
     private func descendants(_ parent: NSView) -> [NSView] {
         parent.subviews.flatMap { [$0] + descendants($0) }
+    }
+
+    func testOrbitGuidanceFitsOnShortDisplays() throws {
+        for height: CGFloat in [600, 768, 900] {
+            let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: height))
+            view.prepare()
+            view.layoutSubtreeIfNeeded()
+            let guidance = try XCTUnwrap(descendants(view).compactMap { $0 as? NSTextField }
+                .first { $0.stringValue.contains("Browse") })
+            XCTAssertLessThanOrEqual(guidance.frame.maxY, height - 16, "guidance fits at \(height) pt")
+        }
+    }
+
+    func testActionRingFitsOnCompactDisplay() throws {
+        var ready = !AppCatalog.shared.apps.isEmpty
+        AppCatalog.shared.refreshIfNeeded { ready = true }
+        let deadline = Date().addingTimeInterval(8)
+        while !ready, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        XCTAssertTrue(ready)
+        let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1024, height: 600))
+        view.prepare()
+        let otherCaption = try XCTUnwrap(descendants(view).compactMap { $0 as? OrbitCaption }.first { !$0.chosen })
+        otherCaption.onClick?()
+        XCTAssertTrue(descendants(view).compactMap { $0 as? OrbitCaption }.contains { $0.chosen && $0.title == otherCaption.title },
+                      "clicking an app name selects its icon")
+        view.previewType("safari")
+        view.layoutSubtreeIfNeeded()
+        let rootVisible = descendants(view).filter { !$0.isHidden }
+        let rootGuidance = try XCTUnwrap(rootVisible.compactMap { $0 as? NSTextField }.first { $0.stringValue.contains("Browse") })
+        XCTAssertLessThanOrEqual(rootGuidance.frame.maxY, 584)
+        for caption in rootVisible.compactMap({ $0 as? OrbitCaption }) {
+            XCTAssertLessThanOrEqual(caption.frame.maxY, 584)
+            XCTAssertNotNil(caption.onClick)
+        }
+        view.previewActions()
+        view.layoutSubtreeIfNeeded()
+        XCTAssertTrue(view.isShowingActions)
+        let visible = descendants(view).filter { !$0.isHidden }
+        let guidance = try XCTUnwrap(visible.compactMap { $0 as? NSTextField }.first { $0.stringValue.contains("Browse actions") })
+        XCTAssertLessThanOrEqual(guidance.frame.maxY, 584)
+        for button in visible.compactMap({ $0 as? TreeButton }) where button.title == "Run" || button.title == "Back" {
+            XCTAssertLessThanOrEqual(button.frame.maxY, 584)
+        }
     }
 
     func testShortcutLabelsAndMatching() throws {

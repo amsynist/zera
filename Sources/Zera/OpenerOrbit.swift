@@ -17,14 +17,30 @@ enum OrbitArc {
     static let step: CGFloat = 104
     static func offset(_ k: Int) -> CGPoint {
         let d = CGFloat(k)
-        // Spread a little less the further out, and drop along a shallow curve.
+        // Spread a little less the further out, and drop along the curve.
         let x = d * step * (1 - min(0.18, abs(d) * 0.035))
-        return CGPoint(x: x, y: d * d * 7)
+        return CGPoint(x: x, y: d * d * 6)
     }
-    static func scale(_ k: Int) -> CGFloat { k == 0 ? 1.22 : max(0.5, 0.92 - CGFloat(abs(k) - 1) * 0.12) }
+    static func scale(_ k: Int) -> CGFloat { k == 0 ? 1.4 : max(0.7, 1.1 - CGFloat(abs(k) - 1) * 0.1) }
     static func alpha(_ k: Int) -> CGFloat { k == 0 ? 1 : max(0, 0.95 - CGFloat(abs(k) - 1) * 0.2) }
     /// How many either side of the chosen one are drawn at all.
     static let reach = 5
+
+    /// Draw through the actual tile frames, including the wider process cards.
+    static func path(under frames: [CGRect]) -> CGPath {
+        let points = frames.sorted { $0.midX < $1.midX }.map { CGPoint(x: $0.midX, y: $0.maxY + 1) }
+        let path = CGMutablePath()
+        guard points.count > 1 else { return path }
+        path.move(to: points[0])
+        for i in 0..<(points.count - 1) {
+            let p0 = points[max(0, i - 1)], p1 = points[i]
+            let p2 = points[i + 1], p3 = points[min(points.count - 1, i + 2)]
+            let c1 = CGPoint(x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6)
+            let c2 = CGPoint(x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6)
+            path.addCurve(to: p2, control1: c1, control2: c2)
+        }
+        return path
+    }
 }
 
 /// One item on the arc: an app's icon (or a command's, an action's), or — inside Kill Process /
@@ -43,7 +59,16 @@ final class OrbitTile: NSView {
     var kept = false { didSet { needsDisplay = true } }
     var chosen = false { didSet { if chosen != oldValue { needsDisplay = true } } }
     var onClick: (() -> Void)?
-    private var hovered = false { didSet { needsDisplay = true } }
+    private var hovered = false {
+        didSet {
+            needsDisplay = true
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(Motion.reduced ? 0 : 0.18)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+            layer?.transform = hovered ? CATransform3DMakeScale(1.06, 1.06, 1) : CATransform3DIdentity
+            CATransaction.commit()
+        }
+    }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -136,6 +161,55 @@ final class OrbitTile: NSView {
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
     override func accessibilityPerformPress() -> Bool { onClick?(); return true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+}
+
+/// A small shortcut and app name below each icon. On short displays they share one line.
+final class OrbitCaption: NSView {
+    var title = "" { didSet { needsDisplay = true } }
+    var key = "" { didSet { needsDisplay = true } }
+    var chosen = false { didSet { needsDisplay = true } }
+    var compact = false { didSet { needsDisplay = true } }
+    var onClick: (() -> Void)?
+    override var isFlipped: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byTruncatingTail
+        let font = NSFont.systemFont(ofSize: chosen ? 13 : 11.5, weight: chosen ? .semibold : .medium)
+        if compact {
+            let line = key.isEmpty ? title : "\(key)  \(title)"
+            NSAttributedString(string: line, attributes: [.font: font, .foregroundColor: chosen ? Neon.text : Neon.text.withAlphaComponent(0.78),
+                                                          .paragraphStyle: paragraph])
+                .draw(with: bounds, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            return
+        }
+        if !key.isEmpty {
+            let badge = NSRect(x: bounds.midX - 18, y: 0, width: 36, height: 17)
+            let path = NSBezierPath(roundedRect: badge, xRadius: 5, yRadius: 5)
+            Neon.chip.setFill(); path.fill()
+            Neon.chipEdge.setStroke(); path.lineWidth = 1; path.stroke()
+            NSAttributedString(string: key, attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .medium),
+                                                         .foregroundColor: Neon.textDim, .paragraphStyle: paragraph])
+                .draw(with: badge.offsetBy(dx: 0, dy: 1), options: [.usesLineFragmentOrigin])
+        }
+        NSAttributedString(string: title, attributes: [.font: font, .foregroundColor: chosen ? Neon.text : Neon.text.withAlphaComponent(0.78),
+                                                       .paragraphStyle: paragraph])
+            .draw(with: NSRect(x: 0, y: 22, width: bounds.width, height: 19), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+    }
 }
 
 /// One of the chosen item's actions in the ⌘K ring: a round button, its name under it when chosen.

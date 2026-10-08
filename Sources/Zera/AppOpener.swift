@@ -257,20 +257,21 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private let arcLine = CAShapeLayer()
     private let spokes = CAShapeLayer()
     private var tiles: [String: OrbitTile] = [:]
+    private var captions: [String: OrbitCaption] = [:]
     private var bubbles: [ActionBubble] = []
     private var orbitBounds = NSRect.zero
     // The chosen item, under the arc.
     private let dName = NSTextField(labelWithString: "")
     private let dMeta = NSTextField(labelWithString: "")
+    private let detailCard = OpenerGlass()
+    private let detailIcon = NSImageView()
     private let dPrimary = TreeButton()
     private let dSecondary = TreeButton()
     /// Pin / Unpin for the chosen app, beside Actions, so the shortcut is in plain sight.
     private let dPin = TreeButton()
     private let dEmpty = NSTextField(wrappingLabelWithString: "")
-    // The hints along the bottom.
+    // Quiet keyboard guidance below the primary actions.
     private let foot = NSTextField(labelWithString: "")
-    private let footOpen = OpenerPill()
-    private let footActions = OpenerPill()
 
     /// The branches under the root.
     private enum Branch: Int, CaseIterable {
@@ -317,6 +318,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private var savedQuery = ""
     private var flashToken = UUID()
     private var exitAnimationID = 0
+    private var deferringOrbitLayout = false
 
     private var versions: [URL: String] = [:]
 
@@ -364,7 +366,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         guard let img = zera.image, img.size.width > 0 else { return 117 }
         return OP.zeraW * img.size.height / img.size.width
     }
-    private var verticalOffset: CGFloat { min(100, max(0, (bounds.height - 760) / 2)) }
+    private var verticalOffset: CGFloat { min(100, max(-60, (bounds.height - 760) / 2)) }
     private var cardTop: CGFloat { band + OP.ropeGap + verticalOffset + zeraH - OP.paws }
     private var cx: CGFloat { ropeX > 0 ? ropeX : bounds.width / 2 }
     func panelHeight(band: CGFloat) -> CGFloat { self.band = band; return cardTop + OP.cardH + OP.margin }
@@ -421,13 +423,22 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         orbit.wantsLayer = true
         orbit.layer?.masksToBounds = false
         arcLine.fillColor = nil
-        arcLine.lineWidth = 1
+        arcLine.lineWidth = 1.2
+        arcLine.lineCap = .round
         orbit.layer?.addSublayer(arcLine)
         spokes.fillColor = nil
         spokes.lineWidth = 1
         orbit.layer?.addSublayer(spokes)
         holder.addSubview(orbit)
 
+        detailCard.radius = 20
+        detailCard.lineWidth = 1
+        detailCard.glow = 0.12
+        detailCard.isHidden = true
+        holder.addSubview(detailCard)
+        detailIcon.imageScaling = .scaleProportionallyUpOrDown
+        detailIcon.isHidden = true
+        holder.addSubview(detailIcon)
         dName.font = NSFont.systemFont(ofSize: 24, weight: .bold)
         dName.alignment = .center
         dName.lineBreakMode = .byTruncatingTail
@@ -447,17 +458,10 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         dEmpty.alignment = .center
         holder.addSubview(dEmpty)
 
-        foot.font = NSFont.systemFont(ofSize: 12)
+        foot.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
+        foot.alignment = .center
         foot.lineBreakMode = .byTruncatingTail
         holder.addSubview(foot)
-        footOpen.ghost = true
-        footOpen.onClick = { [weak self] in self?.primaryAction() }
-        footActions.ghost = true
-        footActions.key = "⌘K"
-        footActions.title = "Actions"
-        footActions.onClick = { [weak self] in self?.toggleActions() }
-        holder.addSubview(footOpen)
-        holder.addSubview(footActions)
 
         zera.image = sprite?.image
         zera.imageScaling = .scaleProportionallyUpOrDown
@@ -479,12 +483,15 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             .withSymbolConfiguration(.init(pointSize: 16, weight: .bold).applying(.init(paletteColors: [Neon.accent])))
         field.textColor = Neon.text
         rightLabel.textColor = Neon.textDim
-        arcLine.strokeColor = Neon.accent.withAlphaComponent(0.16).cgColor
+        arcLine.strokeColor = Neon.accent.withAlphaComponent(0.22).cgColor
+        detailCard.fill = Neon.fillBottom.withAlphaComponent(0.8)
+        detailCard.edge = Neon.edge.withAlphaComponent(0.6)
         dName.textColor = Neon.text
         dEmpty.textColor = Neon.textDim
         foot.textColor = Neon.textDim
         tiles.values.forEach { $0.needsDisplay = true }
-        ([searchBar, chip, lanes, dPrimary, dSecondary, dPin, footOpen, footActions, veil] as [NSView]).forEach { $0.needsDisplay = true }
+        captions.values.forEach { $0.needsDisplay = true }
+        ([searchBar, chip, lanes, detailCard, dPrimary, dSecondary, dPin, veil] as [NSView]).forEach { $0.needsDisplay = true }
     }
 
     // MARK: Data
@@ -593,10 +600,13 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     /// Puts what's showing on the arc, the chosen one in the middle; the chosen item's details
     /// and the hints follow.
     private func rebuild() {
-        placeOrbit(animated: window != nil)
         updateLanes()
         updateDetail()
         updateFooter()
+        deferringOrbitLayout = true
+        layoutSubtreeIfNeeded()
+        deferringOrbitLayout = false
+        placeOrbit(animated: window != nil)
     }
 
     private func emptyNote(_ c: OpenerCommand) -> String {
@@ -624,9 +634,12 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         let entries = orbitEntries()
         let anim = animated && !Motion.reduced
         let quick = mode == .root && !actionsOpen
+        let compact = bounds.height < 700
         let c = NSPoint(x: orbit.bounds.midX, y: orbitDrop)
         var keep = Set<String>()
         var moves: [(OrbitTile, NSRect, CGFloat)] = []
+        var captionKeep = Set<String>()
+        var captionMoves: [(OrbitCaption, NSRect, CGFloat)] = []
         let n = entries.count
         for (i, e) in entries.enumerated() {
             // The arc wraps round, so the chosen one always has neighbours on both sides.
@@ -650,20 +663,51 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             tile.pinned = e.pinned
             tile.kept = e.kept
             tile.chosen = k == 0
-            tile.quickKey = quick && i < OP.tiles ? "⌘\(i + 1)" : nil
+            tile.quickKey = quick && compact && i < OP.tiles ? "⌘\(i + 1)" : nil
             tile.onClick = { [weak self] in self?.tileTapped(i) }
             let off = OrbitArc.offset(k)
             let sc = OrbitArc.scale(k) * (e.style == .card ? (k == 0 ? 0.9 : 0.85) : 1)
             let base = OrbitTile.base(e.style)
             let spread: CGFloat = e.style == .card ? 1.75 : 1
             let w = base.width * sc, h = base.height * sc
-            let f = NSRect(x: (c.x + off.x * spread - w / 2).rounded(), y: (c.y + off.y - h / 2).rounded(), width: w.rounded(), height: h.rounded())
+            let arcY = compact ? off.y * 0.65 : off.y
+            let f = NSRect(x: (c.x + off.x * spread - w / 2).rounded(), y: (c.y + arcY - h / 2).rounded(), width: w.rounded(), height: h.rounded())
             let alpha = actionsOpen && k != 0 ? 0 : OrbitArc.alpha(k)
-            if isNew || !anim {
-                tile.frame = f
+            let wrapsAcrossArc = anim && abs(tile.frame.midX - f.midX) > OrbitArc.step * 3
+            if isNew {
+                tile.frame = anim ? NSRect(x: c.x - w * 0.4, y: c.y - h * 0.4, width: w * 0.8, height: h * 0.8) : f
                 tile.alphaValue = anim ? 0 : alpha
+            } else if wrapsAcrossArc {
+                tile.frame = f
+                tile.alphaValue = 0
+            } else if !anim {
+                tile.frame = f
+                tile.alphaValue = alpha
             }
             moves.append((tile, f, alpha))
+            if quick, e.style == .icon {
+                captionKeep.insert(e.key)
+                let caption = captions[e.key] ?? OrbitCaption()
+                let isNewCaption = captions[e.key] == nil
+                captions[e.key] = caption
+                if caption.superview == nil { orbit.addSubview(caption) }
+                caption.title = e.title
+                caption.key = !compact && i < OP.tiles ? "⌘\(i + 1)" : ""
+                caption.chosen = k == 0
+                caption.compact = compact
+                caption.onClick = { [weak self] in self?.tileTapped(i) }
+                caption.setAccessibilityLabel(e.title)
+                let cw: CGFloat = k == 0 ? (compact ? 140 : 170) : 108
+                let ch: CGFloat = caption.compact ? 20 : 42
+                let cf = NSRect(x: f.midX - cw / 2, y: f.maxY + (caption.compact ? 4 : 8), width: cw, height: ch)
+                let captionAlpha = max(0.82, alpha)
+                if isNewCaption {
+                    caption.frame = anim ? NSRect(x: c.x - cw / 2, y: c.y, width: cw, height: ch) : cf
+                    caption.alphaValue = anim ? 0 : captionAlpha
+                } else if wrapsAcrossArc { caption.frame = cf; caption.alphaValue = anim ? 0 : captionAlpha }
+                else if !anim { caption.frame = cf; caption.alphaValue = captionAlpha }
+                captionMoves.append((caption, cf, captionAlpha))
+            }
         }
         // The chosen one sits on top.
         if let chosen = moves.first(where: { $0.0.chosen })?.0 { orbit.addSubview(chosen, positioned: .above, relativeTo: nil) }
@@ -674,21 +718,27 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
                                                      completionHandler: { t.removeFromSuperview() })
             } else { t.removeFromSuperview() }
         }
+        for (key, caption) in captions where !captionKeep.contains(key) {
+            captions[key] = nil
+            if anim {
+                NSAnimationContext.runAnimationGroup({ ctx in ctx.duration = 0.18; caption.animator().alphaValue = 0 },
+                                                     completionHandler: { caption.removeFromSuperview() })
+            } else { caption.removeFromSuperview() }
+        }
         if anim {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.46
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 1.18, 0.38, 1)
+                ctx.duration = 0.36
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.18, 1, 0.28, 1)
                 ctx.allowsImplicitAnimation = true
                 for (t, f, a) in moves { t.animator().frame = f; t.animator().alphaValue = a }
+                for (caption, f, a) in captionMoves { caption.animator().frame = f; caption.animator().alphaValue = a }
             }
         } else {
             for (t, f, a) in moves { t.frame = f; t.alphaValue = a }
+            for (caption, f, a) in captionMoves { caption.frame = f; caption.alphaValue = a }
         }
         // The faint arc the items ride on (hidden while the actions are out).
-        let arc = CGMutablePath()
-        let span = orbit.bounds.width / 2 - 20
-        arc.move(to: CGPoint(x: c.x - span, y: c.y + 58))
-        arc.addQuadCurve(to: CGPoint(x: c.x + span, y: c.y + 58), control: CGPoint(x: c.x, y: c.y - 70))
+        let arc = OrbitArc.path(under: moves.map(\.1))
         CATransaction.begin(); CATransaction.setDisableActions(true)
         arcLine.frame = orbit.bounds
         arcLine.path = arc
@@ -700,6 +750,14 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     /// ⌘K: the chosen item's actions in a ring around it.
     private func placeBubbles(animated: Bool) {
         let want = actionsOpen ? shownActions.count : 0
+        if want == 0, animated, !bubbles.isEmpty {
+            let leaving = bubbles
+            bubbles.removeAll()
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.18
+                for bubble in leaving { bubble.animator().alphaValue = 0 }
+            }, completionHandler: { leaving.forEach { $0.removeFromSuperview() } })
+        }
         while bubbles.count > want { bubbles.removeLast().removeFromSuperview() }
         while bubbles.count < want {
             let b = ActionBubble()
@@ -873,11 +931,9 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
                 switch it {
                 case .app(let a, _, let running):
                     status = running ? ("Running", Neon.green) : ("Not running", Neon.textFaint)
-                    let opens = AppCatalog.shared.openCount(a)
                     let v = version(a)
                     facts = (v == "—" ? [] : ["v" + v]) + [a.folder]
-                        + [opens == 0 ? "never opened from Zera" : (opens == 1 ? "opened once from Zera" : "opened \(opens) times from Zera")]
-                    primary = "Open \(a.name)"
+                    primary = "Open app"
                 case .command(let c, _):
                     status = ("Command", Neon.accent)
                     facts = [c.subtitle.replacingOccurrences(of: "Command · ", with: "").capitalizedFirst]
@@ -917,6 +973,13 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             primaryTint = ask ? Neon.red : a.tint
         }
         let has = !name.isEmpty && !(mode == .root && results.isEmpty)
+        let cardApp = actionsOpen ? nil : chosenApp
+        let useCard = cardApp != nil && bounds.width >= 900
+        detailCard.isHidden = !useCard
+        detailIcon.isHidden = !useCard
+        detailIcon.image = cardApp.map { AppCatalog.shared.icon($0) }
+        dName.alignment = useCard ? .left : .center
+        dMeta.alignment = useCard ? .left : .center
         ([dName, dMeta, dPrimary, dSecondary] as [NSView]).forEach { $0.isHidden = !has }
         dEmpty.isHidden = has && !(mode != .root && listItems.isEmpty)
         if case .command(let c) = mode, listItems.isEmpty {
@@ -941,7 +1004,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
                                                                    .foregroundColor: Neon.textDim]))
         }
         let centred = NSMutableParagraphStyle()
-        centred.alignment = .center
+        centred.alignment = useCard ? .left : .center
         centred.lineBreakMode = .byTruncatingMiddle
         meta.addAttribute(.paragraphStyle, value: centred, range: NSRange(location: 0, length: meta.length))
         dMeta.attributedStringValue = meta
@@ -959,21 +1022,18 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     }
 
     private func updateFooter() {
-        switch mode {
-        case .root where actionsOpen: foot.stringValue = "↑↓ choose   ⏎ run   type to search actions   esc back"
-        case .root:
-            foot.stringValue = results.isEmpty ? "⏎ search the web   esc close" : "← → choose   ⇥ next branch   ⌘1–⌘6 quick open"
-            if let a = chosenApp {
-                foot.stringValue += AppCatalog.shared.isPinned(a) ? "   ⇧⌘P unpin   ⌥⌘↑↓ move" : "   ⇧⌘P pin"
-            }
-        case .command(.quitAll): foot.stringValue = "↑↓ choose   space or click to keep   esc back"
-        case .command(.custom): foot.stringValue = "esc back"
-        case .command: foot.stringValue = "↑↓ choose   ⌘⏎ force   ⌘R refresh   esc back"
+        if actionsOpen {
+            foot.stringValue = "↑ ↓ Browse actions    ·    ⏎ Run    ·    esc Back"
+            needsLayout = true
+            return
         }
-        footOpen.title = mode == .command(.quitAll) ? "Quit all" : (actionsOpen ? "Run" : (mode == .root ? (results.isEmpty ? "Search the web" : verb) : (mode == .command(.killPort) ? "Stop" : "Quit")))
-        footActions.isHidden = mode == .command(.custom) || (mode == .root && results.isEmpty)
-        footActions.title = actionsOpen ? "Close" : "Actions"
-        footActions.key = actionsOpen ? "esc" : "⌘K"
+        switch mode {
+        case .root:
+            foot.stringValue = results.isEmpty ? "⏎ Search the web    ·    esc Close" : "← → Browse    ·    ⇥ Categories    ·    ⌘1–⌘6 Quick open"
+        case .command(.quitAll): foot.stringValue = "↑ ↓ Browse    ·    space Keep open    ·    esc Back"
+        case .command(.custom): foot.stringValue = "esc Back"
+        case .command: foot.stringValue = "↑ ↓ Browse    ·    ⌘⏎ Force    ·    ⌘R Refresh    ·    esc Back"
+        }
         needsLayout = true
     }
 
@@ -1498,9 +1558,9 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         switch sel {
         case #selector(NSResponder.moveDown(_:)): move(1); return true
         case #selector(NSResponder.moveUp(_:)): move(-1); return true
-        // Along the arc: ← → (while nothing is typed, so they still move the caret in a search).
-        case #selector(NSResponder.moveRight(_:)) where field.stringValue.isEmpty: move(1); return true
-        case #selector(NSResponder.moveLeft(_:)) where field.stringValue.isEmpty: move(-1); return true
+        // Along the arc: arrows browse results even while a search query is present.
+        case #selector(NSResponder.moveRight(_:)): move(1); return true
+        case #selector(NSResponder.moveLeft(_:)): move(-1); return true
         case #selector(NSResponder.insertNewline(_:)):
             if NSApp.currentEvent?.modifierFlags.contains(.command) == true, !actionsOpen {
                 if case .command = mode { killSelected(force: true) } else { openSelected(finder: true) }
@@ -1565,6 +1625,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     override func layout() {
         super.layout()
         let c = cx
+        let compact = bounds.height < 700
         holder.frame = bounds
         veil.frame = bounds
         veil.glowCenter = NSPoint(x: c, y: cardTop + 200)
@@ -1602,31 +1663,51 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
                 let ang: CGFloat = -CGFloat.pi / 2 + CGFloat(k) / CGFloat(n) * 2 * CGFloat.pi
                 low = max(low, sin(ang) * r)
             }
-            ringH = low + ActionBubble.size / 2 + 30
+            ringH = low + ActionBubble.size / 2 + (compact ? 0 : 30)
         }
-        let oh = orbitDrop + max(70, ringH)
+        let rootCaptionRoom: CGFloat = mode == .root && !actionsOpen ? (compact ? 90 : 110) : 70
+        let oh = orbitDrop + max(rootCaptionRoom, ringH)
         let newOrbit = NSRect(x: (c - ow / 2).rounded(), y: oy, width: ow, height: oh)
         if newOrbit != orbit.frame {
             orbit.frame = newOrbit
-            placeOrbit(animated: false)
+            if !deferringOrbitLayout { placeOrbit(animated: false) }
         }
 
-        // The chosen item.
-        var y = orbit.frame.maxY + 8
-        dName.frame = NSRect(x: c - 320, y: y, width: 640, height: 30); y += 34
-        dMeta.frame = NSRect(x: c - 360, y: y, width: 720, height: 20); y += 34
         let buttons = [dPrimary, dSecondary, dPin].filter { !$0.isHidden }
-        let bw = buttons.map { max(110, $0.fittedWidth) }
-        var bx = c - (bw.reduce(0, +) + CGFloat(max(0, buttons.count - 1)) * 8) / 2
-        for (b, w) in zip(buttons, bw) { b.frame = NSRect(x: bx.rounded(), y: y, width: w, height: 36); bx += w + 8 }
+        let fw = min(OV.footW, bounds.width - 40)
+        if !detailCard.isHidden {
+            let cardW = min(800, bounds.width - 48)
+            let card = NSRect(x: c - cardW / 2, y: orbit.frame.maxY + (compact ? 8 : 24), width: cardW, height: 104)
+            detailCard.frame = card
+            detailIcon.frame = NSRect(x: card.minX + 18, y: card.minY + 20, width: 64, height: 64)
+            let widths = buttons.map { max(108, $0.fittedWidth) }
+            let total = widths.reduce(0, +) + CGFloat(max(0, buttons.count - 1)) * 8
+            var bx = card.maxX - 18 - total
+            for (button, width) in zip(buttons, widths) {
+                button.frame = NSRect(x: bx.rounded(), y: card.minY + 34, width: width, height: 36)
+                bx += width + 8
+            }
+            let tx = card.minX + 104
+            let tw = max(140, card.maxX - 18 - total - tx - 18)
+            dName.font = NSFont.systemFont(ofSize: 20, weight: .bold)
+            dName.frame = NSRect(x: tx, y: card.minY + 23, width: tw, height: 28)
+            dMeta.frame = NSRect(x: tx, y: card.minY + 58, width: tw, height: 20)
+            foot.frame = NSRect(x: c - fw / 2, y: card.maxY + (compact ? 8 : 20), width: fw, height: 20)
+        } else {
+            var y = orbit.frame.maxY + 8
+            dName.font = NSFont.systemFont(ofSize: 24, weight: .bold)
+            dName.frame = NSRect(x: c - 320, y: y, width: 640, height: 30); y += 34
+            dMeta.frame = NSRect(x: c - 360, y: y, width: 720, height: 20); y += compact ? 26 : 34
+            let widths = buttons.map { max(110, $0.fittedWidth) }
+            var bx = c - (widths.reduce(0, +) + CGFloat(max(0, buttons.count - 1)) * 8) / 2
+            for (button, width) in zip(buttons, widths) {
+                button.frame = NSRect(x: bx.rounded(), y: y, width: width, height: 36)
+                bx += width + 8
+            }
+            let footGap: CGFloat = compact ? 8 : (bounds.height < 820 ? 18 : 26)
+            foot.frame = NSRect(x: c - fw / 2, y: y + 36 + footGap, width: fw, height: 20)
+        }
         dEmpty.frame = NSRect(x: c - 260, y: orbit.frame.minY + 40, width: 520, height: 60)
-
-        // The hints, along the bottom.
-        let fw = min(OV.footW, bounds.width - 40), fx0 = c - fw / 2, fy = y + 36 + (bounds.height < 820 ? 28 : 46)
-        let ow2 = footOpen.fittedWidth, aw = footActions.isHidden ? 0 : footActions.fittedWidth
-        footActions.frame = NSRect(x: fx0 + fw - aw, y: fy, width: aw, height: 28)
-        footOpen.frame = NSRect(x: (footActions.isHidden ? fx0 + fw : footActions.frame.minX - 8) - ow2, y: fy, width: ow2, height: 28)
-        foot.frame = NSRect(x: fx0 + 4, y: fy + 6, width: footOpen.frame.minX - fx0 - 16, height: 16)
     }
 
     // MARK: Motion
@@ -1662,9 +1743,9 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private func fanOut(delay: Double) {
         guard !Motion.reduced else { return }
         let c = NSPoint(x: orbit.bounds.midX, y: orbitDrop)
-        for t in tiles.values {
-            guard let l = t.layer else { continue }
-            let dx = c.x - t.frame.midX
+        for view in tiles.values.map({ $0 as NSView }) + captions.values.map({ $0 as NSView }) {
+            guard let l = view.layer else { continue }
+            let dx = c.x - view.frame.midX
             let move = CASpringAnimation(keyPath: "transform.translation.x")
             move.fromValue = dx; move.toValue = 0
             move.stiffness = 220; move.damping = 20
@@ -1673,7 +1754,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             move.fillMode = .backwards
             l.add(move, forKey: "fan")
             let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 0; fade.toValue = t.alphaValue
+            fade.fromValue = 0; fade.toValue = view.alphaValue
             fade.duration = 0.25
             fade.beginTime = move.beginTime
             fade.fillMode = .backwards
