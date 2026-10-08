@@ -85,6 +85,16 @@ final class LiveActivityView: NSView {
     /// A soft glow behind her in the state's colour. It lives here rather than in her window so
     /// her window's shadow never traces it.
     private let glow = CAGradientLayer()
+    /// v2: energy running along each wing's top edge toward her, in the state's colour.
+    private let energyClipL = CALayer(), energyClipR = CALayer()
+    private let energyL = CAGradientLayer(), energyR = CAGradientLayer()
+    /// Each wing's outline (a crisp line plus a soft bloom) masks its light, so the light
+    /// traces the border round the rounded end and along the tail instead of running straight.
+    private let energyMaskL = CALayer(), energyMaskR = CALayer()
+    private let energyLineL = CAShapeLayer(), energyLineR = CAShapeLayer()
+    private let energyBloomL = CAShapeLayer(), energyBloomR = CAShapeLayer()
+    /// The state's colour: accent while Claude works, amber when it needs you, green when done.
+    private var stateColor: NSColor = Neon.accent
 
     private var leftBody = NSRect.zero
     private var rightBody = NSRect.zero
@@ -148,6 +158,23 @@ final class LiveActivityView: NSView {
         glow.startPoint = CGPoint(x: 0.5, y: 0.5)
         glow.endPoint = CGPoint(x: 1, y: 1)
         layer?.addSublayer(glow)
+        for (clip, mask, crisp, bloom) in [(energyClipL, energyMaskL, energyLineL, energyBloomL),
+                                           (energyClipR, energyMaskR, energyLineR, energyBloomR)] {
+            for (l, w, a) in [(bloom, CGFloat(5), CGFloat(0.35)), (crisp, CGFloat(1.6), CGFloat(1))] {
+                l.fillColor = nil
+                l.strokeColor = NSColor.white.withAlphaComponent(a).cgColor
+                l.lineWidth = w
+                l.lineJoin = .round
+                mask.addSublayer(l)
+            }
+            clip.mask = mask
+        }
+        for (clip, line) in [(energyClipL, energyL), (energyClipR, energyR)] {
+            line.startPoint = CGPoint(x: 0, y: 0.5)
+            line.endPoint = CGPoint(x: 1, y: 0.5)
+            clip.addSublayer(line)
+            layer?.addSublayer(clip)
+        }
         if !Motion.reduced {
             let a = CABasicAnimation(keyPath: "opacity")
             a.fromValue = 0.55; a.toValue = 1; a.duration = 1.3
@@ -233,9 +260,9 @@ final class LiveActivityView: NSView {
     }
 
     private func restyle() {
-        leftTitle.font = NSFont.systemFont(ofSize: 15.5, weight: .semibold)
+        leftTitle.font = NSFont.systemFont(ofSize: 14.5, weight: .bold)
         leftTitle.textColor = Neon.text
-        leftSub.font = NSFont.systemFont(ofSize: 12.5, weight: .regular)
+        leftSub.font = NSFont.systemFont(ofSize: 12, weight: .regular)
         leftSub.textColor = Neon.textDim
         command.font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .medium)
         command.textColor = Neon.text
@@ -348,14 +375,19 @@ final class LiveActivityView: NSView {
         setAccessibilityLabel(asking
             ? "Claude needs your approval: \(command.stringValue)"
             : "\(leftTitle.stringValue), \(leftSub.stringValue). \(status.stringValue) \(clock.stringValue)")
-        let tint: NSColor
         switch mode {
-        case .approval: tint = Neon.cyan.withAlphaComponent(0.5)
-        case .attention: tint = Neon.warning.withAlphaComponent(0.4)
-        case .done: tint = Neon.green.withAlphaComponent(0.42)
-        case .idle, .running: tint = Neon.violet.withAlphaComponent(0.42)
+        case .approval, .attention: stateColor = Neon.warning
+        case .done: stateColor = Neon.green
+        case .idle, .running: stateColor = Neon.accent
         }
-        glow.colors = [tint.cgColor, tint.withAlphaComponent(0).cgColor]
+        // An eased falloff that reaches nothing well inside the layer, so no edge ever shows.
+        glow.colors = [0.42, 0.3, 0.16, 0.06, 0.015, 0].map { stateColor.withAlphaComponent($0).cgColor }
+        glow.locations = [0, 0.25, 0.5, 0.72, 0.88, 1]
+        let hot = stateColor.blended(withFraction: 0.45, of: .white) ?? stateColor
+        let line = [stateColor.withAlphaComponent(0).cgColor, stateColor.withAlphaComponent(0.9).cgColor,
+                    hot.cgColor, stateColor.withAlphaComponent(0.9).cgColor, stateColor.withAlphaComponent(0).cgColor]
+        energyL.colors = line; energyR.colors = line
+        if modeChanged { restartEnergy() }
         springRight(to: asking || typing ? M.rightAsk : M.rightRun)
         needsLayout = true
         if modeChanged { needsDisplay = true }
@@ -365,12 +397,12 @@ final class LiveActivityView: NSView {
     private static func statusLine(_ word: String, detail: String?, strong: Bool = false, warn: Bool = false, good: Bool = false) -> NSAttributedString {
         let tint = warn ? Neon.warning : (good ? Neon.green : Neon.accent)
         let s = NSMutableAttributedString(string: word, attributes: [
-            .font: NSFont.systemFont(ofSize: 15.5, weight: .medium), .foregroundColor: Neon.text.withAlphaComponent(0.86)])
+            .font: NSFont.systemFont(ofSize: 13.5, weight: .medium), .foregroundColor: Neon.text.withAlphaComponent(0.9)])
         guard let detail = detail else { return s }
         s.append(NSAttributedString(string: "  ·  ", attributes: [
-            .font: NSFont.systemFont(ofSize: 15.5, weight: .bold), .foregroundColor: Neon.textDim]))
+            .font: NSFont.systemFont(ofSize: 13.5, weight: .bold), .foregroundColor: Neon.textDim]))
         s.append(NSAttributedString(string: detail, attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 15.5, weight: strong ? .semibold : .regular),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 13.5, weight: strong ? .semibold : .regular),
             .foregroundColor: strong ? tint : Neon.textDim]))
         return s
     }
@@ -449,8 +481,25 @@ final class LiveActivityView: NSView {
         rightPath = Self.wing(body: rightBody, inward: -1, tip: NSPoint(x: centerX + M.tip, y: mid))
 
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        glow.frame = CGRect(x: centerX - 60, y: mid - 56, width: 120, height: 120)
+        // A wide, soft oval that fits inside the panel (a taller one was cut flat top and
+        // bottom and read as a square); it reaches out along the wings for an ambient wash.
+        glow.frame = CGRect(x: centerX - 170, y: 0, width: 340, height: bounds.height)
+        // The energy runs round each wing's outline: the light sweeps across the wing and the
+        // outline mask lets it show only on the border, curves and tail included.
+        let oldL = energyClipL.frame, oldR = energyClipR.frame
+        energyClipL.frame = CGRect(x: leftBody.minX - 4, y: 0, width: max(0, centerX - leftBody.minX + 4), height: bounds.height)
+        energyClipR.frame = CGRect(x: centerX, y: 0, width: max(0, rightBody.maxX + 4 - centerX), height: bounds.height)
+        for (clip, mask, crisp, bloom, path) in [(energyClipL, energyMaskL, energyLineL, energyBloomL, leftPath),
+                                                 (energyClipR, energyMaskR, energyLineR, energyBloomR, rightPath)] {
+            mask.frame = clip.bounds
+            var t = CGAffineTransform(translationX: -clip.frame.minX, y: 0)
+            let cg = path.cgPathCompat.copy(using: &t)
+            for l in [crisp, bloom] { l.frame = clip.bounds; l.path = cg }
+        }
+        energyClipL.isHidden = leftBody.width < M.minWing
+        energyClipR.isHidden = rightBody.width < M.minWing
         CATransaction.commit()
+        if oldL.width != energyClipL.frame.width || oldR.width != energyClipR.frame.width { restartEnergy() }
 
         layoutLeft(mid: mid)
         layoutRight(mid: mid)
@@ -559,25 +608,31 @@ final class LiveActivityView: NSView {
     }
 
     private func drawWing(_ path: NSBezierPath, body: NSRect, inward d: CGFloat) {
-        // Navy-black glass with a wide blue halo.
-        Neon.glowing(Neon.halo, blur: 18) { Neon.fillBottom.setFill(); path.fill() }
-        NSGradient(starting: Neon.fillTop, ending: Neon.fillBottom)?.draw(in: path, angle: -90)
+        // Dark glass with a deep drop shadow and a soft halo in the state's colour.
+        Neon.glowing(NSColor.black.withAlphaComponent(0.6), blur: 22) { Neon.fillBottom.setFill(); path.fill() }
+        Neon.glowing(stateColor.withAlphaComponent(0.3), blur: 18) { Neon.fillBottom.setFill(); path.fill() }
+        NSGradient(starting: Neon.fillTop.withAlphaComponent(1), ending: Neon.fillBottom.withAlphaComponent(1))?.draw(in: path, angle: -90)
 
-        // Hairline edge with a soft glow of its own.
-        Neon.glowing(Neon.edge.withAlphaComponent(0.6), blur: 5) {
-            Neon.edge.withAlphaComponent(0.4).setStroke()
-            path.lineWidth = 1.3
-            path.stroke()
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        // The sinew: the tail toward her takes on the state's colour, so both wings read as
+        // one body with her.
+        let inner = d > 0 ? body.maxX : body.minX
+        if let tail = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                 colors: [Neon.fillBottom.withAlphaComponent(0).cgColor,
+                                          (Neon.fillBottom.blended(withFraction: 0.35, of: stateColor) ?? stateColor).cgColor] as CFArray,
+                                 locations: [0, 1]) {
+            ctx.saveGState()
+            ctx.addPath(path.cgPathCompat)
+            ctx.clip()
+            ctx.drawLinearGradient(tail, start: CGPoint(x: inner - d * 10, y: body.midY), end: CGPoint(x: centerX - d * M.tip, y: body.midY), options: [])
+            ctx.restoreGState()
         }
 
-        // One constant-width edge, fading gradually from blue into cyan toward Zera.
-        // Extending the gradient over the whole outline avoids thick, abruptly capped overlays.
-        guard let ctx = NSGraphicsContext.current?.cgContext,
-              let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                  colors: [Neon.edge.cgColor, Neon.cyan.withAlphaComponent(0.85).cgColor,
-                           Neon.cyan.withAlphaComponent(0.65).cgColor] as CFArray,
+        // The hairline edge: the theme's edge, warming into the state's colour toward her.
+        guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                  colors: [Neon.edge.cgColor, stateColor.withAlphaComponent(0.75).cgColor,
+                           stateColor.withAlphaComponent(0.55).cgColor] as CFArray,
                   locations: [0, 0.8, 1]) else { return }
-        let inner = d > 0 ? body.maxX : body.minX
         let from = inner - d * 130
         let to = centerX - d * M.tip
         ctx.saveGState()
@@ -589,6 +644,30 @@ final class LiveActivityView: NSView {
                                end: CGPoint(x: to, y: body.midY),
                                options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
         ctx.restoreGState()
+    }
+
+    /// The light that runs along the top edges toward her, again and again (none with Reduce Motion).
+    private func restartEnergy() {
+        for (clip, line, toward) in [(energyClipL, energyL, CGFloat(1)), (energyClipR, energyR, CGFloat(-1))] {
+            line.removeAllAnimations()
+            let w = clip.bounds.width
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            line.frame = CGRect(x: 0, y: 0, width: 180, height: clip.bounds.height)
+            line.opacity = Motion.reduced || mode == .idle ? 0 : 1
+            CATransaction.commit()
+            guard !Motion.reduced, mode != .idle, w > 0 else { continue }
+            let from = toward > 0 ? -90 : w + 90, to = toward > 0 ? w + 20 : -20
+            let move = CABasicAnimation(keyPath: "position.x")
+            move.fromValue = from; move.toValue = to
+            let fade = CAKeyframeAnimation(keyPath: "opacity")
+            fade.values = [0, 1, 1, 0]; fade.keyTimes = [0, 0.3, 0.85, 1]
+            let g = CAAnimationGroup()
+            g.animations = [move, fade]
+            g.duration = mode == .approval || mode == .attention ? 1.6 : 2.2
+            g.repeatCount = .infinity
+            g.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            line.add(g, forKey: "flow")
+        }
     }
 
     // MARK: - Mouse

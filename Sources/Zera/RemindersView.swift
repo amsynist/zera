@@ -19,8 +19,8 @@ import AppKit
 
 private enum RS {
     static let gap: CGFloat = 14
-    static let pad: CGFloat = 20
-    static let mainWidth: CGFloat = 620
+    static let pad: CGFloat = Metrics.sidePad
+    static let mainWidth: CGFloat = Isle.lensWidth
     static let sideWidth: CGFloat = 480
     static let maxHeight: CGFloat = 820
     static let expandedHeight: CGFloat = 720
@@ -140,8 +140,8 @@ final class RemindersView: NSView, CardContent {
         return ScreenIconTile(symbol: "calendar.badge.clock", top: c.blended(withFraction: 0.12, of: .white) ?? c,
                               bottom: c.blended(withFraction: 0.25, of: .black) ?? c)
     }()
-    private let titleLabel = rlabel(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
-    private let subtitleLabel = rlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
+    private let titleLabel = rlabel(Typo.screenTitle, Pal.text)
+    private let subtitleLabel = rlabel(Typo.screenSubtitle, Pal.textSecondary)
     private let peek = NSImageView()
     private let bubble = ZeraGitHubBubble()
     private let addButton = GHSplitButton(title: "Add Event", symbol: "plus")
@@ -187,7 +187,7 @@ final class RemindersView: NSView, CardContent {
     /// Not wide enough for both panels: the side panel replaces the overview (with a back button).
     /// In the island the details (or a form) replace the overview, with a back button.
     private var singlePane: Bool { true }
-    private var mainWidth: CGFloat { min(600, screen.width - 40) }
+    private var mainWidth: CGFloat { min(Isle.lensWidth, screen.width - 40) }
 
     var cardWidth: CGFloat { mainWidth }
     var desiredHeight: CGFloat {
@@ -246,7 +246,10 @@ final class RemindersView: NSView, CardContent {
         addButton.toolTip = "Create an event — or pick a reminder from ▾"
         main.addSubview(addButton)
 
+        tabs.chipStyle = true
         tabs.onSelect = { [weak self] i in Self.tab = i; self?.reload() }
+        tabs.switches = { [weak self] in self.map { [$0.scroll] } ?? [] }
+        filters.switches = { [weak self] in self.map { [$0.scroll] } ?? [] }
         main.addSubview(tabs)
         filters.items = AgendaFilter.allCases.map { f in
             switch f {
@@ -501,7 +504,9 @@ final class RemindersView: NSView, CardContent {
             onHeightChange?()
         }
         // Opening an item (or a form) slides it in like a page; closing slides the list back.
-        if wasExpanded != expanded { Motion.page(expanded ? sidePanel : main, forward: expanded) }
+        if wasExpanded != expanded { Motion.open(expanded ? sidePanel : main, forward: expanded) }
+        // Already open on something else: the new item pages in over it.
+        else if expanded, window != nil { Motion.page(sidePanel, forward: true) }
     }
 
     @objc private func closeSide() {
@@ -911,10 +916,10 @@ final class RemindersView: NSView, CardContent {
         // Island header: title and summary left of Zera (she hangs in the middle); "+ Add ▾" on
         // the right. Her own pictures and the tip stay hidden in the island.
         [screenTile, peek, bubble, tip, tipZera].forEach { $0.isHidden = true }
-        titleLabel.frame = NSRect(x: x + 4, y: 24, width: half - x - 4, height: 22)
-        subtitleLabel.frame = NSRect(x: x + 4, y: 46, width: half - x - 4, height: 16)
+        titleLabel.frame = NSRect(x: x, y: CardBase.titleTop, width: half - x, height: 32)
+        subtitleLabel.frame = NSRect(x: x, y: CardBase.subtitleTop, width: half - x, height: 18)
         let bw = min(170, addButton.fittedWidth + 8)
-        addButton.frame = NSRect(x: w - x - bw, y: 28, width: bw, height: 32)
+        addButton.frame = NSRect(x: w - x - bw, y: CardBase.titleTop + 2, width: bw, height: 32)
 
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
         filters.fill = filters.preferredWidth > iw
@@ -937,14 +942,14 @@ final class RemindersView: NSView, CardContent {
         let single = singlePane
         back.isHidden = !single
         close.isHidden = single
-        back.frame = NSRect(x: x, y: 28, width: 34, height: 34)
-        close.frame = NSRect(x: w - x - 34, y: 24, width: 34, height: 34)
+        back.frame = NSRect(x: x, y: CardBase.titleTop + 2, width: 34, height: 34)
+        close.frame = NSRect(x: w - x - 34, y: CardBase.titleTop - 2, width: 34, height: 34)
         // Island header: back · title / subtitle left of Zera (she hangs in the middle).
         sideTile.isHidden = true
         sideZera.isHidden = true
         let tx = x + 44, half = w / 2 - Isle.zeraGap / 2
-        sideTitle.frame = NSRect(x: tx, y: 24, width: max(60, half - tx), height: 22)
-        sideSubtitle.frame = NSRect(x: tx, y: 46, width: max(60, half - tx), height: 16)
+        sideTitle.frame = NSRect(x: tx, y: CardBase.titleTop - 2, width: max(60, half - tx), height: 22)
+        sideSubtitle.frame = NSRect(x: tx, y: CardBase.titleTop + 20, width: max(60, half - tx), height: 16)
 
         let bodyTop: CGFloat = Isle.headerHeight
         if let f = form {

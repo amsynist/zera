@@ -44,6 +44,7 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         counter.alignment = .right
         addSubview(counter)
         dismissButton = GHSquareButton(symbol: "xmark", label: "Dismiss", target: self, action: #selector(dismissTapped))
+        dismissButton.setLine("x")
         addSubview(dismissButton)
         snooze = PRActionButton("Snooze", style: .secondary, symbol: "moon.zzz.fill", target: self, action: #selector(snoozeTapped))
         primary = PRActionButton("Done", style: .success, symbol: "checkmark", target: self, action: #selector(primaryTapped))
@@ -59,6 +60,8 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
     deinit { NotificationCenter.default.removeObserver(self) }
 
     /// A banner: the header row Zera hangs in, plus a little air.
+    /// Banners stay a slim band under the notch (v2 lenses have a taller header).
+    override var headerBottom: CGFloat { Isle.bannerHeight }
     var desiredHeight: CGFloat { headerBottom + 6 }
 
     private var detailHeight: CGFloat {
@@ -93,27 +96,32 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
             pose = a.kind == .snoozed ? "card_bell" : "pointing"
         }
         tile.look = look
+        tile.lineIcon = a.kind == .breakTime ? "coffee" : a.kind == .battery ? "battery" : a.hydration ? "droplet"
+            : a.eventID != nil ? (a.joinURL != nil ? "video" : "calendar") : "bell"
         figure.image = SpriteLibrary.shared.sprite(pose)?.image ?? SpriteLibrary.shared.sprite("card_bell")?.image
 
-        headline.stringValue = a.hydration && a.kind != .snoozed ? a.headline + " 💧" : a.headline
+        headline.stringValue = Self.bannerHeadline(a.headline)
         detail.stringValue = a.detail
         headline.toolTip = headline.stringValue
         detail.toolTip = a.detail
         counter.stringValue = svc.pendingAlerts.count > 1 ? "1 of \(svc.pendingAlerts.count)" : ""
         setAccessibilityLabel("\(a.headline). \(a.detail)")
 
-        if a.kind != .battery { snooze.setSymbol("moon.zzz.fill") }
+        if a.kind != .battery { snooze.setLine("moon") }
+        primary.setLine("check")
         if a.kind == .breakTime {
-            primary.setTitleText("Taking it ☕")
+            primary.setTitleText("Taking it")
+            primary.setLine("coffee")
             snooze.setTitleText("Later")
         } else if a.kind == .battery {
             primary.setTitleText("Got it")
             primary.style = .success
             snooze.setTitleText("Battery settings")
-            snooze.setSymbol("gearshape")
+            snooze.setLine("sliders")
         } else if a.isEvent {
             primary.setTitleText(a.joinURL != nil ? "Join call" : "Got it")
             primary.style = a.joinURL != nil ? .primary : .success
+            if a.joinURL != nil { primary.setLine("video") }
             snooze.setTitleText("Snooze")
         } else {
             primary.setTitleText("Done")
@@ -123,6 +131,20 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         layoutSubtreeIfNeeded()
         onHeightChange?()
         if previousID != a.id { onAlertChange?() }
+    }
+
+    /// The heading as the banner shows it: the icon tile already says what it is, so trailing
+    /// emoji go, and the meeting heads-up reads short enough for one line.
+    static func bannerHeadline(_ h: String) -> String {
+        var t = h
+        while let last = t.last, last == " " || last.unicodeScalars.contains(where: { $0.properties.isEmojiPresentation || $0.value == 0xFE0F }) {
+            t.removeLast()
+        }
+        if let r = t.range(of: #"^You have a meeting in (\d+) minutes?!?$"#, options: .regularExpression) {
+            let n = t[r].filter(\.isNumber)
+            t = "Meeting in \(n) min"
+        }
+        return t.isEmpty ? h : t
     }
 
     @objc private func snoozeTapped() {
@@ -182,31 +204,16 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         dismissButton.isHidden = false
         counter.isHidden = true
         let x = Metrics.sidePad
-        tile.frame = NSRect(x: x, y: 26, width: 36, height: 36)
-        let tx = x + 36 + 12, half = w / 2 - Isle.zeraGap / 2 - 8
-        headline.font = Typo.rowTitleStrong
-        detail.font = Typo.meta
-        // A long title ("You have a meeting in 5 minutes") wraps to a second line instead of
-        // cutting off; the block stays centred on the button row.
-        headline.maximumNumberOfLines = 2
-        headline.lineBreakMode = .byWordWrapping
-        headline.cell?.truncatesLastVisibleLine = true
-        detail.maximumNumberOfLines = 1
-        detail.lineBreakMode = .byTruncatingTail
-        let tw = max(60, half - tx)
-        let fits = (headline.stringValue as NSString).boundingRect(with: NSSize(width: tw, height: 100),
-            options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: Typo.rowTitleStrong]).height
-        let hh = min(36, max(18, ceil(fits)))
-        let top = (28 + Metrics.button / 2 - (hh + 2 + 16) / 2).rounded()
-        headline.frame = NSRect(x: tx, y: top, width: tw, height: hh)
-        detail.frame = NSRect(x: tx, y: top + hh + 2, width: tw, height: 16)
+        tile.frame = BannerLayout.tileFrame(x: x)
+        let tx = x + BannerLayout.tile + 14, half = w / 2 - Isle.zeraGap / 2 - 12
+        BannerLayout.text(headline, detail, x: tx, width: half - tx)
         let pw = max(84, primary.fittedWidth), bh = Metrics.button
         // ✕ ends the button row, centred on it, at the same margin as everything else.
         let db = Metrics.rowButton
-        dismissButton.frame = NSRect(x: w - x - db, y: 28 + (bh - db) / 2, width: db, height: db)
-        primary.frame = NSRect(x: dismissButton.frame.minX - 8 - pw, y: 28, width: pw, height: bh)
+        dismissButton.frame = NSRect(x: w - x - db, y: BannerLayout.buttonY(db), width: db, height: db)
+        primary.frame = NSRect(x: dismissButton.frame.minX - 8 - pw, y: BannerLayout.buttonY(bh), width: pw, height: bh)
         let sw = snooze.fittedWidth
-        snooze.frame = NSRect(x: primary.frame.minX - 8 - sw, y: 28, width: sw, height: bh)
-        countdownLine.frame = NSRect(x: 18, y: bounds.height - 8, width: max(0, w - 36), height: 2)
+        snooze.frame = NSRect(x: primary.frame.minX - 8 - sw, y: BannerLayout.buttonY(bh), width: sw, height: bh)
+        countdownLine.frame = NSRect(x: 0, y: bounds.height - 3, width: w, height: 3)
     }
 }

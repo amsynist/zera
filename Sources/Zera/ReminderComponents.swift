@@ -86,6 +86,8 @@ enum AgendaLook {
 /// Rounded gradient tile with a white glyph (or letter) for one kind of item.
 final class AgendaTile: NSView {
     var look: AgendaLook = .reminder { didSet { needsDisplay = true } }
+    /// Banners: a clean line icon (`LineIcon`) instead of the symbol or source letter.
+    var lineIcon: String? { didSet { needsDisplay = true } }
     var dimmed = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
 
@@ -98,7 +100,10 @@ final class AgendaTile: NSView {
         let glyph = c.blended(withFraction: 0.25, of: .white) ?? c
         c.withAlphaComponent(0.14).setFill(); path.fill()
         c.withAlphaComponent(0.45).setStroke(); path.lineWidth = 1; path.stroke()
-        if let l = look.letter {
+        if let li = lineIcon {
+            let s = (bounds.width * 0.5).rounded()
+            LineIcon.draw(li, in: NSRect(x: bounds.midX - s / 2, y: bounds.midY - s / 2, width: s, height: s), color: glyph, lineWidth: 1.9)
+        } else if let l = look.letter {
             let f = NSFont.systemFont(ofSize: bounds.width * 0.42, weight: .heavy)
             let attrs: [NSAttributedString.Key: Any] = [.font: f, .foregroundColor: glyph]
             let s = (l as NSString).size(withAttributes: attrs)
@@ -140,7 +145,7 @@ extension AgendaState {
 
 /// One event or reminder: time column · tile · title / details · state · actions.
 final class AgendaRow: NSView {
-    static let height: CGFloat = 68
+    static let height: CGFloat = RowTier.rich.height
 
     var onSelect: (() -> Void)?
     var onCheck: (() -> Void)?
@@ -366,8 +371,18 @@ final class DayHeader: NSView {
 final class ChoiceChips: NSView {
     struct Item { let title: String; var dot: NSColor? = nil; var symbol: String? = nil }
     var items: [Item] { didSet { needsDisplay = true; invalidateIntrinsicContentSize() } }
-    var selection: Set<Int> = [0] { didSet { needsDisplay = true } }
+    var selection: Set<Int> = [0] {
+        didSet {
+            guard selection != oldValue else { return }
+            // One choice: the wash glides to it, like a segmented control's pill.
+            if !multiple, let i = selection.min(), items.indices.contains(i) { indicator.move(to: slot(i), animated: true) }
+            needsDisplay = true
+        }
+    }
     var multiple = false
+    /// What each choice shows: after a switch these page in from the side you moved toward.
+    var switches: (() -> [NSView])?
+    private lazy var indicator = SlidingIndicator(view: self)
     /// Equal-width chips filling the row instead of sized to their text.
     var fill = false
     var onChange: ((Set<Int>) -> Void)?
@@ -405,11 +420,13 @@ final class ChoiceChips: NSView {
             let r = slot(i).insetBy(dx: 0.5, dy: 0.5)
             let on = selection.contains(i)
             let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-            if on {
+            if on && !multiple {
+                // The base only; the gliding wash is drawn over it below.
+                p.surface.setFill(); path.fill()
+            } else if on {
                 p.drawSelected(path)
             } else {
                 (hoverIndex == i ? p.surfaceHover : p.surface).setFill(); path.fill()
-                p.border.setStroke(); path.lineWidth = 1; path.stroke()
             }
             let color: NSColor = on ? p.accent : p.textSecondary
             let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color]
@@ -427,6 +444,11 @@ final class ChoiceChips: NSView {
             }
             let th = ceil(Self.font.ascender - Self.font.descender) + 1
             (it.title as NSString).draw(in: NSRect(x: x, y: r.midY - th / 2, width: tw + 1, height: th), withAttributes: attrs)
+        }
+        if !multiple, let i = selection.min(), items.indices.contains(i) {
+            indicator.settle(at: slot(i))
+            let r = indicator.rect.insetBy(dx: 0.5, dy: 0.5)
+            p.drawSelected(NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2))
         }
     }
 
@@ -447,7 +469,11 @@ final class ChoiceChips: NSView {
         if multiple {
             if selection.contains(i) { if selection.count > 1 { selection.remove(i) } } else { selection.insert(i) }
         } else {
+            let old = selectedIndex
             selection = [i]
+            onChange?(selection)
+            if let views = switches?() { Motion.tabSwitch(views, from: old, to: i) }
+            return
         }
         onChange?(selection)
     }
