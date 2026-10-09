@@ -1026,8 +1026,8 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         // more on the right. Her own pictures and the insight box stay hidden in the island.
         [headerTile, zeraHead, bubble, insight, insightZera].forEach { $0.isHidden = true }
         layoutHeader()
-        moreButton.frame = NSRect(x: w - x - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
-        refreshButton.frame = NSRect(x: moreButton.frame.minX - 8 - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
+        moreButton.frame = NSRect(x: w - x - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
+        refreshButton.frame = NSRect(x: moreButton.frame.minX - 8 - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
 
         if mode == .disconnected {
             state.frame = NSRect(x: x, y: L.segY, width: iw, height: GHStateView.height)

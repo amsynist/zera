@@ -1692,11 +1692,10 @@ final class DropFilesView: NSView, CardContent {
         // Island header: title and count left of Zera; Clear all on the right. Her own pictures
         // stay hidden — she hangs in the middle of the header.
         [docTile, peek, bubble].forEach { $0.isHidden = true }
-        let half = w / 2 - Isle.zeraGap / 2
-        leftTitle.frame = NSRect(x: x, y: CardBase.titleTop, width: half - x, height: 32)
-        leftSub.frame = NSRect(x: x, y: CardBase.subtitleTop, width: half - x, height: 18)
+        leftTitle.frame = ScreenHeader.titleFrame(width: w, padding: x)
+        leftSub.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
         let cw = clearRecent.isHidden ? 0 : max(80, clearRecent.fittedWidth)
-        clearRecent.frame = NSRect(x: w - x - cw, y: CardBase.titleTop + 4, width: cw, height: 28)
+        clearRecent.frame = NSRect(x: w - x - cw, y: ScreenHeader.controlY(Metrics.control), width: cw, height: Metrics.control)
 
         // Shelf · Fresh under the header.
         var top = Isle.headerHeight
