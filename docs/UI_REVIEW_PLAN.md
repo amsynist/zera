@@ -2,6 +2,111 @@
 
 Branch: `v2-design`. Zera is a native macOS AppKit companion in the notch for Mac vitals, Claude Code sessions and approvals, files, clipboard, tasks and focus, pull requests, reminders and calendar, and app launching. `ZeraController` owns the companion, island, and floating panels; `NotchIsland.swift` defines navigation; feature views draw each screen using manual frames in `layout()`. Build with `swift build` during iteration, run `swift test` for checks, and use `./build.sh` for the distributable app.
 
+## Current status — 9 October 2026
+
+**We are still on Phase 1: the v2 opener and its ⌘K/⌘M action tree.** The latest smooth-motion correction is implemented, tested, rebuilt and pushed (`8d32ef5`). Its final live feel check is still open. Classic is the next phase; its visual redesign has not started.
+
+There are **8 main screens**, plus the shared companion/notch shell, the opener's **2 styles**, and auxiliary panels listed below. Settings contains **12 panes**. Auxiliary states belong to their screen's review; they do not disappear from the checklist when the main screen is finished.
+
+| Phase | Scope | Status | What remains |
+| --- | --- | --- | --- |
+| 1 | V2 opener + action tree | In progress; code refinements implemented | Final live motion, global shortcut and complete interaction pass |
+| 2 | Classic opener | Not started | Full layout, typography, actions and motion review |
+| 3 | Companion/notch shell | Shared transition fixes implemented; visual review pending | Hover menus, badges, wings, open/switch/close and placement |
+| 4.1 | Home | Performance reviewed; visual review pending | All Home states and actions |
+| 4.2 | Claude | Performance reviewed; visual review pending | Sessions, approvals, replies and wings |
+| 4.3 | Shelf + file assistant | Performance reviewed; visual review pending | Files, Fresh, drag/drop, details and assistant states |
+| 4.4 | Clipboard | Overlap/memory bugs fixed; full visual review pending | Filters, search, preview, copy/delete and privacy flows |
+| 4.5 | Tasks + focus | Performance reviewed; visual review pending | Lists, projects, mini task, orb, quick add and export |
+| 4.6 | Pull requests | Performance reviewed; visual review pending | Tabs, detail, checks, approvals, menus and feedback |
+| 4.7 | Reminders + calendar | Performance reviewed; visual review pending | Lists, forms, meetings, water and battery alerts |
+| 4.8 | Settings | Twelve panes performance-reviewed; visual review pending | Layout and all controls in each pane |
+| 5 | Shipping | Not started | Themes, accessibility, display sizes, integration errors and release validation |
+
+“Performance reviewed” means the code and benchmark pass is complete; it does **not** mean that screen's visual design or every live interaction is finished. Measurements and limitations are in [PERFORMANCE_REVIEW.md](PERFORMANCE_REVIEW.md).
+
+## Phase 1 checklist — current work
+
+### Implemented and tested
+
+- [x] Remove the top-left Zera text and symbol.
+- [x] Align search and app detail widths; refine spacing, icon sizes and arc placement.
+- [x] Soften type weights and use the muted Open app gradient.
+- [x] Match rounded keyboard hints across browsing and actions.
+- [x] Center hover zoom and avoid restarting it on repeated tracking updates.
+- [x] Implement a searchable, clickable ⌘K/⌘M action tree with arrows, Return, confirmations and Escape/query restoration.
+- [x] Route opener keys at the window level after search loses focus.
+- [x] Fix interrupted close/reopen and stale animation/catalog callbacks.
+- [x] Replace the stop-and-adjust icon handoff: one 480 ms position/scale timeline, matching landing geometry and reversal from the visible position.
+- [x] Pass 27 opener regression tests and the optional local animated capture; build and reload the release app.
+- [x] Commit and push the implementation (`183524f`, followed by `8d32ef5`).
+
+### Still to finish before moving to Classic
+
+- [ ] Check the latest transition's feel in the running app, including repeated ⌘K/⌘M and Escape halfway through.
+- [ ] Complete the single-instance global shortcut check from another app.
+- [ ] Complete a live pointer/keyboard pass through tabs, search, selection, menus, pin/unpin, opening apps, commands and confirmation/cancel flows.
+- [ ] Check compact display, long names, empty/loading/error states and reduced motion live.
+- [ ] Close any defects found in that pass, then mark Phase 1 complete.
+
+## Shared fixes already completed
+
+- [x] Clipboard grid/list overlap: release inactive views, redraw removed pixels and reject stale preview callbacks.
+- [x] Island outgoing-screen cleanup and rapid-switch handling.
+- [x] Lazy screen creation, bounded decoded image caches and coalesced thumbnail decoding.
+- [x] Skip hidden-screen rebuilds and unnecessary animation/spinner work.
+- [x] Remove Sounds and Diagnostics UI-thread stalls.
+- [x] Move GitHub credential work off the UI thread; protect against stale credential completion.
+- [x] Review core activity parsing/pruning and screen performance; record results and remaining limits.
+- [x] Run the broader regression suite: 190 tests, 13 optional tests skipped, zero failures before the latest motion refinement; that refinement separately passed all 27 opener tests and its render check.
+- [ ] Run a longer live session across the finished screens and repeat memory profiling during the shipping pass.
+
+## Remaining phase checklists
+
+Finish one surface's layout, interactions and motion loop before starting the next.
+
+### Phase 2 — Classic opener
+
+- [ ] Review tree layout, search, typography and spacing.
+- [ ] Verify action menus, keyboard navigation, pin/quit and confirmation paths.
+- [ ] Refine transitions and verify interrupted/reduced-motion states.
+
+### Phase 3 — Companion and shell
+
+- [ ] Idle mascot, hover bloom/menu, badges and search node.
+- [ ] Island opening, switching, outside-click/Escape dismissal and rapid reversals.
+- [ ] Live wings, minimize/restore, display edges and no-notch placement.
+
+### Phase 4 — main screens, in order
+
+- [ ] **Home:** attention/empty states, quick actions, search, vitals, This Mac and speed test.
+- [ ] **Claude:** empty/running/waiting/done sessions; select, approve/reject, reply and wings.
+- [ ] **Shelf:** empty/list/Fresh; add/drop/copy/drag; details, menus, streaming answers and errors.
+- [ ] **Clipboard:** all filters, search, preview, copy, delete/clear, pin and privacy controls; revisit grid/list switching live.
+- [ ] **Tasks:** Today/week/project menus, create/edit/complete, mini task, quick add, focus card, orb/pill and export.
+- [ ] **Pull requests:** empty/list, filters/tabs, approval/detail/checks, review actions, menus and toast feedback.
+- [ ] **Reminders/calendar:** Today/Upcoming/Completed, detail/edit forms, meeting/water/battery alerts.
+- [ ] **Settings:** General, Appearance, Sounds, Clipboard, Shelf, Integrations, Shortcuts, About, Claude, GitHub, Calendar and Diagnostics.
+
+### Phase 5 — shipping
+
+- [ ] All seven themes; small display and no-notch layouts.
+- [ ] Reduced motion, accessibility, focus visibility and keyboard-only use.
+- [ ] Empty/loading/error/offline/permission states and external integration flows.
+- [ ] Extended open/switch/close session, memory/CPU profiling and recovery after relaunch.
+- [ ] Full regression suite and distributable build; fix remaining release defects.
+
+## Defect tracker
+
+| Defect | Implementation status | Verification still needed |
+| --- | --- | --- |
+| Opener arrows/Escape stop after focus changes | Fixed; actual-window regression passes | Complete global shortcut and live interaction pass |
+| Images remain behind Clipboard list after filter switch | Fixed; repeated-switch regression and local render pass | Full Clipboard live review in Phase 4.4 |
+| ⌘K/⌘M icon stops then shifts to fit header | Latest correction pushed in `8d32ef5`; relayout/reversal tests and capture pass | Final motion feel check in Phase 1 |
+| Startup freezes waiting for Keychain | Background credential queue implemented and tested | Revisit normal startup/relaunch in shipping pass |
+
+Update this tracker and the relevant checkbox whenever a defect is found or closed. Keep captures local and create them only when they help the current review; do not publish PNGs/GIFs to CI or PRs.
+
 ## Inventory
 
 There are **8 main notch screens**, a hover/navigation shell, an app opener, and floating states. Settings has **12 panes**, with 8 navigation entries and 4 other detail panes. Review states below are interactions within those surfaces, not new top-level screens.
