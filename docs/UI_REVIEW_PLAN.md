@@ -32,6 +32,7 @@ There are **8 main screens**, plus the shared companion/notch shell, the opener'
 - [x] Remove the top-left Zera text and symbol.
 - [x] Align search and app detail widths; refine spacing, icon sizes and arc placement.
 - [x] Soften type weights and use the muted Open app gradient.
+- [x] Replace the opaque full-screen paint/glow with native macOS frosted blur and an 18% neutral tint (user-requested follow-up).
 - [x] Match rounded keyboard hints across browsing and actions.
 - [x] Center hover zoom and avoid restarting it on repeated tracking updates.
 - [x] Implement a searchable, clickable ⌘K/⌘M action tree with arrows, Return, confirmations and Escape/query restoration.
