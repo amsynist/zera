@@ -26,13 +26,18 @@ enum ScreenHeader {
     static let titleTop: CGFloat = 56
     static let titleHeight: CGFloat = 32
     static let subtitleTop = titleTop + 34
+    static let subtitleHeight: CGFloat = 18
+    /// Actions beside a title and subtitle align to the centre of that whole block.
+    static func blockControlY(_ height: CGFloat) -> CGFloat {
+        titleTop + (subtitleTop + subtitleHeight - titleTop - height) / 2
+    }
     static func controlY(_ height: CGFloat) -> CGFloat { titleTop + (titleHeight - height) / 2 }
     static func titleFrame(width: CGFloat, padding: CGFloat = Metrics.cardPad) -> NSRect {
         NSRect(x: padding, y: titleTop, width: max(0, width / 2 - Isle.zeraGap / 2 - padding), height: titleHeight)
     }
     static func subtitleFrame(width: CGFloat, padding: CGFloat = Metrics.cardPad) -> NSRect {
         var frame = titleFrame(width: width, padding: padding)
-        frame.origin.y = subtitleTop; frame.size.height = 18
+        frame.origin.y = subtitleTop; frame.size.height = subtitleHeight
         return frame
     }
     static func trailingRect(width: CGFloat) -> NSRect {
@@ -48,7 +53,7 @@ enum ScreenHeader {
     }
     static func detailSubtitleFrame(width: CGFloat, padding: CGFloat) -> NSRect {
         var frame = detailTitleFrame(width: width, padding: padding)
-        frame.origin.y = subtitleTop; frame.size.height = 18
+        frame.origin.y = subtitleTop; frame.size.height = subtitleHeight
         return frame
     }
 }
@@ -312,7 +317,7 @@ var Pal: Palette { Palette.current }
 // MARK: - Buttons
 
 /// The island's one button family: rounded 32 pt buttons. A quiet chip by default. The main
-/// action is filled with the theme's accent gradient and done / approve is filled green, so what
+/// action uses a muted theme-tinted surface gradient and done / approve is tinted green, so what
 /// to press stands out; stop / reject / delete and warnings stay a soft tint with an edge.
 enum ButtonTone { case neutral, accent, success, danger, warning }
 
@@ -347,24 +352,20 @@ extension Palette {
             path.lineWidth = 1; path.stroke()
             return text.withAlphaComponent(enabled ? 1 : 0.55)
         case .accent:
-            // v2: the main action is a diagonal gradient from the accent to its deep end, with a
-            // soft glow in the accent under it. Hover lifts it a touch, press sinks it.
-            let lift: CGFloat = pressed && enabled ? -0.12 : (lit ? 0.08 : 0)
-            func adj(_ c: NSColor) -> NSColor { (lift >= 0 ? c.blended(withFraction: lift, of: .white) : c.blended(withFraction: -lift, of: .black)) ?? c }
-            let a = adj(accent).withAlphaComponent(dim), b = adj(accentDeep).withAlphaComponent(dim)
-            if enabled && !pressed {
-                NSGraphicsContext.saveGraphicsState()
-                let glow = NSShadow()
-                glow.shadowColor = accent.withAlphaComponent(lit ? 0.5 : 0.35)
-                glow.shadowBlurRadius = lit ? 14 : 11
-                glow.shadowOffset = NSSize(width: 0, height: (NSGraphicsContext.current?.isFlipped ?? false) ? 3 : -3)
-                glow.set()
-                b.setFill(); path.fill()
-                NSGraphicsContext.restoreGraphicsState()
-            }
+            // Keep all paint inside the rounded silhouette. A blurred shadow drawn into a
+            // layer-backed control is clipped by its rectangular backing and leaves a patch
+            // around the corners. Depth comes from the quiet surface gradient and edge.
+            let mix: CGFloat = pressed && enabled ? 0.16 : (lit ? 0.28 : 0.22)
+            let top = (surfaceElevated.blended(withFraction: mix, of: accent) ?? surfaceElevated).withAlphaComponent(dim)
+            let bottom = (surface.blended(withFraction: mix * 0.65, of: accentDeep) ?? surface).withAlphaComponent(dim)
+            NSGraphicsContext.saveGraphicsState()
+            path.addClip()
             let flipped = NSGraphicsContext.current?.isFlipped ?? false
-            NSGradient(starting: a, ending: b)?.draw(in: path, angle: flipped ? 35 : -35)
-            return onAccent.withAlphaComponent(enabled ? 1 : 0.7)
+            NSGradient(starting: top, ending: bottom)?.draw(in: path, angle: flipped ? -90 : 90)
+            NSGraphicsContext.restoreGraphicsState()
+            accent.withAlphaComponent((lit ? 0.45 : 0.30) * dim).setStroke()
+            path.lineWidth = 1; path.stroke()
+            return text.withAlphaComponent(enabled ? 1 : 0.55)
         case .success:
             // Done / approve: a tint of green with a green edge, like the design's quiet "good".
             let c = success

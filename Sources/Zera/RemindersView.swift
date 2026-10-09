@@ -923,7 +923,7 @@ final class RemindersView: NSView, CardContent {
         titleLabel.frame = ScreenHeader.titleFrame(width: w, padding: x)
         subtitleLabel.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
         let bw = min(170, addButton.fittedWidth + 8)
-        addButton.frame = NSRect(x: w - x - bw, y: ScreenHeader.controlY(Metrics.button), width: bw, height: Metrics.button)
+        addButton.frame = NSRect(x: w - x - bw, y: ScreenHeader.blockControlY(Metrics.headerButton), width: bw, height: Metrics.headerButton)
 
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
         filters.fill = filters.preferredWidth > iw

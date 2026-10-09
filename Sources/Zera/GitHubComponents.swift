@@ -452,8 +452,7 @@ class PRActionButton: NSButton {
     override func becomeFirstResponder() -> Bool { needsDisplay = true; return super.becomeFirstResponder() }
     override func resignFirstResponder() -> Bool { needsDisplay = true; return super.resignFirstResponder() }
 
-    /// Filled buttons carry their own soft drop shadow (`Palette.drawButton`); no coloured glow,
-    /// which rows' scroll views would clip square.
+    /// Shared button paint stays inside its rounded edge; no layer shadow to clip square.
     private func updateGlow() { layer?.shadowOpacity = 0 }
 
     override func draw(_ dirtyRect: NSRect) {

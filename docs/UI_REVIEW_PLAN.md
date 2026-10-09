@@ -207,3 +207,12 @@ As each screen enters review, replace duplicated standard values with these role
 5. **Shipping pass:** All seven themes, small display/no-notch, reduced motion, accessibility, empty/error/permission states, full tests, and distributable build.
 
 Record a defect here with the surface, exact action, and observed result. Keep fixes local unless the same cause affects a shared component.
+
+### Shared primary button correction — 9 October
+
+- [x] Remove blurred button shadows that leave rectangular patches around rounded controls.
+- [x] Replace the bright accent fill with a muted, theme-tinted surface gradient and subtle edge; use readable light text in the dark island.
+- [x] Apply through `Palette.drawButton` to Export, Add Event, and other shared primary controls; preserve hover, pressed, focus, and disabled states.
+- [x] Align Add Event to the centre of the full Reminders title/subtitle block using shared header geometry and the standard header button height.
+- [x] Inspect local Tasks, Reminders, and Export renders; five shared layout checks and the render check passed.
+- [ ] Confirm the updated controls in the live review loop before shipping.
