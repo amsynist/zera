@@ -31,8 +31,8 @@ There are **8 main screens**, plus the shared companion/notch shell, the opener'
 
 - [x] Remove the top-left Zera text and symbol.
 - [x] Align search and app detail widths; refine spacing, icon sizes and arc placement.
-- [x] Soften type weights and use the muted Open app gradient.
-- [x] Replace the opaque full-screen paint/glow with native macOS frosted blur and an 18% neutral tint; subtle gradients live on search, detail and action cards (user-requested follow-up).
+- [x] Soften type weights and use the muted Open app gradient; latest color refinement uses neutral charcoal/slate cards and a darker primary button.
+- [x] Replace the opaque full-screen paint/glow with native macOS frosted blur and a 28% neutral charcoal tint; subtle gradients live on search, detail and action cards (user-requested follow-up).
 - [x] Match rounded keyboard hints across browsing and actions.
 - [x] Center hover zoom and avoid restarting it on repeated tracking updates.
 - [x] Implement a searchable, clickable ⌘K/⌘M action tree with arrows, Return, confirmations and Escape/query restoration.
@@ -75,7 +75,8 @@ First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 
 
 - [x] Review initial tree/search/action layouts; refine typography, metadata spacing and primary button.
 - [x] Widen Classic by 60 points, relax row spacing and give shortcut guidance its own footer row.
-- [x] Use shared rounded keycaps for Classic footer hints and action controls; keep panel height within the display.
+- [x] Use shared rounded keycaps for Classic footer hints and action controls; fit the taller panel to standard Mac display heights.
+- [x] Route Classic left/right arrows alongside up/down, and ignore stale composition in an inactive field editor; actual-window regression passes.
 - [x] Pass 28 opener tests, including Classic ⌘M/⌘K, empty action search and Escape query restoration.
 - [ ] Complete Classic live interaction and visual approval loop.
 - [ ] Verify action menus, keyboard navigation, pin/quit and confirmation paths.
@@ -110,7 +111,7 @@ First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 
 
 | Defect | Implementation status | Verification still needed |
 | --- | --- | --- |
-| Opener arrows/Escape stop after focus changes | Fixed; actual-window regression passes | Complete global shortcut and live interaction pass |
+| Opener arrows/Escape stop after focus changes | Window routing plus Classic horizontal arrows and inactive-editor composition fixes; regression passes | Recheck the previously failing live Classic flow |
 | Images remain behind Clipboard list after filter switch | Fixed; repeated-switch regression and local render pass | Full Clipboard live review in Phase 4.4 |
 | ⌘K/⌘M icon stops then shifts to fit header | Latest correction pushed in `8d32ef5`; relayout/reversal tests and capture pass | Visual result approved; rapid live reversals remain shipping checks |
 | UI test asks a real app to quit | Fixed: the ⌘Q fallback test now selects Custom Commands before dispatch | Corrected suite: 28 tests passed |

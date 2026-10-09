@@ -1327,6 +1327,8 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         switch sel {
         case #selector(NSResponder.moveDown(_:)): move(1); return true
         case #selector(NSResponder.moveUp(_:)): move(-1); return true
+        case #selector(NSResponder.moveRight(_:)): move(1); return true
+        case #selector(NSResponder.moveLeft(_:)): move(-1); return true
         case #selector(NSResponder.insertNewline(_:)):
             if NSApp.currentEvent?.modifierFlags.contains(.command) == true, !actionsOpen {
                 if case .command = mode { killSelected(force: true) } else { openSelected(finder: true) }
