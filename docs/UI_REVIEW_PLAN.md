@@ -32,7 +32,7 @@ There are **8 main screens**, plus the shared companion/notch shell, the opener'
 - [x] Remove the top-left Zera text and symbol.
 - [x] Align search and app detail widths; refine spacing, icon sizes and arc placement.
 - [x] Soften type weights and use the muted Open app gradient.
-- [x] Replace the opaque full-screen paint/glow with native macOS frosted blur and an 18% neutral tint (user-requested follow-up).
+- [x] Replace the opaque full-screen paint/glow with native macOS frosted blur and an 18% neutral tint; subtle gradients live on search, detail and action cards (user-requested follow-up).
 - [x] Match rounded keyboard hints across browsing and actions.
 - [x] Center hover zoom and avoid restarting it on repeated tracking updates.
 - [x] Implement a searchable, clickable ⌘K/⌘M action tree with arrows, Return, confirmations and Escape/query restoration.
@@ -74,6 +74,8 @@ Finish one surface's layout, interactions and motion loop before starting the ne
 First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 primary gradient, add ⌘M/⌘K parity, separate metadata columns, and hide Run when action search has no matches.
 
 - [x] Review initial tree/search/action layouts; refine typography, metadata spacing and primary button.
+- [x] Widen Classic by 60 points, relax row spacing and give shortcut guidance its own footer row.
+- [x] Use shared rounded keycaps for Classic footer hints and action controls; keep panel height within the display.
 - [x] Pass 28 opener tests, including Classic ⌘M/⌘K, empty action search and Escape query restoration.
 - [ ] Complete Classic live interaction and visual approval loop.
 - [ ] Verify action menus, keyboard navigation, pin/quit and confirmation paths.
@@ -111,6 +113,7 @@ First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 
 | Opener arrows/Escape stop after focus changes | Fixed; actual-window regression passes | Complete global shortcut and live interaction pass |
 | Images remain behind Clipboard list after filter switch | Fixed; repeated-switch regression and local render pass | Full Clipboard live review in Phase 4.4 |
 | ⌘K/⌘M icon stops then shifts to fit header | Latest correction pushed in `8d32ef5`; relayout/reversal tests and capture pass | Visual result approved; rapid live reversals remain shipping checks |
+| UI test asks a real app to quit | Fixed: the ⌘Q fallback test now selects Custom Commands before dispatch | Corrected suite: 28 tests passed |
 | Startup freezes waiting for Keychain | Background credential queue implemented and tested | Revisit normal startup/relaunch in shipping pass |
 
 Update this tracker and the relevant checkbox whenever a defect is found or closed. Keep captures local and create them only when they help the current review; do not publish PNGs/GIFs to CI or PRs.

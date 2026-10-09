@@ -168,7 +168,7 @@ final class AppOpener: NSObject, NSWindowDelegate {
         if panel.contentView !== view { panel.contentView = view }
         if tree {
             // Classic: a window held by Zera under the notch.
-            let size = NSSize(width: OP.width, height: treeView.panelHeight(band: band))
+            let size = NSSize(width: TreeOpenerView.panelWidth, height: treeView.panelHeight(band: band, availableHeight: screen.height))
             let x = max(screen.minX, min(screen.maxX - size.width, notch.midX - size.width / 2))
             panel.setFrame(NSRect(x: x, y: screen.maxY - size.height, width: size.width, height: size.height), display: false)
             view.ropeX = notch.midX - x
@@ -590,6 +590,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     /// Settings shows up here too.
     private func applyTheme() {
         searchBar.fill = OpenerLook.surface.withAlphaComponent(0.72)
+        searchBar.gradient = OpenerLook.glassGradient
         searchBar.edge = NSColor.white.withAlphaComponent(0.10)
         searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 18, weight: .regular).applying(.init(paletteColors: [OpenerLook.muted])))
@@ -597,14 +598,15 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         rightLabel.textColor = Neon.textDim
         arcLine.strokeColor = NSColor.white.withAlphaComponent(0.06).cgColor
         actionPanel.fill = OpenerLook.surface.withAlphaComponent(0.96)
+        actionPanel.gradient = OpenerLook.glassGradient
         actionPanel.edge = OpenerLook.edge
         actionHeading.textColor = Neon.text
         actionCount.textColor = Neon.textFaint
         actionDivider.layer?.backgroundColor = Neon.divider.cgColor
         actionBranch.strokeColor = Neon.accent.withAlphaComponent(0.28).cgColor
         actionEmpty.textColor = Neon.textDim
-        detailCard.fill = NSColor.white.withAlphaComponent(0.04)
-        detailCard.gradient = nil
+        detailCard.fill = OpenerLook.surface.withAlphaComponent(0.72)
+        detailCard.gradient = OpenerLook.glassGradient
         detailCard.edge = OpenerLook.edge
         dName.textColor = Neon.text
         dEmpty.textColor = Neon.textDim
@@ -2230,7 +2232,8 @@ private extension String {
 }
 
 /// Keyboard guidance uses the same quiet keycaps as the search and app shortcuts.
-private final class OpenerFooter: NSTextField {
+final class OpenerFooter: NSTextField {
+    var leadingAligned = false
     var hints: [([String], String)] = [] { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
@@ -2241,7 +2244,7 @@ private final class OpenerFooter: NSTextField {
         func keyWidth(_ key: String) -> CGFloat { max(20, ceil((key as NSString).size(withAttributes: [.font: keyFont]).width) + 10) }
         let widths = groups.map { $0.0.reduce(CGFloat(0)) { $0 + keyWidth($1) + 4 } + 2 + ($0.1 as NSString).size(withAttributes: [.font: font]).width }
         let total = widths.reduce(0, +) + 20 * CGFloat(groups.count - 1)
-        var x = bounds.midX - total / 2
+        var x = leadingAligned ? 0 : bounds.midX - total / 2
         for (keys, title) in groups {
             for key in keys {
                 let box = NSRect(x: x, y: bounds.midY - 10, width: keyWidth(key), height: 20)
@@ -2483,7 +2486,7 @@ final class TreeButton: NSView {
         let k = NSAttributedString(string: key, attributes: [.font: openerAppearance && primary ? NSFont.systemFont(ofSize: 10) : Self.keyFont,
                                                               .foregroundColor: openerAppearance ? ink : (filled ? ink.withAlphaComponent(0.6) : Pal.textTertiary)])
         let ts = t.size(), ks = k.size()
-        let keyWidth = openerAppearance && primary ? max(16, ks.width + 4) : ks.width
+        let keyWidth = openerAppearance ? max(20, ks.width + 10) : ks.width
         let iw = symbol == nil ? 0 : Self.iconBox + (title.isEmpty ? 0 : Self.iconGap)
         // Too narrow for the key as well: the icon and word alone, so nothing spills over the edge.
         let showKey = !key.isEmpty && iw + ts.width + Self.keyGap + keyWidth <= bounds.width - 24
@@ -2495,10 +2498,12 @@ final class TreeButton: NSView {
         t.draw(at: NSPoint(x: x0 + iw, y: (bounds.height - ts.height) / 2))
         if showKey {
             let keyX = x0 + iw + ts.width + Self.keyGap
-            if openerAppearance && primary {
-                let chip = NSRect(x: keyX, y: bounds.midY - 8, width: keyWidth, height: 16)
-                NSColor.white.withAlphaComponent(0.2).setFill()
-                NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
+            if openerAppearance {
+                let chip = NSRect(x: keyX, y: bounds.midY - 10, width: keyWidth, height: 20)
+                NSColor.white.withAlphaComponent(primary ? 0.2 : 0.06).setFill()
+                let path = NSBezierPath(roundedRect: chip, xRadius: 5, yRadius: 5)
+                path.fill()
+                OpenerLook.edge.setStroke(); path.lineWidth = 1; path.stroke()
                 k.draw(at: NSPoint(x: chip.midX - ks.width / 2, y: chip.midY - ks.height / 2))
             } else { k.draw(at: NSPoint(x: keyX, y: (bounds.height - ks.height) / 2)) }
         }
@@ -2603,6 +2608,7 @@ final class OpenerPill: NSView {
     var key = "⏎" { didSet { needsDisplay = true } }
     /// Quieter: dark fill, dim edge.
     var ghost = false { didSet { needsDisplay = true } }
+    var keycap = false { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     private static let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     private static let keyFont = NSFont.systemFont(ofSize: 11.5, weight: .medium)
@@ -2613,14 +2619,27 @@ final class OpenerPill: NSView {
         s.append(NSAttributedString(string: "  " + title, attributes: [.font: Self.font, .foregroundColor: Neon.text]))
         return s
     }
-    var fittedWidth: CGFloat { ceil(text.size().width) + 28 }
+    var fittedWidth: CGFloat { ceil(text.size().width) + 28 + (keycap ? 12 : 0) }
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 0.75, dy: 0.75)
         let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
         (ghost ? Neon.chip : Neon.accent.withAlphaComponent(0.16)).setFill(); path.fill()
         (ghost ? Neon.chipEdge : Neon.accent.withAlphaComponent(0.65)).setStroke(); path.lineWidth = 1.2; path.stroke()
-        let t = text, sz = t.size()
-        t.draw(at: NSPoint(x: (bounds.width - sz.width) / 2, y: (bounds.height - sz.height) / 2))
+        if keycap {
+            let k = NSAttributedString(string: key, attributes: [.font: Self.keyFont, .foregroundColor: OpenerLook.muted])
+            let t = NSAttributedString(string: title, attributes: [.font: OpenerLook.buttonFont, .foregroundColor: Neon.text])
+            let kw = max(20, ceil(k.size().width) + 10)
+            let x = (bounds.width - kw - Space.s - t.size().width) / 2
+            let box = NSRect(x: x, y: bounds.midY - 10, width: kw, height: 20)
+            let cap = NSBezierPath(roundedRect: box, xRadius: 5, yRadius: 5)
+            NSColor.white.withAlphaComponent(0.06).setFill(); cap.fill()
+            OpenerLook.edge.setStroke(); cap.lineWidth = 1; cap.stroke()
+            k.draw(at: NSPoint(x: box.midX - k.size().width / 2, y: box.midY - k.size().height / 2))
+            t.draw(at: NSPoint(x: box.maxX + Space.s, y: bounds.midY - t.size().height / 2))
+        } else {
+            let t = text, sz = t.size()
+            t.draw(at: NSPoint(x: (bounds.width - sz.width) / 2, y: (bounds.height - sz.height) / 2))
+        }
     }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }

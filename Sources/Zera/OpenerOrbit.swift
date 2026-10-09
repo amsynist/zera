@@ -21,6 +21,11 @@ enum OpenerLook {
     static let text = NSColor.white
     static let primary = NSColor(srgbRed: 0.25, green: 0.28, blue: 0.42, alpha: 1)
     static let primaryBottom = NSColor(srgbRed: 0.19, green: 0.22, blue: 0.34, alpha: 1)
+    /// Gentle depth on floating cards; the desktop blur remains a separate native layer.
+    static let glassGradient = [
+        NSColor(srgbRed: 0.17, green: 0.19, blue: 0.28, alpha: 0.42),
+        NSColor(srgbRed: 0.07, green: 0.08, blue: 0.13, alpha: 0.24)
+    ]
     static let width: CGFloat = 720
     static let searchHeight: CGFloat = 52
     static let cardHeight: CGFloat = 76
