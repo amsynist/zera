@@ -16,8 +16,8 @@ import AppKit
 
 private enum CL {
     static let pad: CGFloat = Metrics.sidePad
-    static let rowH: CGFloat = 52
-    static let rowGap: CGFloat = 6
+    static let rowH = RowTier.standard.height
+    static let rowGap = Metrics.rowGap
     static let groupH: CGFloat = 26
     static let toolsH: CGFloat = Metrics.segment
     static let footH: CGFloat = 26
@@ -350,7 +350,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
             previewImage.isHidden = true
             preview.isHidden = false
             let mono = item.kind == .code || item.kind == .files || item.kind == .color
-            previewText.font = mono ? NSFont.monospacedSystemFont(ofSize: 12, weight: .medium) : NSFont.systemFont(ofSize: 13)
+            previewText.font = mono ? NSFont.monospacedSystemFont(ofSize: 12, weight: .medium) : Typo.screenSubtitle
             previewText.textColor = p.text
             previewText.string = item.text
         }
@@ -485,7 +485,10 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
 
     // MARK: Layout
 
-    private var listTop: CGFloat { headerBottom + CL.toolsH + 10 }
+    private var toolbarLayout: SearchToolbarLayout {
+        SearchToolbarLayout(width: bounds.width - CL.pad * 2, filtersWidth: filters.preferredWidth, top: headerBottom)
+    }
+    private var listTop: CGFloat { toolbarLayout.bottom + Space.m }
 
     private var listContentHeight: CGFloat {
         if shown.isEmpty { return 90 }
@@ -556,10 +559,8 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
             moreButton.frame = NSRect(x: w - x - mw, y: mid - 17, width: mw, height: 34)
             pauseButton.frame = NSRect(x: moreButton.frame.minX - 8 - pw, y: mid - 16, width: pw, height: 32)
             layoutHeader(trailingWidth: pw + mw + 8)
-            let ty = headerBottom
-            let fw = min(iw - 170, filters.preferredWidth)
-            filters.frame = NSRect(x: x, y: ty, width: fw, height: CL.toolsH)
-            search.frame = NSRect(x: x + fw + 10, y: ty, width: max(0, iw - fw - 10), height: CL.toolsH)
+            filters.frame = toolbarLayout.filters.offsetBy(dx: x, dy: 0)
+            search.frame = toolbarLayout.search.offsetBy(dx: x, dy: 0)
             let lh = min(CL.listMax, listContentHeight)
             scroll.frame = NSRect(x: x - 4, y: listTop, width: iw + 8, height: lh)
             // More below: the last row fades out instead of being cut.
@@ -701,7 +702,7 @@ final class ClipRow: NSView {
         configureTile()
         title.stringValue = item.title
         title.font = item.kind == .code || item.kind == .color
-            ? NSFont.monospacedSystemFont(ofSize: 12, weight: .medium) : NSFont.systemFont(ofSize: 13, weight: .medium)
+            ? NSFont.monospacedSystemFont(ofSize: 12, weight: .medium) : Typo.control
         title.textColor = p.text
         title.lineBreakMode = .byTruncatingTail
         addSubview(title)
@@ -725,7 +726,7 @@ final class ClipRow: NSView {
                                    target: self, action: #selector(pinTapped))
         previewButton = GHSquareButton(symbol: "ellipsis", label: "Preview", target: self, action: #selector(previewTapped))
         [pinButton, previewButton].forEach { $0!.isHidden = true; addSubview($0!) }
-        copiedTag.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        copiedTag.font = Typo.control
         copiedTag.textColor = p.success
         copiedTag.alignment = .center
         copiedTag.wantsLayer = true

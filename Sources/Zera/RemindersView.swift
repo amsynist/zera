@@ -51,8 +51,8 @@ func snoozeItems(_ apply: @escaping (Date, String) -> Void) -> [DropdownItem] {
 private final class AgendaTip: NSView {
     var onAction: (() -> Void)?
     var onClose: (() -> Void)?
-    private let title = rlabel(NSFont.systemFont(ofSize: 14, weight: .semibold), Pal.text)
-    private let body = rlabel(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary, lines: 2)
+    private let title = rlabel(Typo.rowTitle, Pal.text)
+    private let body = rlabel(Typo.body, Pal.textSecondary, lines: 2)
     private var action: PRActionButton?
     private var close: GHSquareButton!
     override var isFlipped: Bool { true }
@@ -160,8 +160,8 @@ final class RemindersView: NSView, CardContent {
     private var back: GHSquareButton!
     private var close: GHSquareButton!
     private let sideTile = AgendaTile()
-    private let sideTitle = rlabel(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
-    private let sideSubtitle = rlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
+    private let sideTitle = rlabel(Typo.detailTitle, Pal.text)
+    private let sideSubtitle = rlabel(Typo.meta, Pal.textSecondary)
     private let sideZera = NSImageView()
     private var form: ReminderFormBase?
     private let detailScroll = NSScrollView()
@@ -169,9 +169,9 @@ final class RemindersView: NSView, CardContent {
     private var detailRows: [NSView] = []
     private var detailButtons: [[PRActionButton]] = []
     private let detailChip = PRStatusChip()
-    private let detailNext = rlabel(NSFont.systemFont(ofSize: 13, weight: .medium), Pal.textSecondary)
+    private let detailNext = rlabel(Typo.control, Pal.textSecondary)
     private let dots = SeriesDots()
-    private let dotsLabel = rlabel(NSFont.systemFont(ofSize: 12, weight: .semibold), Pal.textSecondary)
+    private let dotsLabel = rlabel(Typo.control, Pal.textSecondary)
 
     private var ticker: Timer?
     private var svc: ReminderService { ReminderService.shared }
@@ -946,14 +946,13 @@ final class RemindersView: NSView, CardContent {
         let single = singlePane
         back.isHidden = !single
         close.isHidden = single
-        back.frame = NSRect(x: x, y: CardBase.titleTop + 2, width: 34, height: 34)
-        close.frame = NSRect(x: w - x - 34, y: CardBase.titleTop - 2, width: 34, height: 34)
+        back.frame = NSRect(x: x, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
+        close.frame = NSRect(x: w - x - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
         // Island header: back · title / subtitle left of Zera (she hangs in the middle).
         sideTile.isHidden = true
         sideZera.isHidden = true
-        let tx = x + 44, half = w / 2 - Isle.zeraGap / 2
-        sideTitle.frame = NSRect(x: tx, y: CardBase.titleTop - 2, width: max(60, half - tx), height: 22)
-        sideSubtitle.frame = NSRect(x: tx, y: CardBase.titleTop + 20, width: max(60, half - tx), height: 16)
+        sideTitle.frame = ScreenHeader.detailTitleFrame(width: w, padding: x)
+        sideSubtitle.frame = ScreenHeader.detailSubtitleFrame(width: w, padding: x)
 
         let bodyTop: CGFloat = Isle.headerHeight
         if let f = form {

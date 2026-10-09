@@ -243,7 +243,7 @@ final class PRStatusChip: NSView {
 final class CommentCount: NSView {
     var count = 0 { didSet { needsDisplay = true; isHidden = count == 0; setAccessibilityLabel("\(count) comments") } }
     override var isFlipped: Bool { true }
-    private static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+    private static let font = Typo.bodyMedium
 
     var fittedWidth: CGFloat { ceil(("\(count)" as NSString).size(withAttributes: [.font: Self.font]).width) + 8 + 14 + 4 + 8 }
 
@@ -509,7 +509,7 @@ final class GitHubFilterButton: NSView {
     private var hovered = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    private static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+    private static let font = Typo.control
 
     init(_ title: String) {
         base = title
@@ -782,7 +782,7 @@ final class ZeraGitHubBubble: NSView {
     var text = "" { didSet { needsDisplay = true; setAccessibilityLabel(text) } }
     /// Tail on the bottom-right instead (Zera stands to the right of the bubble).
     var tailRight = false { didSet { needsDisplay = true } }
-    static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+    static let font = Typo.control
     static let maxTextWidth: CGFloat = 140
     private static let padX: CGFloat = 12, padY: CGFloat = 8, tail: CGFloat = 7
     override var isFlipped: Bool { true }
@@ -837,7 +837,7 @@ final class GHSplitButton: NSView {
     private var pressedPart: Int? { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    private static let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+    private static let font = Typo.control
     private let chevronW: CGFloat = 38
 
     init(title: String, symbol: String) {
@@ -932,11 +932,11 @@ final class GHStateView: NSView {
         figure.imageScaling = .scaleProportionallyUpOrDown
         figure.imageAlignment = .alignBottom
         addSubview(figure)
-        title.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
+        title.font = Typo.detailTitle
         title.alignment = .center
         title.lineBreakMode = .byTruncatingTail
         addSubview(title)
-        subtitle.font = NSFont.systemFont(ofSize: 12.5)
+        subtitle.font = Typo.body
         subtitle.alignment = .center
         subtitle.maximumNumberOfLines = 2
         addSubview(subtitle)

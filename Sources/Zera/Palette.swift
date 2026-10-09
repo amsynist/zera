@@ -39,6 +39,18 @@ enum ScreenHeader {
         let x = width / 2 + Isle.zeraGap / 2
         return NSRect(x: x, y: controlY(Metrics.headerButton), width: max(0, width - Metrics.cardPad - x), height: Metrics.headerButton)
     }
+    static func detailTitleFrame(width: CGFloat, padding: CGFloat) -> NSRect {
+        var frame = titleFrame(width: width, padding: padding)
+        let leading = Metrics.headerButton + Space.m
+        frame.origin.x += leading; frame.size.width = max(0, frame.width - leading)
+        frame.origin.y = controlY(22); frame.size.height = 22
+        return frame
+    }
+    static func detailSubtitleFrame(width: CGFloat, padding: CGFloat) -> NSRect {
+        var frame = detailTitleFrame(width: width, padding: padding)
+        frame.origin.y = subtitleTop; frame.size.height = 18
+        return frame
+    }
 }
 
 /// Wrap content-sized controls, sharing unused row width equally between them.
@@ -66,6 +78,24 @@ enum FlowLayout {
         }
         finishRow()
         return result
+    }
+}
+
+/// Filters and search share a row when both fit; compact screens keep both on separate rows.
+struct SearchToolbarLayout {
+    let filters: NSRect
+    let search: NSRect
+    let bottom: CGFloat
+    init(width: CGFloat, filtersWidth: CGFloat, top: CGFloat) {
+        let leading = min(width, filtersWidth)
+        if width - leading - Space.m >= 160 {
+            filters = NSRect(x: 0, y: top + (Metrics.field - Metrics.segment) / 2, width: leading, height: Metrics.segment)
+            search = NSRect(x: leading + Space.m, y: top, width: width - leading - Space.m, height: Metrics.field)
+        } else {
+            filters = NSRect(x: 0, y: top, width: leading, height: Metrics.segment)
+            search = NSRect(x: 0, y: top + Metrics.segment + Space.s, width: width, height: Metrics.field)
+        }
+        bottom = search.maxY
     }
 }
 
@@ -119,6 +149,7 @@ enum RowTier {
 }
 
 enum Typo {
+    static let detailTitle = NSFont.systemFont(ofSize: 16, weight: .medium)
     static let paneTitle = NSFont.systemFont(ofSize: 17, weight: .medium)
     static let settingLabel = NSFont.systemFont(ofSize: 14, weight: .medium)
     static let control = NSFont.systemFont(ofSize: 13, weight: .medium)
@@ -131,7 +162,7 @@ enum Typo {
     static let bodyStrong = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     static let secondary = NSFont.systemFont(ofSize: 11.5, weight: .regular)
     static let caption = NSFont.systemFont(ofSize: 11, weight: .regular)
-    static let button = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+    static let button = NSFont.systemFont(ofSize: 13, weight: .medium)
     static let badge = NSFont.systemFont(ofSize: 10.5, weight: .bold)
     static let nav = NSFont.systemFont(ofSize: 12, weight: .medium)
     static let mono = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .medium)
@@ -149,11 +180,11 @@ enum Typo {
     /// Upper-cased with `sectionKern`.
     static let sectionLabel = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
     static let sectionKern: CGFloat = 0.8
-    static let rowTitle = NSFont.systemFont(ofSize: 14, weight: .semibold)
+    static let rowTitle = NSFont.systemFont(ofSize: 14, weight: .medium)
     static let rowTitleStrong = NSFont.systemFont(ofSize: 14, weight: .semibold)
     static let meta = NSFont.systemFont(ofSize: 12.5, weight: .regular)
     /// Segments and chips: the same weight selected or not, so nothing shifts when you pick one.
-    static let chip = NSFont.systemFont(ofSize: 13, weight: .semibold)
+    static let chip = NSFont.systemFont(ofSize: 13, weight: .medium)
     static let count = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
 
     /// A section label ("NEEDS YOU", "TO DO · 4"): upper-cased, quiet, slightly spaced.

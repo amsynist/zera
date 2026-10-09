@@ -184,7 +184,7 @@ final class FileTypeTile: NSView {
 @MainActor
 private func shelfDragImage(path: String) -> NSImage {
     let name = (path as NSString).lastPathComponent
-    let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+    let font = Typo.bodyStrong
     let textW = min(220, ceil((name as NSString).size(withAttributes: [.font: font]).width))
     let size = NSSize(width: 10 + 26 + 8 + textW + 14, height: 38)
     return NSImage(size: size, flipped: true) { rect in
@@ -234,18 +234,18 @@ final class FileDropZone: NSView {
             let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
             let sx = 50 + ts.width + 10
             (sub as NSString).draw(in: NSRect(x: sx, y: bounds.midY - 8, width: max(0, bounds.width - sx - 14), height: 16),
-                                   withAttributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: p.textSecondary, .paragraphStyle: para])
+                                   withAttributes: [.font: Typo.meta, .foregroundColor: p.textSecondary, .paragraphStyle: para])
             return
         }
         ddraw(dsymbol(symbol, isTargeted ? 28 : 24, p.accent, .medium), centeredIn: NSRect(x: 0, y: 24, width: bounds.width, height: 30))
         let title = isTargeted ? "Drop it here! ✨" : "Drop files here"
-        let ta: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 16, weight: .semibold), .foregroundColor: p.text]
+        let ta: [NSAttributedString.Key: Any] = [.font: Typo.detailTitle, .foregroundColor: p.text]
         let ts = (title as NSString).size(withAttributes: ta)
         (title as NSString).draw(at: NSPoint(x: bounds.midX - ts.width / 2, y: 60), withAttributes: ta)
         let sub = isTargeted ? "Let go and I'll put it on your Shelf." : "I'll summarize, explain or extract the text for you."
         let para = NSMutableParagraphStyle(); para.alignment = .center; para.lineBreakMode = .byTruncatingTail
         (sub as NSString).draw(in: NSRect(x: 12, y: 84, width: bounds.width - 24, height: 16),
-                               withAttributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: p.textSecondary, .paragraphStyle: para])
+                               withAttributes: [.font: Typo.meta, .foregroundColor: p.textSecondary, .paragraphStyle: para])
 
         // File types: tile + label each, centred as a group.
         let col: CGFloat = min(60, (bounds.width - 24) / CGFloat(kinds.count)), tile: CGFloat = 34
@@ -300,7 +300,7 @@ final class FileActionTile: NSView {
         color.withAlphaComponent(0.18 * alpha).setFill(); chip.fill()
         color.withAlphaComponent(0.5 * alpha).setStroke(); chip.lineWidth = 1; chip.stroke()
         ddraw(dsymbol(symbol, 11.5, (color.blended(withFraction: 0.25, of: .white) ?? color).withAlphaComponent(alpha)), centeredIn: tile)
-        let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+        let font = Typo.bodyStrong
         let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
         let th = ceil(font.ascender - font.descender) + 1
         let tx = tile.maxX + 8
@@ -673,7 +673,7 @@ final class DropBin: NSView {
         let para = NSMutableParagraphStyle(); para.alignment = .center
         let color = flash ? p.success : (targeted ? (rose.blended(withFraction: 0.25, of: .white) ?? rose) : p.text(0.85))
         (text as NSString).draw(in: NSRect(x: 12, y: midY + 2, width: bounds.width - 24, height: 40),
-                                withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: color, .paragraphStyle: para])
+                                withAttributes: [.font: Typo.control, .foregroundColor: color, .paragraphStyle: para])
     }
 }
 
@@ -683,8 +683,8 @@ final class DropBin: NSView {
 final class ZeraFileReaction: NSView {
     private let figure = NSImageView()
     private let bubble = FlippedView()
-    private let title = dlabel(NSFont.systemFont(ofSize: 14.5, weight: .semibold), Pal.text)
-    private let detail = dlabel(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary, lines: 2)
+    private let title = dlabel(Typo.rowTitle, Pal.text)
+    private let detail = dlabel(Typo.body, Pal.textSecondary, lines: 2)
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
@@ -734,7 +734,7 @@ final class ZeraFileReaction: NSView {
 final class FileResultContent: NSView {
     var onCopy: (() -> Void)?
     private let headIcon = NSImageView()
-    private let headTitle = dlabel(NSFont.systemFont(ofSize: 15, weight: .semibold), Pal.text)
+    private let headTitle = dlabel(Typo.detailTitle, Pal.text)
     private var copy: PRActionButton!
     private let scroll = NSScrollView()
     private let doc = FlippedView()
@@ -836,7 +836,7 @@ final class FileResultContent: NSView {
 // MARK: - Undo strip
 
 private final class UndoStrip: NSView {
-    let message = dlabel(NSFont.systemFont(ofSize: 12.5, weight: .medium), Pal.text)
+    let message = dlabel(Typo.bodyMedium, Pal.text)
     var button: PRActionButton? { didSet { oldValue?.removeFromSuperview(); if let b = button { addSubview(b) }; needsLayout = true } }
     override var isFlipped: Bool { true }
     override init(frame: NSRect) {
@@ -892,7 +892,7 @@ final class DropFilesView: NSView, CardContent {
     private let recentList = FlippedView()
     private var recentRows: [String: ShelfFileRow] = [:]
     private var recentOrder: [String] = []
-    private let recentEmpty = dlabel(NSFont.systemFont(ofSize: 12.5), Pal.textTertiary)
+    private let recentEmpty = dlabel(Typo.body, Pal.textTertiary)
     // Fresh: what's new in the watched folders (Downloads, Desktop…), one tab over from the Shelf.
     private static let freshKey = "zera.shelf.freshTab"
     private var freshTab: Bool { UserDefaults.standard.bool(forKey: Self.freshKey) && FreshFiles.shared.enabled }
@@ -903,12 +903,12 @@ final class DropFilesView: NSView, CardContent {
     private var freshOrder: [String] = []
     private let freshInfo = dlabel(Typo.meta, Pal.textTertiary)
     private var addFolder: PRActionButton!
-    private let freshEmpty = dlabel(NSFont.systemFont(ofSize: 12.5), Pal.textTertiary)
+    private let freshEmpty = dlabel(Typo.body, Pal.textTertiary)
 
     // Centre
     private let fileTile = FileTypeTile()
-    private let fileName = dlabel(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
-    private let fileMeta = dlabel(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary)
+    private let fileName = dlabel(Typo.detailTitle, Pal.text)
+    private let fileMeta = dlabel(Typo.body, Pal.textSecondary)
     private var finder: PRActionButton!
     private var removeButton: PRActionButton!
     private var fileMore: GHSquareButton!
@@ -928,8 +928,8 @@ final class DropFilesView: NSView, CardContent {
 
     // Right
     private let trayTile = NSImageView()
-    private let shelfTitle = dlabel(NSFont.systemFont(ofSize: 14.5, weight: .semibold), Pal.text)
-    private let shelfCount = dlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
+    private let shelfTitle = dlabel(Typo.rowTitle, Pal.text)
+    private let shelfCount = dlabel(Typo.meta, Pal.textSecondary)
     private var clearShelf: PRActionButton!
     private let undo = UndoStrip()
     private var undoItems: [ShelfItem] = []
@@ -1494,7 +1494,7 @@ final class DropFilesView: NSView, CardContent {
                                        codeBackground: p.isDark ? p.codeBox : p.surfaceStrong, accent: p.accent,
                                        body: NSFont.systemFont(ofSize: 13.5), bold: NSFont.systemFont(ofSize: 13.5, weight: .semibold),
                                        mono: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
-                                       h1: NSFont.systemFont(ofSize: 16, weight: .bold), h2: NSFont.systemFont(ofSize: 15, weight: .semibold),
+                                       h1: NSFont.systemFont(ofSize: 16, weight: .bold), h2: Typo.detailTitle,
                                        h3: NSFont.systemFont(ofSize: 13.5, weight: .semibold))
         let body = md.isEmpty ? NSAttributedString() : MarkdownLite.render(md, theme: theme, width: max(200, content.bounds.width - 46))
         let proc: (stage: ZeraAssistant.Stage, progress: Double, action: FileAction?, file: String)? = running ? (a.stage, a.progress, a.currentAction, path) : nil
@@ -1753,43 +1753,40 @@ final class DropFilesView: NSView, CardContent {
 
     private func layoutCenter(_ size: NSSize) {
         let w = size.width, h = size.height, x = D.pad, iw = w - D.pad * 2
-        let half = w / 2 - Isle.zeraGap / 2
         centerState.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: max(0, h - Isle.headerHeight - 20))
 
         // Island header: back · name / meta on the left of Zera; Finder, remove, ••• on the right.
-        collapseButton.frame = NSRect(x: x, y: CardBase.titleTop + 1, width: 34, height: 34)
+        collapseButton.frame = NSRect(x: x, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
         collapseButton.setAccessibilityLabel("Back to the Shelf")
         fileTile.isHidden = true
-        fileMore.frame = NSRect(x: w - x - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
+        fileMore.frame = NSRect(x: w - x - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
         var right = fileMore.frame.minX - 8
         if !removeButton.isHidden {
-            removeButton.frame = NSRect(x: right - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
+            removeButton.frame = NSRect(x: right - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
             right = removeButton.frame.minX - 8
         }
         finder.setTitleText("")
-        finder.frame = NSRect(x: right - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
-        let tx = x + 44
-        fileName.frame = NSRect(x: tx, y: CardBase.titleTop - 2, width: max(40, half - tx), height: 22)
-        fileMeta.frame = NSRect(x: tx, y: CardBase.titleTop + 20, width: max(40, half - tx), height: 16)
+        finder.frame = NSRect(x: right - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
+        fileName.frame = ScreenHeader.detailTitleFrame(width: w, padding: x)
+        fileMeta.frame = ScreenHeader.detailSubtitleFrame(width: w, padding: x)
 
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
 
         // Bottom: suggestions, then the input.
-        let sy = h - 16 - 30
-        var sx = x
-        for b in suggestionButtons {
-            let bw = b.fittedWidth
-            b.isHidden = !wantsSuggestions || sx + bw > x + iw
-            if !b.isHidden { b.frame = NSRect(x: sx, y: sy, width: bw, height: 30); sx += bw + 8 }
+        let suggestions = FlowLayout.frames(widths: suggestionButtons.map(\.fittedWidth), available: iw, height: Metrics.button)
+        let sy = h - Space.l - (suggestions.last?.maxY ?? 0)
+        for (b, frame) in zip(suggestionButtons, suggestions) {
+            b.isHidden = !wantsSuggestions
+            b.frame = frame.offsetBy(dx: x, dy: sy)
         }
         let anySuggestion = suggestionButtons.contains { !$0.isHidden }
-        let inputY = (anySuggestion ? sy - 10 : h - 16) - 40
-        input.frame = NSRect(x: x, y: inputY, width: iw, height: 40)
+        let inputY = (anySuggestion ? sy - Space.m : h - Space.l) - Metrics.field
+        input.frame = NSRect(x: x, y: inputY, width: iw, height: Metrics.field)
 
         // The answer fills the rest; Zera's reaction lives in the header now (she hangs there).
         reaction.isHidden = true
-        let cy = Isle.headerHeight + Metrics.segment + 10
-        content.frame = NSRect(x: x, y: cy, width: iw, height: max(80, inputY - 10 - cy))
+        let cy = Isle.headerHeight + Metrics.segment + Space.m
+        content.frame = NSRect(x: x, y: cy, width: iw, height: max(80, inputY - Space.m - cy))
     }
 
     private func layoutRight(_ size: NSSize) {

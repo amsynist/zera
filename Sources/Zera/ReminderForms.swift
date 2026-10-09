@@ -20,8 +20,8 @@ class ReminderFormBase: NSView {
 
     let scroll = NSScrollView()
     let canvas = FormCanvas()
-    let previewLabel = rlabel(NSFont.systemFont(ofSize: 12.5, weight: .medium), Pal.textSecondary, lines: 3)
-    private let errorLabel = rlabel(NSFont.systemFont(ofSize: 12, weight: .semibold), Pal.danger)
+    let previewLabel = rlabel(Typo.bodyMedium, Pal.textSecondary, lines: 3)
+    private let errorLabel = rlabel(Typo.control, Pal.danger)
     private(set) var cancelButton: PRActionButton!
     private(set) var saveButton: PRActionButton!
     var svc: ReminderService { ReminderService.shared }
@@ -140,7 +140,7 @@ class ReminderFormBase: NSView {
 
     /// The small "to" between two times.
     static func joiner(_ s: String) -> NSTextField {
-        let l = rlabel(NSFont.systemFont(ofSize: 12.5, weight: .medium), Pal.textSecondary)
+        let l = rlabel(Typo.bodyMedium, Pal.textSecondary)
         l.stringValue = s
         l.alignment = .center
         return l
@@ -175,7 +175,7 @@ final class EventFormView: ReminderFormBase {
     private let timeBox = PickerBox(time: true)
     private let durationSelect = ZeraSelect(EventFormView.durationTitles)
     private let allDay = Toggle()
-    private let allDayLabel = rlabel(NSFont.systemFont(ofSize: 13, weight: .medium), Pal.text)
+    private let allDayLabel = rlabel(Typo.control, Pal.text)
     private let repeatSelect = ZeraSelect(EventFormView.repeatTitles, symbols: EventFormView.repeatSymbols)
     private let everyCount = CountField()
     private let everyUnit = ZeraSelect(["days", "weeks", "months"])
@@ -390,7 +390,7 @@ final class ReminderFormView: ReminderFormBase {
     private let everyCount = CountField()
     private let everyUnit = ZeraSelect(["minutes", "hours", "days", "weeks"])
     private let activeToggle = Toggle()
-    private let activeLabel = rlabel(NSFont.systemFont(ofSize: 13, weight: .medium), Pal.text)
+    private let activeLabel = rlabel(Typo.control, Pal.text)
     private let activeFrom = PickerBox(time: true)
     private let activeTo = PickerBox(time: true)
     private let toLabel = ReminderFormBase.joiner("to")
