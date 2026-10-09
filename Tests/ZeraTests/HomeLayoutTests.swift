@@ -32,8 +32,10 @@ final class HomeLayoutTests: XCTestCase {
                 XCTAssertEqual(row.last!.frame.maxX, document.bounds.width, accuracy: 0.5)
             }
             let search = try XCTUnwrap(home.subviews.compactMap { $0 as? SearchBox }.first)
-            XCTAssertEqual(search.frame.midY, home.titleLabel.frame.midY, accuracy: 0.5)
+            XCTAssertEqual(search.frame.minY, home.headerBottom, accuracy: 0.5)
+            XCTAssertEqual(search.frame.minX, Metrics.cardPad, accuracy: 0.5)
             XCTAssertEqual(search.frame.maxX, width - Metrics.cardPad, accuracy: 0.5)
+            XCTAssertEqual(scroll.frame.minY - search.frame.maxY, Space.l, accuracy: 0.5)
         }
     }
 
