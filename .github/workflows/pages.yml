@@ -1,4 +1,4 @@
-# Publishes the landing page in site/ to GitHub Pages: https://amsynist.github.io/zera/
+# Publishes the landing page in site/ to GitHub Pages, served at https://zera.pravincodes.in/
 name: Website
 
 on:
