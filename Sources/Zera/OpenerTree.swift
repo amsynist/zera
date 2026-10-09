@@ -184,7 +184,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
 
         card.radius = 30
         card.lineWidth = 1
-        card.glow = 0.45
+        card.glow = 0.16
         fieldBox.radius = 14
         fieldBox.lineWidth = 1
         fieldBox.glow = 0
@@ -207,9 +207,9 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = NSFont.systemFont(ofSize: 18, weight: .medium)
+        field.font = OpenerLook.classicSearchFont
         field.placeholderAttributedString = NSAttributedString(string: "Open an app…", attributes: [
-            .foregroundColor: Neon.textFaint, .font: NSFont.systemFont(ofSize: 18, weight: .medium)])
+            .foregroundColor: Neon.textFaint, .font: OpenerLook.classicSearchFont])
         field.cell?.usesSingleLineMode = true
         field.cell?.isScrollable = true
         field.delegate = self
@@ -246,7 +246,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         detail.layer?.addSublayer(dHalo)
         dIcon.imageScaling = .scaleProportionallyUpOrDown
         detail.addSubview(dIcon)
-        dName.font = NSFont.systemFont(ofSize: 22, weight: .bold)
+        dName.font = OpenerLook.classicDetailFont
         dName.alignment = .center
         dName.lineBreakMode = .byTruncatingTail
         detail.addSubview(dName)
@@ -265,8 +265,12 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             dFacts.append((k, v, rule))
         }
         dPrimary.primary = true
+        for button in [dPrimary, dSecondary, dPin] {
+            button.openerAppearance = true
+            button.labelFont = OpenerLook.buttonFont
+        }
         dPrimary.onClick = { [weak self] in self?.primaryAction() }
-        dSecondary.key = "⌘K"
+        dSecondary.key = "⌘M"
         dSecondary.title = "Actions"
         dSecondary.onClick = { [weak self] in self?.toggleActions() }
         detail.addSubview(dPrimary)
@@ -289,7 +293,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         footOpen.ghost = true
         footOpen.onClick = { [weak self] in self?.primaryAction() }
         footActions.ghost = true
-        footActions.key = "⌘K"
+        footActions.key = "⌘M"
         footActions.title = "Actions"
         footActions.onClick = { [weak self] in self?.toggleActions() }
         card.addSubview(footOpen)
@@ -323,7 +327,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         rootStem.layer?.backgroundColor = Neon.cyan.withAlphaComponent(0.9).cgColor
         dimLines.strokeColor = Neon.textFaint.withAlphaComponent(0.45).cgColor
         litLines.strokeColor = Neon.cyan.cgColor
-        dHalo.colors = [Neon.accent.withAlphaComponent(0.45).cgColor, Neon.halo.withAlphaComponent(0.15).cgColor, NSColor.clear.cgColor]
+        dHalo.colors = [Neon.accent.withAlphaComponent(0.22).cgColor, Neon.halo.withAlphaComponent(0.08).cgColor, NSColor.clear.cgColor]
         dName.textColor = Neon.text
         dBlurb.textColor = Neon.textDim
         for (k, v, rule) in dFacts {
@@ -771,10 +775,10 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             f.1.stringValue = fact?.1 ?? ""
         }
         dPrimary.title = primary
-        dPrimary.isHidden = !has || primary.isEmpty
+        dPrimary.isHidden = !has || primary.isEmpty || (actionsOpen && shownActions.isEmpty)
         dPrimary.tint = primaryTint
         dSecondary.title = actionsOpen ? "Hide actions" : "Actions"
-        dSecondary.key = actionsOpen ? "esc" : "⌘K"
+        dSecondary.key = actionsOpen ? "esc" : "⌘M"
         let pinnable = chosenApp
         dPin.isHidden = !has || actionsOpen || pinnable == nil
         if let a = pinnable { dPin.title = AppCatalog.shared.isPinned(a) ? "Unpin" : "Pin" }
@@ -795,9 +799,10 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         case .command: foot.stringValue = "↑↓ choose   ⌘⏎ force   ⌘R refresh   esc back"
         }
         footOpen.title = mode == .command(.quitAll) ? "Quit all" : (actionsOpen ? "Run" : (mode == .root ? (results.isEmpty ? "Search the web" : verb) : (mode == .command(.killPort) ? "Stop" : "Quit")))
+        footOpen.isHidden = actionsOpen && shownActions.isEmpty
         footActions.isHidden = mode == .command(.custom) || (mode == .root && results.isEmpty)
         footActions.title = actionsOpen ? "Close" : "Actions"
-        footActions.key = actionsOpen ? "esc" : "⌘K"
+        footActions.key = actionsOpen ? "esc" : "⌘M"
         needsLayout = true
     }
 
@@ -1342,7 +1347,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         }
         let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = event.charactersIgnoringModifiers?.lowercased()
-        if mods == .command, key == "k" { toggleActions(); return true }
+        if mods == .command, key == "k" || key == "m" { toggleActions(); return true }
         if mods == .command, key == "r", case .command(let command) = mode, command != .custom {
             refreshCommand(command)
             return true
@@ -1428,8 +1433,9 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         dBlurb.frame = NSRect(x: pad, y: 137, width: w - pad * 2, height: 32)
         var y: CGFloat = 182
         for f in dFacts where !f.0.isHidden {
-            f.0.frame = NSRect(x: pad, y: y + 9, width: 120, height: 16)
-            f.1.frame = NSRect(x: pad + 110, y: y + 9, width: w - pad * 2 - 110, height: 16)
+            let labelWidth = min(130, ceil(f.0.attributedStringValue.size().width))
+            f.0.frame = NSRect(x: pad, y: y + 9, width: labelWidth, height: 16)
+            f.1.frame = NSRect(x: pad + labelWidth + 12, y: y + 9, width: w - pad * 2 - labelWidth - 12, height: 16)
             f.2.frame = NSRect(x: pad, y: y + 34, width: w - pad * 2, height: 1)
             y += 35
         }

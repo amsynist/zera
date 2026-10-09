@@ -467,9 +467,9 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = NSFont.systemFont(ofSize: 16, weight: .regular)
+        field.font = OpenerLook.searchFont
         field.placeholderAttributedString = NSAttributedString(string: "Search apps, commands, or actions…", attributes: [
-            .foregroundColor: OpenerLook.muted, .font: NSFont.systemFont(ofSize: 16, weight: .regular)])
+            .foregroundColor: OpenerLook.muted, .font: OpenerLook.searchFont])
         field.cell?.usesSingleLineMode = true
         field.cell?.isScrollable = true
         field.delegate = self
@@ -543,7 +543,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         detailIcon.imageScaling = .scaleProportionallyUpOrDown
         detailIcon.isHidden = true
         holder.addSubview(detailIcon)
-        dName.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+        dName.font = OpenerLook.detailFont
         dName.alignment = .center
         dName.lineBreakMode = .byTruncatingTail
         holder.addSubview(dName)
@@ -551,7 +551,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         dMeta.lineBreakMode = .byTruncatingMiddle
         holder.addSubview(dMeta)
         dPrimary.primary = true
-        dPrimary.labelFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+        dPrimary.labelFont = OpenerLook.buttonFont
         dPrimary.onClick = { [weak self] in self?.primaryAction() }
         dSecondary.key = "⌘K"
         dSecondary.title = "Actions"
@@ -2049,15 +2049,15 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             let cardW = sw
             let card = NSRect(x: c - cardW / 2, y: orbit.frame.maxY + 24, width: cardW, height: OpenerLook.cardHeight)
             detailCard.frame = card
-            detailIcon.frame = NSRect(x: card.minX + 20, y: card.midY - 20, width: 40, height: 40)
+            detailIcon.frame = NSRect(x: card.minX + Space.xl, y: card.midY - 20, width: 40, height: 40)
             let by = card.midY - 16
             let bw: CGFloat = 112
-            dPrimary.frame = NSRect(x: card.maxX - 20 - bw, y: by, width: bw, height: 32)
-            dSecondary.frame = NSRect(x: dPrimary.frame.minX - 8 - 32, y: by, width: 32, height: 32)
-            dPin.frame = NSRect(x: dSecondary.frame.minX - 8 - 32, y: by, width: 32, height: 32)
-            let tx = detailIcon.frame.maxX + 16
-            let tw = max(120, dPin.frame.minX - tx - 16)
-            let font = NSFont.systemFont(ofSize: 16, weight: .semibold)
+            dPrimary.frame = NSRect(x: card.maxX - Space.xl - bw, y: by, width: bw, height: Metrics.button)
+            dSecondary.frame = NSRect(x: dPrimary.frame.minX - Space.s - Metrics.button, y: by, width: Metrics.button, height: Metrics.button)
+            dPin.frame = NSRect(x: dSecondary.frame.minX - Space.s - Metrics.button, y: by, width: Metrics.button, height: Metrics.button)
+            let tx = detailIcon.frame.maxX + Space.l
+            let tw = max(120, dPin.frame.minX - tx - Space.l)
+            let font = OpenerLook.detailFont
             if dName.font != font { dName.font = font }
             dName.frame = NSRect(x: tx, y: card.minY + 16, width: tw, height: 20)
             dMeta.frame = NSRect(x: tx, y: card.minY + 40, width: tw, height: 18)
@@ -2276,7 +2276,7 @@ final class TreeGroupView: NSView {
             .withSymbolConfiguration(.init(pointSize: 8.5, weight: .bold).applying(.init(paletteColors: [Neon.textFaint])))
         addSubview(chevron)
         let s = NSMutableAttributedString(string: title, attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: Neon.textDim, .kern: 1.1])
+            .font: Typo.branchLabel, .foregroundColor: Neon.textDim, .kern: Typo.branchKern])
         if let n = count {
             s.append(NSAttributedString(string: "  · \(n)", attributes: [
                 .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium), .foregroundColor: Neon.textFaint]))

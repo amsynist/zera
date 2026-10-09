@@ -513,6 +513,30 @@ final class AppOpenerTests: XCTestCase {
         if let before = before { AppTools.copy(before) }
     }
 
+    func testClassicActionShortcutAliasesRestoreQueryAndEmptySearchCannotRun() throws {
+        _ = NSApplication.shared
+        let view = TreeOpenerView(frame: NSRect(x: 0, y: 0, width: 860, height: 760))
+        view.prepare()
+        view.previewType("Kill Process")
+        let field = view.searchField
+        for key in ["m", "k"] {
+            let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command],
+                timestamp: 0, windowNumber: 0, context: nil, characters: key, charactersIgnoringModifiers: key,
+                isARepeat: false, keyCode: key == "m" ? 46 : 40))
+            XCTAssertTrue(view.performKeyEquivalent(with: event))
+            XCTAssertTrue(view.isShowingActions)
+            XCTAssertFalse(view.visibleRowTitles.isEmpty)
+            view.previewType("zzzz-no-action-matches")
+            view.layoutSubtreeIfNeeded()
+            XCTAssertNil(view.chosenActionTitle)
+            let primary = try XCTUnwrap(descendants(view).compactMap { $0 as? TreeButton }.first { $0.primary })
+            XCTAssertTrue(primary.isHidden, "an empty action search must not offer a Run button")
+            XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:))))
+            XCTAssertFalse(view.isShowingActions)
+            XCTAssertEqual(field.stringValue, "Kill Process")
+        }
+    }
+
     func testCommandQNeverQuitsZera() throws {
         let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 720, height: 600))
         view.prepare()

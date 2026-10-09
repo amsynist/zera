@@ -4,14 +4,14 @@ Branch: `v2-design`. Zera is a native macOS AppKit companion in the notch for Ma
 
 ## Current status — 9 October 2026
 
-**We are still on Phase 1: the v2 opener and its ⌘K/⌘M action tree.** The latest smooth-motion correction is implemented, tested, rebuilt and pushed (`8d32ef5`). Its final live feel check is still open. Classic is the next phase; its visual redesign has not started.
+**Phase 1 visual design is approved by the user on 9 October. Phase 2: Classic opener is now current.** The approved v2 layout and action transition remain the baseline. Remaining integration and display checks are tracked under shipping.
 
 There are **8 main screens**, plus the shared companion/notch shell, the opener's **2 styles**, and auxiliary panels listed below. Settings contains **12 panes**. Auxiliary states belong to their screen's review; they do not disappear from the checklist when the main screen is finished.
 
 | Phase | Scope | Status | What remains |
 | --- | --- | --- | --- |
-| 1 | V2 opener + action tree | In progress; code refinements implemented | Final live motion, global shortcut and complete interaction pass |
-| 2 | Classic opener | Not started | Full layout, typography, actions and motion review |
+| 1 | V2 opener + action tree | Visual design approved | Shipping integration/display checks below |
+| 2 | Classic opener | In progress | Layout, typography, actions and motion review |
 | 3 | Companion/notch shell | Shared transition fixes implemented; visual review pending | Hover menus, badges, wings, open/switch/close and placement |
 | 4.1 | Home | Performance reviewed; visual review pending | All Home states and actions |
 | 4.2 | Claude | Performance reviewed; visual review pending | Sessions, approvals, replies and wings |
@@ -25,7 +25,7 @@ There are **8 main screens**, plus the shared companion/notch shell, the opener'
 
 “Performance reviewed” means the code and benchmark pass is complete; it does **not** mean that screen's visual design or every live interaction is finished. Measurements and limitations are in [PERFORMANCE_REVIEW.md](PERFORMANCE_REVIEW.md).
 
-## Phase 1 checklist — current work
+## Phase 1 checklist — visual design approved
 
 ### Implemented and tested
 
@@ -41,13 +41,13 @@ There are **8 main screens**, plus the shared companion/notch shell, the opener'
 - [x] Pass 27 opener regression tests and the optional local animated capture; build and reload the release app.
 - [x] Commit and push the implementation (`183524f`, followed by `8d32ef5`).
 
-### Still to finish before moving to Classic
+### Approval and deferred shipping verification
 
-- [ ] Check the latest transition's feel in the running app, including repeated ⌘K/⌘M and Escape halfway through.
+- [x] User approves the v2 opener as clean overall; proceed to Classic. Interrupted transitions have regression coverage; live stress checks remain in shipping.
 - [ ] Complete the single-instance global shortcut check from another app.
 - [ ] Complete a live pointer/keyboard pass through tabs, search, selection, menus, pin/unpin, opening apps, commands and confirmation/cancel flows.
 - [ ] Check compact display, long names, empty/loading/error states and reduced motion live.
-- [ ] Close any defects found in that pass, then mark Phase 1 complete.
+- [ ] Close any defects found in the shipping verification pass.
 
 ## Shared fixes already completed
 
@@ -61,13 +61,20 @@ There are **8 main screens**, plus the shared companion/notch shell, the opener'
 - [x] Run the broader regression suite: 190 tests, 13 optional tests skipped, zero failures before the latest motion refinement; that refinement separately passed all 27 opener tests and its render check.
 - [ ] Run a longer live session across the finished screens and repeat memory profiling during the shipping pass.
 
-## Remaining phase checklists
+## Current and remaining phase checklists
 
 Finish one surface's layout, interactions and motion loop before starting the next.
 
-### Phase 2 — Classic opener
+### Phase 2 — Classic opener (current)
 
-- [ ] Review tree layout, search, typography and spacing.
+- [x] Share Classic branch-label typography with v2 tabs, including uppercase labels and measured letter spacing.
+- [x] Centralize opener search/detail/button fonts; reuse global spacing and control metrics.
+
+First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 primary gradient, add ⌘M/⌘K parity, separate metadata columns, and hide Run when action search has no matches.
+
+- [x] Review initial tree/search/action layouts; refine typography, metadata spacing and primary button.
+- [x] Pass 28 opener tests, including Classic ⌘M/⌘K, empty action search and Escape query restoration.
+- [ ] Complete Classic live interaction and visual approval loop.
 - [ ] Verify action menus, keyboard navigation, pin/quit and confirmation paths.
 - [ ] Refine transitions and verify interrupted/reduced-motion states.
 
@@ -102,7 +109,7 @@ Finish one surface's layout, interactions and motion loop before starting the ne
 | --- | --- | --- |
 | Opener arrows/Escape stop after focus changes | Fixed; actual-window regression passes | Complete global shortcut and live interaction pass |
 | Images remain behind Clipboard list after filter switch | Fixed; repeated-switch regression and local render pass | Full Clipboard live review in Phase 4.4 |
-| ⌘K/⌘M icon stops then shifts to fit header | Latest correction pushed in `8d32ef5`; relayout/reversal tests and capture pass | Final motion feel check in Phase 1 |
+| ⌘K/⌘M icon stops then shifts to fit header | Latest correction pushed in `8d32ef5`; relayout/reversal tests and capture pass | Visual result approved; rapid live reversals remain shipping checks |
 | Startup freezes waiting for Keychain | Background credential queue implemented and tested | Revisit normal startup/relaunch in shipping pass |
 
 Update this tracker and the relevant checkbox whenever a defect is found or closed. Keep captures local and create them only when they help the current review; do not publish PNGs/GIFs to CI or PRs.
@@ -133,9 +140,16 @@ There are **8 main notch screens**, a hover/navigation shell, an app opener, and
 
 The real app is the source of truth for hover, clicks, keyboard focus, scroll, drag, motion, and permission flows. A still render is a diagnostic aid, not a completion requirement.
 
+## Shared design system
+
+Use the existing `Palette.swift` tokens (`Typo`, `Space`, `Radius`, `Metrics`) for app-wide type, spacing and controls. Use `OpenerLook` for opener-specific colors, dimensions and font roles. Both opener styles share branch labels (`Typo.branchLabel` and `branchKern`) and button typography; Classic has explicit search/detail font overrides for its larger panel. Measure text with the same font and tracking used to draw it.
+
+As each screen enters review, replace duplicated standard values with these roles. Keep geometry that defines a particular screen local; name and document deliberate overrides. Avoid changing global values simply to fix one screen, and check both users of any shared component. Migration across the remaining screens is part of their phase checklist, not complete yet.
+
 ## Done criteria for each surface
 
 - No clipping, overlap, or jumps at the island size and on a small display. Headers, scroll regions, menus, and detail panels stay within visible bounds.
+- Shared font/spacing/control tokens are used, with deliberate screen-specific overrides documented.
 - Typography, spacing, icon weights, hover/pressed/focus states, contrast, badges, and empty/loading/error states are consistent across themes.
 - Every visible button, row, menu, tab, shortcut, and close/back action works by pointer and, where applicable, keyboard. Focus is visible and targets remain reachable.
 - Search, filters, selection, details, timers, and dialogs recover sensibly after tab switches, dismissal, and relaunch. External actions show useful feedback.
@@ -143,8 +157,8 @@ The real app is the source of truth for hover, clicks, keyboard focus, scroll, d
 
 ## Phases
 
-1. **Orbit app opener (current pass):** Apply the compact refinement spec: no top-left branding, matching 720-point search/detail widths, a 52-point search bar, 36-point neutral tabs, consistent rounded app containers (80/64/56 points), shallow arc, and a 76-point detail bar. The bar uses one metadata line and 32-point Pin → More → Open controls. Shortcut badges appear on the selected item or while holding Command; ⌘1–⌘9 follow the visible left-to-right order. Footer hints cover arrows, Tab, Enter, ⌘M and Escape, with rounded keycaps in both browsing and action states. ⌘K remains an alias for ⌘M. The primary button uses a muted indigo gradient. Hover grows 4% from the icon centre over 200 ms; reduced motion skips the transition. ⌘K opens the searchable action tree with clickable rows, arrow/Enter selection, and Escape/query restoration. Native type, colors and dimensions are defined in AppKit, with shared opener style values. On-demand local captures cover default, compact, and compact actions; 27 opener tests cover layout bounds, navigation, shortcut mapping, window-level keyboard routing after focus changes, ⌘M/Escape restoration, centered hover and interrupted action transitions. The selected icon follows a curved path to the action header, with movement and scale sharing one 480 ms timeline and an identical landing frame. Options unfold beneath it; Escape reverses from the current visible position. AppKit keeps ownership of the layer anchor so the handoff does not readjust the icon. An optional local GIF preview uses `ZERA_RENDER_OPENER_MOTION=1`. The global shortcut and live animation feel still need a hands-on check.
-2. **Classic app opener (after this screen is approved):** Review its tree layout, search, action menus, keyboard navigation, pin/quit paths, and transitions with the same loop.
+1. **Orbit app opener (visual design approved):** Apply the compact refinement spec: no top-left branding, matching 720-point search/detail widths, a 52-point search bar, 36-point neutral tabs, consistent rounded app containers (80/64/56 points), shallow arc, and a 76-point detail bar. The bar uses one metadata line and 32-point Pin → More → Open controls. Shortcut badges appear on the selected item or while holding Command; ⌘1–⌘9 follow the visible left-to-right order. Footer hints cover arrows, Tab, Enter, ⌘M and Escape, with rounded keycaps in both browsing and action states. ⌘K remains an alias for ⌘M. The primary button uses a muted indigo gradient. Hover grows 4% from the icon centre over 200 ms; reduced motion skips the transition. ⌘K opens the searchable action tree with clickable rows, arrow/Enter selection, and Escape/query restoration. Native type, colors and dimensions are defined in AppKit, with shared opener style values. On-demand local captures cover default, compact, and compact actions; 27 opener tests cover layout bounds, navigation, shortcut mapping, window-level keyboard routing after focus changes, ⌘M/Escape restoration, centered hover and interrupted action transitions. The selected icon follows a curved path to the action header, with movement and scale sharing one 480 ms timeline and an identical landing frame. Options unfold beneath it; Escape reverses from the current visible position. AppKit keeps ownership of the layer anchor so the handoff does not readjust the icon. An optional local GIF preview uses `ZERA_RENDER_OPENER_MOTION=1`. The user has approved the visual result; global shortcuts and the full live integration pass remain shipping checks.
+2. **Classic app opener (current pass):** Review its tree layout, search, action menus, keyboard navigation, pin/quit paths, and transitions with the same loop.
 3. **Shell:** Companion idle/hover, bloom, badges, island open/switch/dismiss, search node, wings placement. This affects every screen.
 4. **Main screens, one at a time:** Home → Claude → Shelf → Clipboard → Tasks and mini task/focus orb → Pull requests → Reminders → Settings. Finish each live interaction pass before moving on.
 5. **Shipping pass:** All seven themes, small display/no-notch, reduced motion, accessibility, empty/error/permission states, full tests, and distributable build.
