@@ -4,7 +4,7 @@ Branch: `v2-design`. Zera is a native macOS AppKit companion in the notch for Ma
 
 ## Current status — 9 October 2026
 
-**Both opener designs are approved by the user. Settings is the current review, moved forward at the user’s request.** Remaining shell and main-screen phases retain their pending status; shipping integration/display checks are still tracked below.
+**Both opener designs are approved by the user. Home is the current review, following the Settings refinement at the user’s request.** Remaining shell and main-screen phases retain their pending status; shipping integration/display checks are still tracked below.
 
 There are **8 main screens**, plus the shared companion/notch shell, the opener's **2 styles**, and auxiliary panels listed below. Settings contains **12 panes**. Auxiliary states belong to their screen's review; they do not disappear from the checklist when the main screen is finished.
 
@@ -13,14 +13,14 @@ There are **8 main screens**, plus the shared companion/notch shell, the opener'
 | 1 | V2 opener + action tree | Visual design approved | Shipping integration/display checks below |
 | 2 | Classic opener | Visual design approved | Shipping integration checks |
 | 3 | Companion/notch shell | Shared transition fixes implemented; visual review pending | Hover menus, badges, wings, open/switch/close and placement |
-| 4.1 | Home | Performance reviewed; visual review pending | All Home states and actions |
+| 4.1 | Home | Current review; typography/layout refined | Visual approval, live search/actions and This Mac flows |
 | 4.2 | Claude | Performance reviewed; visual review pending | Sessions, approvals, replies and wings |
 | 4.3 | Shelf + file assistant | Performance reviewed; visual review pending | Files, Fresh, drag/drop, details and assistant states |
 | 4.4 | Clipboard | Overlap/memory bugs fixed; full visual review pending | Filters, search, preview, copy/delete and privacy flows |
 | 4.5 | Tasks + focus | Performance reviewed; visual review pending | Lists, projects, mini task, orb, quick add and export |
 | 4.6 | Pull requests | Performance reviewed; visual review pending | Tabs, detail, checks, approvals, menus and feedback |
 | 4.7 | Reminders + calendar | Performance reviewed; visual review pending | Lists, forms, meetings, water and battery alerts |
-| 4.8 | Settings | Current review | Shared controls, menu style, typography and all twelve panes |
+| 4.8 | Settings | Shared typography/controls and scroll cue implemented | Live visual approval and integration checks |
 | 5 | Shipping | Not started | Themes, accessibility, display sizes, integration errors and release validation |
 
 “Performance reviewed” means the code and benchmark pass is complete; it does **not** mean that screen's visual design or every live interaction is finished. Measurements and limitations are in [PERFORMANCE_REVIEW.md](PERFORMANCE_REVIEW.md).
@@ -99,7 +99,7 @@ First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 
 - [ ] **Reminders/calendar:** Today/Upcoming/Completed, detail/edit forms, meeting/water/battery alerts.
 - [ ] **Settings:** General, Appearance, Sounds, Clipboard, Shelf, Integrations, Shortcuts, About, Claude, GitHub, Calendar and Diagnostics.
 
-### Current Settings pass
+### Settings pass
 
 - [x] Replace Settings native popup controls with shared `ZeraSelect`.
 - [x] Centralize pane title, setting label, control type and row height in the shared design tokens.
@@ -111,6 +111,15 @@ First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 
 - [x] Show a “Scroll for more” footer with a softly pulsing arrow only when content remains below; hide it at the bottom and respect reduced motion.
 - [x] Pass five Settings/dropdown regressions and the optional Appearance render; build and reload the release app.
 - [ ] Complete live visual approval and integration control checks in each pane.
+
+### Current Home pass
+
+- [x] Reuse shared medium control/setting-label type; add a shared monospaced metric-value role.
+- [x] Relax vital tiles and separate values from units; use shared gaps and corner radii.
+- [x] Wrap quick actions at compact widths instead of hiding trailing actions.
+- [x] Keep busy Home content inside a bounded scroll region without an overlapping scrollbar.
+- [x] Check quick-action bounds at 560/880 points and This Mac → Back restoration; inspect the local Home capture.
+- [ ] User visual approval and live search, attention links, quick actions, vitals, speed test and Escape checks.
 
 ### Phase 5 — shipping
 

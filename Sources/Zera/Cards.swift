@@ -96,7 +96,8 @@ final class ListRow: NSView {
     var badge = 0 { didSet { needsDisplay = true; needsLayout = true } }
     var showsChevron = false { didSet { needsDisplay = true; needsLayout = true } }
     var selected = false { didSet { restyle() } }
-    var emphasized = false { didSet { title.font = emphasized ? Typo.rowTitleStrong : Typo.rowTitle } }
+    var titleFont = Typo.rowTitle { didSet { title.font = emphasized ? Typo.rowTitleStrong : titleFont } }
+    var emphasized = false { didSet { title.font = emphasized ? Typo.rowTitleStrong : titleFont } }
     /// A control shown at the right edge, vertically centred (e.g. Toggle, CardButton).
     var accessory: NSView? {
         didSet {
@@ -286,7 +287,7 @@ final class ActionTile: NSView {
         self.tint = color
         super.init(frame: .zero)
         title.stringValue = t
-        title.font = Typo.chip
+        title.font = Typo.control
         title.textColor = Pal.text(0.88)
         title.lineBreakMode = .byClipping
         addSubview(title)
@@ -296,7 +297,7 @@ final class ActionTile: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    static let height: CGFloat = 34
+    static let height = Metrics.segment
     private static let glyph: CGFloat = 16
     var fittedWidth: CGFloat { ceil(14 + Self.glyph + 8 + title.intrinsicContentSize.width + 16) }
 
@@ -436,7 +437,9 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     var onAction: ((QuickAction) -> Void)?
     var onOpenURL: ((URL) -> Void)?
 
-    private let search = SearchBox(placeholder: "Ask Zera anything, or search recent files…")
+    private let search = SearchBox(placeholder: "Ask Zera or search files…")
+    private let body = FlippedView()
+    private let bodyScroll = NSScrollView()
     private let attentionHeader = SectionHeader("Needs attention")
     private var attentionRows: [ListRow] = []
     private let allClear = NSTextField(labelWithString: "")
@@ -456,32 +459,37 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     private var watchingVitals = false
 
     init() {
-        super.init(width: 540, title: "")
+        super.init(width: Isle.lensWidth, title: "")
         let p = Pal
         search.field.delegate = self
         addSubview(search)
+        bodyScroll.drawsBackground = false
+        bodyScroll.contentView.drawsBackground = false
+        bodyScroll.hasVerticalScroller = false
+        bodyScroll.documentView = body
+        addSubview(bodyScroll)
         vitalsStrip.onOpen = { [weak self] in self?.setVitals(true) }
-        addSubview(vitalsStrip)
-        addSubview(macHeader)
-        macHint.font = Typo.caption; macHint.textColor = p.textTertiary; macHint.alignment = .right
-        addSubview(macHint)
+        body.addSubview(vitalsStrip)
+        body.addSubview(macHeader)
+        macHint.font = Typo.secondary; macHint.textColor = p.textTertiary; macHint.alignment = .right
+        body.addSubview(macHint)
         vitalsPage.isHidden = true
         addSubview(vitalsPage)
         backButton = GHSquareButton(symbol: "chevron.left", label: "Back", target: self, action: #selector(backTapped))
         backButton.isHidden = true
         addSubview(backButton)
-        addSubview(attentionHeader)
+        body.addSubview(attentionHeader)
         allClear.font = Typo.body; allClear.textColor = p.textSecondary
-        addSubview(allClear)
+        body.addSubview(allClear)
         recentHeader.onLink = { [weak self] in self?.onOpen?(.shelf) }
-        addSubview(recentHeader)
+        body.addSubview(recentHeader)
         recentEmpty.font = Typo.caption; recentEmpty.textColor = p.textTertiary
-        addSubview(recentEmpty)
-        addSubview(quickHeader)
+        body.addSubview(recentEmpty)
+        body.addSubview(quickHeader)
         for a in QuickAction.grid {
             let t = ActionTile(symbol: a.symbol, color: a.color, title: a.tileTitle)
             t.onTap = { [weak self] in self?.onAction?(a) }
-            addSubview(t)
+            body.addSubview(t)
             tiles.append(t)
         }
         for name in [ShelfStore.changed, GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ClaudeActivityService.changed] {
@@ -506,11 +514,12 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     func setVitals(_ on: Bool, animated: Bool = true) {
         guard on != showingVitals else { return }
         showingVitals = on
+        bodyScroll.isHidden = on
         [search, vitalsStrip, macHeader, macHint, attentionHeader, allClear, quickHeader].forEach { $0.isHidden = on }
         (attentionRows + recentRows + tiles).forEach { $0.isHidden = on }
         vitalsPage.isHidden = !on
         backButton.isHidden = !on
-        let tiles = vitalsStrip.frame
+        let tiles = vitalsStrip.convert(vitalsStrip.bounds, to: self)
         refresh()
         if animated {
             // A vital grows into This Mac; Back slides Home back in.
@@ -540,13 +549,26 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 
     private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (rowH + Metrics.rowGap) - Metrics.rowGap }
 
+    private var actionRows: Int {
+        let width = max(1, bounds.width - Metrics.cardPad * 2)
+        var rows = 1, used: CGFloat = 0
+        for tile in tiles {
+            let w = min(tile.fittedWidth, width)
+            if used > 0 && used + Space.s + w > width { rows += 1; used = 0 }
+            used += (used > 0 ? Space.s : 0) + w
+        }
+        return rows
+    }
+
+    private var bodyHeight: CGFloat {
+        18 + Space.m + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.xxl
+        + 18 + Space.m + VitalsOrgans.height + Space.xxl
+        + 18 + Space.m + CGFloat(actionRows) * tileHeight + CGFloat(actionRows - 1) * Space.s
+    }
+
     var desiredHeight: CGFloat {
         if showingVitals { return headerBottom + VitalsPage.height + Metrics.cardPad }
-        var h = headerBottom
-        h += 18 + Space.m + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.xxl
-        h += 18 + Space.m + VitalsOrgans.height + Space.xxl
-        h += 18 + Space.m + tileHeight + Space.xxl + 4
-        return h
+        return min(Isle.maxContentHeight, headerBottom + bodyHeight + Metrics.cardPad)
     }
 
     @objc func refresh() {
@@ -604,7 +626,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         }
         let needs = attentionRows.count
         attentionRows = Array(attentionRows.prefix(Self.maxAttention))
-        for r in attentionRows { r.isHidden = showingVitals; addSubview(r) }
+        for r in attentionRows { r.titleFont = Typo.settingLabel; r.isHidden = showingVitals; body.addSubview(r) }
         allClear.isHidden = showingVitals || !attentionRows.isEmpty
         allClear.stringValue = "All clear — nothing needs you right now ✨"
         let day = Date().formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
@@ -630,8 +652,9 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         entries.sort { $0.0 > $1.0 }
         // Recent shows only while you search: the matches, so Return can still ask Zera instead.
         for (_, text, r) in entries where !query.isEmpty && text.localizedCaseInsensitiveContains(query) {
+            r.titleFont = Typo.settingLabel
             r.isHidden = showingVitals
-            addSubview(r)
+            body.addSubview(r)
             recentRows.append(r)
             if recentRows.count == Self.maxAttention { break }
         }
@@ -669,7 +692,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         super.layout()
         layoutHeader()
         let x = Metrics.cardPad, w = bounds.width - x * 2
-        var y = headerBottom
+        var y: CGFloat = 0
         if !showingVitals {
             // Ask Zera sits right of her, level with the greeting.
             let t = headerTrailingRect
@@ -682,39 +705,42 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             let shift = Metrics.headerButton + Space.m
             titleLabel.frame.origin.x += shift - 4; titleLabel.frame.size.width -= shift
             subtitleLabel.frame.origin.x += shift - 4; subtitleLabel.frame.size.width -= shift
-            vitalsPage.frame = NSRect(x: x, y: y, width: w, height: VitalsPage.height)
+            vitalsPage.frame = NSRect(x: x, y: headerBottom, width: w, height: VitalsPage.height)
             return
         }
+        bodyScroll.frame = NSRect(x: x, y: headerBottom, width: w, height: desiredHeight - headerBottom - Metrics.cardPad)
+        body.frame = NSRect(x: 0, y: 0, width: w, height: bodyHeight)
         // While searching, the matches take the place of "Needs you".
         let searching = !query.isEmpty
         attentionHeader.title.attributedStringValue = Typo.sectionText(searching ? "Matches" : "Needs you")
         let shown = searching ? recentRows : attentionRows
         attentionRows.forEach { $0.isHidden = searching }
         recentRows.forEach { $0.isHidden = !searching }
-        attentionHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.m
+        attentionHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
         if shown.isEmpty {
             allClear.isHidden = false
             allClear.stringValue = searching ? "No match — press Return to ask Zera." : "All clear — nothing needs you right now ✨"
-            allClear.frame = NSRect(x: x + Space.xs, y: y, width: w - Space.xs, height: 20)
+            allClear.frame = NSRect(x: Space.xs, y: y, width: w - Space.xs, height: 20)
             y += 20
         } else {
             allClear.isHidden = true
-            for r in shown { r.frame = NSRect(x: x, y: y, width: w, height: rowH); y += rowH + Metrics.rowGap }
+            for r in shown { r.frame = NSRect(x: 0, y: y, width: w, height: rowH); y += rowH + Metrics.rowGap }
             y -= Metrics.rowGap
         }
         y += Space.xxl
 
-        macHeader.frame = NSRect(x: x, y: y, width: w, height: 18)
-        macHint.frame = NSRect(x: x + w - 220, y: y + 1, width: 220, height: 16)
+        macHeader.frame = NSRect(x: 0, y: y, width: w, height: 18)
+        macHint.frame = NSRect(x: max(100, w - 220), y: y + 1, width: min(220, w - 100), height: 16)
         y += 18 + Space.m
-        vitalsStrip.frame = NSRect(x: x, y: y, width: w, height: VitalsOrgans.height)
+        vitalsStrip.frame = NSRect(x: 0, y: y, width: w, height: VitalsOrgans.height)
         y += VitalsOrgans.height + Space.xxl
 
-        quickHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.m
-        var tx = x
+        quickHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
+        var tx: CGFloat = 0
         for t in tiles {
-            let tw = t.fittedWidth
-            t.isHidden = showingVitals || tx + tw > x + w
+            let tw = min(t.fittedWidth, w)
+            if tx > 0 && tx + tw > w { tx = 0; y += tileHeight + Space.s }
+            t.isHidden = false
             t.frame = NSRect(x: tx, y: y, width: tw, height: tileHeight)
             tx += tw + Space.s
         }
