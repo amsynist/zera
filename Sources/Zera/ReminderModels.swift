@@ -130,7 +130,11 @@ enum Recurrence {
                     guardDays += 1
                     let windowStart = cal.date(bySettingHour: (s / 60) % 24, minute: s % 60, second: 0, of: day)
                         ?? day.addingTimeInterval(TimeInterval(s) * 60)
-                    let windowEnd = windowStart.addingTimeInterval(length)
+                    // The end is a clock time too, so a window still ends at "9 PM" on the day
+                    // the clocks change (a plain seconds offset would land an hour off).
+                    let endDay = e >= s ? day : (cal.date(byAdding: .day, value: 1, to: day) ?? day)
+                    let windowEnd = cal.date(bySettingHour: (e / 60) % 24, minute: e % 60, second: 0, of: endDay)
+                        ?? windowStart.addingTimeInterval(length)
                     // On the start's own day the series runs from the start itself ("starting now");
                     // every later day restarts at the beginning of the active hours.
                     var t = windowStart

@@ -269,8 +269,11 @@ final class TaskGitSync {
                 let seen = replaceFrom == nil ? Set(link.seen) : Set<String>()
                 // Worktrees of one repo share commits: each hash once.
                 var once = Set<String>()
+                // `git log --since` filters on the commit date; tasks are dated by the author date.
+                // Keeping only commits authored in the window means a rebuild removes and re-adds
+                // the same set (a rebased commit authored earlier is not added a second time).
                 let fresh = repos.flatMap { GitCommits.commits(in: $0, since: since) }
-                    .filter { !seen.contains($0.hash) && once.insert($0.hash).inserted }.sorted { $0.date < $1.date }
+                    .filter { $0.date >= since && !seen.contains($0.hash) && once.insert($0.hash).inserted }.sorted { $0.date < $1.date }
                 let n = fresh.count
                 let made = Self.tasks(from: fresh, project: name, calendar: cal, claude: claude) { done, total in
                     // One call (the usual case): a sweep with the count; several: how many are back.

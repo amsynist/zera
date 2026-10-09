@@ -89,10 +89,7 @@ enum AppTools {
         }
     }
 
-    static func copy(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-    }
+    static func copy(_ text: String) { NSPasteboard.general.setPlainText(text) }
 
     /// Why it can't be uninstalled, or nil when it can.
     static func uninstallBlocker(_ app: AppEntry) -> String? {
