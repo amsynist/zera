@@ -44,6 +44,7 @@ enum Metrics {
     static let headerButton: CGFloat = 34
     static let rowButton: CGFloat = 28
     /// Gap between list rows.
+    static let settingRow: CGFloat = 54
     static let rowGap: CGFloat = 8
 }
 
@@ -70,6 +71,9 @@ enum RowTier {
 }
 
 enum Typo {
+    static let paneTitle = NSFont.systemFont(ofSize: 17, weight: .medium)
+    static let settingLabel = NSFont.systemFont(ofSize: 14, weight: .medium)
+    static let control = NSFont.systemFont(ofSize: 13, weight: .medium)
     static let title = NSFont.systemFont(ofSize: 15, weight: .bold)
     static let section = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     static let body = NSFont.systemFont(ofSize: 12.5, weight: .regular)
