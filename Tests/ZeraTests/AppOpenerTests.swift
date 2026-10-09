@@ -540,6 +540,11 @@ final class AppOpenerTests: XCTestCase {
     func testCommandQNeverQuitsZera() throws {
         let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 720, height: 600))
         view.prepare()
+        // A real running app exposes a functioning ⌘Q action. Never dispatch that against
+        // the user's Your Usual list: this test checks fallback routing, not app termination.
+        view.previewType("Custom Commands")
+        XCTAssertTrue(view.visibleRowTitles.contains("Custom Commands"))
+        XCTAssertFalse(view.visibleRowTitles.contains("ChatGPT"))
         let cmdQ = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
             windowNumber: 0, context: nil, characters: "q", charactersIgnoringModifiers: "q", isARepeat: false, keyCode: 12))
         XCTAssertTrue(view.performKeyEquivalent(with: cmdQ), "swallowed, not passed on to the Quit Zera item")
