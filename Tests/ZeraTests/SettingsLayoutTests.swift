@@ -3,6 +3,26 @@ import XCTest
 @testable import Zera
 
 final class SettingsLayoutTests: XCTestCase {
+    func testScrollCueStaysOutsideContentAndHidesAtBottom() throws {
+        let settings = SettingsCard(defaultKind: .shelf, showingZera: true, loginEnabled: false)
+        settings.setFrameSize(NSSize(width: settings.cardWidth, height: Isle.maxContentHeight))
+        settings.select(.appearance)
+        settings.layoutSubtreeIfNeeded()
+        let scroll = try XCTUnwrap(settings.subviews.compactMap { $0 as? NSScrollView }.first)
+        let hint = try XCTUnwrap(settings.subviews.compactMap { $0 as? NSTextField }.first { $0.stringValue == "Scroll for more" })
+        XCTAssertFalse(scroll.hasVerticalScroller)
+        XCTAssertFalse(hint.isHidden)
+        XCTAssertGreaterThanOrEqual(hint.frame.minY, scroll.frame.maxY)
+        XCTAssertLessThanOrEqual(hint.frame.maxY, settings.bounds.height)
+        let document = try XCTUnwrap(scroll.documentView)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: document.bounds.height - scroll.contentView.bounds.height))
+        NotificationCenter.default.post(name: NSView.boundsDidChangeNotification, object: scroll.contentView)
+        XCTAssertTrue(hint.isHidden)
+        settings.select(.about)
+        settings.layoutSubtreeIfNeeded()
+        XCTAssertTrue(hint.isHidden)
+    }
+
     private func descendants(_ view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants($0) }
     }

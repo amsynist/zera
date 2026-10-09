@@ -107,6 +107,8 @@ First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 
 - [x] Add custom-menu arrows/Return/Escape, keyboard focus and selected-row scrolling.
 - [x] Release menu content, key handlers and first responder when closing; retain native menu callbacks safely.
 - [x] Check layout bounds and row/control spacing across all twelve Settings panes.
+- [x] Remove the overlay scrollbar that covered trailing controls; retain trackpad/wheel scrolling.
+- [x] Show a “Scroll for more” footer with a softly pulsing arrow only when content remains below; hide it at the bottom and respect reduced motion.
 - [x] Pass five Settings/dropdown regressions and the optional Appearance render; build and reload the release app.
 - [ ] Complete live visual approval and integration control checks in each pane.
 
