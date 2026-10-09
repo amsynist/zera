@@ -334,6 +334,13 @@ final class ShellEnvironment {
         return p.split(separator: ":").map(String.init).filter { !$0.isEmpty }
     }
 
+    /// Diagnostics must never launch a shell or wait for a background shell capture.
+    var cachedPathCount: Int? {
+        guard lock.try() else { return nil }
+        defer { lock.unlock() }
+        return captured?["PATH"].map { $0.split(separator: ":").count }
+    }
+
     private func base() -> [String: String] {
         lock.lock(); defer { lock.unlock() }
         if let c = captured { return c }

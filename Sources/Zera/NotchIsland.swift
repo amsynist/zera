@@ -493,7 +493,7 @@ final class IslandView: NSView {
         mode = .closed
         activeTab = nil
         whisper(nil)
-        dismissContent(direction: 0)
+        dismissContent(direction: 0, animated: animated)
         setTabs(visible: false)
         setChrome(.closed)
         applyShape(shapeRect(width: notchWidth, height: band), corner: 12, animated: animated)
@@ -536,7 +536,7 @@ final class IslandView: NSView {
         let w = size.width, h = size.height
         let target = NSRect(x: (centerX - w / 2).rounded(), y: band, width: w, height: h)
         if view !== content {
-            dismissContent(direction: direction)
+            dismissContent(direction: direction, animated: animated)
             // Back to a screen that was still fading out (a quick A → B → A): drop its exit, or
             // the held-over fade would blank it once it has arrived.
             view.layer?.removeAnimation(forKey: "leave")
@@ -563,21 +563,16 @@ final class IslandView: NSView {
         layoutWhisper()
     }
 
-    private func dismissContent(direction: CGFloat) {
+    private func dismissContent(direction: CGFloat, animated: Bool) {
         guard let old = content else { return }
         content = nil
-        guard !Motion.reduced, old.window != nil else { old.removeFromSuperview(); return }
+        guard animated, !Motion.reduced, old.window != nil else { old.removeFromSuperview(); return }
         old.wantsLayer = true
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { [weak old, weak self] in
-            guard let old = old, old !== self?.content else { return }
-            old.removeFromSuperview()
-            old.layer?.removeAllAnimations()
-            old.layer?.opacity = 1
-        }
+        let id = UUID().uuidString
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 1; fade.toValue = 0; fade.duration = 0.14
         fade.fillMode = .forwards; fade.isRemovedOnCompletion = false
+        fade.setValue(id, forKey: "zeraExitID")
         old.layer?.add(fade, forKey: "leave")
         if direction != 0 {
             let move = CABasicAnimation(keyPath: "transform.translation.x")
@@ -585,7 +580,14 @@ final class IslandView: NSView {
             move.fillMode = .forwards; move.isRemovedOnCompletion = false
             old.layer?.add(move, forKey: "slide")
         }
-        CATransaction.commit()
+        // Always remove the outgoing screen, even if AppKit interrupts its animation.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak old, weak self] in
+            guard let old = old, old !== self?.content,
+                  old.layer?.animation(forKey: "leave")?.value(forKey: "zeraExitID") as? String == id else { return }
+            old.removeFromSuperview()
+            old.layer?.removeAllAnimations()
+            old.layer?.opacity = 1
+        }
     }
 
     /// The island, with a little slack, in view coordinates; tabs count in peek.

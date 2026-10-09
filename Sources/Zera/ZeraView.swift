@@ -189,7 +189,7 @@ final class ZeraView: NSView {
     private func stop() { timer?.invalidate(); timer = nil }
 
     private func tick() {
-        guard let w = window, w.isVisible, w.alphaValue > 0.02 else { return }
+        guard let w = window, w.isVisible, w.alphaValue > 0.02, !isHiddenOrHasHiddenAncestor else { return }
         phase += 1.0 / framesPerSecond
         func blend(_ v: inout CGFloat, _ target: CGFloat, _ k: CGFloat) { v += (target - v) * k }
         blend(&raise, [.excited, .happy, .celebrate, .surprised].contains(mood) ? 1 : 0, 0.22)

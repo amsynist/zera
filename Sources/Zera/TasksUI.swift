@@ -138,7 +138,7 @@ private let monoFont = { (size: CGFloat, w: NSFont.Weight) in NSFont.monospacedD
 /// ticking clock doesn't jiggle.
 enum TaskFont {
     static func clock(_ size: CGFloat) -> NSFont {
-        NSFont(name: "DINAlternate-Bold", size: size) ?? .monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+        Typo.metricValue.withSize(size)
     }
 }
 
@@ -274,7 +274,7 @@ final class TaskRowView: NSView {
         }
         if let tag = projectTag, carded {
             // v2: the project as a glowing dot and its name.
-            let f = NSFont.systemFont(ofSize: 12, weight: .medium)
+            let f = Typo.bodyMedium
             let w = min(130, ceil((tag as NSString).size(withAttributes: [.font: f]).width))
             let tx = titleRight - w - 4
             drawText(tag, f, Neon.textDim.withAlphaComponent(task.done ? 0.6 : 1), in: NSRect(x: tx, y: 0, width: w, height: bounds.height))
@@ -294,7 +294,7 @@ final class TaskRowView: NSView {
             titleRight = r.minX - 8
         }
         let tx = checkRect.maxX + (carded ? 14 : 10)
-        drawText(task.title, carded ? Typo.rowTitle : .systemFont(ofSize: 13.5, weight: .medium), task.done && !history ? Neon.textDim.withAlphaComponent(0.75) : Neon.text,
+        drawText(task.title, carded ? Typo.rowTitle : Typo.control, task.done && !history ? Neon.textDim.withAlphaComponent(0.75) : Neon.text,
                  in: NSRect(x: tx, y: 0, width: max(0, titleRight - tx), height: bounds.height), strike: task.done && !history)
         guard !task.done else { return }
         let pr = playRect.insetBy(dx: 0.5, dy: 0.5)
@@ -454,7 +454,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         field.delegate = self
         addSubview(field)
         hints.paint = { [weak self] r in
-            let c = Neon.textDim.withAlphaComponent(0.85), f = NSFont.systemFont(ofSize: 11.5)
+            let c = Neon.textDim.withAlphaComponent(0.85), f = Typo.secondary
             drawText("⇥ add and focus · #name picks a project · double-click to focus", f, c, in: NSRect(x: 4, y: 0, width: r.width * 0.7, height: r.height))
             if let k = self?.shortcutLabel {
                 drawText("\(k) from anywhere", f, c, in: NSRect(x: r.width * 0.6, y: 0, width: r.width * 0.4 - 4, height: r.height), align: .right)
@@ -465,14 +465,14 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
             guard let self = self else { return }
             if let (name, p) = self.syncShown {
                 // Syncing: name, a bar, and where it's got to, in the header's right side.
-                drawText("Syncing \(name)", .systemFont(ofSize: 12.5, weight: .semibold), Neon.text, in: NSRect(x: 0, y: 0, width: r.width, height: 16), align: .right)
+                drawText("Syncing \(name)", Typo.bodyStrong, Neon.text, in: NSRect(x: 0, y: 0, width: r.width, height: 16), align: .right)
                 SyncRing.bar(NSRect(x: r.width - 132, y: 21, width: 132, height: 4), progress: p.fraction, spin: self.spin)
                 let detail = p.total > 0 ? "\(p.stage) · \(p.done) of \(p.total)" : p.stage + "…"
                 drawText(detail, .systemFont(ofSize: 11), Neon.textDim, in: NSRect(x: 0, y: 28, width: r.width, height: 14), align: .right)
                 return
             }
-            drawText(TaskTime.short(self.store.focusedToday), .monospacedDigitSystemFont(ofSize: 24, weight: .bold), Neon.text, in: NSRect(x: 0, y: 0, width: r.width, height: 30), align: .right)
-            drawText("focused today", .systemFont(ofSize: 11.5), Neon.textDim, in: NSRect(x: 0, y: 31, width: r.width, height: 14), align: .right)
+            drawText(TaskTime.short(self.store.focusedToday), Typo.metricValue, Neon.text, in: NSRect(x: 0, y: 0, width: r.width, height: 30), align: .right)
+            drawText("focused today", Typo.secondary, Neon.textDim, in: NSRect(x: 0, y: 31, width: r.width, height: 14), align: .right)
         }
         addSubview(total)
         scroll.drawsBackground = false
@@ -518,6 +518,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     @objc private func storeChanged() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
         let h = desiredHeight
         reload()
         if desiredHeight != h { onHeightChange?() }
@@ -535,6 +536,13 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     private var spin: CGFloat = 0
     private var spinTimer: Timer?
 
+    deinit { spinTimer?.invalidate() }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        syncChanged()
+    }
+
     /// The sync to show in the header: the shown project's, else any.
     private var syncShown: (String, SyncProgress)? {
         let all = TaskGitSync.shared.progress
@@ -543,6 +551,10 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     @objc private func syncChanged() {
+        guard window != nil, !isHiddenOrHasHiddenAncestor else {
+            spinTimer?.invalidate(); spinTimer = nil
+            return
+        }
         let all = TaskGitSync.shared.progress
         projectBar.syncing = all
         total.isHidden = syncShown == nil && store.focusedToday < 60
@@ -569,7 +581,6 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     private func updateSubtitle() {
         let f = DateFormatter()
         f.dateFormat = "EEE d MMM"
-        let focus = store.focusedToday
         spanChoices.enumerated().forEach { $1.selected = TaskViewSpan.allCases[$0] == viewSpan }
         if let c = spanChoices.first(where: { $0.selected }), spanTrack.frame.width > 0 {
             spanIndicator.move(to: spanTrack.convert(c.frame, from: c.superview), animated: true)
@@ -625,7 +636,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         if viewSpan == .today, open.isEmpty {
             let l = TaskPaint(frame: NSRect(x: 0, y: y, width: w, height: 36))
             let empty = shown.map { "Nothing to do in \($0). Add one above ✨" } ?? "Nothing to do. Add one above ✨"
-            l.paint = { r in drawText(empty, .systemFont(ofSize: 12.5), Neon.textDim, in: NSRect(x: 10, y: 0, width: r.width - 20, height: r.height)) }
+            l.paint = { r in drawText(empty, Typo.body, Neon.textDim, in: NSRect(x: 10, y: 0, width: r.width - 20, height: r.height)) }
             doc.addSubview(l)
             y += 36
         }
@@ -643,7 +654,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
                 section("DONE")
                 let l = TaskPaint(frame: NSRect(x: 0, y: y, width: w, height: 36))
                 let what = viewSpan == .week ? "in the last 7 days" : "in the last 30 days"
-                l.paint = { r in drawText("Nothing done \(what) yet.", .systemFont(ofSize: 12.5), Neon.textDim, in: NSRect(x: 10, y: 0, width: r.width - 20, height: r.height)) }
+                l.paint = { r in drawText("Nothing done \(what) yet.", Typo.body, Neon.textDim, in: NSRect(x: 10, y: 0, width: r.width - 20, height: r.height)) }
                 doc.addSubview(l)
                 y += 36
             }
@@ -1073,7 +1084,7 @@ final class FocusCardView: NSView {
         drawText("UP NEXT", sectionFont, Neon.textDim, in: NSRect(x: 20, y: upNextTop, width: 120, height: 16), kern: Typo.sectionKern)
         if rows.isEmpty {
             let hint = shortcutLabel.map { "Nothing else today. \($0) adds one." } ?? "Nothing else today."
-            drawText(hint, .systemFont(ofSize: 12.5), Neon.textDim, in: NSRect(x: 20, y: upNextTop + 30, width: r.width - 40, height: 18))
+            drawText(hint, Typo.body, Neon.textDim, in: NSRect(x: 20, y: upNextTop + 30, width: r.width - 40, height: 18))
         }
     }
 
@@ -1160,7 +1171,7 @@ final class QuickAddView: NSView, NSTextFieldDelegate {
 
     private static func drawHints(in r: NSRect, left: Bool) {
         let items = [("⏎", "add"), ("⇥", "add and focus"), ("esc", "close")]
-        let font = NSFont.systemFont(ofSize: 12.5)
+        let font = Typo.body
         let kf = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
         let widths = items.map { max(18, ceil(($0.0 as NSString).size(withAttributes: [.font: kf]).width) + 12) + 6
             + ceil(($0.1 as NSString).size(withAttributes: [.font: font]).width) }
@@ -1494,7 +1505,7 @@ final class TaskExportView: NSView {
         // The options sit in the preview's top bar, on the right.
         var ox = w - pad - 10
         for c in optionChips.reversed() where !c.isHidden {
-            let cw = ceil((c.title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .medium)]).width) + 22
+            let cw = ceil((c.title as NSString).size(withAttributes: [.font: Typo.bodyMedium]).width) + 22
             ox -= cw
             c.frame = NSRect(x: ox, y: 218 + po + 5, width: cw, height: 24)
             ox -= 6
@@ -2114,7 +2125,7 @@ final class TimesheetDayView: NSView {
         // The day's total shows with Times on; "Copied" shows either way.
         if copied || options.times {
             let label = copied ? "Copied" : TaskExport.duration(total)
-            drawText(label, copied ? .systemFont(ofSize: 12.5, weight: .semibold) : TaskFont.clock(16), copied ? Neon.green : Neon.cyan,
+            drawText(label, copied ? Typo.bodyStrong : TaskFont.clock(16), copied ? Neon.green : Neon.cyan,
                      in: NSRect(x: cb.minX - 130, y: 0, width: 120, height: Self.headH), align: .right)
         } else {
             let n = "\(rows.count) task\(rows.count == 1 ? "" : "s")"
@@ -2197,7 +2208,7 @@ final class TaskTableView: NSView {
     static let rowH: CGFloat = 26
     static let headH: CGFloat = 30
     private static let gap: CGFloat = 14, side: CGFloat = 14
-    private static let cellFont = NSFont.systemFont(ofSize: 12.5)
+    private static let cellFont = Typo.body
     private static let digitFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
 
     struct Column { let title: String; let cell: (TaskExport.Row) -> String; let right: Bool; var x: CGFloat = 0; var w: CGFloat = 0 }
@@ -2288,4 +2299,3 @@ final class TaskTableView: NSView {
         }
     }
 }
-

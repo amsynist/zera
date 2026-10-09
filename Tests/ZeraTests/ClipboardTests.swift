@@ -5,6 +5,57 @@ import XCTest
 
 /// Pure parts of clipboard history only: these never touch the real clipboard or the history file.
 final class ClipboardTests: XCTestCase {
+    @MainActor
+    func testSwitchingImageGridAndListReleasesTheInactiveViews() throws {
+        _ = NSApplication.shared
+        let store = ClipboardStore.shared
+        let saved = store.items
+        let enabled = store.enabled
+        defer { store.preview(saved); store.enabled = enabled }
+        store.enabled = true
+        let images = (0..<2).map { i -> ClipItem in
+            var item = ClipItem(kind: .image, text: "Image \(i)", fingerprint: "grid-\(i)")
+            item.imageFile = "missing-test-image-\(i).png"
+            return item
+        }
+        store.preview(images + [ClipItem(kind: .text, text: "A note", fingerprint: "note")])
+        let view = autoreleasepool { ClipboardView() }
+        view.frame = NSRect(x: 0, y: 0, width: 880, height: 640)
+        view.willShow()
+        func descendants(_ parent: NSView) -> [NSView] { parent.subviews.flatMap { [$0] + descendants($0) } }
+        let filters = try XCTUnwrap(descendants(view).compactMap { $0 as? GitHubSegmentedControl }.first)
+        weak var oldRow: ClipRow?
+        autoreleasepool {
+            oldRow = descendants(view).compactMap { $0 as? ClipRow }.first
+            filters.onSelect?(ClipboardStore.Filter.images.rawValue)
+        }
+        XCTAssertNil(oldRow?.superview, "the inactive list must detach its rows")
+        XCTAssertEqual(descendants(view).compactMap { $0 as? ClipThumb }.count, 2)
+        weak var oldThumb: ClipThumb?
+        autoreleasepool { oldThumb = descendants(view).compactMap { $0 as? ClipThumb }.first }
+        for _ in 0..<10 { autoreleasepool {
+            filters.onSelect?(ClipboardStore.Filter.all.rawValue)
+            view.layoutSubtreeIfNeeded()
+            XCTAssertTrue(descendants(view).compactMap { $0 as? ClipThumb }.isEmpty)
+            XCTAssertEqual(descendants(view).compactMap { $0 as? ClipRow }.count, 3)
+            filters.onSelect?(ClipboardStore.Filter.images.rawValue)
+        } }
+        XCTAssertNil(oldThumb, "the inactive image grid must release its layers")
+    }
+
+    func testSmallIconsKeepOnlyOneBoundedRetinaBitmap() throws {
+        let source = NSImage(size: NSSize(width: 1024, height: 1024), flipped: false) { rect in
+            NSColor.systemBlue.setFill(); rect.fill(); return true
+        }
+        let icon = source.rasterizedIcon(size: 64)
+        let bitmap = try XCTUnwrap(icon.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        XCTAssertEqual(icon.representations.count, 1)
+        XCTAssertEqual(bitmap.width, 128)
+        XCTAssertEqual(bitmap.height, 128)
+        XCTAssertEqual(bitmap.bitsPerComponent, 8)
+        XCTAssertEqual(icon.size, NSSize(width: 64, height: 64))
+    }
+
     func testLinksAreRecognised() {
         XCTAssertEqual(ClipboardStore.classify("https://github.com/aurora-app/aurora/pull/412"), .link)
         XCTAssertEqual(ClipboardStore.classify("  http://example.com  "), .link)

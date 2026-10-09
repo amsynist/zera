@@ -51,6 +51,25 @@ final class ScreenLayoutTests: XCTestCase {
                 let f = screen.convert(v.bounds, from: v)
                 XCTAssertGreaterThanOrEqual(f.minX, bounds.minX - 1, "\(name): \(type(of: v)) starts left of the screen")
                 XCTAssertLessThanOrEqual(f.maxX, bounds.maxX + 1, "\(name): \(type(of: v)) runs past the right edge")
+                XCTAssertGreaterThanOrEqual(f.minY, bounds.minY - 1, "\(name): \(type(of: v)) starts above the screen")
+                XCTAssertLessThanOrEqual(f.maxY, bounds.maxY + 1, "\(name): \(type(of: v)) runs past the bottom edge")
+            }
+        }
+    }
+
+    func testCompactFilterToolbarsKeepSearchReachable() throws {
+        for screen in [ClaudeSessionsView() as NSView, ClipboardView()] {
+            for width: CGFloat in [560, Isle.lensWidth] {
+                screen.setFrameSize(NSSize(width: width, height: Isle.maxContentHeight))
+                screen.needsLayout = true
+                screen.layoutSubtreeIfNeeded()
+                let search = try XCTUnwrap(descendants(screen).compactMap { $0 as? SearchBox }
+                    .first { !$0.isHiddenOrHasHiddenAncestor })
+                XCTAssertGreaterThanOrEqual(search.frame.width, 160)
+                XCTAssertEqual(search.frame.height, Metrics.field)
+                let filters = try XCTUnwrap(search.superview?.subviews.compactMap { $0 as? GitHubSegmentedControl }.first)
+                XCTAssertFalse(search.frame.intersects(filters.frame))
+                XCTAssertLessThanOrEqual(search.frame.maxX, search.superview!.bounds.width)
             }
         }
     }

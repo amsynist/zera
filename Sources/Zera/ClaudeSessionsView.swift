@@ -253,12 +253,12 @@ final class ClaudeSessionRow: NSView {
 
     private let tile = SessionIconTile()
     private let title = label(Typo.rowTitleStrong, Pal.text)
-    private let meta = label(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
+    private let meta = label(Typo.meta, Pal.textSecondary)
     private let chip = PRStatusChip()
-    private let time = label(NSFont.systemFont(ofSize: 12, weight: .medium), Pal.textSecondary)
+    private let time = label(Typo.bodyMedium, Pal.textSecondary)
     private let bar = SessionProgressBar()
-    private let percent = label(NSFont.systemFont(ofSize: 12, weight: .semibold), Pal.text)
-    private let note = label(NSFont.systemFont(ofSize: 12, weight: .medium), Pal.textSecondary)
+    private let percent = label(Typo.control, Pal.text)
+    private let note = label(Typo.bodyMedium, Pal.textSecondary)
     private var action: PRActionButton!
     private var more: GHSquareButton!
     private var kind: Bucket = .running
@@ -430,10 +430,10 @@ final class ClaudeSessionProgress: NSView {
     private let big = label(NSFont.systemFont(ofSize: 28, weight: .bold), Pal.text)
     private let glyph = NSImageView()
     private let spinner = NSProgressIndicator()
-    private let stage = label(NSFont.systemFont(ofSize: 14, weight: .semibold), Pal.text)
+    private let stage = label(Typo.rowTitle, Pal.text)
     private let bar = SessionProgressBar()
-    private let elapsed = label(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
-    private let eta = label(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
+    private let elapsed = label(Typo.meta, Pal.textSecondary)
+    private let eta = label(Typo.meta, Pal.textSecondary)
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
@@ -518,8 +518,8 @@ final class ClaudeSessionProgress: NSView {
 final class ZeraSessionReaction: NSView {
     private let figure = NSImageView()
     private let bubble = FlippedView()
-    private let title = label(NSFont.systemFont(ofSize: 14.5, weight: .semibold), Pal.text)
-    private let detail = label(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary, lines: 2)
+    private let title = label(Typo.rowTitle, Pal.text)
+    private let detail = label(Typo.body, Pal.textSecondary, lines: 2)
     override var isFlipped: Bool { true }
     static let figureSize: CGFloat = 84
 
@@ -731,8 +731,8 @@ final class ClaudeTaskDetails: NSView {
         let p = Pal
         for (sym, key) in [("doc.text", "Current Task"), ("folder.fill", "Working Directory"), ("cpu", "Model")] {
             let iv = NSImageView(); iv.image = icon(sym, 14, .medium, p.textSecondary)
-            let k = label(NSFont.systemFont(ofSize: 13, weight: .semibold), p.text); k.stringValue = key
-            let v = label(NSFont.systemFont(ofSize: 13), p.text(0.85))
+            let k = label(Typo.control, p.text); k.stringValue = key
+            let v = label(Typo.screenSubtitle, p.text(0.85))
             [iv, k, v].forEach { addSubview($0) }
             rows.append(Row(icon: iv, key: k, value: v))
         }
@@ -846,8 +846,8 @@ final class ClaudeFollowUpInput: NSView {
 
 final class ZeraSessionTip: NSView {
     var onClose: (() -> Void)?
-    private let title = label(NSFont.systemFont(ofSize: 14, weight: .semibold), Pal.text)
-    private let body = label(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary, lines: 2)
+    private let title = label(Typo.rowTitle, Pal.text)
+    private let body = label(Typo.body, Pal.textSecondary, lines: 2)
     private var close: GHSquareButton!
     override var isFlipped: Bool { true }
     /// Zera stands just outside this view (left), so her head can rise over the top edge.
@@ -912,7 +912,7 @@ final class SessionInfoRow: NSView {
         tint.withAlphaComponent(0.16).setFill()
         NSBezierPath(roundedRect: tile, xRadius: 8, yRadius: 8).fill()
         drawIcon(icon(symbol, 12, .semibold, tint), centeredIn: tile)
-        let tf = NSFont.systemFont(ofSize: 13, weight: .semibold), sf = NSFont.systemFont(ofSize: 11.5), trf = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let tf = Typo.control, sf = Typo.secondary, trf = Typo.bodyMedium
         let tra: [NSAttributedString.Key: Any] = [.font: trf, .foregroundColor: p.textSecondary]
         let trW = trailing.isEmpty ? 0 : ceil((trailing as NSString).size(withAttributes: tra).width)
         (trailing as NSString).draw(at: NSPoint(x: bounds.width - 14 - trW, y: (bounds.height - 16) / 2), withAttributes: tra)
@@ -968,10 +968,10 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     // Right
     private var back: GHSquareButton!
     private let sessionTile = SessionIconTile()
-    private let sessionTitleLabel = label(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
+    private let sessionTitleLabel = label(Typo.detailTitle, Pal.text)
     private let sessionChipView = PRStatusChip()
-    private let sessionElapsed = label(NSFont.systemFont(ofSize: 13, weight: .medium), Pal.textSecondary)
-    private let sessionMetaLabel = label(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary)
+    private let sessionElapsed = label(Typo.control, Pal.textSecondary)
+    private let sessionMetaLabel = label(Typo.body, Pal.textSecondary)
     private var primary: PRActionButton!
     private var primaryKind = 0   // 0 stop · 1 review approval · 2 new session · -1 hidden
     private var sessionMore: GHSquareButton!
@@ -1067,7 +1067,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         filters.onSelect = { [weak self] i in Self.filter = i; self?.reload() }
         filters.switches = { [weak self] in self.map { [$0.scroll] } ?? [] }
         left.addSubview(filters)
-        search.field.font = NSFont.systemFont(ofSize: 13)
+        search.field.font = Typo.screenSubtitle
         search.field.stringValue = Self.query
         search.field.delegate = self
         search.layer?.backgroundColor = p.surfaceRow.cgColor
@@ -1144,7 +1144,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         right.addSubview(rightState)
 
         for name in [ClaudeActivityService.changed, ClaudeHookService.changed] {
-            NotificationCenter.default.addObserver(self, selector: #selector(reload), name: name, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: name, object: nil)
         }
         reload()
     }
@@ -1161,7 +1161,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         ticker?.invalidate(); ticker = nil
         guard window != nil else { return }
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.reload() }
+            Task { @MainActor in self?.reloadIfVisible() }
         }
         RunLoop.main.add(t, forMode: .common)
         ticker = t
@@ -1215,6 +1215,11 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     }
 
     // MARK: Reload
+
+    @objc private func reloadIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        reload()
+    }
 
     @objc func reload() {
         let p = Pal
@@ -1421,7 +1426,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
             }
         }
         if made.isEmpty {
-            let empty = label(NSFont.systemFont(ofSize: 13), p.textSecondary)
+            let empty = label(Typo.screenSubtitle, p.textSecondary)
             empty.stringValue = ["", "No files yet.", "No changes yet.", "No tools used yet.", "Nothing on the timeline yet."][tab]
             empty.alignment = .center
             empty.frame = NSRect(x: 0, y: 24, width: 400, height: 18)
@@ -1468,20 +1473,16 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         // Island header: title and counts left of Zera, New on the right. Her own pictures stay
         // hidden — she hangs in the middle of the header.
         [claudeTile, peek, bubble, tipZera].forEach { $0.isHidden = true }
-        let half = w / 2 - Isle.zeraGap / 2
-        leftTitle.frame = NSRect(x: x, y: CardBase.titleTop, width: half - x, height: 32)
-        leftSub.frame = NSRect(x: x, y: CardBase.subtitleTop, width: half - x, height: 18)
+        leftTitle.frame = ScreenHeader.titleFrame(width: w, padding: x)
+        leftSub.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
         let bw = newSession.fittedWidth + 8
-        newSession.frame = NSRect(x: w - x - bw, y: CardBase.titleTop + 2, width: bw, height: 32)
+        newSession.frame = NSRect(x: w - x - bw, y: ScreenHeader.controlY(Metrics.button), width: bw, height: Metrics.button)
 
-        // Filters and search on one line.
-        var y = Isle.headerHeight
-        let segW = min(iw, filters.preferredWidth)
-        filters.frame = NSRect(x: x, y: y, width: segW, height: Metrics.segment)
-        let besideW = iw - segW - 10
-        search.isHidden = besideW < 120
-        search.frame = NSRect(x: x + segW + 10, y: y, width: max(0, besideW), height: Metrics.field)
-        y += Metrics.segment + 12
+        let toolbar = SearchToolbarLayout(width: iw, filtersWidth: filters.preferredWidth, top: Isle.headerHeight)
+        filters.frame = toolbar.filters.offsetBy(dx: x, dy: 0)
+        search.isHidden = false
+        search.frame = toolbar.search.offsetBy(dx: x, dy: 0)
+        let y = toolbar.bottom + Space.m
 
         tip.isHidden = true
         let listBottom = h - 14
@@ -1498,51 +1499,45 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
 
     private func layoutRight(_ size: NSSize, single: Bool) {
         let w = size.width, h = size.height, x = S.pad, iw = w - S.pad * 2
-        let half = w / 2 - Isle.zeraGap / 2
 
         rightState.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: max(0, h - Isle.headerHeight - 20))
         // Island header: back · title / time and folder on the left; status, Stop, more on the right.
         back.isHidden = false
-        back.frame = NSRect(x: x, y: CardBase.titleTop + 1, width: 34, height: 34)
+        back.frame = NSRect(x: x, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
         sessionTile.isHidden = true
         collapse.isHidden = true
-        let tx = x + 44
-        sessionTitleLabel.frame = NSRect(x: tx, y: CardBase.titleTop - 2, width: max(40, half - tx), height: 22)
+        sessionTitleLabel.frame = ScreenHeader.detailTitleFrame(width: w, padding: x)
         let elapsed = sessionElapsed.stringValue
         sessionElapsed.isHidden = true
         if !elapsed.isEmpty, !sessionMetaLabel.stringValue.hasPrefix(elapsed) {
             sessionMetaLabel.stringValue = elapsed + " · " + sessionMetaLabel.stringValue
         }
-        sessionMetaLabel.frame = NSRect(x: tx, y: CardBase.titleTop + 20, width: max(40, half - tx), height: 16)
-        sessionMore.frame = NSRect(x: w - x - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
+        sessionMetaLabel.frame = ScreenHeader.detailSubtitleFrame(width: w, padding: x)
+        sessionMore.frame = NSRect(x: w - x - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
         let pw = primary.isHidden ? 0 : max(76, primary.fittedWidth)
-        primary.frame = NSRect(x: sessionMore.frame.minX - 8 - pw, y: CardBase.titleTop + 2, width: pw, height: 32)
+        primary.frame = NSRect(x: sessionMore.frame.minX - 8 - pw, y: ScreenHeader.controlY(Metrics.button), width: pw, height: Metrics.button)
         let chipRight = (primary.isHidden ? sessionMore.frame.minX : primary.frame.minX) - 8
         let chipW = min(chipRight - (w / 2 + Isle.zeraGap / 2), sessionChipView.fittedWidth)
         sessionChipView.isHidden = chipW < 60
-        sessionChipView.frame = NSRect(x: chipRight - chipW, y: CardBase.titleTop + 6, width: chipW, height: 24)
+        sessionChipView.frame = NSRect(x: chipRight - chipW, y: ScreenHeader.controlY(24), width: chipW, height: 24)
 
         // Tabs.
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
 
         // Bottom: quick asks, then the ask field above them.
-        let qh: CGFloat = 30
-        let qy = h - 16 - qh
-        let gaps = CGFloat(quick.count - 1) * 8
-        let each = (iw - gaps) / CGFloat(quick.count)
-        var bx = x
-        for b in quick {
-            b.frame = NSRect(x: bx, y: qy, width: each, height: qh)
-            bx += each + 8
+        let actions = FlowLayout.frames(widths: quick.map(\.fittedWidth), available: iw, height: Metrics.button)
+        let qy = h - Space.l - (actions.last?.maxY ?? 0)
+        for (b, frame) in zip(quick, actions) {
+            b.frame = frame.offsetBy(dx: x, dy: qy)
         }
-        let inputY = qy - 10 - 40
-        input.frame = NSRect(x: x, y: inputY, width: iw, height: 40)
+        let inputY = qy - Space.m - Metrics.field
+        input.frame = NSRect(x: x, y: inputY, width: iw, height: Metrics.field)
         details.isHidden = true
         reaction.isHidden = true
 
         // Body between the tabs and the ask field.
-        let bodyTop = Isle.headerHeight + Metrics.segment + 10
-        let bodyBottom = inputY - 10
+        let bodyTop = Isle.headerHeight + Metrics.segment + Space.m
+        let bodyBottom = inputY - Space.m
         let bodyH = max(0, bodyBottom - bodyTop)
         infoScroll.frame = NSRect(x: x, y: bodyTop, width: iw, height: bodyH)
         var iy: CGFloat = 0

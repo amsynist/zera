@@ -2,7 +2,7 @@ import AppKit
 
 // The App Opener's v2 look: the screen dims, Zera rappels down with the search, and what you
 // can open sits on an arc under it — the chosen one large in the middle, its neighbours shrinking
-// away to either side. ⌘K blooms the chosen item's actions around it in a ring.
+// away to either side. ⌘K opens a searchable action node below the search.
 //
 //                         (Zera)
 //               ( 🔍  Open an app…            )
@@ -12,19 +12,62 @@ import AppKit
 //               ● Running · v27 · /Applications
 //          [ Open Safari ⏎ ] [ Actions ⌘K ] [ Pin ]
 
+/// Colours of the v2 opener, kept local so the other screens retain their theme.
+enum OpenerLook {
+    static let accent = NSColor(srgbRed: 0.59, green: 0.64, blue: 1, alpha: 1)
+    static let surface = NSColor(srgbRed: 0.065, green: 0.07, blue: 0.085, alpha: 1)
+    static let edge = NSColor.white.withAlphaComponent(0.08)
+    static let muted = NSColor(srgbRed: 0.64, green: 0.66, blue: 0.73, alpha: 1)
+    static let text = NSColor.white
+    static let primary = NSColor(srgbRed: 0.20, green: 0.22, blue: 0.28, alpha: 1)
+    static let primaryBottom = NSColor(srgbRed: 0.14, green: 0.16, blue: 0.21, alpha: 1)
+    /// Gentle depth on floating cards; the desktop blur remains a separate native layer.
+    static let glassGradient = [
+        NSColor(srgbRed: 0.12, green: 0.13, blue: 0.16, alpha: 0.32),
+        NSColor(srgbRed: 0.07, green: 0.075, blue: 0.09, alpha: 0.20)
+    ]
+    static let width: CGFloat = 720
+    static let searchHeight: CGFloat = 52
+    static let cardHeight: CGFloat = 76
+    static let cardRadius: CGFloat = 16
+    static let buttonRadius: CGFloat = 8
+    static let tileRadius: CGFloat = 12
+    static let searchFont = NSFont.systemFont(ofSize: 16, weight: .regular)
+    static let detailFont = NSFont.systemFont(ofSize: 16, weight: .semibold)
+    static let buttonFont = Typo.bodyMedium
+    // Classic has a taller field and a dedicated detail pane.
+    static let classicSearchFont = NSFont.systemFont(ofSize: 17, weight: .regular)
+    static let classicDetailFont = NSFont.systemFont(ofSize: 20, weight: .medium)
+}
+
 /// Where an item sits on the arc, `k` steps from the chosen one.
 enum OrbitArc {
-    static let step: CGFloat = 104
+    static let step: CGFloat = 110
     static func offset(_ k: Int) -> CGPoint {
         let d = CGFloat(k)
-        // Spread a little less the further out, and drop along a shallow curve.
-        let x = d * step * (1 - min(0.18, abs(d) * 0.035))
-        return CGPoint(x: x, y: d * d * 7)
+        return CGPoint(x: d * step, y: min(20, d * d * 2))
     }
-    static func scale(_ k: Int) -> CGFloat { k == 0 ? 1.22 : max(0.5, 0.92 - CGFloat(abs(k) - 1) * 0.12) }
-    static func alpha(_ k: Int) -> CGFloat { k == 0 ? 1 : max(0, 0.95 - CGFloat(abs(k) - 1) * 0.2) }
+    static func scale(_ k: Int) -> CGFloat { k == 0 ? 1.25 : (abs(k) == 1 ? 1 : 0.875) }
+    static func alpha(_ k: Int) -> CGFloat { 1 }
     /// How many either side of the chosen one are drawn at all.
-    static let reach = 5
+    static let reach = 4
+
+    /// Draw through the actual tile frames, including the wider process cards.
+    static func path(under frames: [CGRect]) -> CGPath {
+        let lift = (frames.map(\.height).max() ?? 0) / 2 + 14
+        let points = frames.sorted { $0.midX < $1.midX }.map { CGPoint(x: $0.midX, y: $0.midY - lift) }
+        let path = CGMutablePath()
+        guard points.count > 1 else { return path }
+        path.move(to: points[0])
+        for i in 0..<(points.count - 1) {
+            let p0 = points[max(0, i - 1)], p1 = points[i]
+            let p2 = points[i + 1], p3 = points[min(points.count - 1, i + 2)]
+            let c1 = CGPoint(x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6)
+            let c2 = CGPoint(x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6)
+            path.addCurve(to: p2, control1: c1, control2: c2)
+        }
+        return path
+    }
 }
 
 /// One item on the arc: an app's icon (or a command's, an action's), or — inside Kill Process /
@@ -43,7 +86,33 @@ final class OrbitTile: NSView {
     var kept = false { didSet { needsDisplay = true } }
     var chosen = false { didSet { if chosen != oldValue { needsDisplay = true } } }
     var onClick: (() -> Void)?
-    private var hovered = false { didSet { needsDisplay = true } }
+    private var hovered = false {
+        didSet {
+            guard hovered != oldValue else { return }
+            needsDisplay = true
+            guard let layer = layer else { return }
+            let scale: CGFloat = hovered ? 1.04 : 1
+            // AppKit owns the layer anchor. Translate the scale around the visual centre.
+            let x = bounds.width * (0.5 - layer.anchorPoint.x)
+            let y = bounds.height * (0.5 - layer.anchorPoint.y)
+            var target = CATransform3DMakeScale(scale, scale, 1)
+            target.m41 = x * (1 - scale)
+            target.m42 = y * (1 - scale)
+            let from = layer.presentation()?.transform ?? layer.transform
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.transform = target
+            CATransaction.commit()
+            if !Motion.reduced {
+                let zoom = CABasicAnimation(keyPath: "transform")
+                zoom.fromValue = NSValue(caTransform3D: from)
+                zoom.toValue = NSValue(caTransform3D: target)
+                zoom.duration = 0.2
+                zoom.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+                layer.add(zoom, forKey: "hoverZoom")
+            }
+        }
+    }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -64,30 +133,35 @@ final class OrbitTile: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let b = bounds
         let s = b.height / 64
-        let r = style == .icon ? 19 * s : 16 * s
+        let r = style == .icon ? OpenerLook.tileRadius : 12 * s
         let shape = NSBezierPath(roundedRect: b.insetBy(dx: 1, dy: 1), xRadius: r, yRadius: r)
         if chosen {
             // The chosen one: an accent ring and a soft glow.
-            Neon.glowing(Neon.accent.withAlphaComponent(0.6), blur: 22 * s) {
-                Neon.fillBottom.setFill(); shape.fill()
+            Neon.glowing(OpenerLook.accent.withAlphaComponent(0.35), blur: 24) {
+                OpenerLook.surface.setFill(); shape.fill()
             }
         }
         switch style {
         case .icon:
+            NSColor.white.withAlphaComponent(hovered ? 0.08 : 0.04).setFill(); shape.fill()
+            NSColor.white.withAlphaComponent(0.06).setStroke(); shape.lineWidth = 1; shape.stroke()
             if let img = icon {
-                img.draw(in: b.insetBy(dx: 2 * s, dy: 2 * s), from: .zero, operation: .sourceOver,
+                NSGraphicsContext.saveGraphicsState()
+                shape.addClip()
+                img.draw(in: b.insetBy(dx: b.width * 0.125, dy: b.height * 0.125), from: .zero, operation: .sourceOver,
                          fraction: kept ? 0.4 : 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high])
+                NSGraphicsContext.restoreGraphicsState()
             }
         case .card:
             NSGradient(starting: Neon.fillTop.withAlphaComponent(1), ending: Neon.fillBottom.withAlphaComponent(1))?.draw(in: shape, angle: -90)
-            Neon.chipEdge.setStroke(); shape.lineWidth = 1; shape.stroke()
+            OpenerLook.edge.setStroke(); shape.lineWidth = 1; shape.stroke()
             let pad = 12 * s
             let k = max(0.5, s)
             let tf = NSFont.systemFont(ofSize: 13 * k, weight: .bold), df = NSFont.monospacedDigitSystemFont(ofSize: 10.5 * k, weight: .medium)
             let lw = b.width - pad * 2
             NSAttributedString(string: title, attributes: [.font: tf, .foregroundColor: Neon.text])
                 .draw(with: NSRect(x: pad, y: b.height / 2 - 17 * s, width: lw - 44 * s, height: 18 * s), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
-            NSAttributedString(string: detail, attributes: [.font: df, .foregroundColor: Neon.textFaint])
+            NSAttributedString(string: detail, attributes: [.font: df, .foregroundColor: OpenerLook.muted])
                 .draw(with: NSRect(x: pad, y: b.height / 2 + 2 * s, width: lw, height: 16 * s), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             if !trailing.isEmpty {
                 let a: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 10.5 * k, weight: .bold), .foregroundColor: Neon.warning]
@@ -96,32 +170,11 @@ final class OrbitTile: NSView {
             }
         }
         if chosen {
-            Neon.accent.withAlphaComponent(0.85).setStroke()
-            shape.lineWidth = 2.5; shape.stroke()
+            OpenerLook.accent.withAlphaComponent(0.85).setStroke()
+            shape.lineWidth = 2; shape.stroke()
         } else if hovered {
-            Neon.accent.withAlphaComponent(0.45).setStroke()
+            NSColor.white.withAlphaComponent(0.14).setStroke()
             shape.lineWidth = 1.5; shape.stroke()
-        }
-        if running {
-            let d = NSRect(x: b.midX - 3.5, y: b.maxY - 4, width: 7, height: 7)
-            Neon.glowing(Neon.green, blur: 6) { Neon.green.setFill(); NSBezierPath(ovalIn: d).fill() }
-        }
-        if pinned {
-            let d = NSRect(x: -5, y: -5, width: 17, height: 17)
-            Neon.warning.setFill(); NSBezierPath(ovalIn: d).fill()
-            Neon.symbol("pin.fill", in: d, size: 8, weight: .bold, color: .black)
-        }
-        if let q = quickKey {
-            // The system face (as every other key hint): SF Mono has no ⌘ of its own, and laying
-            // out its fallback in a layer's draw crashed CoreText on macOS 27.
-            let a: [NSAttributedString.Key: Any] = [.font: Self.keyFont, .foregroundColor: Neon.textDim]
-            let w = max(20, (q as NSString).size(withAttributes: a).width + 10)
-            let box = NSRect(x: b.maxX - w + 6, y: -7, width: w, height: 19)
-            let p = NSBezierPath(roundedRect: box, xRadius: 6, yRadius: 6)
-            NSColor.black.withAlphaComponent(0.75).setFill(); p.fill()
-            Neon.chipEdge.setStroke(); p.lineWidth = 1; p.stroke()
-            let sz = (q as NSString).size(withAttributes: a)
-            (q as NSString).draw(at: NSPoint(x: box.midX - sz.width / 2, y: box.midY - sz.height / 2), withAttributes: a)
         }
     }
 
@@ -138,63 +191,51 @@ final class OrbitTile: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
-/// One of the chosen item's actions in the ⌘K ring: a round button, its name under it when chosen.
-final class ActionBubble: NSView {
-    var symbol = "circle" { didSet { needsDisplay = true } }
-    var tint: NSColor? { didSet { needsDisplay = true } }
-    var title = "" { didSet { needsDisplay = true; setAccessibilityLabel(title) } }
-    /// Asking to confirm (Uninstall): red, with the question as its name.
-    var asking = false { didSet { needsDisplay = true } }
-    var chosen = false { didSet { if chosen != oldValue { needsDisplay = true } } }
+/// A small shortcut and app name below each icon. On short displays they share one line.
+final class OrbitCaption: NSView {
+    var title = "" { didSet { needsDisplay = true } }
+    var key = "" { didSet { needsDisplay = true } }
+    var chosen = false { didSet { needsDisplay = true } }
+    var compact = false { didSet { needsDisplay = true } }
+    var showKey = false { didSet { needsDisplay = true } }
+    var running = false { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
-    private var hovered = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    static let size: CGFloat = 44
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.masksToBounds = false
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
     }
     required init?(coder: NSCoder) { fatalError() }
-
-    /// The disc, centred at the top of the frame; the name hangs under it.
-    private var disc: NSRect { NSRect(x: (bounds.width - Self.size) / 2, y: 0, width: Self.size, height: Self.size) }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func draw(_ dirtyRect: NSRect) {
-        let d = disc.insetBy(dx: 1, dy: 1)
-        let circle = NSBezierPath(ovalIn: d)
-        let lit = chosen || hovered
-        let tone = asking ? Neon.red : (tint ?? Neon.accent)
-        if lit {
-            Neon.glowing(tone.withAlphaComponent(0.55), blur: 14) { Neon.fillBottom.setFill(); circle.fill() }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byTruncatingTail
+        let font = NSFont.systemFont(ofSize: chosen ? 14 : 13, weight: chosen ? .semibold : .regular)
+        if running {
+            Neon.green.setFill()
+            NSBezierPath(ovalIn: NSRect(x: bounds.midX - 2.5, y: 0, width: 5, height: 5)).fill()
         }
-        NSGradient(starting: Neon.fillTop.withAlphaComponent(1), ending: Neon.fillBottom.withAlphaComponent(1))?.draw(in: circle, angle: -90)
-        (lit ? tone : Neon.chipEdge).setStroke(); circle.lineWidth = lit ? 1.6 : 1; circle.stroke()
-        Neon.symbol(asking ? "exclamationmark.triangle.fill" : symbol, in: d, size: 15, weight: .semibold,
-                    color: asking ? Neon.red : (tint ?? (lit ? Neon.text : Neon.textDim)))
-        // The chosen action's name is the opener's title under the ring; here, a tooltip.
-        toolTip = title
+        NSAttributedString(string: title, attributes: [.font: font, .foregroundColor: chosen ? OpenerLook.text : OpenerLook.muted,
+                                                       .paragraphStyle: paragraph])
+            .draw(with: NSRect(x: 0, y: 12, width: bounds.width, height: 18), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        if showKey && !key.isEmpty {
+            let badge = NSRect(x: bounds.midX - 16, y: 34, width: 32, height: 18)
+            let path = NSBezierPath(roundedRect: badge, xRadius: 6, yRadius: 6)
+            NSColor.white.withAlphaComponent(0.06).setFill(); path.fill()
+            OpenerLook.edge.setStroke(); path.lineWidth = 1; path.stroke()
+            let keyText = NSAttributedString(string: key, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: OpenerLook.muted])
+            keyText.draw(at: NSPoint(x: badge.midX - keyText.size().width / 2, y: badge.midY - keyText.size().height / 2))
+        }
     }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: disc, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil))
-    }
-    override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let p = superview.map { convert(point, from: $0) } ?? point
-        return disc.contains(p) ? self : nil
-    }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if disc.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
-    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
-    override func resetCursorRects() { addCursorRect(disc, cursor: .pointingHand) }
 }
 
 /// YOUR USUAL 7 · COMMANDS 4 · ACTIONS 8 — a pill of lanes; the lit pill glides between them.
@@ -213,9 +254,10 @@ final class OpenerLanes: NSView {
     private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    private static let font = NSFont.systemFont(ofSize: 11, weight: .bold)
-    private static let countFont = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .bold)
-    private static let inset: CGFloat = 4, gap: CGFloat = 6
+    private static let font = Typo.branchLabel
+    private static let countFont = Typo.count
+    private static let inset = Space.xs
+    private static let gap = Space.xs + 2
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -225,9 +267,9 @@ final class OpenerLanes: NSView {
 
     private func label(_ l: Lane) -> String { l.title.uppercased() }
     private func laneWidth(_ l: Lane) -> CGFloat {
-        let t = (label(l) as NSString).size(withAttributes: [.font: Self.font, .kern: 1.3]).width
+        let t = (label(l) as NSString).size(withAttributes: [.font: Self.font, .kern: Typo.branchKern]).width
         let c = ("\(l.count)" as NSString).size(withAttributes: [.font: Self.countFont]).width
-        return ceil(t + 8 + c) + 28
+        return ceil(t + 10 + max(20, c + 12)) + 34
     }
     var fittedWidth: CGFloat { lanes.reduce(0) { $0 + laneWidth($1) } + CGFloat(max(0, lanes.count - 1)) * Self.gap + Self.inset * 2 }
 
@@ -239,8 +281,8 @@ final class OpenerLanes: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
-        Neon.fillBottom.withAlphaComponent(0.75).setFill(); box.fill()
-        Neon.chipEdge.setStroke(); box.lineWidth = 1; box.stroke()
+        OpenerLook.surface.withAlphaComponent(0.75).setFill(); box.fill()
+        OpenerLook.edge.setStroke(); box.lineWidth = 1; box.stroke()
         guard !lanes.isEmpty else { return }
         if let h = hoverIndex, h != selected {
             let r = slot(h)
@@ -249,16 +291,20 @@ final class OpenerLanes: NSView {
         indicator.settle(at: slot(min(selected, lanes.count - 1)))
         let ir = indicator.rect
         let pill = NSBezierPath(roundedRect: ir, xRadius: ir.height / 2, yRadius: ir.height / 2)
-        Neon.accent.withAlphaComponent(0.18).setFill(); pill.fill()
-        Neon.accent.withAlphaComponent(0.45).setStroke(); pill.lineWidth = 1; pill.stroke()
+        NSColor.white.withAlphaComponent(0.08).setFill(); pill.fill()
+        OpenerLook.edge.setStroke(); pill.lineWidth = 1; pill.stroke()
         for (i, l) in lanes.enumerated() {
             let r = slot(i), on = i == selected
-            let t = NSAttributedString(string: label(l), attributes: [.font: Self.font, .kern: 1.3, .foregroundColor: on ? Neon.text : Neon.textFaint])
-            let c = NSAttributedString(string: "\(l.count)", attributes: [.font: Self.countFont, .foregroundColor: on ? Neon.accent : Neon.textFaint])
-            let w = t.size().width + 8 + c.size().width
+            let t = NSAttributedString(string: label(l), attributes: [.font: Self.font, .kern: Typo.branchKern, .foregroundColor: on ? Neon.text : OpenerLook.muted])
+            let c = NSAttributedString(string: "\(l.count)", attributes: [.font: Self.countFont, .foregroundColor: OpenerLook.muted])
+            let countW = max(20, c.size().width + 12)
+            let w = t.size().width + 10 + countW
             let x = r.midX - w / 2
             t.draw(at: NSPoint(x: x, y: r.midY - t.size().height / 2))
-            c.draw(at: NSPoint(x: x + t.size().width + 8, y: r.midY - c.size().height / 2))
+            let badge = NSRect(x: x + t.size().width + 10, y: r.midY - 9, width: countW, height: 18)
+            NSColor.white.withAlphaComponent(0.08).setFill()
+            NSBezierPath(roundedRect: badge, xRadius: 9, yRadius: 9).fill()
+            c.draw(at: NSPoint(x: badge.midX - c.size().width / 2, y: r.midY - c.size().height / 2))
         }
     }
 
@@ -277,10 +323,9 @@ final class OpenerLanes: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
-/// The dimmed screen behind the opener: the desktop blurred, a dark wash, and a soft accent
-/// glow where Zera comes down. A click on it sends her back up.
+/// Native frosted backdrop. Keep the tint translucent so the desktop remains visible.
+/// A click outside the opener sends her back up.
 final class OpenerVeil: NSView {
-    var glowCenter: NSPoint = .zero { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     private let blur = NSVisualEffectView()
     override var isFlipped: Bool { true }
@@ -290,27 +335,17 @@ final class OpenerVeil: NSView {
         blur.material = .hudWindow
         blur.blendingMode = .behindWindow
         blur.state = .active
+        blur.appearance = NSAppearance(named: .darkAqua)
         blur.autoresizingMask = [.width, .height]
         blur.frame = bounds
         addSubview(blur)
-        let wash = OpenerWash(frame: bounds)
-        wash.autoresizingMask = [.width, .height]
-        wash.veil = self
-        addSubview(wash)
+        // A restrained neutral tint, rather than an opaque painted backdrop.
+        let tint = NSView(frame: bounds)
+        tint.wantsLayer = true
+        tint.layer?.backgroundColor = NSColor(white: 0.035, alpha: 0.28).cgColor
+        tint.autoresizingMask = [.width, .height]
+        addSubview(tint)
     }
     required init?(coder: NSCoder) { fatalError() }
     override func mouseDown(with event: NSEvent) { onClick?() }
-}
-
-private final class OpenerWash: NSView {
-    weak var veil: OpenerVeil?
-    override var isFlipped: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor(srgbRed: 0.016, green: 0.02, blue: 0.047, alpha: 0.62).setFill()
-        bounds.fill()
-        let c = veil?.glowCenter ?? NSPoint(x: bounds.midX, y: bounds.height * 0.3)
-        NSGradient(colors: [Neon.violet.withAlphaComponent(0.2), Neon.violet.withAlphaComponent(0)])?
-            .draw(fromCenter: c, radius: 0, toCenter: c, radius: max(bounds.width, bounds.height) * 0.45, options: [])
-    }
 }

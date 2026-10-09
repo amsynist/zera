@@ -45,7 +45,7 @@ final class SlidingIndicator {
     /// Glides to `r`, or jumps there when `animated` is false, nothing was shown yet, or
     /// Reduce Motion is on.
     func move(to r: NSRect, animated: Bool) {
-        guard r != target || rect != r else { return }
+        guard r != target || (!isMoving && rect != r) else { return }
         guard animated, !Motion.reduced, rect != .zero, view?.window != nil else { snap(to: r); return }
         from = rect
         target = r

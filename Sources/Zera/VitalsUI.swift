@@ -36,8 +36,11 @@ final class VitalsTween {
     var duration: CFTimeInterval = 0.55
     var onStep: (() -> Void)?
 
-    func set(_ v: [Double]) {
-        guard v.count == values.count, !Motion.reduced else { values = v; to = v; onStep?(); return }
+    func set(_ v: [Double], animated: Bool = true) {
+        guard animated, v.count == values.count, !Motion.reduced else {
+            timer?.invalidate(); timer = nil
+            values = v; to = v; onStep?(); return
+        }
         guard v != to else { return }
         from = values; to = v
         start = CACurrentMediaTime()
@@ -176,7 +179,8 @@ final class VitalsStrip: NSView {
         guard tween.to.isEmpty || now - lastUpdate >= Self.interval else { return }
         lastUpdate = now
         let s = SystemVitals.shared.now
-        tween.set([s.cpu, s.memTotal > 0 ? s.memUsed / s.memTotal : 0, s.gpu ?? 0, s.down, s.up, Double(s.battery?.percent ?? 0)])
+        tween.set([s.cpu, s.memTotal > 0 ? s.memUsed / s.memTotal : 0, s.gpu ?? 0, s.down, s.up, Double(s.battery?.percent ?? 0)],
+                  animated: window?.isVisible == true && !isHiddenOrHasHiddenAncestor)
         let net = VitalsFormat.rate(s.down)
         setAccessibilityValue("CPU \(Int(s.cpu * 100))%, memory \(VitalsFormat.gb(s.memUsed)) GB, download \(net.0) \(net.1)")
     }
@@ -326,7 +330,7 @@ final class VitalsStrip: NSView {
 /// number and a small live picture (per-core bars, memory by kind, a minute of GPU or network,
 /// the battery cell). Tap any tile to open This Mac.
 final class VitalsOrgans: NSView {
-    static let height: CGFloat = 128
+    static let height: CGFloat = 144
     var onOpen: (() -> Void)?
     private let tween = VitalsTween()
     private let coreTween = VitalsTween()
@@ -356,8 +360,9 @@ final class VitalsOrgans: NSView {
         guard tween.to.isEmpty || now - lastUpdate >= VitalsStrip.interval else { return }
         lastUpdate = now
         let s = SystemVitals.shared.now
-        tween.set([s.cpu, s.memTotal > 0 ? s.memUsed / s.memTotal : 0, s.gpu ?? 0, s.down, s.up, Double(s.battery?.percent ?? 0)])
-        coreTween.set(Array(s.cores.prefix(8)))
+        let animated = window?.isVisible == true && !isHiddenOrHasHiddenAncestor
+        tween.set([s.cpu, s.memTotal > 0 ? s.memUsed / s.memTotal : 0, s.gpu ?? 0, s.down, s.up, Double(s.battery?.percent ?? 0)], animated: animated)
+        coreTween.set(Array(s.cores.prefix(8)), animated: animated)
         let net = VitalsFormat.rate(s.down)
         setAccessibilityValue("CPU \(Int(s.cpu * 100))%, memory \(VitalsFormat.gb(s.memUsed)) GB, download \(net.0) \(net.1)")
         needsDisplay = true
@@ -366,12 +371,12 @@ final class VitalsOrgans: NSView {
     private var kinds: [Int] { SystemVitals.shared.now.battery != nil ? [0, 1, 2, 3, 4] : [0, 1, 2, 3] }
 
     private func tiles() -> [NSRect] {
-        let n = CGFloat(kinds.count), gap: CGFloat = 12
+        let n = CGFloat(kinds.count), gap = Space.m
         let w = ((bounds.width - gap * (n - 1)) / n).rounded(.down)
         return (0..<kinds.count).map { NSRect(x: CGFloat($0) * (w + gap), y: 0, width: $0 == kinds.count - 1 ? bounds.width - CGFloat($0) * (w + gap) : w, height: bounds.height) }
     }
 
-    private static let valueFont = NSFont.systemFont(ofSize: 24, weight: .bold)
+    private static let valueFont = Typo.metricValue
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
@@ -380,21 +385,21 @@ final class VitalsOrgans: NSView {
         let target = tween.to.count == 6 ? tween.to : v
         for (i, r) in tiles().enumerated() {
             let kind = kinds[i]
-            let shape = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 20, yRadius: 20)
+            let shape = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l, yRadius: Radius.l)
             (pressedIndex == i ? p.surfacePressed : (hoverIndex == i ? p.surfaceHover : p.surfaceRow)).setFill(); shape.fill()
             (hoverIndex == i ? p.border.withAlphaComponent(min(1, p.border.alphaComponent * 2)) : NSColor.clear).setStroke()
             shape.lineWidth = 1; shape.stroke()
-            let x = r.minX + 16, w = r.width - 32
+            let x = r.minX + Space.l, w = r.width - Space.l * 2
             // Label.
             let label: String
             switch kind {
             case 0: label = "CPU"
             case 1: label = "Memory"
             case 2: label = "GPU"
-            case 3: label = "\(s.wifiLink == nil ? "Net" : "Wi-Fi") ↑\(VitalsFormat.rate(target[4]).0)"
+            case 3: label = s.wifiLink == nil ? "Network" : "Wi-Fi"
             default: label = "Battery"
             }
-            VDraw.label(label, at: NSPoint(x: x, y: r.minY + 14))
+            VDraw.label(label, at: NSPoint(x: x, y: r.minY + Space.l))
             // Value.
             let big: String, small: String?
             switch kind {
@@ -404,9 +409,11 @@ final class VitalsOrgans: NSView {
             case 3: let d = VitalsFormat.rate(target[3]); big = "↓\(d.0)"; small = d.1
             default: big = "\(Int(target[5].rounded()))%"; small = nil
             }
-            VDraw.text(big, Self.valueFont, p.text, at: NSPoint(x: x, y: r.minY + 32))
+            let valueWidth = VDraw.width(big, Self.valueFont)
+            let font = valueWidth <= w ? Self.valueFont : NSFont.monospacedDigitSystemFont(ofSize: max(14, 24 * w / valueWidth), weight: .medium)
+            VDraw.text(big, font, p.text, at: NSPoint(x: x, y: r.minY + 36))
             if let small = small {
-                VDraw.text(small, Typo.meta, p.textSecondary, at: NSPoint(x: x + VDraw.width(big, Self.valueFont) + 4, y: r.minY + 42))
+                VDraw.text(small, Typo.secondary, p.textSecondary, at: NSPoint(x: x, y: r.minY + 66))
             }
             // Picture, along the bottom.
             let viz = NSRect(x: x, y: r.maxY - 16 - 38, width: w, height: 38)
@@ -504,8 +511,9 @@ final class VitalsPage: NSView {
 
     @objc private func changed() {
         let s = SystemVitals.shared.now
-        tween.set([s.cpu, s.gpu ?? 0, s.down, s.up, s.memApps, s.memWired, s.memCompressed, Double(s.battery?.percent ?? 0), s.battery?.watts ?? 0])
-        coreTween.set(s.cores)
+        let animated = window?.isVisible == true && !isHiddenOrHasHiddenAncestor
+        tween.set([s.cpu, s.gpu ?? 0, s.down, s.up, s.memApps, s.memWired, s.memCompressed, Double(s.battery?.percent ?? 0), s.battery?.watts ?? 0], animated: animated)
+        coreTween.set(s.cores, animated: animated)
     }
 
     @objc private func runSpeed() { SystemVitals.shared.runSpeedTest() }
@@ -514,7 +522,7 @@ final class VitalsPage: NSView {
         let testing = SystemVitals.shared.speedTesting
         speedButton.isHidden = testing
         spinTimer?.invalidate(); spinTimer = nil
-        if testing, !Motion.reduced {
+        if testing, !Motion.reduced, window?.isVisible == true, !isHiddenOrHasHiddenAncestor {
             let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
                 self?.spinPhase += 0.012
                 self?.needsDisplay = true
@@ -708,4 +716,8 @@ final class VitalsPage: NSView {
             VDraw.text("On power · no battery", Typo.caption, p.textTertiary, at: NSPoint(x: ax, y: R.batt.minY + 68))
         }
     }
+
+    override func viewDidHide() { super.viewDidHide(); spinTimer?.invalidate(); spinTimer = nil }
+    override func viewDidUnhide() { super.viewDidUnhide(); speedChanged() }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); speedChanged() }
 }
