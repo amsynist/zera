@@ -4,14 +4,14 @@ Branch: `v2-design`. Zera is a native macOS AppKit companion in the notch for Ma
 
 ## Current status — 9 October 2026
 
-**Phase 1 visual design is approved by the user on 9 October. Phase 2: Classic opener is now current.** The approved v2 layout and action transition remain the baseline. Remaining integration and display checks are tracked under shipping.
+**Both opener designs are approved by the user. Settings is the current review, moved forward at the user’s request.** Remaining shell and main-screen phases retain their pending status; shipping integration/display checks are still tracked below.
 
 There are **8 main screens**, plus the shared companion/notch shell, the opener's **2 styles**, and auxiliary panels listed below. Settings contains **12 panes**. Auxiliary states belong to their screen's review; they do not disappear from the checklist when the main screen is finished.
 
 | Phase | Scope | Status | What remains |
 | --- | --- | --- | --- |
 | 1 | V2 opener + action tree | Visual design approved | Shipping integration/display checks below |
-| 2 | Classic opener | In progress | Layout, typography, actions and motion review |
+| 2 | Classic opener | Visual design approved | Shipping integration checks |
 | 3 | Companion/notch shell | Shared transition fixes implemented; visual review pending | Hover menus, badges, wings, open/switch/close and placement |
 | 4.1 | Home | Performance reviewed; visual review pending | All Home states and actions |
 | 4.2 | Claude | Performance reviewed; visual review pending | Sessions, approvals, replies and wings |
@@ -20,7 +20,7 @@ There are **8 main screens**, plus the shared companion/notch shell, the opener'
 | 4.5 | Tasks + focus | Performance reviewed; visual review pending | Lists, projects, mini task, orb, quick add and export |
 | 4.6 | Pull requests | Performance reviewed; visual review pending | Tabs, detail, checks, approvals, menus and feedback |
 | 4.7 | Reminders + calendar | Performance reviewed; visual review pending | Lists, forms, meetings, water and battery alerts |
-| 4.8 | Settings | Twelve panes performance-reviewed; visual review pending | Layout and all controls in each pane |
+| 4.8 | Settings | Current review | Shared controls, menu style, typography and all twelve panes |
 | 5 | Shipping | Not started | Themes, accessibility, display sizes, integration errors and release validation |
 
 “Performance reviewed” means the code and benchmark pass is complete; it does **not** mean that screen's visual design or every live interaction is finished. Measurements and limitations are in [PERFORMANCE_REVIEW.md](PERFORMANCE_REVIEW.md).
@@ -66,7 +66,7 @@ There are **8 main screens**, plus the shared companion/notch shell, the opener'
 
 Finish one surface's layout, interactions and motion loop before starting the next.
 
-### Phase 2 — Classic opener (current)
+### Phase 2 — Classic opener (visual design approved)
 
 - [x] Share Classic branch-label typography with v2 tabs, including uppercase labels and measured letter spacing.
 - [x] Centralize opener search/detail/button fonts; reuse global spacing and control metrics.
@@ -78,7 +78,7 @@ First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 
 - [x] Use shared rounded keycaps for Classic footer hints and action controls; fit the taller panel to standard Mac display heights.
 - [x] Route Classic left/right arrows alongside up/down, and ignore stale composition in an inactive field editor; actual-window regression passes.
 - [x] Pass 28 opener tests, including Classic ⌘M/⌘K, empty action search and Escape query restoration.
-- [ ] Complete Classic live interaction and visual approval loop.
+- [x] User approves both opener designs after the last refinements.
 - [ ] Verify action menus, keyboard navigation, pin/quit and confirmation paths.
 - [ ] Refine transitions and verify interrupted/reduced-motion states.
 
@@ -98,6 +98,17 @@ First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 
 - [ ] **Pull requests:** empty/list, filters/tabs, approval/detail/checks, review actions, menus and toast feedback.
 - [ ] **Reminders/calendar:** Today/Upcoming/Completed, detail/edit forms, meeting/water/battery alerts.
 - [ ] **Settings:** General, Appearance, Sounds, Clipboard, Shelf, Integrations, Shortcuts, About, Claude, GitHub, Calendar and Diagnostics.
+
+### Current Settings pass
+
+- [x] Replace Settings native popup controls with shared `ZeraSelect`.
+- [x] Centralize pane title, setting label, control type and row height in the shared design tokens.
+- [x] Add Appearance → Menu appearance: Zera glass / Native macOS, applied to shared dropdown and action menus.
+- [x] Add custom-menu arrows/Return/Escape, keyboard focus and selected-row scrolling.
+- [x] Release menu content, key handlers and first responder when closing; retain native menu callbacks safely.
+- [x] Check layout bounds and row/control spacing across all twelve Settings panes.
+- [x] Pass five Settings/dropdown regressions and the optional Appearance render; build and reload the release app.
+- [ ] Complete live visual approval and integration control checks in each pane.
 
 ### Phase 5 — shipping
 
@@ -163,7 +174,7 @@ As each screen enters review, replace duplicated standard values with these role
 ## Phases
 
 1. **Orbit app opener (visual design approved):** Apply the compact refinement spec: no top-left branding, matching 720-point search/detail widths, a 52-point search bar, 36-point neutral tabs, consistent rounded app containers (80/64/56 points), shallow arc, and a 76-point detail bar. The bar uses one metadata line and 32-point Pin → More → Open controls. Shortcut badges appear on the selected item or while holding Command; ⌘1–⌘9 follow the visible left-to-right order. Footer hints cover arrows, Tab, Enter, ⌘M and Escape, with rounded keycaps in both browsing and action states. ⌘K remains an alias for ⌘M. The primary button uses a muted indigo gradient. Hover grows 4% from the icon centre over 200 ms; reduced motion skips the transition. ⌘K opens the searchable action tree with clickable rows, arrow/Enter selection, and Escape/query restoration. Native type, colors and dimensions are defined in AppKit, with shared opener style values. On-demand local captures cover default, compact, and compact actions; 27 opener tests cover layout bounds, navigation, shortcut mapping, window-level keyboard routing after focus changes, ⌘M/Escape restoration, centered hover and interrupted action transitions. The selected icon follows a curved path to the action header, with movement and scale sharing one 480 ms timeline and an identical landing frame. Options unfold beneath it; Escape reverses from the current visible position. AppKit keeps ownership of the layer anchor so the handoff does not readjust the icon. An optional local GIF preview uses `ZERA_RENDER_OPENER_MOTION=1`. The user has approved the visual result; global shortcuts and the full live integration pass remain shipping checks.
-2. **Classic app opener (current pass):** Review its tree layout, search, action menus, keyboard navigation, pin/quit paths, and transitions with the same loop.
+2. **Classic app opener (visual design approved):** Review its tree layout, search, action menus, keyboard navigation, pin/quit paths, and transitions with the same loop.
 3. **Shell:** Companion idle/hover, bloom, badges, island open/switch/dismiss, search node, wings placement. This affects every screen.
 4. **Main screens, one at a time:** Home → Claude → Shelf → Clipboard → Tasks and mini task/focus orb → Pull requests → Reminders → Settings. Finish each live interaction pass before moving on.
 5. **Shipping pass:** All seven themes, small display/no-notch, reduced motion, accessibility, empty/error/permission states, full tests, and distributable build.

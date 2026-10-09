@@ -832,13 +832,14 @@ final class SettingsCard: CardBase, CardContent {
         navWash.edged = false
         navWash.target = { [weak self] in self?.navRows.first { $0.selected }?.frame }
         addSubview(navWash)
-        paneTitle.font = NSFont.systemFont(ofSize: 17, weight: .bold)
+        paneTitle.font = Typo.paneTitle
         paneTitle.textColor = Pal.text
         addSubview(paneTitle)
         paneScroll.drawsBackground = false
         paneScroll.contentView.drawsBackground = false
         paneScroll.borderType = .noBorder
-        paneScroll.hasVerticalScroller = false   // still scrolls with the trackpad or wheel
+        paneScroll.hasVerticalScroller = true
+        paneScroll.autohidesScrollers = true
         paneScroll.scrollerStyle = .overlay
         paneScroll.verticalScrollElasticity = .allowed
         paneScroll.documentView = pane
@@ -943,25 +944,25 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private func hint(_ text: String, _ s: inout Stack) {
-        let f = NSFont.systemFont(ofSize: 12.5)
+        let f = Typo.body
         let l = label(text, font: f, color: Pal.textTertiary, in: pane, wraps: true)
         let w = min(s.width, 520)
         let h = (text as NSString).boundingRect(with: NSSize(width: w, height: 200), options: [.usesLineFragmentOrigin], attributes: [.font: f]).height
-        s.y += 10
+        s.y += Space.m
         l.frame = NSRect(x: 4, y: s.y, width: w, height: ceil(h) + 2)
         s.y += ceil(h) + 2 + Space.m
     }
 
     /// v2: one setting per row — its name left, its control right, a hairline under it.
-    private static let rowH: CGFloat = 50
+    private static let rowH = Metrics.settingRow
     private func settingRow(_ title: String, _ s: inout Stack, control: NSView, controlWidth: CGFloat) {
         let row = FlippedView()
         let h = Self.rowH
-        let l = label(title, font: NSFont.systemFont(ofSize: 14, weight: .semibold), in: row)
-        l.frame = NSRect(x: 4, y: (h - 18) / 2, width: s.width - controlWidth - Space.m - 4, height: 18)
+        let l = label(title, font: Typo.settingLabel, in: row)
+        l.frame = NSRect(x: 4, y: (h - 18) / 2, width: max(0, s.width - min(controlWidth, s.width * 0.48) - Space.m - Space.xs), height: 18)
         let toggle = control is Toggle
-        let ch: CGFloat = toggle ? 24 : Metrics.control
-        let cw = toggle ? 44 : controlWidth
+        let ch: CGFloat = toggle ? 24 : Metrics.button
+        let cw = toggle ? 44 : min(controlWidth, s.width * 0.48)
         control.frame = NSRect(x: s.width - cw, y: ((h - ch) / 2).rounded(), width: cw, height: ch)
         row.addSubview(control)
         let rule = NSView(frame: NSRect(x: 0, y: h - 1, width: s.width, height: 1))
@@ -980,15 +981,17 @@ final class SettingsCard: CardBase, CardContent {
         settingRow(title, &s, control: t, controlWidth: 40)
     }
 
-    private func popupRow(_ title: String, items: [String], selected: Int, _ s: inout Stack, action: Selector) -> NSPopUpButton {
-        let pop = NSPopUpButton()
-        pop.addItems(withTitles: items)
-        pop.selectItem(at: selected)
-        pop.target = self
-        pop.action = action
-        stylePopup(pop)
+    @discardableResult
+    private func popupRow(_ title: String, items: [String], selected: Int, _ s: inout Stack, action: Selector) -> ZeraSelect {
+        let pop = ZeraSelect(items)
+        pop.select(selected)
+        pop.setAccessibilityLabel(title)
+        pop.onChange = { [weak self, weak pop] _ in
+            guard let self = self, let pop = pop else { return }
+            NSApp.sendAction(action, to: self, from: pop)
+        }
         // Wide enough for the longest choice and the ⌄ beside it.
-        let longest = items.map { ($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium)]).width }.max() ?? 0
+        let longest = items.map { ($0 as NSString).size(withAttributes: [.font: Typo.control]).width }.max() ?? 0
         settingRow(title, &s, control: pop, controlWidth: max(150, ceil(longest) + 52))
         return pop
     }
@@ -1018,16 +1021,16 @@ final class SettingsCard: CardBase, CardContent {
         s.place(row, height: 20, gap: Space.m)
     }
 
-    private var defaultPopup: NSPopUpButton?
+    private var defaultPopup: ZeraSelect?
     private weak var shortcutRecorder: ShortcutRecorder?
-    private var breakPopup: NSPopUpButton?
+    private var breakPopup: ZeraSelect?
     private var tokenField: ThemedSecureField?
     private var apiKeyField: ThemedSecureField?
     private var overrideField: ThemedField?
-    private var modelPopup: NSPopUpButton?
-    private var cliModelPopup: NSPopUpButton?
-    private var timeoutPopup: NSPopUpButton?
-    private var maxOutputPopup: NSPopUpButton?
+    private var modelPopup: ZeraSelect?
+    private var cliModelPopup: ZeraSelect?
+    private var timeoutPopup: ZeraSelect?
+    private var maxOutputPopup: ZeraSelect?
     private var claudeTestResult: String?
     private var apiTestResult: String?
     private static let timeoutChoices = [60, 120, 180, 300, 600, 900]
@@ -1112,14 +1115,14 @@ final class SettingsCard: CardBase, CardContent {
              + "become its done tasks (only commit messages go to Claude, through your Claude Code login).", &s)
     }
 
-    @objc private func batteryLowChanged(_ sender: NSPopUpButton) {
-        let i = sender.indexOfSelectedItem
+    @objc private func batteryLowChanged(_ sender: ZeraSelect) {
+        let i = sender.selectedIndex
         guard BatteryAlerts.lowChoices.indices.contains(i) else { return }
         BatteryAlerts.shared.lowThreshold = BatteryAlerts.lowChoices[i]
     }
 
-    @objc private func batteryHealthChanged(_ sender: NSPopUpButton) {
-        let i = sender.indexOfSelectedItem
+    @objc private func batteryHealthChanged(_ sender: ZeraSelect) {
+        let i = sender.selectedIndex
         guard BatteryAlerts.healthChoices.indices.contains(i) else { return }
         BatteryAlerts.shared.healthThreshold = BatteryAlerts.healthChoices[i]
     }
@@ -1188,15 +1191,15 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     static let replyWindows = [0, 10, 20, 30, 60]
-    @objc private func replyWindowChanged(_ sender: NSPopUpButton) {
-        ClaudeActivityService.shared.replyWindow = Self.replyWindows[max(0, sender.indexOfSelectedItem)]
+    @objc private func replyWindowChanged(_ sender: ZeraSelect) {
+        ClaudeActivityService.shared.replyWindow = Self.replyWindows[max(0, sender.selectedIndex)]
     }
 
-    @objc private func clipKeepChanged(_ sender: NSPopUpButton) {
-        ClipboardStore.shared.keepDays = ClipboardStore.keepChoices[max(0, sender.indexOfSelectedItem)]
+    @objc private func clipKeepChanged(_ sender: ZeraSelect) {
+        ClipboardStore.shared.keepDays = ClipboardStore.keepChoices[max(0, sender.selectedIndex)]
     }
-    @objc private func clipMaxChanged(_ sender: NSPopUpButton) {
-        ClipboardStore.shared.maxItems = ClipboardStore.maxChoices[max(0, sender.indexOfSelectedItem)]
+    @objc private func clipMaxChanged(_ sender: ZeraSelect) {
+        ClipboardStore.shared.maxItems = ClipboardStore.maxChoices[max(0, sender.selectedIndex)]
     }
     @objc private func clipClearTapped() {
         ClipboardStore.shared.clear()
@@ -1226,6 +1229,10 @@ final class SettingsCard: CardBase, CardContent {
 
     private func buildAppearance(_ s: inout Stack) {
         let store = ThemeStore.shared
+        sectionLabel("Menus", &s)
+        popupRow("Menu appearance", items: DropdownStyle.allCases.map(\.title), selected: DropdownStyle.current.rawValue,
+                 &s, action: #selector(menuAppearanceChanged(_:)))
+        hint("Zera glass matches your theme. Native macOS menus follow your system appearance.", &s)
         sectionLabel("Theme", &s)
         for t in store.builtIns { themeRow(t, &s) }
         if !store.custom.isEmpty {
@@ -1329,6 +1336,7 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private func sectionLabel(_ text: String, _ s: inout Stack) {
+        if s.y > 0 { s.y += Space.l }
         let l = label("", in: pane)
         l.attributedStringValue = Typo.sectionText(text)
         s.place(l, height: 18, gap: Space.xs)
@@ -1578,8 +1586,8 @@ final class SettingsCard: CardBase, CardContent {
         hint("Only names, sizes and dates are read. Half-finished downloads (.crdownload, .download, .part) show once they finish.", &s)
     }
 
-    @objc private func freshWindowChanged(_ sender: NSPopUpButton) {
-        let i = sender.indexOfSelectedItem
+    @objc private func freshWindowChanged(_ sender: ZeraSelect) {
+        let i = sender.selectedIndex
         guard FreshFiles.windows.indices.contains(i) else { return }
         FreshFiles.shared.window = FreshFiles.windows[i].1
     }
@@ -1634,18 +1642,22 @@ final class SettingsCard: CardBase, CardContent {
 
     @objc private func defaultChanged() {
         guard let pop = defaultPopup else { return }
-        defaultKind = Self.defaultChoices[max(0, min(Self.defaultChoices.count - 1, pop.indexOfSelectedItem))]
+        defaultKind = Self.defaultChoices[max(0, min(Self.defaultChoices.count - 1, pop.selectedIndex))]
         onDefaultChanged?(defaultKind)
     }
 
-    @objc private func openerStyleChanged(_ pop: NSPopUpButton) {
-        AppOpenerSettings.style = AppOpenerSettings.Style(rawValue: pop.indexOfSelectedItem) ?? .orbit
+    @objc private func openerStyleChanged(_ pop: ZeraSelect) {
+        AppOpenerSettings.style = AppOpenerSettings.Style(rawValue: pop.selectedIndex) ?? .orbit
         say?(AppOpenerSettings.style == .orbit ? "the opener comes down in the middle now ✨" : "back to the classic tree 🌳", .happy)
+    }
+
+    @objc private func menuAppearanceChanged(_ pop: ZeraSelect) {
+        DropdownStyle.current = DropdownStyle(rawValue: pop.selectedIndex) ?? .zera
     }
 
     @objc private func breakChanged() {
         guard let pop = breakPopup else { return }
-        let m = Self.breakChoices[max(0, min(Self.breakChoices.count - 1, pop.indexOfSelectedItem))]
+        let m = Self.breakChoices[max(0, min(Self.breakChoices.count - 1, pop.selectedIndex))]
         ReminderService.shared.breakInterval = m
         say?(m == 0 ? "no more break nudges" : "I'll nudge you every \(Reminder.intervalLabel(m)) ☕", .cozy)
     }
@@ -1749,23 +1761,23 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     @objc private func apiModelChanged() {
-        guard let pop = modelPopup, let title = pop.titleOfSelectedItem else { return }
-        AnthropicAPIClient.shared.model = title
+        guard let pop = modelPopup else { return }
+        AnthropicAPIClient.shared.model = pop.selectedTitle
     }
 
     @objc private func cliModelChanged() {
         guard let pop = cliModelPopup else { return }
-        ZeraAssistant.shared.cliModel = Self.cliModelChoices[max(0, min(Self.cliModelChoices.count - 1, pop.indexOfSelectedItem))]
+        ZeraAssistant.shared.cliModel = Self.cliModelChoices[max(0, min(Self.cliModelChoices.count - 1, pop.selectedIndex))]
     }
 
     @objc private func timeoutChanged() {
         guard let pop = timeoutPopup else { return }
-        ZeraAssistant.shared.timeout = TimeInterval(Self.timeoutChoices[max(0, min(Self.timeoutChoices.count - 1, pop.indexOfSelectedItem))])
+        ZeraAssistant.shared.timeout = TimeInterval(Self.timeoutChoices[max(0, min(Self.timeoutChoices.count - 1, pop.selectedIndex))])
     }
 
     @objc private func maxOutputChanged() {
         guard let pop = maxOutputPopup else { return }
-        ZeraAssistant.shared.maxOutputTokens = Self.maxOutputChoices[max(0, min(Self.maxOutputChoices.count - 1, pop.indexOfSelectedItem))]
+        ZeraAssistant.shared.maxOutputTokens = Self.maxOutputChoices[max(0, min(Self.maxOutputChoices.count - 1, pop.selectedIndex))]
     }
 
     @objc private func diagnosticsTapped() { select(.diagnostics) }
