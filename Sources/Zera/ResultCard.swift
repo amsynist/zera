@@ -352,7 +352,6 @@ final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
     private let stop: CardButton
 
     private var threadHeight: CGFloat = 60
-    private var lastKey = ""
     private var caretOn = false
     private var caretTimer: Timer?
     private var wasBusy = false

@@ -43,6 +43,14 @@ extension NSView {
     }
 }
 
+extension NSPasteboard {
+    /// Replaces whatever is on the clipboard with plain text.
+    func setPlainText(_ text: String) {
+        clearContents()
+        setString(text, forType: .string)
+    }
+}
+
 func byteString(_ bytes: Int64) -> String {
     let f = ByteCountFormatter()
     f.countStyle = .file

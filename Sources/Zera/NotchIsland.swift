@@ -10,12 +10,9 @@ enum Isle {
     static let zeraGap: CGFloat = 132
     /// The tallest a screen gets below the notch band; anything taller scrolls inside.
     static let maxContentHeight: CGFloat = 640
-    static let minWidth: CGFloat = 520
     static let maxWidth: CGFloat = 880
     /// v2: every screen opens as one lens this wide (narrower screens shrink to fit).
     static let lensWidth: CGFloat = 880
-    /// Hovering her: the peek bar hangs this far below the menu bar, framed by its blue edge.
-    static let peekDrop: CGFloat = 6
     static let corner: CGFloat = 34
     /// Hovering her (v2): the nodes bloom out round her on an arc, each centre this far from
     /// the rope (x) and below the top of the screen (y); the search node hangs under them.
@@ -506,7 +503,9 @@ final class IslandView: NSView {
 
     /// Hovering her: the notch widens to show the tabs.
     func peek() {
-        guard mode != .open else { return }
+        // A screen is up: the rail is already there. (Open with nothing presented is a state
+        // that should not exist; rather than swallow every hover, the bloom takes over.)
+        guard mode != .open || content == nil else { return }
         let wasClosed = mode == .closed
         mode = .peek
         activeTab = nil
@@ -531,8 +530,22 @@ final class IslandView: NSView {
         // The rail hangs in a screen's header; banners are a slim band of their own.
         setTabs(visible: !(view is TimedNotificationBanner))
         setChrome(.open)
-        // The bloomed nodes shrink into the rail either side of the notch.
-        if wasBloomed { moveNodes(animated: animated) }
+        // The bloomed nodes shrink into the rail either side of the notch. The open node's ring
+        // waits until they have landed, rather than sitting at the destination first.
+        if wasBloomed {
+            moveNodes(animated: animated)
+            if animated, !Motion.reduced {
+                tabIndicator.alphaValue = 0
+                let wait = max(0, nodesMovingUntil - CACurrentMediaTime())
+                DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+                    guard let self = self, self.mode == .open else { return }
+                    NSAnimationContext.runAnimationGroup { ctx in
+                        ctx.duration = 0.18
+                        self.tabIndicator.animator().alphaValue = 1
+                    }
+                }
+            }
+        }
         let w = size.width, h = size.height
         let target = NSRect(x: (centerX - w / 2).rounded(), y: band, width: w, height: h)
         if view !== content {

@@ -62,7 +62,6 @@ struct GHEvent: Equatable {
         }
     }
 
-    var isCI: Bool { kind == .ciRunning || kind == .ciPassed || kind == .ciFailed }
     var isPR: Bool { kind == .prOpened || kind == .reviewRequested }
     /// Approvals, change requests and comments on your recent PRs.
     var isActivity: Bool { kind == .prApproved || kind == .prChangesRequested || kind == .prCommented }
@@ -586,8 +585,6 @@ final class GitHubService {
         var branch: String? = nil
         var base: String? = nil
         var fullRepo: String { "\(owner)/\(repo)" }
-        var repoName: String { fullRepo }
-        var repoDisplay: String { fullRepo }
     }
 
     private static func person(_ any: Any?) -> GHPullRequest.Person? {

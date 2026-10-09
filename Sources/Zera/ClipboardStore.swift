@@ -25,6 +25,34 @@ struct ClipItem: Codable, Identifiable, Equatable {
     /// What makes two copies "the same", for de-duplication.
     var fingerprint: String
 
+    init(id: UUID = UUID(), kind: Kind, text: String, imageFile: String? = nil, imageSize: CGSize? = nil, paths: [String] = [],
+         bytes: Int = 0, sourceApp: String? = nil, sourceBundle: String? = nil, firstCopied: Date = Date(), lastCopied: Date = Date(),
+         copyCount: Int = 1, pinned: Bool = false, fingerprint: String) {
+        self.id = id; self.kind = kind; self.text = text; self.imageFile = imageFile; self.imageSize = imageSize; self.paths = paths
+        self.bytes = bytes; self.sourceApp = sourceApp; self.sourceBundle = sourceBundle; self.firstCopied = firstCopied
+        self.lastCopied = lastCopied; self.copyCount = copyCount; self.pinned = pinned; self.fingerprint = fingerprint
+    }
+
+    /// Reads history written by older versions too: a missing field takes its default rather
+    /// than losing the whole list.
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        kind = try c.decode(Kind.self, forKey: .kind)
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        imageFile = try c.decodeIfPresent(String.self, forKey: .imageFile)
+        imageSize = try c.decodeIfPresent(CGSize.self, forKey: .imageSize)
+        paths = try c.decodeIfPresent([String].self, forKey: .paths) ?? []
+        bytes = try c.decodeIfPresent(Int.self, forKey: .bytes) ?? 0
+        sourceApp = try c.decodeIfPresent(String.self, forKey: .sourceApp)
+        sourceBundle = try c.decodeIfPresent(String.self, forKey: .sourceBundle)
+        firstCopied = try c.decodeIfPresent(Date.self, forKey: .firstCopied) ?? Date()
+        lastCopied = try c.decodeIfPresent(Date.self, forKey: .lastCopied) ?? firstCopied
+        copyCount = try c.decodeIfPresent(Int.self, forKey: .copyCount) ?? 1
+        pinned = try c.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+        fingerprint = try c.decodeIfPresent(String.self, forKey: .fingerprint) ?? text
+    }
+
     /// The filter an item falls under: links, code and colours are text.
     var filterGroup: ClipboardStore.Filter {
         switch kind {
@@ -515,8 +543,13 @@ final class ClipboardStore {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: historyURL),
-              let list = try? JSONDecoder().decode([ClipItem].self, from: data) else { return }
+        guard let data = try? Data(contentsOf: historyURL) else { return }
+        guard let list = try? JSONDecoder().decode([ClipItem].self, from: data) else {
+            // Set an unreadable history aside rather than save an empty one over it.
+            let broken = folder.appendingPathComponent("history.broken-\(Int(Date().timeIntervalSince1970)).json")
+            try? fm.moveItem(at: historyURL, to: broken)
+            return
+        }
         items = list
     }
 
@@ -524,12 +557,23 @@ final class ClipboardStore {
         saveWork?.cancel()
         let snapshot = items
         let url = historyURL
-        let work = DispatchWorkItem {
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
-            try? data.write(to: url, options: .atomic)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-        }
+        let work = DispatchWorkItem { Self.write(snapshot, to: url) }
         saveWork = work
         saveQueue.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    private static func write(_ items: [ClipItem], to url: URL) {
+        guard let data = try? JSONEncoder().encode(items) else { return }
+        try? data.write(to: url, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    /// Quitting: a copy made in the last half second is written now, not lost.
+    func flush() {
+        guard let pending = saveWork else { return }
+        pending.cancel()
+        saveWork = nil
+        let snapshot = items, url = historyURL
+        saveQueue.sync { Self.write(snapshot, to: url) }
     }
 }

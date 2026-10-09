@@ -136,7 +136,11 @@ final class ShelfStore {
         entry.addedAt = Date()
         recent.removeAll { $0.path == path }
         recent.insert(entry, at: 0)
-        if recent.count > maxRecent { recent.removeLast(recent.count - maxRecent) }
+        if recent.count > maxRecent {
+            // A file that drops off Recent takes Claude's answers about it with it.
+            for gone in recent[maxRecent...] { threads.removeValue(forKey: gone.path) }
+            recent.removeLast(recent.count - maxRecent)
+        }
     }
 
     func setLastAction(_ title: String, for path: String) {
@@ -190,7 +194,9 @@ final class ShelfStore {
             ?? UserDefaults.standard.data(forKey: legacyDefaultsKey)
         guard let data = data,
               let decoded = try? JSONDecoder().decode([ShelfItem].self, from: data) else { return }
-        items = decoded.filter { $0.exists }
+        // Files that are not there right now stay listed as "missing": a disk or share that is
+        // not mounted at launch is not a reason to forget what was on the Shelf.
+        items = decoded
         if let r = UserDefaults.standard.data(forKey: recentKey), let rs = try? JSONDecoder().decode([RecentFile].self, from: r) {
             recent = rs
         }

@@ -6,9 +6,6 @@ enum ZeraMood {
     case surprised, celebrate, love, focused, worried, sad, approved, error, cozy
 }
 
-/// Which crop of her is drawn.
-enum ZeraPose { case peek, fullBody }
-
 /// Dangling from a rope out of the notch, or standing on a surface.
 enum ZeraStyle { case hanging, standing }
 
@@ -67,7 +64,6 @@ final class ZeraView: NSView {
             needsDisplay = true
         }
     }
-    var pose: ZeraPose = .peek { didSet { needsDisplay = true } }
     var style: ZeraStyle = .hanging { didSet { needsDisplay = true } }
     var framesPerSecond: Double = 30
     /// Points at the top of the view hidden behind the notch. The rope runs through them.
@@ -174,10 +170,27 @@ final class ZeraView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        window == nil ? stop() : start()
+        if let o = occlusionObserver { NotificationCenter.default.removeObserver(o); occlusionObserver = nil }
+        guard let w = window else { stop(); return }
+        // Her animation clock only runs while her window is actually on screen: ordered out
+        // (hidden in Settings) it would otherwise keep waking 30 times a second for nothing.
+        occlusionObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in
+            self?.syncClock()
+        }
+        syncClock()
     }
 
-    deinit { timer?.invalidate() }
+    private var occlusionObserver: NSObjectProtocol?
+
+    private func syncClock() {
+        guard let w = window, w.occlusionState.contains(.visible) else { stop(); return }
+        if timer == nil { start() }
+    }
+
+    deinit {
+        timer?.invalidate()
+        if let o = occlusionObserver { NotificationCenter.default.removeObserver(o) }
+    }
 
     private func start() {
         stop()
@@ -364,10 +377,9 @@ final class ZeraView: NSView {
             ctx.translateBy(x: pivot.x, y: top + m.dy)
             ctx.scaleBy(x: m.sx, y: m.sy)
             ctx.translateBy(x: -pivot.x, y: -top)
-            ctx.saveGState()
-            ctx.setShadow(offset: CGSize(width: 0, height: -3), blur: 7, color: NSColor.black.withAlphaComponent(0.45 * alpha).cgColor)
-            sprite.image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: alpha, respectFlipped: false, hints: nil)
-            ctx.restoreGState()
+            let body = rendered(sprite, size: rect.size, shadow: true)
+            body.draw(in: rect.insetBy(dx: -Self.renderPad, dy: -Self.renderPad), from: .zero, operation: .sourceOver,
+                      fraction: alpha, respectFlipped: false, hints: nil)
             if effects {
                 if isReactingToPokes { drawAngryReaction(around: rect, alpha: alpha) }
                 else { drawEffects(around: rect) }
@@ -383,10 +395,47 @@ final class ZeraView: NSView {
             ctx.rotate(by: (-look.x * 4 + droop * 4 + anger.angle) * .pi / 180)
             ctx.scaleBy(x: anger.sx, y: anger.sy)
             ctx.translateBy(x: -foot.x, y: -foot.y)
-            sprite.image.draw(in: NSRect(x: foot.x - w / 2, y: foot.y, width: w, height: hh),
-                              from: .zero, operation: .sourceOver, fraction: alpha, respectFlipped: false, hints: nil)
+            let rect = NSRect(x: foot.x - w / 2, y: foot.y, width: w, height: hh)
+            rendered(sprite, size: rect.size, shadow: false)
+                .draw(in: rect.insetBy(dx: -Self.renderPad, dy: -Self.renderPad), from: .zero, operation: .sourceOver,
+                      fraction: alpha, respectFlipped: false, hints: nil)
         }
         ctx.restoreGState()
+    }
+
+    // MARK: - Rendered sprites
+
+    /// Room kept round a rendered sprite for its shadow.
+    private static let renderPad: CGFloat = 12
+    private var renderCache: [String: NSImage] = [:]
+
+    /// The sprite at the size she is drawn, with its shadow already in: one 8-bit bitmap of a
+    /// few thousand pixels. Drawing the full-size PNG with a live Gaussian shadow at 30 frames a
+    /// second was most of what an idle Zera cost.
+    private func rendered(_ sprite: Sprite, size: NSSize, shadow: Bool) -> NSImage {
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        let w = ceil(size.width), h = ceil(size.height)
+        let key = "\(sprite.name)|\(Int(w))x\(Int(h))|\(scale)|\(shadow)"
+        if let img = renderCache[key] { return img }
+        let pad = Self.renderPad
+        let full = NSSize(width: w + pad * 2, height: h + pad * 2)
+        let px = Int(full.width * scale), py = Int(full.height * scale)
+        guard px > 0, py > 0, let cg = CGContext(data: nil, width: px, height: py, bitsPerComponent: 8, bytesPerRow: px * 4,
+                                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return sprite.image }
+        cg.scaleBy(x: scale, y: scale)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: false)
+        if shadow { cg.setShadow(offset: CGSize(width: 0, height: -3), blur: 7, color: NSColor.black.withAlphaComponent(0.45).cgColor) }
+        sprite.image.draw(in: NSRect(x: pad, y: pad, width: w, height: h), from: .zero, operation: .sourceOver, fraction: 1,
+                          respectFlipped: false, hints: [.interpolation: NSImageInterpolation.high])
+        NSGraphicsContext.restoreGraphicsState()
+        guard let image = cg.makeImage() else { return sprite.image }
+        let out = NSImage(cgImage: image, size: full)
+        // Her size only changes with the screen; a handful of poses at one size is all that is kept.
+        if renderCache.count > 40 { renderCache.removeAll() }
+        renderCache[key] = out
+        return out
     }
 
     // MARK: - Claude-state motion and effects

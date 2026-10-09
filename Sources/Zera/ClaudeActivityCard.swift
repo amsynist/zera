@@ -206,7 +206,8 @@ final class ClaudeActivityCard: CardBase, CardContent {
         }
 
         // Approval
-        pendingRequest = ClaudeHookService.shared.pending.first { $0.sessionID == s.id } ?? (s.status == .waiting ? ClaudeHookService.shared.pending.first : nil)
+        // Only this session's own request: Approve here must never answer another session's.
+        pendingRequest = ClaudeHookService.shared.pending.first { $0.sessionID == s.id }
         approvalBox.isHidden = pendingRequest == nil
         if let req = pendingRequest {
             approvalCommand.stringValue = "Run: \(ClaudeActivityService.oneLine(req.command, max: 70))"
@@ -243,14 +244,16 @@ final class ClaudeActivityCard: CardBase, CardContent {
     @objc private func approveTapped() {
         guard let r = pendingRequest else { return }
         approve.isEnabled = false; reject.isEnabled = false
+        guard ClaudeHookService.shared.respond(r, allow: true) else { return }
         SoundService.shared.play(.claudeApproved)
-        ClaudeHookService.shared.respond(r, allow: true); say?("approved — running ✅", .approved)
+        say?("approved — running ✅", .approved)
     }
     @objc private func rejectTapped() {
         guard let r = pendingRequest else { return }
         approve.isEnabled = false; reject.isEnabled = false
+        guard ClaudeHookService.shared.respond(r, allow: false) else { return }
         SoundService.shared.play(.claudeRejected)
-        ClaudeHookService.shared.respond(r, allow: false); say?("okay, skipped that", .sad)
+        say?("okay, skipped that", .sad)
     }
     @objc private func installTapped() {
         do { try ClaudeActivityService.shared.install(); say?("I'll follow Claude's work from here 💜 Restart open sessions.", .approved) }

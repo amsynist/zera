@@ -78,7 +78,6 @@ struct ReminderAlert: Equatable {
     var occurrence: Date? = nil
     var hydration = false
     var joinURL: URL? = nil
-    var firedAt = Date()
     static func == (a: ReminderAlert, b: ReminderAlert) -> Bool { a.id == b.id }
 
     var isEvent: Bool { kind == .calendarHeadsUp || kind == .calendarNow || eventID != nil }
@@ -642,7 +641,10 @@ final class ReminderService {
                 }
                 continue
             }
-            guard let occ = r.last(atOrBefore: now, within: Self.fireWindow) else { continue }
+            // A one-off whose time passed while the Mac slept (or Zera was closed) is still
+            // announced, once, however late; a repeating one only within its window.
+            let lookBack = r.rule.isRepeating ? Self.fireWindow : .greatestFiniteMagnitude
+            guard let occ = r.last(atOrBefore: now, within: lookBack) else { continue }
             if r.isDone(occ) || r.isSnoozed(occ, now: now) { continue }
             let key = "rem-\(r.id)-\(Int(occ.timeIntervalSince1970))"
             guard !fired.contains(key) else { continue }
@@ -693,6 +695,8 @@ final class ReminderService {
             }
         }
 
+        // Time away (idle, asleep) is a break already: the next nudge counts from when you're back.
+        if userIsIdle { lastBreakAt = now }
         if breakInterval > 0, !userIsIdle,
            now.timeIntervalSince(lastBreakAt) >= Double(breakInterval) * 60,
            !pendingAlerts.contains(where: { $0.kind == .breakTime }) {
@@ -748,11 +752,20 @@ final class ReminderService {
         RunLoop.main.add(t, forMode: .common)
         calendarTimer = t
         // Block observers are removed by token, not by `self`: drop the old one first so
-        // reconnecting does not stack refreshes.
+        // reconnecting does not stack refreshes. Account syncs post this in bursts, so one
+        // refresh runs once they settle.
         if let o = storeObserver { NotificationCenter.default.removeObserver(o) }
         storeObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: store, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.refreshCalendar() }
+            Task { @MainActor in self?.scheduleCalendarRefresh() }
         }
+    }
+
+    private var calendarRefreshWork: DispatchWorkItem?
+    private func scheduleCalendarRefresh() {
+        calendarRefreshWork?.cancel()
+        let w = DispatchWorkItem { [weak self] in Task { @MainActor in self?.refreshCalendar() } }
+        calendarRefreshWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: w)
     }
 
     func disconnectCalendar() {
@@ -768,7 +781,7 @@ final class ReminderService {
 
     /// The account a macOS calendar really syncs from. Anything we cannot tell apart is
     /// "Apple" (it is in Apple Calendar) — never guessed as Google or Outlook.
-    private static func source(of cal: EKCalendar) -> (CalendarEvent.Source, String) {
+    nonisolated private static func source(of cal: EKCalendar) -> (CalendarEvent.Source, String) {
         let src: EKSource? = cal.source
         guard let s = src else { return (.apple, "On My Mac") }
         let t = s.title.lowercased()
@@ -779,19 +792,49 @@ final class ReminderService {
         return (.apple, s.title)
     }
 
-    private static func hex(_ c: NSColor?) -> String? {
+    nonisolated private static func hex(_ c: NSColor?) -> String? {
         guard let c = c?.usingColorSpace(.sRGB) else { return nil }
         return String(format: "%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
     }
 
+    private var calendarRefreshing = false
+    private var calendarRefreshAgain = false
+    private let calendarQueue = DispatchQueue(label: "ai.zera.calendar", qos: .utility)
+
+    /// Reads the next two weeks from macOS Calendar. The store is queried off the main thread
+    /// (a few hundred events across several accounts take long enough to stall the island);
+    /// one read runs at a time, and a request made meanwhile runs after it.
     func refreshCalendar() {
         guard calendarAuthorized else { return }
+        guard !calendarRefreshing else { calendarRefreshAgain = true; return }
+        calendarRefreshing = true
+        let store = self.store
+        calendarQueue.async { [weak self] in
+            let (events, calendars) = Self.readCalendar(store)
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                MainActor.assumeIsolated {
+                    self.calendarRefreshing = false
+                    // The store was swapped (disconnected, or reconnected) while this read ran.
+                    guard self.calendarAuthorized, store === self.store else { return }
+                    self.externalEvents = events
+                    self.writableCalendars = calendars
+                    self.lastCalendarSync = Date()
+                    self.post()
+                    self.tick()
+                    if self.calendarRefreshAgain { self.calendarRefreshAgain = false; self.refreshCalendar() }
+                }
+            }
+        }
+    }
+
+    nonisolated private static func readCalendar(_ store: EKEventStore) -> ([CalendarEvent], [WritableCalendar]) {
         let cal = Calendar.current
         // Yesterday (for anything still running) through the next two weeks: Today + Upcoming.
         let start = cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: Date())) ?? Date()
         let end = cal.date(byAdding: .day, value: 16, to: start) ?? Date()
         let pred = store.predicateForEvents(withStart: start, end: end, calendars: nil)
-        externalEvents = store.events(matching: pred).map { e in
+        let events = store.events(matching: pred).map { e in
             let (src, account) = Self.source(of: e.calendar)
             var ev = CalendarEvent(title: e.title ?? "Event", startAt: e.startDate,
                                    duration: max(0, e.endDate.timeIntervalSince(e.startDate)), kind: .other, source: src)
@@ -810,13 +853,11 @@ final class ReminderService {
             ev.colorHex = Self.hex(e.calendar.color)
             return ev
         }.sorted { $0.startAt < $1.startAt }
-        writableCalendars = store.calendars(for: .event).filter { $0.allowsContentModifications }.map { c in
+        let calendars = store.calendars(for: .event).filter { $0.allowsContentModifications }.map { c in
             let (src, account) = Self.source(of: c)
             return WritableCalendar(id: c.calendarIdentifier, title: c.title, source: src, account: account)
         }.sorted { ($0.source.rawValue, $0.title) < ($1.source.rawValue, $1.title) }
-        lastCalendarSync = Date()
-        post()
-        tick()
+        return (events, calendars)
     }
 
     enum CalendarWriteError: Error { case noAccess, noCalendar }

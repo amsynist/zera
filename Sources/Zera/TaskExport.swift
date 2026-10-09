@@ -219,11 +219,6 @@ enum TaskExport {
         }.joined(separator: "\n\n") + "\n"
     }
 
-    static func copy(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-    }
-
     /// "45m", "1h 05m".
     static func duration(_ minutes: Int) -> String {
         minutes >= 60 ? "\(minutes / 60)h \(String(format: "%02d", minutes % 60))m" : "\(minutes)m"
@@ -347,7 +342,7 @@ enum TaskExport {
         let data: Data
         switch format {
         case .timesheet:
-            copy(sheetText(rows, SheetOptions.saved))
+            NSPasteboard.general.setPlainText(sheetText(rows, SheetOptions.saved))
             return nil
         case .csv: data = Data(csv(rows).utf8)
         case .text: data = Data(text(rows, project: project).utf8)

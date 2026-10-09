@@ -304,7 +304,6 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private let actionBranch = CAShapeLayer()
     private let actionEmpty = NSTextField(labelWithString: "No matching actions")
     private var actionRows: [TreeRowView] = []
-    private var orbitBounds = NSRect.zero
     // The chosen item, under the arc.
     private let dName = NSTextField(labelWithString: "")
     private let dMeta = NSTextField(labelWithString: "")
@@ -2227,10 +2226,6 @@ private enum OV {
     static let footW: CGFloat = 900
 }
 
-private extension String {
-    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
-}
-
 /// Keyboard guidance uses the same quiet keycaps as the search and app shortcuts.
 final class OpenerFooter: NSTextField {
     var leadingAligned = false
@@ -2450,6 +2445,19 @@ final class TreeButton: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// The word on it, unless a label was set for an icon-only button (pin, more actions).
+    override func accessibilityLabel() -> String? {
+        let set = super.accessibilityLabel()
+        return set?.isEmpty == false ? set : (title.isEmpty ? symbol : title)
+    }
+
     private var pressed = false { didSet { if pressed != oldValue { needsDisplay = true } } }
 
     /// The shared button family (`Palette.drawButton`): the main action filled with the accent,
@@ -2533,27 +2541,6 @@ final class TreeButton: NSView {
     }
     override func accessibilityPerformPress() -> Bool { onClick?(); return true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-}
-
-
-/// "Notes" with the letters you typed lit up in cyan.
-private func highlighted(_ name: String, _ hits: [Int], size: CGFloat, weight: NSFont.Weight) -> NSAttributedString {
-    let s = NSMutableAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: Neon.text])
-    let chars = Array(name)
-    var offset = 0
-    for (i, c) in chars.enumerated() {
-        let len = String(c).utf16.count
-        if hits.contains(i) {
-            s.addAttributes([.foregroundColor: Neon.cyan, .font: NSFont.systemFont(ofSize: size, weight: .bold)],
-                            range: NSRange(location: offset, length: len))
-        }
-        offset += len
-    }
-    return s
-}
-
-private extension Array {
-    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
 
 final class OpenerFlipped: NSView { override var isFlipped: Bool { true } }

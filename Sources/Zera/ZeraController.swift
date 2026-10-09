@@ -237,16 +237,22 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         }
         live.onDecide = { [weak self] req, allow in
             guard let self = self else { return }
+            // A second tap right after a decision (a double-click) answers nothing.
+            guard MainActor.assumeIsolated({ ClaudeHookService.shared.respond(req, allow: allow) }) else { return }
             self.sound(allow ? .claudeApproved : .claudeRejected)
-            MainActor.assumeIsolated { ClaudeHookService.shared.respond(req, allow: allow) }
             // The wing folds with the answer; she just looks pleased (or thoughtful).
             self.react(allow ? .happy : .thinking, for: 1.8)
             self.updateLive()
         }
-        // Reply from a finished session's wing: Claude carries on in that same session.
+        // Reply from a finished session's wing: Claude carries on in that same session — the one
+        // the field was opened for, even if another session has become current meanwhile.
         live.onReplyStart = { [weak self] in
             guard let self = self else { return }
-            MainActor.assumeIsolated { if let s = ClaudeActivityService.shared.current { ClaudeActivityService.shared.holdReply(s) } }
+            MainActor.assumeIsolated {
+                guard let s = ClaudeActivityService.shared.current else { return }
+                self.replySession = s
+                ClaudeActivityService.shared.holdReply(s)
+            }
             // The wings take keyboard focus only while you type a reply.
             self.livePanel.keyable = true
             self.livePanel.makeKey()
@@ -255,7 +261,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             guard let self = self else { return }
             self.livePanel.keyable = false
             MainActor.assumeIsolated {
-                guard let s = ClaudeActivityService.shared.current else { return }
+                guard let s = self.replySession ?? ClaudeActivityService.shared.current else { return }
+                self.replySession = nil
                 ClaudeActivityService.shared.sendReply(s, text) { [weak self] sent in
                     guard let self = self else { return }
                     if sent {
@@ -272,7 +279,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         live.onReplyCancel = { [weak self] in
             guard let self = self else { return }
             self.livePanel.keyable = false
-            MainActor.assumeIsolated { if let s = ClaudeActivityService.shared.current { ClaudeActivityService.shared.releaseReply(s) } }
+            self.releaseReplySession()
             self.updateLive()
         }
         live.onMinimize = { [weak self] in
@@ -304,8 +311,10 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         nc.addObserver(self, selector: #selector(activityChanged), name: ClaudeActivityService.changed, object: nil)
         nc.addObserver(self, selector: #selector(activityMilestone(_:)), name: ClaudeActivityService.milestone, object: nil)
         Palette.observeSystem()
-        // Find `claude` in the background now, so the first Summarize does not wait for it.
+        // Find `claude` in the background now, so the first Summarize does not wait for it; the
+        // same for whether an API key is saved (a Keychain read that can stall the UI thread).
         ClaudeCLI.shared.ensureProbed { _ in }
+        _ = AnthropicAPIClient.shared.isConfigured
 
         // A click anywhere else on the screen puts the card away at once — no waiting for the
         // pointer to wander off. (Our own panels get local events, so this never fires for them.)
@@ -452,15 +461,24 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         return live.canShowApproval
     }
 
+    /// The finished session a reply is being typed for (held open until it is sent or dropped).
+    private var replySession: ClaudeSession?
+
+    /// The reply field went away without a send: let that session's hook finish.
+    private func releaseReplySession() {
+        guard let s = replySession else { return }
+        replySession = nil
+        MainActor.assumeIsolated { ClaudeActivityService.shared.releaseReply(s) }
+    }
+
     /// Shows / updates / hides the wings from the current Claude session and pending approvals.
     private func updateLive() {
-        let (show, done, offering): (Bool, Bool, ClaudeSession?) = MainActor.assumeIsolated {
+        let (show, done, quiet): (Bool, Bool, Bool) = MainActor.assumeIsolated {
             let s = ClaudeActivityService.shared.current
             let hooks = ClaudeHookService.shared.pending
             let pending = s.flatMap { s in hooks.first { $0.sessionID == s.id } } ?? hooks.first
             // Idle sessions stay visible for a few minutes after their last activity.
             let stale = s.map { $0.status == .ended || ($0.status == .idle && Date().timeIntervalSince($0.lastEventAt) > 600) } ?? true
-            let offer = s.flatMap { $0.replyUntil != nil || $0.replyHeld ? $0 : nil }
             // A turn that just finished brings minimized wings back (once), so you can see it and reply.
             if let s = s, s.status == .done, !stale {
                 let key = "\(s.id)|\(s.promptAt?.timeIntervalSince1970 ?? 0)"
@@ -469,12 +487,21 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                     self.liveDismissed = false
                 }
             }
-            if stale && pending == nil { return (false, false, offer) }
+            // Nothing running, nothing waiting on you, no reply still on offer.
+            let quiet = ClaudeActivityService.shared.active.isEmpty && hooks.isEmpty && !(s?.canReply ?? false)
+            if stale && pending == nil { return (false, false, quiet) }
             self.live.replyWindow = Double(ClaudeActivityService.shared.replyWindow)
-            self.live.update(session: stale ? nil : s, pending: pending)
+            // An approval from another session is shown on its own, never under this session's
+            // task line, so the words and the command on the wings always belong together.
+            let foreign = pending.map { !$0.sessionID.isEmpty && $0.sessionID != s?.id } ?? false
+            self.live.update(session: stale || foreign ? nil : s, pending: pending)
+            // The field folded away on its own (the session moved on): the reply is dropped.
+            if self.replySession != nil, !self.live.composing { self.livePanel.keyable = false; self.releaseReplySession() }
             // While it can still take a reply, a finished session's wings stay up.
-            return (true, pending == nil && s?.status == .done && !(s?.canReply ?? false), offer)
+            return (true, pending == nil && s?.status == .done && !(s?.canReply ?? false), quiet)
         }
+        // Nothing live and nothing waiting: the per-second refresh stops until the next event.
+        if quiet, !show { liveTicker?.invalidate(); liveTicker = nil }
         // She hugs her rope and acts out what Claude is doing: working, waiting on you, done.
         switch show ? live.mode : .idle {
         case .running: zera.activity = .running
@@ -492,8 +519,16 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         // turn needs you (or the Claude tab is opened).
         // Also folded away while she's down with the app opener.
         guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed, !finishedLiveHidden, !openerOpen else {
-            // Nobody can see the Reply button: let the waiting session finish now.
-            if let s = offering, !s.replyHeld { MainActor.assumeIsolated { ClaudeActivityService.shared.releaseReply(s) } }
+            // Put away for good (minimized, or she is hidden): let a session waiting on a reply
+            // finish now. A passing hover, toast or drag keeps the offer, so it is still there
+            // when the wings come back.
+            if !buddyEnabled || liveDismissed || finishedLiveHidden, !live.composing {
+                MainActor.assumeIsolated {
+                    for s in ClaudeActivityService.shared.ordered where s.replyUntil != nil && !s.replyHeld {
+                        ClaudeActivityService.shared.releaseReply(s)
+                    }
+                }
+            }
             hideLive()
             return
         }
@@ -1081,22 +1116,28 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     @objc private func hookChanged() {
         refreshBadges()
+        ensureLiveTicker()
         updateLive()
         if cardVisible, currentCard == .approval { (cards[.approval] as? ApprovalCard)?.reload() }
     }
 
     private var approvalPending: Bool { MainActor.assumeIsolated { !ClaudeHookService.shared.pending.isEmpty } }
 
+    /// Keeps the wings' clock and reply countdown moving while something is live; `updateLive`
+    /// stops it again once nothing is.
     private var liveTicker: Timer?
+    private func ensureLiveTicker() {
+        guard liveTicker == nil else { return }
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.updateLive() }
+        t.tolerance = 0.1
+        RunLoop.main.add(t, forMode: .common)
+        liveTicker = t
+    }
 
     @objc private func activityChanged() {
         refreshBadges()
+        ensureLiveTicker()
         updateLive()
-        if liveTicker == nil {
-            let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.updateLive() }
-            RunLoop.main.add(t, forMode: .common)
-            liveTicker = t
-        }
         if cardVisible, currentCard == .claude { (cards[.claude] as? ClaudeSessionsView)?.reload() }
     }
 
@@ -1208,7 +1249,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             if n > 0, let item = ShelfStore.shared.items.first {
                 NSWorkspace.shared.open(item.url)
                 show(.shelf)
-                (cards[.shelf] as? DropFilesView)?.select(filter: .notes)
                 say("new note on the shelf 📝", mood: .happy, for: 2)
             }
         case .takeBreak:

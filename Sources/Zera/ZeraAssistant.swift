@@ -619,7 +619,7 @@ final class ZeraAssistant {
         builder = ClaudeTranscriptBuilder()
         switch provider {
         case .anthropicAPI:
-            guard AnthropicAPIClient.shared.isConfigured else {
+            guard AnthropicAPIClient.shared.isConfiguredNow() else {
                 fail(ZeraAIError(message: "Add an Anthropic API key to use the API, or switch back to Claude Code.", action: .configureAPIKey)); return
             }
             activeProvider = .anthropicAPI

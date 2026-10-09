@@ -24,7 +24,6 @@ private enum D {
     static let leftW: CGFloat = 380
     static let rightW: CGFloat = 270
     static let maxWidth: CGFloat = 1260
-    static let threePaneMin: CGFloat = 1180
     static let maxHeight: CGFloat = 820
     static let minHeight: CGFloat = 600
 }
@@ -1212,7 +1211,6 @@ final class DropFilesView: NSView, CardContent {
     // MARK: Compatibility with the old shelf API
 
     /// Home → Notes used to filter the grid; the Shelf is small enough to show everything.
-    func select(filter f: ShelfFilter) { reload() }
 
     func paste() {
         let before = Set(store.items.map { $0.path })
@@ -1227,11 +1225,6 @@ final class DropFilesView: NSView, CardContent {
     }
 
     // MARK: Data
-
-    private var selectedItem: ShelfItem? {
-        guard let p = Self.selectedPath else { return nil }
-        return store.items.first { $0.path == p }
-    }
 
     /// The selected path even if it's only in Recent (not on the Shelf any more).
     private var selectedPath: String? {

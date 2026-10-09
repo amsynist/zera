@@ -20,19 +20,6 @@ protocol ShelfViewDelegate: AnyObject {
     func shelfRunsInPlace(_ action: FileAction, on item: ShelfItem)
 }
 
-/// Kept for the Home quick-action API; DropFilesView owns the current shelf UI.
-enum ShelfFilter: Int, CaseIterable {
-    case all, files, links, notes
-    var title: String {
-        switch self {
-        case .all: return "All"
-        case .files: return "Files"
-        case .links: return "Links"
-        case .notes: return "Notes"
-        }
-    }
-}
-
 extension ShelfItem {
     var isLink: Bool { url.pathExtension.lowercased() == "webloc" }
     var isNote: Bool { ["txt", "rtf", "md"].contains(url.pathExtension.lowercased()) }
