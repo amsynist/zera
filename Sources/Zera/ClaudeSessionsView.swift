@@ -1473,11 +1473,10 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         // Island header: title and counts left of Zera, New on the right. Her own pictures stay
         // hidden — she hangs in the middle of the header.
         [claudeTile, peek, bubble, tipZera].forEach { $0.isHidden = true }
-        let half = w / 2 - Isle.zeraGap / 2
-        leftTitle.frame = NSRect(x: x, y: CardBase.titleTop, width: half - x, height: 32)
-        leftSub.frame = NSRect(x: x, y: CardBase.subtitleTop, width: half - x, height: 18)
+        leftTitle.frame = ScreenHeader.titleFrame(width: w, padding: x)
+        leftSub.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
         let bw = newSession.fittedWidth + 8
-        newSession.frame = NSRect(x: w - x - bw, y: CardBase.titleTop + 2, width: bw, height: 32)
+        newSession.frame = NSRect(x: w - x - bw, y: ScreenHeader.controlY(Metrics.button), width: bw, height: Metrics.button)
 
         // Filters and search on one line.
         var y = Isle.headerHeight

@@ -117,6 +117,8 @@ First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 
 - [x] Reuse shared medium control/setting-label type; add a shared monospaced metric-value role.
 - [x] Relax vital tiles and separate values from units; use shared gaps and corner radii.
 - [x] Wrap quick actions at compact widths instead of hiding trailing actions.
+- [x] Share header title/subtitle/control geometry across Home, Reminders, Claude, Shelf, Tasks, Clipboard, Settings and PRs; align Home search with the title row.
+- [x] Distribute spare quick-action row width through shared flow layout and centre each icon/label group.
 - [x] Keep busy Home content inside a bounded scroll region without an overlapping scrollbar.
 - [x] Check quick-action bounds at 560/880 points and This Mac → Back restoration; inspect the local Home capture.
 - [ ] User visual approval and live search, attention links, quick actions, vitals, speed test and Escape checks.

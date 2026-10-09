@@ -916,15 +916,14 @@ final class RemindersView: NSView, CardContent {
 
     private func layoutMain(_ size: NSSize) {
         let w = size.width, h = size.height, x = RS.pad, iw = w - RS.pad * 2
-        let half = w / 2 - Isle.zeraGap / 2
 
         // Island header: title and summary left of Zera (she hangs in the middle); "+ Add ▾" on
         // the right. Her own pictures and the tip stay hidden in the island.
         [screenTile, peek, bubble, tip, tipZera].forEach { $0.isHidden = true }
-        titleLabel.frame = NSRect(x: x, y: CardBase.titleTop, width: half - x, height: 32)
-        subtitleLabel.frame = NSRect(x: x, y: CardBase.subtitleTop, width: half - x, height: 18)
+        titleLabel.frame = ScreenHeader.titleFrame(width: w, padding: x)
+        subtitleLabel.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
         let bw = min(170, addButton.fittedWidth + 8)
-        addButton.frame = NSRect(x: w - x - bw, y: CardBase.titleTop + 2, width: bw, height: 32)
+        addButton.frame = NSRect(x: w - x - bw, y: ScreenHeader.controlY(Metrics.button), width: bw, height: Metrics.button)
 
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
         filters.fill = filters.preferredWidth > iw

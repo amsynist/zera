@@ -26,6 +26,14 @@ final class HomeLayoutTests: XCTestCase {
             for pair in zip(actions, actions.dropFirst()) {
                 XCTAssertFalse(pair.0.frame.intersects(pair.1.frame))
             }
+            for rowY in Set(actions.map { $0.frame.minY }) {
+                let row = actions.filter { $0.frame.minY == rowY }
+                XCTAssertEqual(row.first!.frame.minX, 0, accuracy: 0.5)
+                XCTAssertEqual(row.last!.frame.maxX, document.bounds.width, accuracy: 0.5)
+            }
+            let search = try XCTUnwrap(home.subviews.compactMap { $0 as? SearchBox }.first)
+            XCTAssertEqual(search.frame.midY, home.titleLabel.frame.midY, accuracy: 0.5)
+            XCTAssertEqual(search.frame.maxX, width - Metrics.cardPad, accuracy: 0.5)
         }
     }
 

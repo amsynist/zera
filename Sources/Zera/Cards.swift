@@ -23,8 +23,8 @@ class CardBase: NSView {
     /// Y where content starts, under the header row Zera hangs in.
     var headerBottom: CGFloat { Isle.headerHeight }
     /// v2: the title sits under the rail, which hangs in the header's top 44 pt.
-    static let titleTop: CGFloat = 56
-    static var subtitleTop: CGFloat { titleTop + 34 }
+    static let titleTop = ScreenHeader.titleTop
+    static var subtitleTop: CGFloat { ScreenHeader.subtitleTop }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -56,16 +56,15 @@ class CardBase: NSView {
     /// Lays out the header; subclasses call this first in `layout()`. The title stays left of
     /// Zera's spot in the middle; `trailingWidth` is room kept free on the right for buttons.
     func layoutHeader(trailingWidth: CGFloat = 0) {
-        let w = min(bounds.width - Metrics.cardPad * 2 - trailingWidth, bounds.width / 2 - Isle.zeraGap / 2 - Metrics.cardPad)
-        let top: CGFloat = subtitleLabel.isHidden && !whispering ? Self.titleTop + 8 : Self.titleTop
-        titleLabel.frame = NSRect(x: Metrics.cardPad, y: top, width: max(0, w), height: 32)
-        subtitleLabel.frame = NSRect(x: Metrics.cardPad, y: top + 34, width: max(0, w), height: 18)
+        titleLabel.frame = ScreenHeader.titleFrame(width: bounds.width)
+        titleLabel.frame.size.width = max(0, min(titleLabel.frame.width, bounds.width - Metrics.cardPad * 2 - trailingWidth))
+        subtitleLabel.frame = ScreenHeader.subtitleFrame(width: bounds.width)
+        subtitleLabel.frame.size.width = titleLabel.frame.width
     }
 
     /// The header's right side, for buttons: everything right of Zera's spot.
     var headerTrailingRect: NSRect {
-        let x = bounds.width / 2 + Isle.zeraGap / 2
-        return NSRect(x: x, y: Self.titleTop + 2, width: bounds.width - Metrics.cardPad - x, height: 36)
+        ScreenHeader.trailingRect(width: bounds.width)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -300,18 +299,20 @@ final class ActionTile: NSView {
     static let height = Metrics.segment
     private static let glyph: CGFloat = 16
     var fittedWidth: CGFloat { ceil(14 + Self.glyph + 8 + title.intrinsicContentSize.width + 16) }
+    private var contentX: CGFloat { max(Space.m, (bounds.width - Self.glyph - Space.s - title.intrinsicContentSize.width) / 2) }
 
     override func layout() {
         super.layout()
         let th = title.intrinsicContentSize.height
-        title.frame = NSRect(x: 14 + Self.glyph + 8, y: ((bounds.height - th) / 2).rounded(), width: max(0, bounds.width - 14 - Self.glyph - 8 - 12), height: th)
+        let x = contentX + Self.glyph + Space.s
+        title.frame = NSRect(x: x, y: ((bounds.height - th) / 2).rounded(), width: max(0, bounds.width - x - Space.m), height: th)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
         (pressed ? p.surfacePressed : (hovered ? p.surfaceHover : p.surface)).setFill(); shape.fill()
-        Neon.symbol(symbol, in: NSRect(x: 14, y: 0, width: Self.glyph, height: bounds.height), size: 12, weight: .semibold,
+        Neon.symbol(symbol, in: NSRect(x: contentX, y: 0, width: Self.glyph, height: bounds.height), size: 12, weight: .semibold,
                     color: tint.blended(withFraction: 0.25, of: .white) ?? tint)
     }
 
@@ -549,21 +550,14 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 
     private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (rowH + Metrics.rowGap) - Metrics.rowGap }
 
-    private var actionRows: Int {
-        let width = max(1, bounds.width - Metrics.cardPad * 2)
-        var rows = 1, used: CGFloat = 0
-        for tile in tiles {
-            let w = min(tile.fittedWidth, width)
-            if used > 0 && used + Space.s + w > width { rows += 1; used = 0 }
-            used += (used > 0 ? Space.s : 0) + w
-        }
-        return rows
+    private var actionFrames: [NSRect] {
+        FlowLayout.frames(widths: tiles.map(\.fittedWidth), available: bounds.width - Metrics.cardPad * 2, height: tileHeight)
     }
 
     private var bodyHeight: CGFloat {
         18 + Space.m + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.xxl
         + 18 + Space.m + VitalsOrgans.height + Space.xxl
-        + 18 + Space.m + CGFloat(actionRows) * tileHeight + CGFloat(actionRows - 1) * Space.s
+        + 18 + Space.m + (actionFrames.last?.maxY ?? 0)
     }
 
     var desiredHeight: CGFloat {
@@ -696,7 +690,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         if !showingVitals {
             // Ask Zera sits right of her, level with the greeting.
             let t = headerTrailingRect
-            search.frame = NSRect(x: t.minX + 8, y: t.midY - Metrics.field / 2, width: t.width - 8, height: Metrics.field)
+            search.frame = NSRect(x: t.minX, y: ScreenHeader.controlY(Metrics.field), width: t.width, height: Metrics.field)
         }
         if showingVitals {
             // Back button first; the title and subtitle move over for it.
@@ -736,13 +730,9 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         y += VitalsOrgans.height + Space.xxl
 
         quickHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
-        var tx: CGFloat = 0
-        for t in tiles {
-            let tw = min(t.fittedWidth, w)
-            if tx > 0 && tx + tw > w { tx = 0; y += tileHeight + Space.s }
+        for (t, frame) in zip(tiles, actionFrames) {
             t.isHidden = false
-            t.frame = NSRect(x: tx, y: y, width: tw, height: tileHeight)
-            tx += tw + Space.s
+            t.frame = frame.offsetBy(dx: 0, dy: y)
         }
         recentHeader.isHidden = true
         recentEmpty.isHidden = true

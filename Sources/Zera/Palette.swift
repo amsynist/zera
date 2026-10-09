@@ -21,6 +21,54 @@ enum Radius {
     static let card: CGFloat = 18  // the card itself
 }
 
+/// Shared island header geometry, including controls centred on the title row.
+enum ScreenHeader {
+    static let titleTop: CGFloat = 56
+    static let titleHeight: CGFloat = 32
+    static let subtitleTop = titleTop + 34
+    static func controlY(_ height: CGFloat) -> CGFloat { titleTop + (titleHeight - height) / 2 }
+    static func titleFrame(width: CGFloat, padding: CGFloat = Metrics.cardPad) -> NSRect {
+        NSRect(x: padding, y: titleTop, width: max(0, width / 2 - Isle.zeraGap / 2 - padding), height: titleHeight)
+    }
+    static func subtitleFrame(width: CGFloat, padding: CGFloat = Metrics.cardPad) -> NSRect {
+        var frame = titleFrame(width: width, padding: padding)
+        frame.origin.y = subtitleTop; frame.size.height = 18
+        return frame
+    }
+    static func trailingRect(width: CGFloat) -> NSRect {
+        let x = width / 2 + Isle.zeraGap / 2
+        return NSRect(x: x, y: controlY(Metrics.headerButton), width: max(0, width - Metrics.cardPad - x), height: Metrics.headerButton)
+    }
+}
+
+/// Wrap content-sized controls, sharing unused row width equally between them.
+enum FlowLayout {
+    static func frames(widths: [CGFloat], available: CGFloat, height: CGFloat, gap: CGFloat = Space.s) -> [NSRect] {
+        guard available > 0 else { return [] }
+        var result: [NSRect] = [], row: [CGFloat] = []
+        var used: CGFloat = 0, y: CGFloat = 0
+        func finishRow() {
+            guard !row.isEmpty else { return }
+            let extra = max(0, available - used) / CGFloat(row.count)
+            var x: CGFloat = 0
+            for (index, width) in row.enumerated() {
+                let edge = index == row.count - 1 ? available : (x + width + extra).rounded(.down)
+                result.append(NSRect(x: x, y: y, width: max(0, edge - x), height: height))
+                x = edge + gap
+            }
+            y += height + gap; row = []; used = 0
+        }
+        for natural in widths {
+            let width = min(natural, available)
+            if !row.isEmpty && used + gap + width > available { finishRow() }
+            used += (row.isEmpty ? 0 : gap) + width
+            row.append(width)
+        }
+        finishRow()
+        return result
+    }
+}
+
 enum Metrics {
     static let row: CGFloat = 44        // list rows
     static let control: CGFloat = 28    // fields, popups, inline buttons
