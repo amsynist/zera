@@ -67,14 +67,21 @@ final class ClaudeHookService {
     func start() {
         refreshScriptIfNeeded()
         trimHookLog()
-        timer?.invalidate()
-        let t = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
+        // The hook drops each request into the spool with a rename, which wakes the watcher at
+        // once; the timer is only a safety net (and expires requests nobody waits on any more).
+        watcher = FolderWatcher(requestsDir) { [weak self] in
             Task { @MainActor in self?.scan() }
         }
+        timer?.invalidate()
+        let t = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.scan() }
+        }
+        t.tolerance = 0.5
         RunLoop.main.add(t, forMode: .common)
         timer = t
         scan()
     }
+    private var watcher: FolderWatcher?
 
     /// The hook's own log (request IDs and decisions) is kept short: the last ~200 lines.
     private func trimHookLog() {
@@ -86,11 +93,32 @@ final class ClaudeHookService {
         try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: log.path)
     }
 
-    private func scan() {
-        guard let files = try? fm.contentsOfDirectory(at: requestsDir, includingPropertiesForKeys: nil) else { return }
-        seen.formIntersection(Set(files.filter { $0.pathExtension == "json" }.map { $0.deletingPathExtension().lastPathComponent }))
+    /// A request this old has no script waiting on it any more (the hook gives up well inside
+    /// Claude Code's 600 s timeout): its file was left behind by a session that was killed.
+    static let requestLifetime: TimeInterval = 600
+
+    /// The epoch the hook script put at the front of the id ("1759999999-412-23811").
+    static func queuedAt(id: String) -> Date? {
+        id.split(separator: "-").first.flatMap { TimeInterval($0) }.map { Date(timeIntervalSince1970: $0) }
+    }
+
+    func scan() {
+        guard var files = try? fm.contentsOfDirectory(at: requestsDir, includingPropertiesForKeys: nil) else { return }
+        // Oldest first, so "1 of N" and the wing show the request Claude has waited on longest.
+        files = files.filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        // Ghosts: the script that wrote these is gone (Claude Code was quit or killed while it
+        // waited), so nobody could act on an answer. Never shown, never answered.
+        let now = Date()
+        files.removeAll { url in
+            let id = url.deletingPathExtension().lastPathComponent
+            guard let at = Self.queuedAt(id: id), now.timeIntervalSince(at) > Self.requestLifetime else { return false }
+            try? fm.removeItem(at: url)
+            try? fm.removeItem(at: responsesDir.appendingPathComponent(id + ".json"))
+            return true
+        }
+        seen.formIntersection(Set(files.map { $0.deletingPathExtension().lastPathComponent }))
         var changed = false
-        for url in files where url.pathExtension == "json" {
+        for url in files {
             let id = url.deletingPathExtension().lastPathComponent
             guard !seen.contains(id) else { continue }
             seen.insert(id)
@@ -129,7 +157,7 @@ final class ClaudeHookService {
                 command = tool
             }
         }
-        return HookRequest(id: id, receivedAt: Date(),
+        return HookRequest(id: id, receivedAt: queuedAt(id: id) ?? Date(),
                            sessionID: json["session_id"] as? String ?? "",
                            toolName: tool, command: command, detail: detail,
                            cwd: json["cwd"] as? String ?? "")
@@ -137,7 +165,21 @@ final class ClaudeHookService {
 
     // MARK: - Answering
 
-    func respond(_ req: HookRequest, allow: Bool) {
+    /// After a decision goes out, the next request is not answerable for this long, so a
+    /// double-click (or a key repeat) on Approve cannot reach the request that slid in under it.
+    static let decisionLockout: TimeInterval = 0.6
+    private var lastDecisionAt = Date.distantPast
+    private var answered: Set<String> = []
+
+    /// False when nothing was written: the request was already answered, or another decision
+    /// went out a moment ago.
+    @discardableResult
+    func respond(_ req: HookRequest, allow: Bool) -> Bool {
+        let now = Date()
+        guard !answered.contains(req.id), now.timeIntervalSince(lastDecisionAt) >= Self.decisionLockout else { return false }
+        lastDecisionAt = now
+        answered.insert(req.id)
+        if answered.count > 200 { answered = answered.filter { id in pending.contains { $0.id == id } } }
         let decision: [String: Any] = [
             "hookSpecificOutput": [
                 "hookEventName": "PermissionRequest",
@@ -153,6 +195,7 @@ final class ClaudeHookService {
         pending.removeAll { $0.id == req.id }
         answeredCount += 1
         NotificationCenter.default.post(name: Self.changed, object: nil)
+        return true
     }
 
     // MARK: - Installing the hook into Claude Code
@@ -174,23 +217,27 @@ final class ClaudeHookService {
     if [ -n "$ZERA_ASSISTANT" ]; then exit 0; fi
     if ! pgrep -x Zera >/dev/null 2>&1; then log "Zera not running - deferring to Claude Code"; exit 0; fi
     ID="$(date +%s)-$$-$RANDOM"
+    # Claude Code ending the session (Ctrl-C, a closed terminal, its own hook timeout) must not
+    # leave a request behind for Zera to keep asking about.
+    trap 'rm -f "${REQ:?}/${ID:?}.json" "${RES:?}/${ID:?}.json"; exit 0' INT TERM HUP
     INPUT="$(cat)"
     printf '%s' "$INPUT" > "$REQ/$ID.json.tmp" && mv "$REQ/$ID.json.tmp" "$REQ/$ID.json"
     log "request $ID queued"
+    # Stays under Claude Code's 600 s hook timeout, so this script always tidies its request away.
     i=0
-    while [ $i -lt 2900 ]; do
+    while [ $i -lt 2750 ]; do
       if [ -f "$RES/$ID.json" ]; then
         cat "$RES/$ID.json"
         log "request $ID answered: $(cat "$RES/$ID.json" | tr -d '\\n' | cut -c1-120)"
-        rm -f "$RES/$ID.json" "$REQ/$ID.json"
+        rm -f "${RES:?}/${ID:?}.json" "${REQ:?}/${ID:?}.json"
         exit 0
       fi
-      if ! pgrep -x Zera >/dev/null 2>&1; then log "Zera quit while waiting"; rm -f "$REQ/$ID.json"; exit 0; fi
+      if [ $((i % 10)) -eq 0 ] && ! pgrep -x Zera >/dev/null 2>&1; then log "Zera quit while waiting"; rm -f "${REQ:?}/${ID:?}.json"; exit 0; fi
       sleep 0.2
       i=$((i+1))
     done
     log "request $ID timed out - deferring to Claude Code"
-    rm -f "$REQ/$ID.json"
+    rm -f "${REQ:?}/${ID:?}.json"
     exit 0
     """
 
@@ -211,10 +258,7 @@ final class ClaudeHookService {
     private static let event = "PermissionRequest"
     private static let legacyEvent = "PreToolUse"
 
-    private func settingsJSON() -> [String: Any]? {
-        guard let data = try? Data(contentsOf: settingsURL) else { return nil }
-        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    }
+    private func settingsJSON() -> [String: Any]? { (try? ClaudeSettingsFile.read(settingsURL)) ?? nil }
 
     private func hasEntry(_ event: String, in json: [String: Any]?) -> Bool {
         let list = (json?["hooks"] as? [String: Any])?[event] as? [[String: Any]] ?? []
@@ -233,9 +277,7 @@ final class ClaudeHookService {
         Self.removeOurs(Self.legacyEvent, from: &hooks)
         Self.addOurs(to: &hooks, script: scriptURL)
         json["hooks"] = hooks
-        if let out = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) {
-            try? out.write(to: settingsURL, options: .atomic)
-        }
+        try? ClaudeSettingsFile.write(json, to: settingsURL)
     }
 
     private static func removeOurs(_ event: String, from hooks: inout [String: Any]) {
@@ -269,33 +311,53 @@ final class ClaudeHookService {
         try Self.script.write(to: scriptURL, atomically: true, encoding: .utf8)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
 
-        var json: [String: Any] = [:]
-        if let data = try? Data(contentsOf: settingsURL),
-           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            json = existing
-        }
+        var json = try ClaudeSettingsFile.read(settingsURL) ?? [:]
         var hooks = json["hooks"] as? [String: Any] ?? [:]
         Self.removeOurs(Self.legacyEvent, from: &hooks)
         Self.addOurs(to: &hooks, script: scriptURL)
         json["hooks"] = hooks
-        try fm.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let out = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
-        try out.write(to: settingsURL, options: .atomic)
+        try ClaudeSettingsFile.write(json, to: settingsURL)
         start()
         NotificationCenter.default.post(name: Self.changed, object: nil)
     }
 
     func uninstall() throws {
-        guard let data = try? Data(contentsOf: settingsURL),
-              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        guard var json = try ClaudeSettingsFile.read(settingsURL) else { return }
         if var hooks = json["hooks"] as? [String: Any] {
             Self.removeOurs(Self.event, from: &hooks)
             Self.removeOurs(Self.legacyEvent, from: &hooks)
             if hooks.isEmpty { json.removeValue(forKey: "hooks") } else { json["hooks"] = hooks }
         }
-        let out = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
-        try out.write(to: settingsURL, options: .atomic)
+        try ClaudeSettingsFile.write(json, to: settingsURL)
         try? fm.removeItem(at: scriptURL)
         NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+}
+
+/// `~/.claude/settings.json` is the user's own Claude Code configuration. Zera only ever adds
+/// or removes its own hook entries in it: it never starts from an empty file over one it
+/// cannot read, and it keeps the previous contents beside it before each write.
+enum ClaudeSettingsFile {
+    struct Unreadable: Error {}
+
+    /// nil when there is no file yet; throws when there is one that is not a JSON object.
+    static func read(_ url: URL) throws -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw Unreadable() }
+        return json
+    }
+
+    static func backupURL(for url: URL) -> URL { url.appendingPathExtension("zera-backup") }
+
+    static func write(_ json: [String: Any], to url: URL) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if fm.fileExists(atPath: url.path) {
+            let backup = backupURL(for: url)
+            try? fm.removeItem(at: backup)
+            try? fm.copyItem(at: url, to: backup)
+        }
+        let out = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
+        try out.write(to: url, options: .atomic)
     }
 }

@@ -117,6 +117,57 @@ final class ClipboardTests: XCTestCase {
         XCTAssertEqual(try! JSONDecoder().decode(HotKeyShortcut.self, from: data), all)
     }
 
+    /// A copy moves the item to the top and rebuilds the list; the "✓ Copied" flash must land on
+    /// the row that shows the item now, alone at the row's right end, and the clicked row must
+    /// be gone (it used to linger as ghost pixels under the new rows).
+    @MainActor
+    func testACopyFlashesTheRowThatNowShowsTheItem() throws {
+        _ = NSApplication.shared
+        let store = ClipboardStore.shared
+        let saved = store.items, enabled = store.enabled
+        let pasteboardBefore = NSPasteboard.general.string(forType: .string)
+        defer {
+            store.preview(saved); store.enabled = enabled
+            if let s = pasteboardBefore { NSPasteboard.general.setPlainText(s) }
+        }
+        store.enabled = true
+        store.preview([ClipItem(kind: .text, text: "first", fingerprint: "copy-1"), ClipItem(kind: .text, text: "second", fingerprint: "copy-2")])
+        let view = ClipboardView()
+        view.frame = NSRect(x: 0, y: 0, width: 880, height: 640)
+        // The screen only follows store changes while it is on screen, so give it a window.
+        let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = view
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil) }
+        view.willShow()
+        func descendants(_ parent: NSView) -> [NSView] { parent.subviews.flatMap { [$0] + descendants($0) } }
+        let doc = try XCTUnwrap(descendants(view).compactMap { $0 as? NSScrollView }.first?.documentView)
+        XCTAssertTrue(doc.wantsLayer, "the list is layer-backed from the start, so removed rows take their pixels with them")
+        let clicked = try XCTUnwrap(descendants(view).compactMap { $0 as? ClipRow }.first { $0.item.text == "second" })
+        XCTAssertTrue(clicked.accessibilityPerformPress())
+        view.layoutSubtreeIfNeeded()
+        // Subview order is creation order; the list's order is where layout put each row.
+        let rows = descendants(view).compactMap { $0 as? ClipRow }.sorted { $0.frame.minY < $1.frame.minY }
+        XCTAssertEqual(rows.map(\.item.text), ["second", "first"], "the copied item moved to the top, nothing was left behind")
+        XCTAssertTrue(rows[0].isFlashing)
+        XCTAssertTrue(rows[0].showsOnlyCopiedTag)
+        XCTAssertFalse(rows[1].isFlashing)
+        XCTAssertNil(clicked.superview, "the clicked row was replaced and detached")
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "second")
+    }
+
+    func testOlderHistoryEntriesWithMissingFieldsStillDecode() throws {
+        let json = #"[{"kind":"text","text":"hello"},{"kind":"link","text":"https://example.com","fingerprint":"l1","pinned":true,"copyCount":3}]"#
+        let items = try JSONDecoder().decode([ClipItem].self, from: Data(json.utf8))
+        XCTAssertEqual(items.map(\.text), ["hello", "https://example.com"])
+        XCTAssertEqual(items[0].fingerprint, "hello")
+        XCTAssertEqual(items[0].copyCount, 1)
+        XCTAssertTrue(items[1].pinned)
+        XCTAssertEqual(items[1].copyCount, 3)
+        let again = try JSONDecoder().decode([ClipItem].self, from: try JSONEncoder().encode(items))
+        XCTAssertEqual(again, items)
+    }
+
     func testClipboardHasATabAndAPose() {
         XCTAssertTrue(Isle.leftTabs.contains(.clipboard))
         XCTAssertEqual(Isle.pose(for: .clipboard), "hang_upsidedown")

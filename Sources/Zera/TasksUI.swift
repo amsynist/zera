@@ -661,7 +661,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
             for day in byDay.keys.sorted(by: >) {
                 let list = byDay[day]!.sorted { $0.doneAt! < $1.doneAt! }
                 let key = store.dayKey(day)
-                let secs = list.reduce(0) { $0 + ($1.log[key] ?? $1.spent) }
+                let secs = list.reduce(0) { $0 + ($1.log[key] ?? 0) }
                 section(f.string(from: day).uppercased() + " · \(list.count) TASK\(list.count == 1 ? "" : "S")", TaskTime.short(secs))
                 for t in list { add(t, w, &y) }
             }
@@ -1139,7 +1139,7 @@ final class QuickAddView: NSView, NSTextFieldDelegate {
         box.paint = { r in
             let f = r.insetBy(dx: 4, dy: 4)
             let shape = NSBezierPath(roundedRect: f, xRadius: 14, yRadius: 14)
-            let halo = NSBezierPath(roundedRect: r, xRadius: 18, yRadius: 18)
+            let halo = NSBezierPath(roundedRect: r, xRadius: Radius.card, yRadius: Radius.card)
             Neon.accent.withAlphaComponent(0.14).setFill(); halo.fill()
             Pal.field.setFill(); shape.fill()
             Neon.accent.withAlphaComponent(0.6).setStroke(); shape.lineWidth = 1; shape.stroke()
@@ -1389,7 +1389,7 @@ final class TaskExportView: NSView {
         sheet.options = options
         sheet.onCopy = { [weak self] day in
             guard let self = self else { return }
-            TaskExport.copy(TaskExport.dayText(day.rows, self.options))
+            NSPasteboard.general.setPlainText(TaskExport.dayText(day.rows, self.options))
             day.flashCopied()
             SoundService.shared.play(.clipCopy)
         }

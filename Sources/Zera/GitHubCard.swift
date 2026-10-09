@@ -20,7 +20,6 @@ import AppKit
 private enum L {
     static let width: CGFloat = Isle.lensWidth
     static let pad: CGFloat = Metrics.sidePad
-    static let headerTop: CGFloat = 20
     /// Under the island header Zera hangs in.
     static let segY: CGFloat = Isle.headerHeight
     static let segH: CGFloat = Metrics.segment
@@ -28,9 +27,7 @@ private enum L {
     static let rowH: CGFloat = RowTier.rich.height
     static let rowGap: CGFloat = Metrics.rowGap
     static let bannerH: CGFloat = 44
-    static let insightH: CGFloat = 84
     static let gap: CGFloat = 12
-    static let insightGap: CGFloat = 16
     static var filterY: CGFloat { segY + segH + gap }
     static var listY: CGFloat { filterY + filterH + gap }
 }

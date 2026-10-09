@@ -110,9 +110,6 @@ final class ZeraTheme {
         accent = pick(\.accent); accentDeep = pick(\.accentDeep); highlight = pick(\.highlight); onAccent = pick(\.onAccent)
         success = pick(\.success); warning = pick(\.warning); danger = pick(\.danger); info = pick(\.info)
     }
-
-    /// A few colours for a swatch strip: glass, accent, highlight, success, danger.
-    var swatches: [NSColor] { [glassTop, accent, highlight, success, danger] }
 }
 
 // MARK: - The seven built-in themes

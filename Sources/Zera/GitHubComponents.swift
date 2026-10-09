@@ -792,11 +792,6 @@ final class ZeraGitHubBubble: NSView {
         let one = ceil((text as NSString).size(withAttributes: [.font: Self.font]).width)
         return NSSize(width: min(Self.maxTextWidth, one) + 1, height: min(36, ceil(r.height)))
     }
-    var fittedSize: NSSize {
-        let t = textSize
-        return NSSize(width: t.width + Self.padX * 2, height: t.height + Self.padY * 2 + Self.tail)
-    }
-
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let body = NSRect(x: 0.5, y: 0.5, width: bounds.width - 1, height: bounds.height - Self.tail - 1)

@@ -19,7 +19,6 @@ private enum CL {
     static let rowH = RowTier.standard.height
     static let rowGap = Metrics.rowGap
     static let groupH: CGFloat = 26
-    static let toolsH: CGFloat = Metrics.segment
     static let footH: CGFloat = 26
     /// Tallest the list gets; longer lists scroll.
     static let listMax: CGFloat = 296
@@ -105,6 +104,13 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
         scroll.drawsBackground = false
         scroll.contentView.drawsBackground = false
         scroll.verticalScrollElasticity = .allowed
+        // The whole list is layer-backed from the start: rows and tiles each draw into their own
+        // layer, so a row that is removed (a copy moves it to the top, Images swaps rows for
+        // tiles) takes its pixels with it. Turning layers on later, from layout, left the old
+        // rows' pixels in the document's backing store under the new ones.
+        scroll.wantsLayer = true
+        scroll.contentView.wantsLayer = true
+        doc.wantsLayer = true
         scroll.documentView = doc
         addSubview(scroll)
 
@@ -234,7 +240,10 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
             var pool = Dictionary(thumbs.map { ($0.item.id, $0) }, uniquingKeysWith: { a, _ in a })
             thumbs = shown.enumerated().map { i, item in
                 let t: ClipThumb
-                if let old = pool.removeValue(forKey: item.id), old.item == item { t = old } else {
+                let old = pool.removeValue(forKey: item.id)
+                if let old = old, old.item == item { t = old } else {
+                    // The item changed (copied again, pinned): its old tile goes with the pool's leftovers.
+                    old?.removeFromSuperview()
                     t = ClipThumb(item: item)
                     t.onCopy = { [weak self, weak t] in self?.copy(item, row: nil, thumb: t) }
                     t.onPreview = { [weak self] in self?.open(item) }
@@ -250,11 +259,15 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
             var pool = Dictionary(rows.map { ($0.item.id, $0) }, uniquingKeysWith: { a, _ in a })
             rows = shown.enumerated().map { i, item in
                 let r: ClipRow
-                if let old = pool.removeValue(forKey: item.id), old.item == item {
+                let old = pool.removeValue(forKey: item.id)
+                if let old = old, old.item == item {
                     r = old
                     r.index = i
                     r.refreshMeta()
                 } else {
+                    // The item changed (copied again, pinned): the row that showed it is replaced,
+                    // and must leave the document too, or it stays drawn under the new rows.
+                    old?.removeFromSuperview()
                     r = ClipRow(item: item, index: i)
                     r.onCopy = { [weak self, weak r] in self?.copy(item, row: r, thumb: nil) }
                     r.onPin = { [weak self] in self?.store.togglePin(item.id) }
@@ -316,7 +329,11 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
             return
         }
         SoundService.shared.play(.clipCopy)
-        row?.flash(ok: true); thumb?.flash()
+        // The copy moved the item to the top and the list was rebuilt on the way: the flash goes
+        // on the row (or tile) that shows the item now, not the one that was clicked.
+        let shownRow = rows.first { $0.item.id == item.id } ?? row
+        let shownThumb = thumbs.first { $0.item.id == item.id } ?? thumb
+        shownRow?.flash(ok: true); shownThumb?.flash()
         onCopied?(item)
     }
 
@@ -564,7 +581,6 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
             let lh = min(CL.listMax, listContentHeight)
             scroll.frame = NSRect(x: x - 4, y: listTop, width: iw + 8, height: lh)
             // More below: the last row fades out instead of being cut.
-            scroll.wantsLayer = true
             if listContentHeight > lh + 1 {
                 let fade = (scroll.layer?.mask as? CAGradientLayer) ?? CAGradientLayer()
                 fade.frame = scroll.bounds
@@ -622,10 +638,6 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
     }
 }
 
-private extension Array {
-    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
-}
-
 // MARK: - Pieces
 
 /// "TODAY" in small caps, with an optional note on the right ("1 private copy skipped").
@@ -675,14 +687,26 @@ final class ClipRow: NSView {
     private var previewButton: GHSquareButton!
     private let copiedTag = NSTextField(labelWithString: "✓ Copied")
     private var flashState: Bool?    // true copied, false couldn't
+    var isFlashing: Bool { flashState != nil }
+    /// While it flashes nothing else sits at the row's right end (tests).
+    var showsOnlyCopiedTag: Bool { !copiedTag.isHidden && key.isHidden && pinButton.isHidden && previewButton.isHidden && pinMark.isHidden }
     private var hovered = false {
         didSet {
             guard hovered != oldValue else { return }
-            pinButton.isHidden = !hovered
-            previewButton.isHidden = !hovered
-            key.isHidden = hovered
+            showTrailing()
             needsDisplay = true
         }
+    }
+
+    /// The right end of the row holds one thing at a time: "✓ Copied" while it flashes, the
+    /// pin and preview buttons under the pointer, otherwise the ⌘ key and the pin mark.
+    private func showTrailing() {
+        let flashing = flashState != nil
+        copiedTag.isHidden = !flashing
+        pinButton.isHidden = flashing || !hovered
+        previewButton.isHidden = flashing || !hovered
+        key.isHidden = flashing || hovered
+        pinMark.isHidden = flashing || !item.pinned
     }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -817,12 +841,13 @@ final class ClipRow: NSView {
         flashState = ok
         copiedTag.stringValue = ok ? "✓ Copied" : "Gone"
         copiedTag.textColor = ok ? Pal.success : Pal.danger
-        copiedTag.isHidden = false
+        showTrailing()
         needsDisplay = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.flashState = nil
-            self?.copiedTag.isHidden = true
-            self?.needsDisplay = true
+            guard let self = self else { return }
+            self.flashState = nil
+            self.showTrailing()
+            self.needsDisplay = true
         }
     }
 

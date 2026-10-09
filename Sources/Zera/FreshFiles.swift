@@ -75,7 +75,6 @@ final class FreshFiles {
         guard !folders.contains(where: { $0.path == path }) else { setFolder(path, on: true); return }
         folders = folders + [Folder(path: path, on: true)]
     }
-    func removeFolder(_ path: String) { folders = folders.filter { $0.path != path } }
 
     // MARK: State
 

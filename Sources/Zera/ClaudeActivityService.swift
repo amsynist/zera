@@ -220,35 +220,59 @@ final class ClaudeActivityService {
         try? fm.removeItem(at: claimedURL)
         carry.removeAll()
         pruneSessionBriefs(olderThan: 0)
+        // The hook's first append creates the events file (and its reply files appear in their
+        // folder), which wakes the watchers at once; the timer is the safety net and the clock
+        // for reply offers running out.
+        watchers = [FolderWatcher(activityDir) { [weak self] in Task { @MainActor in self?.poll() } },
+                    FolderWatcher(repliesDir) { [weak self] in Task { @MainActor in self?.poll() } }]
         timer?.invalidate()
-        let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.poll() }
         }
+        t.tolerance = 0.2
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
+    private var watchers: [FolderWatcher] = []
+
+    /// Hook payloads are parsed here: a `PostToolUse` event carries the whole tool result, so a
+    /// session reading big files would otherwise stall the UI thread at every poll.
+    private let parseQueue = DispatchQueue(label: "ai.zera.activity-parse", qos: .utility)
+    private var parsing = false
 
     /// Claims what the hook wrote (rename → read → delete), so events live on disk for at most
-    /// half a second while Zera is running. The hook starts a fresh file on its next event.
+    /// a second while Zera is running. The hook starts a fresh file on its next event.
     private func poll() {
         expireReplies()
         guard fm.fileExists(atPath: logURL.path) else {
-            let count = sessions.count
-            prune()
-            if sessions.count != count { NotificationCenter.default.post(name: Self.changed, object: nil) }
+            if prune() { NotificationCenter.default.post(name: Self.changed, object: nil) }
             return
         }
+        // One batch at a time, in order: the next claim waits until this one has been applied.
+        guard !parsing else { return }
         try? fm.removeItem(at: claimedURL)
         guard (try? fm.moveItem(at: logURL, to: claimedURL)) != nil else { return }
-        let data = (try? Data(contentsOf: claimedURL)) ?? Data()
-        try? fm.removeItem(at: claimedURL)
-        let buf = carry + data
-        var changed = false
-        carry = Self.consumeLines(buf) { line in
-            if let obj = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] { apply(obj); changed = true }
+        parsing = true
+        let claimed = claimedURL, carried = carry
+        parseQueue.async {
+            let data = (try? Data(contentsOf: claimed)) ?? Data()
+            try? FileManager.default.removeItem(at: claimed)
+            var events: [[String: Any]] = []
+            let rest = Self.consumeLines(carried + data) { line in
+                if let obj = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] { events.append(obj) }
+            }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self.carry = rest
+                    self.parsing = false
+                    events.forEach { self.apply($0) }
+                    _ = self.prune()
+                    if !events.isEmpty { NotificationCenter.default.post(name: Self.changed, object: nil) }
+                    // Events that arrived while this batch was parsed are claimed straight away.
+                    if self.fm.fileExists(atPath: self.logURL.path) { self.poll() }
+                }
+            }
         }
-        prune()
-        if changed { NotificationCenter.default.post(name: Self.changed, object: nil) }
     }
 
     /// Consume a batch without repeatedly copying the remaining tail for every event.
@@ -261,11 +285,28 @@ final class ClaudeActivityService {
         return data.subdata(in: start..<data.endIndex)
     }
 
-    private func prune() {
-        let cutoff = Date().addingTimeInterval(-3 * 3600)
-        for (id, s) in sessions where s.lastEventAt < cutoff || (s.status == .ended && s.lastEventAt < Date().addingTimeInterval(-600)) {
-            sessions.removeValue(forKey: id)
+    /// A session that was still "running" when its events stopped (Claude Code killed, the
+    /// terminal closed) sends no Stop: after this long without a word it reads as idle, so it
+    /// no longer shadows newer sessions in the wings.
+    static let runningSilence: TimeInterval = 20 * 60
+
+    /// Drops sessions that are long gone and settles ones that went quiet. True if anything changed.
+    @discardableResult
+    private func prune() -> Bool {
+        let now = Date()
+        var changed = false
+        let cutoff = now.addingTimeInterval(-3 * 3600)
+        for (id, s) in sessions {
+            if s.lastEventAt < cutoff || (s.status == .ended && s.lastEventAt < now.addingTimeInterval(-600)) {
+                sessions.removeValue(forKey: id)
+                changed = true
+            } else if s.status == .running, now.timeIntervalSince(s.lastEventAt) > Self.runningSilence {
+                finishOpenSteps(s, at: s.lastEventAt)
+                s.status = .idle
+                changed = true
+            }
         }
+        return changed
     }
 
     /// Session briefs (task, timeline, git diff) are deleted after an hour and on every launch.
@@ -388,6 +429,7 @@ final class ClaudeActivityService {
             if let p = s.promptAt {
                 let item = ActivityHistoryItem(title: s.title.isEmpty ? "Claude Code task" : s.title, at: p, duration: now.timeIntervalSince(p), steps: s.stepsThisPrompt)
                 s.history.insert(item, at: 0)
+                if s.history.count > 50 { s.history.removeLast(s.history.count - 50) }
                 recentHistory.insert(item, at: 0)
                 if recentHistory.count > 20 { recentHistory.removeLast(recentHistory.count - 20) }
             }
@@ -446,9 +488,6 @@ final class ClaudeActivityService {
     private func replyFile(_ s: ClaudeSession, _ token: String, _ ext: String) -> URL {
         repliesDir.appendingPathComponent("\(s.id).\(token).\(ext)")
     }
-
-    /// Is the hook still waiting in this session (so a reply would reach Claude)?
-    func isWaitingForReply(_ s: ClaudeSession) -> Bool { waitingToken(s) != nil }
 
     /// You started typing a reply: no deadline until you send or cancel.
     func holdReply(_ s: ClaudeSession) {
@@ -828,8 +867,7 @@ final class ClaudeActivityService {
 
     /// Installs from before replies gave Stop the same 5 s as every other event; raise it once.
     private func ensureStopTimeout() {
-        guard let data = try? Data(contentsOf: settingsURL),
-              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard var json = (try? ClaudeSettingsFile.read(settingsURL)) ?? nil,
               var hooks = json["hooks"] as? [String: Any],
               var list = hooks["Stop"] as? [[String: Any]] else { return }
         var changed = false
@@ -844,14 +882,11 @@ final class ClaudeActivityService {
         guard changed else { return }
         hooks["Stop"] = list
         json["hooks"] = hooks
-        if let out = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) {
-            try? out.write(to: settingsURL, options: .atomic)
-        }
+        try? ClaudeSettingsFile.write(json, to: settingsURL)
     }
 
     private var settingsHasEntry: Bool {
-        guard let data = try? Data(contentsOf: settingsURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = (try? ClaudeSettingsFile.read(settingsURL)) ?? nil,
               let hooks = json["hooks"] as? [String: Any] else { return false }
         return Self.events.contains { ((hooks[$0] as? [[String: Any]]) ?? []).contains(where: Self.entryIsOurs) }
     }
@@ -879,8 +914,7 @@ final class ClaudeActivityService {
         try fm.createDirectory(at: base, withIntermediateDirectories: true)
         try Self.script.write(to: scriptURL, atomically: true, encoding: .utf8)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
-        var json: [String: Any] = [:]
-        if let data = try? Data(contentsOf: settingsURL), let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { json = existing }
+        var json = try ClaudeSettingsFile.read(settingsURL) ?? [:]
         var hooks = json["hooks"] as? [String: Any] ?? [:]
         for ev in Self.events {
             var list = hooks[ev] as? [[String: Any]] ?? []
@@ -891,14 +925,13 @@ final class ClaudeActivityService {
             hooks[ev] = list
         }
         json["hooks"] = hooks
-        try fm.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]).write(to: settingsURL, options: .atomic)
+        try ClaudeSettingsFile.write(json, to: settingsURL)
         start()
         NotificationCenter.default.post(name: Self.changed, object: nil)
     }
 
     func uninstall() throws {
-        guard let data = try? Data(contentsOf: settingsURL), var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        guard var json = try ClaudeSettingsFile.read(settingsURL) else { return }
         if var hooks = json["hooks"] as? [String: Any] {
             for ev in Self.events {
                 var list = hooks[ev] as? [[String: Any]] ?? []
@@ -907,7 +940,7 @@ final class ClaudeActivityService {
             }
             if hooks.isEmpty { json.removeValue(forKey: "hooks") } else { json["hooks"] = hooks }
         }
-        try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]).write(to: settingsURL, options: .atomic)
+        try ClaudeSettingsFile.write(json, to: settingsURL)
         try? fm.removeItem(at: scriptURL)
         NotificationCenter.default.post(name: Self.changed, object: nil)
     }

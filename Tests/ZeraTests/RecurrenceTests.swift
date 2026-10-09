@@ -170,6 +170,26 @@ final class RecurrenceTests: XCTestCase {
         XCTAssertEqual(list.first?.status, .active)
     }
 
+    /// A one-off whose time passed while the Mac slept is still found, however far back.
+    func testAOneOffLongPastIsStillTheLastOccurrence() {
+        let anchor = date(2026, 6, 15, 9)
+        XCTAssertNil(Recurrence.last(atOrBefore: date(2026, 6, 15, 12), within: 15 * 60, anchor: anchor, rule: .noRepeat, calendar: utc))
+        XCTAssertEqual(Recurrence.last(atOrBefore: date(2026, 6, 15, 12), within: .greatestFiniteMagnitude, anchor: anchor, rule: .noRepeat, calendar: utc), anchor)
+        XCTAssertNil(Recurrence.last(atOrBefore: date(2026, 6, 15, 8), within: .greatestFiniteMagnitude, anchor: anchor, rule: .noRepeat, calendar: utc),
+                     "not before its time")
+    }
+
+    /// Active hours are clock times: on the day the clocks go back the window still ends at 9 PM.
+    func testActiveHoursEndAtTheClockTimeAcrossADSTChange() {
+        var ny = Calendar(identifier: .gregorian)
+        ny.timeZone = TimeZone(identifier: "America/New_York")!
+        let anchor = date(2026, 10, 1, 9, cal: ny)
+        // 1 November 2026: 25 hours long in New York.
+        let day = Recurrence.occurrences(anchor: anchor, rule: .hours(2), activeStart: 9 * 60, activeEnd: 21 * 60,
+                                         from: date(2026, 11, 1, cal: ny), to: date(2026, 11, 2, cal: ny), calendar: ny)
+        XCTAssertEqual(hours(day, cal: ny), [9, 11, 13, 15, 17, 19, 21])
+    }
+
     func testCalendarEventsCarryTheirSource() {
         var e = CalendarEvent(title: "Standup", startAt: date(2026, 6, 15, 10), source: .google)
         XCTAssertTrue(e.isExternal)
