@@ -318,10 +318,9 @@ final class OpenerLanes: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
-/// The dimmed screen behind the opener: the desktop blurred, a dark wash, and a soft accent
-/// glow where Zera comes down. A click on it sends her back up.
+/// Native frosted backdrop. Keep the tint translucent so the desktop remains visible.
+/// A click outside the opener sends her back up.
 final class OpenerVeil: NSView {
-    var glowCenter: NSPoint = .zero { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     private let blur = NSVisualEffectView()
     override var isFlipped: Bool { true }
@@ -331,27 +330,17 @@ final class OpenerVeil: NSView {
         blur.material = .hudWindow
         blur.blendingMode = .behindWindow
         blur.state = .active
+        blur.appearance = NSAppearance(named: .darkAqua)
         blur.autoresizingMask = [.width, .height]
         blur.frame = bounds
         addSubview(blur)
-        let wash = OpenerWash(frame: bounds)
-        wash.autoresizingMask = [.width, .height]
-        wash.veil = self
-        addSubview(wash)
+        // A restrained neutral tint, rather than an opaque painted backdrop.
+        let tint = NSView(frame: bounds)
+        tint.wantsLayer = true
+        tint.layer?.backgroundColor = OpenerLook.surface.withAlphaComponent(0.18).cgColor
+        tint.autoresizingMask = [.width, .height]
+        addSubview(tint)
     }
     required init?(coder: NSCoder) { fatalError() }
     override func mouseDown(with event: NSEvent) { onClick?() }
-}
-
-private final class OpenerWash: NSView {
-    weak var veil: OpenerVeil?
-    override var isFlipped: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor(srgbRed: 0.025, green: 0.03, blue: 0.06, alpha: 0.98).setFill()
-        bounds.fill()
-        let c = veil?.glowCenter ?? NSPoint(x: bounds.midX, y: bounds.height * 0.3)
-        NSGradient(colors: [OpenerLook.accent.withAlphaComponent(0.10), OpenerLook.accent.withAlphaComponent(0)])?
-            .draw(fromCenter: c, radius: 0, toCenter: c, radius: max(bounds.width, bounds.height) * 0.45, options: [])
-    }
 }

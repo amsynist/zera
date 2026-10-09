@@ -1991,7 +1991,6 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         let sh = OV.searchH
         holder.frame = bounds
         veil.frame = bounds
-        veil.glowCenter = NSPoint(x: c, y: cardTop + 200)
         // Her picture's own rope sits exactly on the drawn one; her paws rest on the search.
         zera.frame = NSRect(x: (c - ropeFraction * OP.zeraW).rounded(), y: cardTop - zeraH + OP.paws, width: OP.zeraW, height: zeraH)
         mascotMask.frame = zera.bounds
