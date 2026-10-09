@@ -799,6 +799,8 @@ final class SettingsCard: CardBase, CardContent {
     private let pane = FlippedView()
     /// Panes taller than the island scroll instead of being cut off.
     private let paneScroll = NSScrollView()
+    private let scrollHint = NSTextField(labelWithString: "Scroll for more")
+    private let scrollArrow = NSTextField(labelWithString: "↓")
     private(set) var current: Pane = .general
     private var defaultKind: CardKind?
     private let showingZera: Bool
@@ -838,12 +840,23 @@ final class SettingsCard: CardBase, CardContent {
         paneScroll.drawsBackground = false
         paneScroll.contentView.drawsBackground = false
         paneScroll.borderType = .noBorder
-        paneScroll.hasVerticalScroller = true
+        paneScroll.hasVerticalScroller = false // Scroll by trackpad/wheel without covering trailing controls.
         paneScroll.autohidesScrollers = true
         paneScroll.scrollerStyle = .overlay
         paneScroll.verticalScrollElasticity = .allowed
         paneScroll.documentView = pane
         addSubview(paneScroll)
+        scrollHint.font = Typo.secondary
+        scrollHint.textColor = Pal.textSecondary
+        scrollArrow.font = Typo.secondary
+        scrollArrow.textColor = Pal.textSecondary
+        scrollArrow.wantsLayer = true
+        scrollHint.isHidden = true
+        scrollArrow.isHidden = true
+        addSubview(scrollHint)
+        addSubview(scrollArrow)
+        paneScroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(updateScrollHint), name: NSView.boundsDidChangeNotification, object: paneScroll.contentView)
         for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed, ClaudeActivityService.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(serviceChanged), name: name, object: nil)
         }
@@ -900,6 +913,7 @@ final class SettingsCard: CardBase, CardContent {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window != nil { refreshServicePane() }
+        updateScrollHint()
     }
 
     @objc private func serviceChanged() {
@@ -1818,6 +1832,23 @@ final class SettingsCard: CardBase, CardContent {
     @objc private func clearShelfTapped() { ShelfStore.shared.clear(); say?("all tidy! ✨", .happy) }
     @objc private func openStagingTapped() { NSWorkspace.shared.open(ShelfStore.shared.stagingDir) }
 
+    @objc private func updateScrollHint() {
+        let hasMore = paneHeight > paneScroll.contentView.bounds.maxY + 2
+        scrollHint.isHidden = !hasMore
+        scrollArrow.isHidden = !hasMore
+        if hasMore && window != nil && !Motion.reduced {
+            if scrollArrow.layer?.animation(forKey: "scrollPulse") == nil {
+                let pulse = CABasicAnimation(keyPath: "opacity")
+                pulse.fromValue = 0.45
+                pulse.toValue = 1
+                pulse.duration = 1.1
+                pulse.autoreverses = true
+                pulse.repeatCount = .infinity
+                scrollArrow.layer?.add(pulse, forKey: "scrollPulse")
+            }
+        } else { scrollArrow.layer?.removeAnimation(forKey: "scrollPulse") }
+    }
+
     override func layout() {
         super.layout()
         layoutHeader()
@@ -1843,6 +1874,11 @@ final class SettingsCard: CardBase, CardContent {
         }
         paneScroll.frame = NSRect(x: px, y: headerBottom + 40, width: pw, height: visiblePaneHeight)
         pane.frame = NSRect(x: 0, y: 0, width: pw, height: paneHeight)
+        let hintWidth = ceil((scrollHint.stringValue as NSString).size(withAttributes: [.font: Typo.secondary]).width)
+        let hintX = px + (pw - hintWidth - 18) / 2
+        scrollArrow.frame = NSRect(x: hintX, y: paneScroll.frame.maxY + 4, width: 14, height: 16)
+        scrollHint.frame = NSRect(x: hintX + 18, y: paneScroll.frame.maxY + 4, width: hintWidth, height: 16)
+        updateScrollHint()
     }
 }
 
