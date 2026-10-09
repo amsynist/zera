@@ -74,6 +74,8 @@ enum Typo {
     static let paneTitle = NSFont.systemFont(ofSize: 17, weight: .medium)
     static let settingLabel = NSFont.systemFont(ofSize: 14, weight: .medium)
     static let control = NSFont.systemFont(ofSize: 13, weight: .medium)
+    /// Dashboard readings: stable digit widths, with the same quiet weight as controls.
+    static let metricValue = NSFont.monospacedDigitSystemFont(ofSize: 24, weight: .medium)
     static let title = NSFont.systemFont(ofSize: 15, weight: .bold)
     static let section = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     static let body = NSFont.systemFont(ofSize: 12.5, weight: .regular)
