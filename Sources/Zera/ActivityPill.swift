@@ -1036,15 +1036,32 @@ final class OrbView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        timer?.invalidate(); timer = nil
-        guard window != nil else { return }
+        if let o = occlusionObserver { NotificationCenter.default.removeObserver(o); occlusionObserver = nil }
+        guard let w = window else { stopClock(); return }
+        // The wings are off screen most of the day; the swirl's clock runs only while they're up.
+        occlusionObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in
+            self?.syncClock()
+        }
+        syncClock()
+    }
+
+    private var occlusionObserver: NSObjectProtocol?
+
+    private func syncClock() {
+        guard let w = window, w.occlusionState.contains(.visible) else { stopClock(); return }
+        guard timer == nil else { return }
         lastTick = CACurrentMediaTime()
         let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 
-    deinit { timer?.invalidate() }
+    private func stopClock() { timer?.invalidate(); timer = nil }
+
+    deinit {
+        timer?.invalidate()
+        if let o = occlusionObserver { NotificationCenter.default.removeObserver(o) }
+    }
 
     private func tick() {
         let now = CACurrentMediaTime()

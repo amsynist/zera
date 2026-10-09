@@ -11,7 +11,7 @@ import AppKit
 //  │ │    path·br   ▓▓▓░ 62% ■ … │   │  │ ┌ console ─────────────────────── ⧉ 🗑 ⤢ ┐    │
 //  │ └───────────────────────────┘   │  │ │ > Reading … ✓                          │    │
 //  │ …                               │  │ └────────────────────────────────────────┘    │
-//  │ (Z) Zera's tip ✨ …          ×  │  │ Current task / Working directory / Model      │
+//  │                                 │  │ Current task / Working directory / Model      │
 //  └─────────────────────────────────┘  │ [Ask Claude about this session…      ➤ ⌄]    │
 //                                       │ [Summarize][Explain][Find issues][Editor]     │
 //                                       └───────────────────────────────────────────────┘
@@ -30,9 +30,6 @@ private enum S {
     static let maxWidth: CGFloat = 1240
     static let maxHeight: CGFloat = 840
     static let minHeight: CGFloat = 600
-    static let singlePaneBelow: CGFloat = 980
-    /// The sessions list on its own (what tapping Claude opens).
-    static let leftWidth: CGFloat = 560
 }
 
 private func shortPath(_ path: String) -> String {
@@ -842,49 +839,6 @@ final class ClaudeFollowUpInput: NSView {
     }
 }
 
-// MARK: - Zera's tip
-
-final class ZeraSessionTip: NSView {
-    var onClose: (() -> Void)?
-    private let title = label(Typo.rowTitle, Pal.text)
-    private let body = label(Typo.body, Pal.textSecondary, lines: 2)
-    private var close: GHSquareButton!
-    override var isFlipped: Bool { true }
-    /// Zera stands just outside this view (left), so her head can rise over the top edge.
-    static let zeraRoom: CGFloat = 104
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        close = GHSquareButton(symbol: "xmark", label: "Dismiss tip", target: self, action: #selector(closeTapped))
-        [title, body, close!].forEach { addSubview($0) }
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    func set(title t: String, body b: String) {
-        title.stringValue = t
-        body.stringValue = b
-        setAccessibilityLabel("\(t). \(b)")
-    }
-
-    @objc private func closeTapped() { onClose?() }
-
-    override func layout() {
-        super.layout()
-        let w = bounds.width, h = bounds.height
-        close.frame = NSRect(x: w - 12 - 28, y: 12, width: 28, height: 28)
-        let x = Self.zeraRoom
-        title.frame = NSRect(x: x, y: 13, width: close.frame.minX - 8 - x, height: 19)
-        body.frame = NSRect(x: x, y: 34, width: w - 16 - x, height: h - 34 - 8)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let p = Pal
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l + 2, yRadius: Radius.l + 2)
-        NSGradient(starting: p.accentSoft.withAlphaComponent(p.isDark ? 0.55 : 0.6), ending: p.surfaceElevated)?.draw(in: path, angle: 0)
-        p.accentBorder.setStroke(); path.lineWidth = 1; path.stroke()
-    }
-}
-
 // MARK: - Info row (Files / Changes / Tools / Timeline)
 
 final class SessionInfoRow: NSView {
@@ -943,7 +897,6 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     // Filters survive the view being rebuilt (theme change).
     private static var filter = 0
     private static var query = ""
-    private static let tipKey = "zera.sessions.tipDismissed"
 
     private let left = GlassPanel()
     private let right = GlassPanel()
@@ -962,8 +915,6 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     private var rows: [String: ClaudeSessionRow] = [:]
     private var order: [String] = []
     private let leftState = GHStateView()
-    private let tip = ZeraSessionTip()
-    private let tipZera = NSImageView()
 
     // Right
     private var back: GHSquareButton!
@@ -1083,16 +1034,6 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         scroll.documentView = list
         left.addSubview(scroll)
         left.addSubview(leftState)
-        tip.onClose = { [weak self] in
-            guard let self = self else { return }
-            UserDefaults.standard.set(self.tipText().body, forKey: Self.tipKey)
-            self.reload()
-        }
-        left.addSubview(tip)
-        tipZera.imageScaling = .scaleProportionallyUpOrDown
-        tipZera.imageAlignment = .alignBottom
-        tipZera.image = SpriteLibrary.shared.sprite("card_laptop_side")?.image ?? SpriteLibrary.shared.sprite("laptop")?.image
-        left.addSubview(tipZera)
 
         // Right.
         back = GHSquareButton(symbol: "chevron.left", label: "All sessions", target: self, action: #selector(backTapped))
@@ -1203,17 +1144,6 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         return pending.first { $0.sessionID == s.id }?.command ?? (s.status == .waiting ? pending.first?.command : nil)
     }
 
-    private func tipText() -> (title: String, body: String) {
-        let all = svc.ordered
-        let running = all.filter { bucket($0) == .running }.count
-        let waiting = all.filter { bucket($0) == .waiting }.count
-        if !svc.isInstalled { return ("Zera's tip ✨", "Turn on live progress and I'll follow every Claude Code session for you.") }
-        if waiting > 0 { return ("Heads up 👋", "Claude is waiting on you in \(waiting) session\(waiting == 1 ? "" : "s") — tap ▶ to review.") }
-        if running > 0 { return ("Zera's tip ✨", "You have \(running) session\(running == 1 ? "" : "s") running. I'll let you know if anything needs your attention!") }
-        if all.isEmpty { return ("Zera's tip ✨", "Start a session with New Session — I'll follow along automatically.") }
-        return ("Zera's tip ✨", "All quiet. I'll ping you the moment Claude needs you.")
-    }
-
     // MARK: Reload
 
     @objc private func reloadIfVisible() {
@@ -1286,14 +1216,6 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
                 leftState.set(pose: "card_sleepy_sit", title: "No Claude sessions yet", subtitle: "Start one with New Session — I'll follow along.")
             }
         }
-
-        // Tip.
-        let t = tipText()
-        // The island has no room for the tip; the subtitle carries the counts instead.
-        let tipHidden = true || UserDefaults.standard.string(forKey: Self.tipKey) == t.body
-        tip.isHidden = tipHidden
-        tipZera.isHidden = tipHidden
-        tip.set(title: t.title, body: t.body)
 
         reloadRight()
         needsLayout = true
@@ -1472,7 +1394,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
 
         // Island header: title and counts left of Zera, New on the right. Her own pictures stay
         // hidden — she hangs in the middle of the header.
-        [claudeTile, peek, bubble, tipZera].forEach { $0.isHidden = true }
+        [claudeTile, peek, bubble].forEach { $0.isHidden = true }
         leftTitle.frame = ScreenHeader.titleFrame(width: w, padding: x)
         leftSub.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
         let bw = newSession.fittedWidth + 8
@@ -1484,7 +1406,6 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         search.frame = toolbar.search.offsetBy(dx: x, dy: 0)
         let y = toolbar.bottom + Space.m
 
-        tip.isHidden = true
         let listBottom = h - 14
         scroll.frame = NSRect(x: x - 4, y: y - 4, width: iw + 8, height: max(0, listBottom - y + 4))
         leftState.frame = NSRect(x: x, y: y, width: iw, height: max(0, listBottom - y))

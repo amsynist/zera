@@ -113,9 +113,8 @@ enum Metrics {
     static let cardPad: CGFloat = sidePad
 
     // v2: one set of sizes every screen shares.
-    /// Side padding inside the island; floating panels (Export, Focus card, App opener) use `panelPad`.
+    /// Side padding inside the island.
     static let sidePad: CGFloat = 32
-    static let panelPad: CGFloat = 24
     /// Segmented controls (Clipboard, Claude, GitHub, Reminders, file tabs, Tasks, Export).
     static let segment: CGFloat = 36
     static let segmentInset: CGFloat = 3
@@ -161,7 +160,6 @@ enum Typo {
     /// Dashboard readings: stable digit widths, with the same quiet weight as controls.
     static let metricValue = NSFont.monospacedDigitSystemFont(ofSize: 24, weight: .medium)
     static let title = NSFont.systemFont(ofSize: 15, weight: .bold)
-    static let section = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     static let body = NSFont.systemFont(ofSize: 12.5, weight: .regular)
     static let bodyMedium = NSFont.systemFont(ofSize: 12.5, weight: .medium)
     static let bodyStrong = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
@@ -179,8 +177,7 @@ enum Typo {
     /// v2: the lens title — large and tight, like the design's display face.
     static let screenTitle = NSFont.systemFont(ofSize: 25, weight: .bold)
     static let screenSubtitle = NSFont.systemFont(ofSize: 13, weight: .regular)
-    /// A banner's headline and its line under it.
-    static let bannerTitle = NSFont.systemFont(ofSize: 16, weight: .bold)
+    /// The line under a banner's headline.
     static let bannerDetail = NSFont.systemFont(ofSize: 13, weight: .regular)
     /// Upper-cased with `sectionKern`.
     static let sectionLabel = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
@@ -245,8 +242,6 @@ struct Palette {
 
     // Accent — main actions, the selected tab, toggles; a gradient from `accent` to `accentDeep`.
     var accent: NSColor { isDark ? t.accent : rgb(0.447, 0.310, 0.980) }
-    var accentHover: NSColor { isDark ? (t.accent.blended(withFraction: 0.15, of: .white) ?? t.accent) : rgb(0.520, 0.390, 1.0) }
-    var accentPressed: NSColor { isDark ? (t.accent.blended(withFraction: 0.15, of: .black) ?? t.accent) : rgb(0.380, 0.250, 0.880) }
     /// The accent washed into the surface: selected chips, tabs and rows.
     var accentSoft: NSColor { isDark ? (t.surface.blended(withFraction: 0.16, of: t.accent) ?? t.surface) : rgb(0.88, 0.84, 1.0) }
     /// The far end of the accent gradient.
@@ -264,7 +259,6 @@ struct Palette {
     var success: NSColor { isDark ? t.success : rgb(0.21, 0.89, 0.67) }
     var warning: NSColor { isDark ? t.warning : rgb(1.00, 0.74, 0.26) }
     var danger: NSColor { isDark ? t.danger : rgb(1.00, 0.33, 0.41) }
-    var dangerPressed: NSColor { danger.blended(withFraction: 0.15, of: .black) ?? danger }
     var info: NSColor { isDark ? t.info : rgb(0.30, 0.74, 1.00) }
     var muted: NSColor { isDark ? t.textTertiary : rgb(0.60, 0.58, 0.74) }
     /// The island's outline and glow.
@@ -296,9 +290,6 @@ struct Palette {
         }
     }
 
-    static var systemIsDark: Bool {
-        NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    }
 
     /// Always the dark navy look: every screen lives in the notch island, beside the dark wings.
     static var current: Palette { Palette(isDark: true) }
@@ -389,8 +380,6 @@ extension Palette {
     /// selection never does, so "what's chosen" and "what to do" never look alike.
     var selectedFill: NSColor { accent.withAlphaComponent(0.14) }
     var selectedEdge: NSColor { accent.withAlphaComponent(0.4) }
-    /// Counts and icons inside a selected chip or row.
-    var selectedAccent: NSColor { accent }
 
     func drawSelected(_ path: NSBezierPath) {
         selectedFill.setFill(); path.fill()
@@ -765,36 +754,6 @@ private func styleThemedField(_ f: NSTextField, placeholder: String) {
     f.layer?.borderWidth = 1
     f.layer?.borderColor = p.fieldBorder.cgColor
     f.setAccessibilityLabel(placeholder)
-}
-
-/// System popup dressed like a secondary button.
-func stylePopup(_ pop: NSPopUpButton) {
-    let p = Pal
-    pop.isBordered = false
-    pop.font = Typo.nav
-    pop.contentTintColor = p.text
-    pop.wantsLayer = true
-    pop.layer?.cornerRadius = Radius.m
-    pop.layer?.cornerCurve = .continuous
-    // v2 select: the surface with a hairline edge and one ⌄ on the right (no stepper arrows).
-    pop.layer?.backgroundColor = p.surface.cgColor
-    pop.layer?.borderWidth = 1
-    pop.layer?.borderColor = p.border.cgColor
-    (pop.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
-    let chevronID = NSUserInterfaceItemIdentifier("zera.select.chevron")
-    if !pop.subviews.contains(where: { $0.identifier == chevronID }) {
-        let chev = NSImageView()
-        chev.identifier = chevronID
-        chev.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 10, weight: .bold).applying(.init(paletteColors: [p.textSecondary])))
-        chev.translatesAutoresizingMaskIntoConstraints = false
-        pop.addSubview(chev)
-        NSLayoutConstraint.activate([chev.trailingAnchor.constraint(equalTo: pop.trailingAnchor, constant: -10),
-                                     chev.centerYAnchor.constraint(equalTo: pop.centerYAnchor)])
-    }
-    for item in pop.itemArray {
-        item.attributedTitle = NSAttributedString(string: item.title, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: p.text])
-    }
 }
 
 /// Rounded search box: magnifier + text field on one surface.

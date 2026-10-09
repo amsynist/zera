@@ -83,8 +83,6 @@ final class ClaudeProcessManager {
         _ = signal(SIGPIPE, SIG_IGN)
     }
 
-    var activeCount: Int { lock.lock(); defer { lock.unlock() }; return running.count }
-
     /// Launches the request. Events start arriving on the main thread shortly after.
     @discardableResult
     func launch(_ req: ClaudeProcessRequest) -> ClaudeProcessHandle {

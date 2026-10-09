@@ -69,7 +69,38 @@ final class AnthropicAPIClient {
 
     private init() {}
 
-    var isConfigured: Bool { KeychainStore.has(.apiKey) }
+    /// Whether a key is saved. The Keychain is asked once, off the main thread (a `SecItem`
+    /// lookup can block for a while), and again only after the key is changed here.
+    var isConfigured: Bool {
+        if let known = configuredCache { return known }
+        if !configuredLookup {
+            configuredLookup = true
+            DispatchQueue.global(qos: .userInitiated).async {
+                let has = KeychainStore.has(.apiKey)
+                DispatchQueue.main.async {
+                    self.configuredCache = has
+                    self.configuredLookup = false
+                    NotificationCenter.default.post(name: Self.configuredChanged, object: nil)
+                }
+            }
+        }
+        return false
+    }
+    /// Posted (on main) once the first `isConfigured` lookup has an answer.
+    static let configuredChanged = Notification.Name("AnthropicAPIConfiguredChanged")
+    private var configuredCache: Bool?
+    private var configuredLookup = false
+
+    /// Call after saving or deleting the key, so `isConfigured` is right at once.
+    func keyChanged(saved: Bool) { configuredCache = saved }
+
+    /// For a request you just made: the answer now, reading the Keychain if it is not known yet.
+    func isConfiguredNow() -> Bool {
+        if let known = configuredCache { return known }
+        let has = KeychainStore.has(.apiKey)
+        configuredCache = has
+        return has
+    }
 
     var model: String {
         get { UserDefaults.standard.string(forKey: Self.modelKey) ?? Self.defaultModel }

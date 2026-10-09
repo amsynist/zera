@@ -79,8 +79,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// No orphaned `claude` processes: stop any in-flight file analysis before quitting.
+    /// No orphaned `claude` processes: stop any in-flight file analysis before quitting. A
+    /// clipboard change still waiting for its debounced save is written now.
     func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated { ZeraAssistant.shared.cancelAll() }
+        ClipboardStore.shared.flush()
     }
 }

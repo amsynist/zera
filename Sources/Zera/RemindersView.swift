@@ -21,9 +21,7 @@ private enum RS {
     static let gap: CGFloat = 14
     static let pad: CGFloat = Metrics.sidePad
     static let mainWidth: CGFloat = Isle.lensWidth
-    static let sideWidth: CGFloat = 480
     static let maxHeight: CGFloat = 820
-    static let expandedHeight: CGFloat = 720
     static let tipH: CGFloat = 72
     static let rowGap: CGFloat = Metrics.rowGap
     /// Header (88) · tabs (34) · 10 · source chips (28) · 12, then the list.

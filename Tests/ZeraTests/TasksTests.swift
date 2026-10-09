@@ -348,4 +348,50 @@ final class TasksTests: XCTestCase {
         ex.format = .text
         shot(ex, "export-text")
     }
+
+    // MARK: Sleep and damaged files
+
+    func testTimeTheMacSleptIsNotFocus() {
+        let s = store()
+        s.add("Write docs 30m", focus: true)
+        clock += 10; s.tick()
+        clock += 10; s.tick()
+        // The lid closes: no ticks for eight hours, then the first one after waking.
+        clock += 8 * 3600; s.tick()
+        XCTAssertTrue(s.isRunning, "the session carries on after the wake")
+        XCTAssertEqual(s.spent(s.focus!), 20, accuracy: 1.5, "the gap between ticks does not count")
+        clock += 5; s.tick()
+        XCTAssertEqual(s.spent(s.focus!), 25, accuracy: 1.5)
+    }
+
+    func testAnUnreadableFileIsSetAsideNotOverwritten() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("zera-tasks-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("tasks.json")
+        try "{ \"tasks\": [ { \"title\": \"Half a".write(to: url, atomically: true, encoding: .utf8)
+        let s = TaskStore(url: url)
+        XCTAssertTrue(s.tasks.isEmpty)
+        s.add("New task")
+        s.flush()
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted()
+        XCTAssertEqual(names.count, 2, "the damaged file is kept beside the new one: \(names)")
+        XCTAssertTrue(names.contains { $0.hasPrefix("tasks.broken-") })
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent(names.first { $0.hasPrefix("tasks.broken-") }!), encoding: .utf8),
+                       "{ \"tasks\": [ { \"title\": \"Half a")
+    }
+
+    func testOlderTaskFilesWithMissingFieldsStillLoad() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("zera-tasks-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("tasks.json")
+        try #"{"tasks":[{"title":"Only a title"},{"title":"Done","created":"2026-10-01T09:00:00Z","doneAt":"2026-10-01T10:00:00Z","log":{"2026-10-01":600}}]}"#
+            .write(to: url, atomically: true, encoding: .utf8)
+        let s = TaskStore(url: url)
+        XCTAssertEqual(s.tasks.map(\.title), ["Only a title", "Done"])
+        XCTAssertEqual(s.tasks[0].estimate, 0)
+        XCTAssertEqual(s.tasks[1].spent, 600)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("tasks.broken").path))
+    }
 }

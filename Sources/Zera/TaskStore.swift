@@ -23,6 +23,24 @@ struct FocusTask: Codable, Equatable, Identifiable {
     /// Those commits as "repo · abc1234 · subject", to show how the task was made.
     var commitNotes: [String]?
 
+    init(id: UUID = UUID(), title: String, created: Date, estimate: Int) {
+        self.id = id; self.title = title; self.created = created; self.estimate = estimate
+    }
+
+    /// Reads older (or hand-edited) files too: only the title is required.
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try c.decode(String.self, forKey: .title)
+        created = try c.decodeIfPresent(Date.self, forKey: .created) ?? Date()
+        estimate = try c.decodeIfPresent(Int.self, forKey: .estimate) ?? 0
+        log = try c.decodeIfPresent([String: TimeInterval].self, forKey: .log) ?? [:]
+        doneAt = try c.decodeIfPresent(Date.self, forKey: .doneAt)
+        project = try c.decodeIfPresent(String.self, forKey: .project)
+        commits = try c.decodeIfPresent([String].self, forKey: .commits)
+        commitNotes = try c.decodeIfPresent([String].self, forKey: .commitNotes)
+    }
+
     var done: Bool { doneAt != nil }
     var spent: TimeInterval { log.values.reduce(0, +) }
     var fromCommits: Bool { !(commits ?? []).isEmpty }
@@ -82,7 +100,9 @@ final class TaskStore {
     /// Where tasks go when no project is named (changeable).
     private(set) var defaultProject = TaskStore.firstProject
     /// The project the Tasks screen shows (and adds to); nil is All.
-    var shownProject: String? { didSet { if shownProject != oldValue { saveAndPost() } } }
+    var shownProject: String? { didSet { if loaded, shownProject != oldValue { saveAndPost() } } }
+    /// Set once the file has been read, so nothing is written back while it is still being read.
+    private var loaded = false
     static let firstProject = "General"
     /// Projects linked to a code folder, by project name.
     private(set) var links: [String: ProjectLink] = [:]
@@ -108,6 +128,36 @@ final class TaskStore {
     init(url: URL?) {
         self.url = url
         load()
+        loaded = true
+        let nc = NSWorkspace.shared.notificationCenter
+        sleepObservers = [
+            nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.sleepBegan() },
+            nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.wokeUp() }
+        ]
+    }
+
+    deinit { sleepObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) } }
+    private var sleepObservers: [NSObjectProtocol] = []
+
+    // MARK: Sleep
+
+    /// A gap between ticks this long means the Mac was asleep (the clock does not tick then).
+    static let sleepGap: TimeInterval = 60
+    private var lastTickAt: Date?
+
+    /// Going to sleep: the time so far is booked; the session goes on from the wake, so the
+    /// hours the lid was closed never count as focus.
+    private func sleepBegan() {
+        guard isRunning else { return }
+        fold()
+        save()
+    }
+
+    private func wokeUp() {
+        guard isRunning else { return }
+        runningSince = now()
+        lastTickAt = nil
+        saveAndPost()
     }
 
     // MARK: Reading
@@ -305,19 +355,6 @@ final class TaskStore {
         saveAndPost()
     }
 
-    /// Forgets a project's commit-made tasks from the last `days` days, so the next sync makes
-    /// them again (regrouped). Tasks you added yourself stay.
-    func forgetCommitTasks(_ project: String, days: Int) {
-        guard var l = links[project] else { return }
-        let since = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -days, to: now()) ?? now())
-        let gone = tasks.filter { $0.fromCommits && self.project(of: $0) == project && ($0.doneAt ?? $0.created) >= since }
-        tasks.removeAll { t in gone.contains { $0.id == t.id } }
-        let shorts = Set(gone.flatMap { $0.commits ?? [] })
-        l.seen.removeAll { shorts.contains(String($0.prefix(7))) }
-        links[project] = l
-        saveAndPost()
-    }
-
     /// Done tasks made from a folder's commits, and how far it's been read. `replacing`: a rebuild —
     /// the project's commit tasks from that day on go in the same step the new ones come in, so a
     /// rebuild that's stopped partway never leaves the timesheet empty.
@@ -379,6 +416,7 @@ final class TaskStore {
     private func startTimer() {
         guard timer == nil else { return }
         ticks = 0
+        lastTickAt = nil
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
         t.tolerance = 0.1
         RunLoop.main.add(t, forMode: .common)
@@ -391,6 +429,15 @@ final class TaskStore {
     /// loses little, and time lands on the right day), and pause when you've walked away.
     func tick() {
         guard isRunning else { stopTimer(); return }
+        let t = now()
+        if let last = lastTickAt, t.timeIntervalSince(last) > Self.sleepGap {
+            // The clock stood still: the Mac slept (and the sleep notice was missed). Time up to
+            // the last tick counts; the gap does not.
+            fold(until: last)
+            runningSince = t
+            saveAndPost()
+        }
+        lastTickAt = t
         let idle = idleSeconds()
         if idle >= Self.idleLimit, let f = focus {
             fold(until: now().addingTimeInterval(-idle))
@@ -426,6 +473,9 @@ final class TaskStore {
     // MARK: Saving
 
     private struct Saved: Codable {
+        /// The file's format; readers tolerate missing fields, so this only needs to go up for
+        /// a change they cannot absorb.
+        var version: Int? = 1
         var tasks: [FocusTask]
         var focus: UUID?
         var projects: [String]?
@@ -437,8 +487,14 @@ final class TaskStore {
     private func load() {
         let dec = JSONDecoder()
         dec.dateDecodingStrategy = .iso8601
-        guard let url = url, let data = try? Data(contentsOf: url),
-              let saved = try? dec.decode(Saved.self, from: data) else { return }
+        guard let url = url, let data = try? Data(contentsOf: url) else { return }
+        guard let saved = try? dec.decode(Saved.self, from: data) else {
+            // An unreadable file (a cut-off write, a hand edit) is set aside, never written
+            // over by the empty list that would otherwise be saved next.
+            let stamp = Int(now().timeIntervalSince1970)
+            try? FileManager.default.moveItem(at: url, to: url.deletingPathExtension().appendingPathExtension("broken-\(stamp).json"))
+            return
+        }
         tasks = saved.tasks
         // Tasks made from commits are done work with nothing to aim for (older ones had a made-up estimate).
         for i in tasks.indices where tasks[i].fromCommits { tasks[i].estimate = 0 }
@@ -456,13 +512,22 @@ final class TaskStore {
         tasks.removeAll { ($0.doneAt ?? .distantFuture) < cutoff }
     }
 
+    /// Writes go here in order; the file (every commit hash of every linked repo) is not small,
+    /// and it is saved every 30 s while a timer runs.
+    private let saveQueue = DispatchQueue(label: "ai.zera.tasks-save", qos: .utility)
+
     private func save() {
         guard let url = url else { return }
+        let snapshot = Saved(tasks: tasks, focus: focusID, projects: projects, defaultProject: defaultProject, shownProject: shownProject, links: links)
+        saveQueue.async { Self.write(snapshot, to: url) }
+    }
+
+    private static func write(_ saved: Saved, to url: URL) {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         enc.dateEncodingStrategy = .iso8601
-        if let data = try? enc.encode(Saved(tasks: tasks, focus: focusID, projects: projects, defaultProject: defaultProject, shownProject: shownProject, links: links)) {
+        if let data = try? enc.encode(saved) {
             try? data.write(to: url, options: .atomic)
         }
     }
@@ -472,6 +537,10 @@ final class TaskStore {
         NotificationCenter.default.post(name: Self.changed, object: self)
     }
 
-    /// Fold the running session in before Zera quits.
-    func flush() { fold(); save() }
+    /// Fold the running session in and finish writing before Zera quits.
+    func flush() {
+        fold()
+        save()
+        saveQueue.sync {}
+    }
 }

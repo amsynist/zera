@@ -51,7 +51,6 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     private let treeDoc = OpenerFlipped()
     private let dimLines = CAShapeLayer()
     private let litLines = CAShapeLayer()
-    private var lineViews: [NSView] = []
     // The chosen item, on the right.
     private let detail = OpenerFlipped()
     private let dIcon = NSImageView()
@@ -1613,26 +1612,3 @@ private enum TV {
     static let rowX: [CGFloat] = [50, 68, 97, 125]
 }
 
-private extension String {
-    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
-}
-
-
-private func highlighted(_ name: String, _ hits: [Int], size: CGFloat, weight: NSFont.Weight) -> NSAttributedString {
-    let s = NSMutableAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: Neon.text])
-    let chars = Array(name)
-    var offset = 0
-    for (i, c) in chars.enumerated() {
-        let len = String(c).utf16.count
-        if hits.contains(i) {
-            s.addAttributes([.foregroundColor: Neon.cyan, .font: NSFont.systemFont(ofSize: size, weight: .bold)],
-                            range: NSRange(location: offset, length: len))
-        }
-        offset += len
-    }
-    return s
-}
-
-private extension Array {
-    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
-}

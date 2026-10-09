@@ -874,7 +874,8 @@ final class SettingsCard: CardBase, CardContent {
         addSubview(scrollArrow)
         paneScroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(updateScrollHint), name: NSView.boundsDidChangeNotification, object: paneScroll.contentView)
-        for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed, ClaudeActivityService.changed] {
+        for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed,
+                     ClaudeActivityService.changed, AnthropicAPIClient.configuredChanged] {
             NotificationCenter.default.addObserver(self, selector: #selector(serviceChanged), name: name, object: nil)
         }
         rebuildPane()
@@ -1778,6 +1779,7 @@ final class SettingsCard: CardBase, CardContent {
         guard !key.isEmpty else { say?("paste a key first 🙂", .thinking); return }
         f.stringValue = ""
         guard KeychainStore.write(key, to: .apiKey) else { say?("Keychain said no 😬", .worried); return }
+        AnthropicAPIClient.shared.keyChanged(saved: true)
         say?("key saved to your Keychain 🔐", .approved)
         apiTestResult = nil
         rebuildPane()
@@ -1786,6 +1788,7 @@ final class SettingsCard: CardBase, CardContent {
 
     @objc private func removeKeyTapped() {
         KeychainStore.delete(.apiKey)
+        AnthropicAPIClient.shared.keyChanged(saved: false)
         apiTestResult = nil
         say?("key removed", .idle)
         rebuildPane()
@@ -1985,7 +1988,6 @@ final class ApprovalCard: CardBase, CardContent {
         let hook = ClaudeHookService.shared, p = Pal
         current = hook.pending.first
         guard let req = current else { onDrained?(); return }
-        titleLabel.stringValue = req.toolName == "Bash" ? "Claude wants to run a command" : "Claude wants to use \(req.toolName)"
         setSubtitle(req.cwd.isEmpty ? (req.sessionID.isEmpty ? nil : "Session \(req.sessionID.prefix(8))") : req.cwdDisplay)
         titleLabel.stringValue = req.toolName == "Bash" ? "Run this command?" : "Use \(req.toolName)?"
         counter.stringValue = hook.pending.count > 1 ? "1 of \(hook.pending.count)" : ""
@@ -2007,19 +2009,25 @@ final class ApprovalCard: CardBase, CardContent {
         onHeightChange?()
     }
 
+    /// ⏎ and esc answer one request each: a held key does not run through the queue.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.isARepeat { return true }
+        return super.performKeyEquivalent(with: event)
+    }
+
     @objc private func approveTapped() {
         guard let req = current else { return }
         approve.isEnabled = false; reject.isEnabled = false
+        guard ClaudeHookService.shared.respond(req, allow: true) else { return }
         SoundService.shared.play(.claudeApproved)
-        ClaudeHookService.shared.respond(req, allow: true)
         say?("approved ✅", .approved)
     }
 
     @objc private func rejectTapped() {
         guard let req = current else { return }
         approve.isEnabled = false; reject.isEnabled = false
+        guard ClaudeHookService.shared.respond(req, allow: false) else { return }
         SoundService.shared.play(.claudeRejected)
-        ClaudeHookService.shared.respond(req, allow: false)
         say?("okay, not running that", .sad)
     }
 
