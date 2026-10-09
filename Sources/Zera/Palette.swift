@@ -21,6 +21,89 @@ enum Radius {
     static let card: CGFloat = 18  // the card itself
 }
 
+/// Shared island header geometry, including controls centred on the title row.
+enum ScreenHeader {
+    static let titleTop: CGFloat = 56
+    static let titleHeight: CGFloat = 32
+    static let subtitleTop = titleTop + 34
+    static let subtitleHeight: CGFloat = 18
+    /// Actions beside a title and subtitle align to the centre of that whole block.
+    static func blockControlY(_ height: CGFloat) -> CGFloat {
+        titleTop + (subtitleTop + subtitleHeight - titleTop - height) / 2
+    }
+    static func controlY(_ height: CGFloat) -> CGFloat { titleTop + (titleHeight - height) / 2 }
+    static func titleFrame(width: CGFloat, padding: CGFloat = Metrics.cardPad) -> NSRect {
+        NSRect(x: padding, y: titleTop, width: max(0, width / 2 - Isle.zeraGap / 2 - padding), height: titleHeight)
+    }
+    static func subtitleFrame(width: CGFloat, padding: CGFloat = Metrics.cardPad) -> NSRect {
+        var frame = titleFrame(width: width, padding: padding)
+        frame.origin.y = subtitleTop; frame.size.height = subtitleHeight
+        return frame
+    }
+    static func trailingRect(width: CGFloat) -> NSRect {
+        let x = width / 2 + Isle.zeraGap / 2
+        return NSRect(x: x, y: controlY(Metrics.headerButton), width: max(0, width - Metrics.cardPad - x), height: Metrics.headerButton)
+    }
+    static func detailTitleFrame(width: CGFloat, padding: CGFloat) -> NSRect {
+        var frame = titleFrame(width: width, padding: padding)
+        let leading = Metrics.headerButton + Space.m
+        frame.origin.x += leading; frame.size.width = max(0, frame.width - leading)
+        frame.origin.y = controlY(22); frame.size.height = 22
+        return frame
+    }
+    static func detailSubtitleFrame(width: CGFloat, padding: CGFloat) -> NSRect {
+        var frame = detailTitleFrame(width: width, padding: padding)
+        frame.origin.y = subtitleTop; frame.size.height = subtitleHeight
+        return frame
+    }
+}
+
+/// Wrap content-sized controls, sharing unused row width equally between them.
+enum FlowLayout {
+    static func frames(widths: [CGFloat], available: CGFloat, height: CGFloat, gap: CGFloat = Space.s) -> [NSRect] {
+        guard available > 0 else { return [] }
+        var result: [NSRect] = [], row: [CGFloat] = []
+        var used: CGFloat = 0, y: CGFloat = 0
+        func finishRow() {
+            guard !row.isEmpty else { return }
+            let extra = max(0, available - used) / CGFloat(row.count)
+            var x: CGFloat = 0
+            for (index, width) in row.enumerated() {
+                let edge = index == row.count - 1 ? available : (x + width + extra).rounded(.down)
+                result.append(NSRect(x: x, y: y, width: max(0, edge - x), height: height))
+                x = edge + gap
+            }
+            y += height + gap; row = []; used = 0
+        }
+        for natural in widths {
+            let width = min(natural, available)
+            if !row.isEmpty && used + gap + width > available { finishRow() }
+            used += (row.isEmpty ? 0 : gap) + width
+            row.append(width)
+        }
+        finishRow()
+        return result
+    }
+}
+
+/// Filters and search share a row when both fit; compact screens keep both on separate rows.
+struct SearchToolbarLayout {
+    let filters: NSRect
+    let search: NSRect
+    let bottom: CGFloat
+    init(width: CGFloat, filtersWidth: CGFloat, top: CGFloat) {
+        let leading = min(width, filtersWidth)
+        if width - leading - Space.m >= 160 {
+            filters = NSRect(x: 0, y: top + (Metrics.field - Metrics.segment) / 2, width: leading, height: Metrics.segment)
+            search = NSRect(x: leading + Space.m, y: top, width: width - leading - Space.m, height: Metrics.field)
+        } else {
+            filters = NSRect(x: 0, y: top, width: leading, height: Metrics.segment)
+            search = NSRect(x: 0, y: top + Metrics.segment + Space.s, width: width, height: Metrics.field)
+        }
+        bottom = search.maxY
+    }
+}
+
 enum Metrics {
     static let row: CGFloat = 44        // list rows
     static let control: CGFloat = 28    // fields, popups, inline buttons
@@ -44,6 +127,7 @@ enum Metrics {
     static let headerButton: CGFloat = 34
     static let rowButton: CGFloat = 28
     /// Gap between list rows.
+    static let settingRow: CGFloat = 54
     static let rowGap: CGFloat = 8
 }
 
@@ -70,6 +154,12 @@ enum RowTier {
 }
 
 enum Typo {
+    static let detailTitle = NSFont.systemFont(ofSize: 16, weight: .medium)
+    static let paneTitle = NSFont.systemFont(ofSize: 17, weight: .medium)
+    static let settingLabel = NSFont.systemFont(ofSize: 14, weight: .medium)
+    static let control = NSFont.systemFont(ofSize: 13, weight: .medium)
+    /// Dashboard readings: stable digit widths, with the same quiet weight as controls.
+    static let metricValue = NSFont.monospacedDigitSystemFont(ofSize: 24, weight: .medium)
     static let title = NSFont.systemFont(ofSize: 15, weight: .bold)
     static let section = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     static let body = NSFont.systemFont(ofSize: 12.5, weight: .regular)
@@ -77,10 +167,13 @@ enum Typo {
     static let bodyStrong = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     static let secondary = NSFont.systemFont(ofSize: 11.5, weight: .regular)
     static let caption = NSFont.systemFont(ofSize: 11, weight: .regular)
-    static let button = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+    static let button = NSFont.systemFont(ofSize: 13, weight: .medium)
     static let badge = NSFont.systemFont(ofSize: 10.5, weight: .bold)
     static let nav = NSFont.systemFont(ofSize: 12, weight: .medium)
     static let mono = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .medium)
+    /// Compact uppercase branch labels, shared by both opener styles.
+    static let branchLabel = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold)
+    static let branchKern: CGFloat = 1.1
 
     // v2: the seven roles every screen shares.
     /// v2: the lens title — large and tight, like the design's display face.
@@ -92,11 +185,11 @@ enum Typo {
     /// Upper-cased with `sectionKern`.
     static let sectionLabel = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
     static let sectionKern: CGFloat = 0.8
-    static let rowTitle = NSFont.systemFont(ofSize: 14, weight: .semibold)
+    static let rowTitle = NSFont.systemFont(ofSize: 14, weight: .medium)
     static let rowTitleStrong = NSFont.systemFont(ofSize: 14, weight: .semibold)
     static let meta = NSFont.systemFont(ofSize: 12.5, weight: .regular)
     /// Segments and chips: the same weight selected or not, so nothing shifts when you pick one.
-    static let chip = NSFont.systemFont(ofSize: 13, weight: .semibold)
+    static let chip = NSFont.systemFont(ofSize: 13, weight: .medium)
     static let count = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
 
     /// A section label ("NEEDS YOU", "TO DO · 4"): upper-cased, quiet, slightly spaced.
@@ -224,7 +317,7 @@ var Pal: Palette { Palette.current }
 // MARK: - Buttons
 
 /// The island's one button family: rounded 32 pt buttons. A quiet chip by default. The main
-/// action is filled with the theme's accent gradient and done / approve is filled green, so what
+/// action uses a muted theme-tinted surface gradient and done / approve is tinted green, so what
 /// to press stands out; stop / reject / delete and warnings stay a soft tint with an edge.
 enum ButtonTone { case neutral, accent, success, danger, warning }
 
@@ -259,24 +352,20 @@ extension Palette {
             path.lineWidth = 1; path.stroke()
             return text.withAlphaComponent(enabled ? 1 : 0.55)
         case .accent:
-            // v2: the main action is a diagonal gradient from the accent to its deep end, with a
-            // soft glow in the accent under it. Hover lifts it a touch, press sinks it.
-            let lift: CGFloat = pressed && enabled ? -0.12 : (lit ? 0.08 : 0)
-            func adj(_ c: NSColor) -> NSColor { (lift >= 0 ? c.blended(withFraction: lift, of: .white) : c.blended(withFraction: -lift, of: .black)) ?? c }
-            let a = adj(accent).withAlphaComponent(dim), b = adj(accentDeep).withAlphaComponent(dim)
-            if enabled && !pressed {
-                NSGraphicsContext.saveGraphicsState()
-                let glow = NSShadow()
-                glow.shadowColor = accent.withAlphaComponent(lit ? 0.5 : 0.35)
-                glow.shadowBlurRadius = lit ? 14 : 11
-                glow.shadowOffset = NSSize(width: 0, height: (NSGraphicsContext.current?.isFlipped ?? false) ? 3 : -3)
-                glow.set()
-                b.setFill(); path.fill()
-                NSGraphicsContext.restoreGraphicsState()
-            }
+            // Keep all paint inside the rounded silhouette. A blurred shadow drawn into a
+            // layer-backed control is clipped by its rectangular backing and leaves a patch
+            // around the corners. Depth comes from the quiet surface gradient and edge.
+            let mix: CGFloat = pressed && enabled ? 0.16 : (lit ? 0.28 : 0.22)
+            let top = (surfaceElevated.blended(withFraction: mix, of: accent) ?? surfaceElevated).withAlphaComponent(dim)
+            let bottom = (surface.blended(withFraction: mix * 0.65, of: accentDeep) ?? surface).withAlphaComponent(dim)
+            NSGraphicsContext.saveGraphicsState()
+            path.addClip()
             let flipped = NSGraphicsContext.current?.isFlipped ?? false
-            NSGradient(starting: a, ending: b)?.draw(in: path, angle: flipped ? 35 : -35)
-            return onAccent.withAlphaComponent(enabled ? 1 : 0.7)
+            NSGradient(starting: top, ending: bottom)?.draw(in: path, angle: flipped ? -90 : 90)
+            NSGraphicsContext.restoreGraphicsState()
+            accent.withAlphaComponent((lit ? 0.45 : 0.30) * dim).setStroke()
+            path.lineWidth = 1; path.stroke()
+            return text.withAlphaComponent(enabled ? 1 : 0.55)
         case .success:
             // Done / approve: a tint of green with a green edge, like the design's quiet "good".
             let c = success

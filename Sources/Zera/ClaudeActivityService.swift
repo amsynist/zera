@@ -232,21 +232,33 @@ final class ClaudeActivityService {
     /// half a second while Zera is running. The hook starts a fresh file on its next event.
     private func poll() {
         expireReplies()
-        guard fm.fileExists(atPath: logURL.path) else { return }
+        guard fm.fileExists(atPath: logURL.path) else {
+            let count = sessions.count
+            prune()
+            if sessions.count != count { NotificationCenter.default.post(name: Self.changed, object: nil) }
+            return
+        }
         try? fm.removeItem(at: claimedURL)
         guard (try? fm.moveItem(at: logURL, to: claimedURL)) != nil else { return }
         let data = (try? Data(contentsOf: claimedURL)) ?? Data()
         try? fm.removeItem(at: claimedURL)
-        var buf = carry + data
+        let buf = carry + data
         var changed = false
-        while let nl = buf.firstIndex(of: UInt8(ascii: "\n")) {
-            let line = buf.subdata(in: buf.startIndex..<nl)
-            buf.removeSubrange(buf.startIndex...nl)
+        carry = Self.consumeLines(buf) { line in
             if let obj = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] { apply(obj); changed = true }
         }
-        carry = buf
         prune()
         if changed { NotificationCenter.default.post(name: Self.changed, object: nil) }
+    }
+
+    /// Consume a batch without repeatedly copying the remaining tail for every event.
+    nonisolated static func consumeLines(_ data: Data, _ body: (Data) -> Void) -> Data {
+        var start = data.startIndex
+        while let newline = data[start...].firstIndex(of: UInt8(ascii: "\n")) {
+            body(data.subdata(in: start..<newline))
+            start = data.index(after: newline)
+        }
+        return data.subdata(in: start..<data.endIndex)
     }
 
     private func prune() {

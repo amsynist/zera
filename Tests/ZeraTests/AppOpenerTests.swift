@@ -164,7 +164,7 @@ final class AppOpenerTests: XCTestCase {
         XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:))))
         XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveUp(_:))))
         view.prepare()
-        XCTAssertEqual(field.placeholderAttributedString?.string, "Open an app…")
+        XCTAssertEqual(field.placeholderAttributedString?.string, "Search apps, commands, or actions…")
         XCTAssertEqual(field.stringValue, "")
     }
 
@@ -186,7 +186,12 @@ final class AppOpenerTests: XCTestCase {
             timestamp: 0, windowNumber: 0, context: nil, characters: "2", charactersIgnoringModifiers: "2",
             isARepeat: false, keyCode: 19))
         XCTAssertTrue(view.performKeyEquivalent(with: key))
-        guard case .screenshot? = opened else { return XCTFail("⌘2 opens the second item showing") }
+        let captions = descendants(view).compactMap { $0 as? OrbitCaption }.sorted { $0.frame.midX < $1.frame.midX }
+        XCTAssertEqual(captions.map(\.key), (1...captions.count).map { "⌘\($0)" }, "shortcuts follow the visual left-to-right order")
+        let second = try XCTUnwrap(captions.first { $0.key == "⌘2" })
+        XCTAssertEqual(opened.map { OpenerActions.title($0) }, second.title, "⌘2 opens the second visible tile")
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertBacktab(_:))))
+        XCTAssertEqual(view.openBranchTitle, "COMMANDS")
     }
 
     func testTypingOpensEveryBranchWithItsMatches() throws {
@@ -195,6 +200,252 @@ final class AppOpenerTests: XCTestCase {
         XCTAssertTrue(view.visibleRowTitles.contains("Kill Process"))
         XCTAssertTrue(view.visibleRowTitles.contains("Kill Port"))
         XCTAssertFalse(view.visibleRowTitles.contains("Clipboard History"))
+    }
+
+    func testThreeSearchResultsSurroundTheSelectedTile() throws {
+        let (view, field) = try opener()
+        type("kill", view, field)
+        let tiles = descendants(view).compactMap { $0 as? OrbitTile }.filter { $0.alphaValue > 0 }
+        XCTAssertEqual(tiles.count, 3)
+        let chosen = try XCTUnwrap(tiles.first { $0.chosen })
+        XCTAssertEqual(tiles.filter { $0.frame.midX < chosen.frame.midX }.count, 1)
+        XCTAssertEqual(tiles.filter { $0.frame.midX > chosen.frame.midX }.count, 1)
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveRight(_:))))
+        XCTAssertNotEqual(tiles.first { $0.chosen }?.title, chosen.title, "arrows browse while a search query is present")
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveLeft(_:))))
+        XCTAssertEqual(tiles.first { $0.chosen }?.title, chosen.title)
+    }
+
+    private func descendants(_ parent: NSView) -> [NSView] {
+        parent.subviews.flatMap { [$0] + descendants($0) }
+    }
+
+    @MainActor
+    func testWindowRoutesKeysAfterSearchLosesFocus() throws {
+        _ = NSApplication.shared
+        let saved = UserDefaults.standard.object(forKey: "appOpener.style")
+        defer { UserDefaults.standard.set(saved, forKey: "appOpener.style") }
+        AppOpenerSettings.style = .orbit
+        let manager = AppOpener()
+        manager.open(notch: NSRect(x: 340, y: 730, width: 180, height: 30), screen: NSRect(x: 0, y: 0, width: 860, height: 760))
+        defer { manager.close(); RunLoop.main.run(until: Date().addingTimeInterval(0.35)) }
+        let view = try XCTUnwrap(manager.panel.contentView as? AppOpenerView)
+        let button = NSButton(title: "Focus elsewhere", target: nil, action: nil)
+        view.addSubview(button)
+        XCTAssertTrue(manager.panel.makeFirstResponder(button))
+        func key(_ code: UInt16, _ characters: String, mods: NSEvent.ModifierFlags = []) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0,
+                windowNumber: manager.panel.windowNumber, context: nil, characters: characters,
+                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
+        }
+        manager.panel.sendEvent(try key(48, "\t"))
+        XCTAssertEqual(view.openBranchTitle, "COMMANDS")
+        manager.panel.sendEvent(try key(124, "\u{f703}"))
+        XCTAssertTrue(manager.panel.performKeyEquivalent(with: try key(46, "m", mods: .command)))
+        XCTAssertTrue(view.isShowingActions)
+        XCTAssertFalse(manager.panel.isMiniaturized)
+        XCTAssertTrue(manager.panel.makeFirstResponder(button))
+        manager.panel.sendEvent(try key(53, "\u{1b}"))
+        XCTAssertFalse(view.isShowingActions)
+        XCTAssertTrue(manager.isOpen, "Esc leaves the action node before closing the opener")
+        manager.panel.sendEvent(try key(53, "\u{1b}"))
+        XCTAssertFalse(manager.isOpen)
+        // A second Esc dismisses immediately even while the exit animation is running.
+        manager.panel.sendEvent(try key(53, "\u{1b}"))
+        XCTAssertFalse(manager.panel.isVisible)
+        XCTAssertNil(manager.panel.contentView)
+    }
+
+    @MainActor
+    func testClassicWindowRoutesEveryArrowAfterFocusChanges() throws {
+        _ = NSApplication.shared
+        let saved = UserDefaults.standard.object(forKey: "appOpener.style")
+        defer { UserDefaults.standard.set(saved, forKey: "appOpener.style") }
+        AppOpenerSettings.style = .tree
+        let manager = AppOpener()
+        manager.open(notch: NSRect(x: 370, y: 870, width: 180, height: 30), screen: NSRect(x: 0, y: 0, width: 1024, height: 900))
+        defer { manager.close(); RunLoop.main.run(until: Date().addingTimeInterval(0.35)) }
+        let view = try XCTUnwrap(manager.panel.contentView as? TreeOpenerView)
+        view.previewType("kill")
+        let other = NSButton(title: "Focus elsewhere", target: nil, action: nil)
+        view.addSubview(other)
+        func key(_ code: UInt16, _ characters: String, mods: NSEvent.ModifierFlags = []) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0,
+                windowNumber: manager.panel.windowNumber, context: nil, characters: characters,
+                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
+        }
+        func selectedTitle() throws -> String {
+            try XCTUnwrap(descendants(view).compactMap { $0 as? TreeRowView }.first { $0.selected }?.accessibilityLabel())
+        }
+        for (forward, backward) in [(UInt16(124), UInt16(123)), (125, 126)] {
+            XCTAssertTrue(manager.panel.makeFirstResponder(other))
+            let before = try selectedTitle()
+            manager.panel.sendEvent(try key(forward, ""))
+            XCTAssertNotEqual(try selectedTitle(), before)
+            manager.panel.sendEvent(try key(backward, ""))
+            XCTAssertEqual(try selectedTitle(), before)
+        }
+        // Active input composition keeps navigation keys; an inactive editor cannot steal them.
+        XCTAssertTrue(manager.panel.makeFirstResponder(view.searchField))
+        let editor = try XCTUnwrap(manager.panel.firstResponder as? NSTextView)
+        editor.setMarkedText("k", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertTrue(editor.hasMarkedText())
+        XCTAssertFalse(view.handleKeyEvent(try key(125, "")))
+        XCTAssertTrue(manager.panel.makeFirstResponder(other))
+        editor.setMarkedText("k", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertTrue(view.handleKeyEvent(try key(125, "")))
+        editor.unmarkText()
+        view.previewType("kill")
+        XCTAssertTrue(manager.panel.performKeyEquivalent(with: try key(46, "m", mods: .command)))
+        XCTAssertTrue(view.isShowingActions)
+        XCTAssertTrue(manager.panel.makeFirstResponder(other))
+        manager.panel.sendEvent(try key(53, ""))
+        XCTAssertFalse(view.isShowingActions)
+        manager.panel.sendEvent(try key(53, ""))
+        XCTAssertFalse(manager.isOpen)
+    }
+
+    @MainActor
+    func testRapidCloseReopenDoesNotHideTheNewPresentation() throws {
+        _ = NSApplication.shared
+        let manager = AppOpener()
+        let screen = NSRect(x: 0, y: 0, width: 860, height: 760)
+        let notch = NSRect(x: 340, y: 730, width: 180, height: 30)
+        var changes: [Bool] = []
+        manager.onOpenChanged = { changes.append($0) }
+        manager.open(notch: notch, screen: screen)
+        manager.close()
+        manager.open(notch: notch, screen: screen)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertTrue(manager.isOpen)
+        XCTAssertTrue(manager.panel.isVisible)
+        manager.close()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertFalse(manager.panel.isVisible)
+        XCTAssertNil(manager.panel.contentView)
+        XCTAssertEqual(changes, [true, true, false])
+    }
+
+    func testHoverZoomKeepsTheIconCentreFixedAndReverses() throws {
+        let tile = OrbitTile(frame: NSRect(x: 0, y: 0, width: 120, height: 120))
+        let layer = try XCTUnwrap(tile.layer)
+        let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: 0, windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 0))
+        // AppKit's backing layer can use either anchor; both must grow from the centre.
+        for anchor: CGFloat in [0, 0.5] {
+            layer.anchorPoint = CGPoint(x: anchor, y: anchor)
+            tile.mouseEntered(with: event)
+            let t = layer.transform
+            let centre = tile.bounds.width * (0.5 - anchor)
+            XCTAssertGreaterThan(t.m11, 1)
+            XCTAssertEqual(centre * t.m11 + t.m41, centre, accuracy: 0.001)
+            XCTAssertEqual(centre * t.m22 + t.m42, centre, accuracy: 0.001)
+            tile.mouseExited(with: event)
+            XCTAssertTrue(CATransform3DIsIdentity(layer.transform))
+        }
+    }
+
+    func testOrbitGuidanceFitsOnShortDisplays() throws {
+        for height: CGFloat in [600, 768, 900] {
+            let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: height))
+            view.prepare()
+            view.layoutSubtreeIfNeeded()
+            let guidance = try XCTUnwrap(descendants(view).compactMap { $0 as? NSTextField }
+                .first { $0.stringValue.contains("Browse") })
+            XCTAssertLessThanOrEqual(guidance.frame.maxY, height - 16, "guidance fits at \(height) pt")
+        }
+    }
+
+    func testActionListFitsOnCompactDisplay() throws {
+        var ready = !AppCatalog.shared.apps.isEmpty
+        AppCatalog.shared.refreshIfNeeded { ready = true }
+        let deadline = Date().addingTimeInterval(8)
+        while !ready, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        XCTAssertTrue(ready)
+        let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1024, height: 600))
+        view.prepare()
+        let otherCaption = try XCTUnwrap(descendants(view).compactMap { $0 as? OrbitCaption }.first { !$0.chosen })
+        otherCaption.onClick?()
+        XCTAssertTrue(descendants(view).compactMap { $0 as? OrbitCaption }.contains { $0.chosen && $0.title == otherCaption.title },
+                      "clicking an app name selects its icon")
+        view.previewType("safari")
+        view.layoutSubtreeIfNeeded()
+        let rootVisible = descendants(view).filter { !$0.isHidden }
+        let rootGuidance = try XCTUnwrap(rootVisible.compactMap { $0 as? NSTextField }.first { $0.stringValue.contains("Browse") })
+        XCTAssertLessThanOrEqual(rootGuidance.frame.maxY, 584)
+        for caption in rootVisible.compactMap({ $0 as? OrbitCaption }) {
+            XCTAssertLessThanOrEqual(caption.frame.maxY, 584)
+            XCTAssertNotNil(caption.onClick)
+        }
+        view.previewActions()
+        view.layoutSubtreeIfNeeded()
+        XCTAssertTrue(view.isShowingActions)
+        let visible = descendants(view).filter { !$0.isHidden }
+        let guidance = try XCTUnwrap(visible.compactMap { $0 as? NSTextField }.first { $0.stringValue.contains("Browse actions") })
+        XCTAssertLessThanOrEqual(guidance.frame.maxY, 584)
+        let scroll = try XCTUnwrap(visible.compactMap { $0 as? NSScrollView }.first)
+        XCTAssertLessThanOrEqual(scroll.convert(scroll.bounds, to: view).maxY, 584)
+        let rows = descendants(view).compactMap { $0 as? TreeRowView }
+        XCTAssertFalse(rows.isEmpty)
+        if rows.count <= 7 {
+            for row in rows { XCTAssertLessThanOrEqual(row.frame.maxY, scroll.documentVisibleRect.maxY + 1) }
+        }
+    }
+
+    @MainActor
+    func testActionTransitionCanReverseWithoutLeavingDuplicateIcons() async throws {
+        _ = NSApplication.shared
+        var ready = !AppCatalog.shared.apps.isEmpty
+        AppCatalog.shared.refreshIfNeeded { ready = true }
+        let deadline = Date().addingTimeInterval(8)
+        while !ready, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
+        XCTAssertTrue(ready)
+        let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800))
+        let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = view
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil); window.contentView = nil }
+        view.prepare()
+        func flights() -> [NSImageView] {
+            descendants(view).compactMap { $0 as? NSImageView }.filter { $0.layer?.animation(forKey: "actionFlight") != nil }
+        }
+        view.previewActions()
+        if !Motion.reduced {
+            XCTAssertEqual(flights().count, 1, "the selected icon moves continuously into the header")
+            let rows = descendants(view).compactMap { $0 as? TreeRowView }
+            let delays = rows.compactMap { $0.layer?.animation(forKey: "actionFade")?.beginTime }
+            XCTAssertGreaterThan(delays.count, 1)
+            XCTAssertEqual(delays, delays.sorted(), "options unfold in order")
+            let flight = try XCTUnwrap(flights().first)
+            let holder = try XCTUnwrap(flight.superview)
+            let header = try XCTUnwrap(descendants(view).compactMap { $0 as? NSImageView }.first {
+                $0 !== flight && $0.image === flight.image && $0.bounds.width == 34
+            })
+            let flyingLayer = try XCTUnwrap(flight.layer)
+            let restingPosition = flyingLayer.position
+            view.needsLayout = true
+            view.layoutSubtreeIfNeeded(); window.display(); CATransaction.flush()
+            try await Task.sleep(nanoseconds: 120_000_000)
+            let target = holder.convert(header.bounds, from: header)
+            XCTAssertEqual(flight.frame.minX, target.minX, accuracy: 0.01)
+            XCTAssertEqual(flight.frame.minY, target.minY, accuracy: 0.01)
+            XCTAssertEqual(flight.frame.size, target.size)
+            XCTAssertEqual(flyingLayer.position, restingPosition, "AppKit must not readjust the landing position")
+        }
+        for _ in 0..<6 {
+            try await Task.sleep(nanoseconds: 16_000_000)
+            view.previewActions() // Reverse before the flight finishes.
+            view.previewActions()
+            XCTAssertLessThanOrEqual(flights().count, 1)
+        }
+        try await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertTrue(view.isShowingActions)
+        XCTAssertTrue(flights().isEmpty, "temporary moving icons are released")
+        view.previewActions()
+        try await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertFalse(view.isShowingActions)
+        XCTAssertTrue(flights().isEmpty)
+        XCTAssertEqual(descendants(view).compactMap { $0 as? OrbitTile }.filter { $0.chosen }.count, 1)
     }
 
     func testShortcutLabelsAndMatching() throws {
@@ -241,12 +492,40 @@ final class AppOpenerTests: XCTestCase {
         XCTAssertEqual(titles[safe: i + 1], "Open Command", "the action hangs right under its item")
         XCTAssertEqual(field.stringValue, "", "the field now searches the actions")
         XCTAssertEqual(view.chosenActionTitle, "Open Command")
+        type("no such action", view, field)
+        XCTAssertNil(view.chosenActionTitle)
+        XCTAssertTrue(descendants(view).compactMap { $0 as? TreeRowView }.isEmpty, "filtering removes stale clickable actions")
         XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:))))
         XCTAssertFalse(view.isShowingActions)
         XCTAssertEqual(field.stringValue, "Kill Port", "folding them brings your search back")
         XCTAssertTrue(view.performKeyEquivalent(with: cmdK))
         XCTAssertTrue(view.performKeyEquivalent(with: cmdK), "⌘K again folds them")
         XCTAssertFalse(view.isShowingActions)
+        XCTAssertTrue(view.performKeyEquivalent(with: cmdK))
+        let openRow = try XCTUnwrap(descendants(view).compactMap { $0 as? TreeRowView }.first { $0.accessibilityLabel() == "Open Command" })
+        let parent = NSView(frame: view.frame)
+        parent.addSubview(view)
+        let titlePoint = openRow.convert(NSPoint(x: 80, y: openRow.bounds.midY), to: parent)
+        let clickedView = view.hitTest(titlePoint)
+        XCTAssertTrue(clickedView === openRow, "clicking an action label reaches its row")
+        XCTAssertTrue(openRow.accessibilityPerformPress(), "the visible action row is an interactive button")
+        XCTAssertFalse(view.isShowingActions)
+        XCTAssertEqual(field.placeholderAttributedString?.string, "Port number…")
+    }
+
+    func testCommandMOpensActionsAndEscapeRestoresTheSearch() throws {
+        let (view, field) = try opener()
+        type("kill port", view, field)
+        let cmdM = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
+            windowNumber: 0, context: nil, characters: "m", charactersIgnoringModifiers: "m", isARepeat: false, keyCode: 46))
+        XCTAssertTrue(view.performKeyEquivalent(with: cmdM))
+        XCTAssertTrue(view.isShowingActions)
+        XCTAssertEqual(view.chosenActionTitle, "Open Command")
+        XCTAssertTrue(descendants(view).compactMap { $0 as? TreeRowView }.allSatisfy(\.accessoryKeycap))
+        type("no such action", view, field)
+        XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:))))
+        XCTAssertFalse(view.isShowingActions)
+        XCTAssertEqual(field.stringValue, "kill port")
     }
 
     func testArrowsMoveThroughTheActionsAndEnterRunsTheChosenOne() throws {
@@ -269,6 +548,10 @@ final class AppOpenerTests: XCTestCase {
         XCTAssertEqual(view.chosenActionTitle, "Copy Process ID")
         XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveUp(_:))))
         XCTAssertEqual(view.chosenActionTitle, "Force Quit Process")
+        let rows = descendants(view).compactMap { $0 as? TreeRowView }
+        XCTAssertGreaterThanOrEqual(rows.count, 3)
+        XCTAssertEqual(rows.filter(\.selected).count, 1)
+        XCTAssertEqual(rows.first(where: \.selected)?.accessibilityLabel(), "Force Quit Process")
         // Typing narrows them; ⏎ runs the chosen one (copying the PID here) and folds them away.
         type("copy process", view, field)
         XCTAssertEqual(view.chosenActionTitle, "Copy Process ID")
@@ -279,9 +562,38 @@ final class AppOpenerTests: XCTestCase {
         if let before = before { AppTools.copy(before) }
     }
 
+    func testClassicActionShortcutAliasesRestoreQueryAndEmptySearchCannotRun() throws {
+        _ = NSApplication.shared
+        let view = TreeOpenerView(frame: NSRect(x: 0, y: 0, width: 860, height: 760))
+        view.prepare()
+        view.previewType("Kill Process")
+        let field = view.searchField
+        for key in ["m", "k"] {
+            let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command],
+                timestamp: 0, windowNumber: 0, context: nil, characters: key, charactersIgnoringModifiers: key,
+                isARepeat: false, keyCode: key == "m" ? 46 : 40))
+            XCTAssertTrue(view.performKeyEquivalent(with: event))
+            XCTAssertTrue(view.isShowingActions)
+            XCTAssertFalse(view.visibleRowTitles.isEmpty)
+            view.previewType("zzzz-no-action-matches")
+            view.layoutSubtreeIfNeeded()
+            XCTAssertNil(view.chosenActionTitle)
+            let primary = try XCTUnwrap(descendants(view).compactMap { $0 as? TreeButton }.first { $0.primary })
+            XCTAssertTrue(primary.isHidden, "an empty action search must not offer a Run button")
+            XCTAssertTrue(view.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:))))
+            XCTAssertFalse(view.isShowingActions)
+            XCTAssertEqual(field.stringValue, "Kill Process")
+        }
+    }
+
     func testCommandQNeverQuitsZera() throws {
         let view = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 720, height: 600))
         view.prepare()
+        // A real running app exposes a functioning ⌘Q action. Never dispatch that against
+        // the user's Your Usual list: this test checks fallback routing, not app termination.
+        view.previewType("Custom Commands")
+        XCTAssertTrue(view.visibleRowTitles.contains("Custom Commands"))
+        XCTAssertFalse(view.visibleRowTitles.contains("ChatGPT"))
         let cmdQ = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
             windowNumber: 0, context: nil, characters: "q", charactersIgnoringModifiers: "q", isARepeat: false, keyCode: 12))
         XCTAssertTrue(view.performKeyEquivalent(with: cmdQ), "swallowed, not passed on to the Quit Zera item")

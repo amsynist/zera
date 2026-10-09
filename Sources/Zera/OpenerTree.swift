@@ -1,13 +1,15 @@
 import AppKit
 
+extension TreeOpenerView: OpenerSurface { var searchField: NSTextField { field } }
+
 // The App Opener's classic look, kept as a choice in Settings → General (Opener style):
 // a window held by Zera whose search is the root of a tree — Your usual, Commands and Actions
 // fold open under it, the chosen item's details sit on the right. Same data, commands, ⌘K
 // actions and shortcuts as the orbit (`AppOpenerView`).
 
 private enum OP {
-    static let cardW: CGFloat = 780
-    static let cardH: CGFloat = 560
+    static let cardW: CGFloat = 840
+    static let cardH: CGFloat = 600
     static let margin: CGFloat = 40           // room for the glow
     static let width: CGFloat = cardW + margin * 2
     static let ropeGap: CGFloat = 34          // notch → her head
@@ -17,6 +19,9 @@ private enum OP {
 }
 
 final class TreeOpenerView: NSView, NSTextFieldDelegate {
+    static let panelWidth = OP.width
+    private var cardHeight = OP.cardH
+    private var exitAnimationID = 0
     var onLaunch: ((AppEntry, Bool) -> Void)?
     var onSearchWeb: ((String) -> Void)?
     var onClose: (() -> Void)?
@@ -62,7 +67,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     // The footer.
     private let footRule = NSView()
     private let paneRule = NSView()
-    private let foot = NSTextField(labelWithString: "")
+    private let foot = OpenerFooter(labelWithString: "")
     private let footOpen = OpenerPill()
     private let footActions = OpenerPill()
 
@@ -163,7 +168,11 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     }
     private var cardTop: CGFloat { band + OP.ropeGap + zeraH - OP.paws }
     private var cx: CGFloat { ropeX > 0 ? ropeX : bounds.width / 2 }
-    func panelHeight(band: CGFloat) -> CGFloat { self.band = band; return cardTop + OP.cardH + OP.margin }
+    func panelHeight(band: CGFloat, availableHeight: CGFloat = .greatestFiniteMagnitude) -> CGFloat {
+        self.band = band
+        cardHeight = min(OP.cardH, max(400, availableHeight - cardTop - OP.margin))
+        return cardTop + cardHeight + OP.margin
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -181,7 +190,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
 
         card.radius = 30
         card.lineWidth = 1
-        card.glow = 0.45
+        card.glow = 0.16
         fieldBox.radius = 14
         fieldBox.lineWidth = 1
         fieldBox.glow = 0
@@ -204,9 +213,9 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = NSFont.systemFont(ofSize: 18, weight: .medium)
+        field.font = OpenerLook.classicSearchFont
         field.placeholderAttributedString = NSAttributedString(string: "Open an app…", attributes: [
-            .foregroundColor: Neon.textFaint, .font: NSFont.systemFont(ofSize: 18, weight: .medium)])
+            .foregroundColor: Neon.textFaint, .font: OpenerLook.classicSearchFont])
         field.cell?.usesSingleLineMode = true
         field.cell?.isScrollable = true
         field.delegate = self
@@ -243,7 +252,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         detail.layer?.addSublayer(dHalo)
         dIcon.imageScaling = .scaleProportionallyUpOrDown
         detail.addSubview(dIcon)
-        dName.font = NSFont.systemFont(ofSize: 22, weight: .bold)
+        dName.font = OpenerLook.classicDetailFont
         dName.alignment = .center
         dName.lineBreakMode = .byTruncatingTail
         detail.addSubview(dName)
@@ -262,8 +271,12 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             dFacts.append((k, v, rule))
         }
         dPrimary.primary = true
+        for button in [dPrimary, dSecondary, dPin] {
+            button.openerAppearance = true
+            button.labelFont = OpenerLook.buttonFont
+        }
         dPrimary.onClick = { [weak self] in self?.primaryAction() }
-        dSecondary.key = "⌘K"
+        dSecondary.key = "⌘M"
         dSecondary.title = "Actions"
         dSecondary.onClick = { [weak self] in self?.toggleActions() }
         detail.addSubview(dPrimary)
@@ -284,9 +297,11 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         foot.lineBreakMode = .byTruncatingTail
         card.addSubview(foot)
         footOpen.ghost = true
+        footOpen.keycap = true
         footOpen.onClick = { [weak self] in self?.primaryAction() }
         footActions.ghost = true
-        footActions.key = "⌘K"
+        footActions.keycap = true
+        footActions.key = "⌘M"
         footActions.title = "Actions"
         footActions.onClick = { [weak self] in self?.toggleActions() }
         card.addSubview(footOpen)
@@ -320,7 +335,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         rootStem.layer?.backgroundColor = Neon.cyan.withAlphaComponent(0.9).cgColor
         dimLines.strokeColor = Neon.textFaint.withAlphaComponent(0.45).cgColor
         litLines.strokeColor = Neon.cyan.cgColor
-        dHalo.colors = [Neon.accent.withAlphaComponent(0.45).cgColor, Neon.halo.withAlphaComponent(0.15).cgColor, NSColor.clear.cgColor]
+        dHalo.colors = [Neon.accent.withAlphaComponent(0.22).cgColor, Neon.halo.withAlphaComponent(0.08).cgColor, NSColor.clear.cgColor]
         dName.textColor = Neon.text
         dBlurb.textColor = Neon.textDim
         for (k, v, rule) in dFacts {
@@ -535,6 +550,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             r.titleText = NSAttributedString(string: ask ? (a.confirm ?? a.title) : a.title, attributes: [
                 .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: (ask ? Neon.red : (a.tint ?? Neon.text))])
             r.accessory = ask ? "⏎ confirm" : (a.shortcut?.label ?? "")
+            r.accessoryKeycap = !ask
             r.selected = k == leaf
             r.setAccessibilityLabel(a.title)
             // Hover only tints the row: choosing on hover fought the arrow keys (the list scrolls
@@ -560,9 +576,9 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             let h: CGFloat
             switch p.line {
             case .group: h = 30
-            case .item, .command: h = 40
-            case .child: h = 38
-            case .leaf: h = 32
+            case .item, .command: h = Metrics.row
+            case .child: h = Metrics.row
+            case .leaf: h = 38
             case .note: h = 30
             }
             let f = NSRect(x: x, y: y, width: w - x - 12, height: h)
@@ -768,10 +784,10 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             f.1.stringValue = fact?.1 ?? ""
         }
         dPrimary.title = primary
-        dPrimary.isHidden = !has || primary.isEmpty
+        dPrimary.isHidden = !has || primary.isEmpty || (actionsOpen && shownActions.isEmpty)
         dPrimary.tint = primaryTint
         dSecondary.title = actionsOpen ? "Hide actions" : "Actions"
-        dSecondary.key = actionsOpen ? "esc" : "⌘K"
+        dSecondary.key = actionsOpen ? "esc" : "⌘M"
         let pinnable = chosenApp
         dPin.isHidden = !has || actionsOpen || pinnable == nil
         if let a = pinnable { dPin.title = AppCatalog.shared.isPinned(a) ? "Unpin" : "Pin" }
@@ -779,22 +795,25 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     }
 
     private func updateFooter() {
+        foot.leadingAligned = true
         switch mode {
-        case .root where actionsOpen: foot.stringValue = "↑↓ choose   ⏎ run   type to search actions   esc back"
+        case .root where actionsOpen:
+            foot.hints = [(["↑", "↓"], "Choose"), (["⏎"], "Run"), (["esc"], "Back")]
         case .root:
             if let a = chosenApp, AppCatalog.shared.isPinned(a) {
-                foot.stringValue = "↑↓ choose   ⇥ next branch   ⇧⌘P unpin   ⌥⌘↑↓ move"
+                foot.hints = [(["↑", "↓"], "Choose"), (["⇥"], "Next branch"), (["⇧⌘P"], "Unpin"), (["⌥⌘↑", "⌥⌘↓"], "Move"), (["esc"], "Close")]
             } else {
-                foot.stringValue = "↑↓ choose   ⇥ next branch   ⇧⌘P pin   ⌘1–⌘6 quick open"
+                foot.hints = [(["↑", "↓"], "Choose"), (["⇥"], "Next branch"), (["⇧⌘P"], "Pin"), (["⌘1–6"], "Quick open"), (["esc"], "Close")]
             }
-        case .command(.quitAll): foot.stringValue = "↑↓ choose   space or click to keep   esc back"
-        case .command(.custom): foot.stringValue = "esc back"
-        case .command: foot.stringValue = "↑↓ choose   ⌘⏎ force   ⌘R refresh   esc back"
+        case .command(.quitAll): foot.hints = [(["↑", "↓"], "Choose"), (["space"], "Keep"), (["esc"], "Back")]
+        case .command(.custom): foot.hints = [(["esc"], "Back")]
+        case .command: foot.hints = [(["↑", "↓"], "Choose"), (["⌘⏎"], "Force"), (["⌘R"], "Refresh"), (["esc"], "Back")]
         }
         footOpen.title = mode == .command(.quitAll) ? "Quit all" : (actionsOpen ? "Run" : (mode == .root ? (results.isEmpty ? "Search the web" : verb) : (mode == .command(.killPort) ? "Stop" : "Quit")))
+        footOpen.isHidden = actionsOpen && shownActions.isEmpty
         footActions.isHidden = mode == .command(.custom) || (mode == .root && results.isEmpty)
         footActions.title = actionsOpen ? "Close" : "Actions"
-        footActions.key = actionsOpen ? "esc" : "⌘K"
+        footActions.key = actionsOpen ? "esc" : "⌘M"
         needsLayout = true
     }
 
@@ -1308,6 +1327,8 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         switch sel {
         case #selector(NSResponder.moveDown(_:)): move(1); return true
         case #selector(NSResponder.moveUp(_:)): move(-1); return true
+        case #selector(NSResponder.moveRight(_:)): move(1); return true
+        case #selector(NSResponder.moveLeft(_:)): move(-1); return true
         case #selector(NSResponder.insertNewline(_:)):
             if NSApp.currentEvent?.modifierFlags.contains(.command) == true, !actionsOpen {
                 if case .command = mode { killSelected(force: true) } else { openSelected(finder: true) }
@@ -1339,7 +1360,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         }
         let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = event.charactersIgnoringModifiers?.lowercased()
-        if mods == .command, key == "k" { toggleActions(); return true }
+        if mods == .command, key == "k" || key == "m" { toggleActions(); return true }
         if mods == .command, key == "r", case .command(let command) = mode, command != .custom {
             refreshCommand(command)
             return true
@@ -1374,7 +1395,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         if rope.layer?.animation(forKey: "grow") == nil {
             rope.frame = NSRect(x: (c - ropeWidth / 2).rounded(), y: 0, width: ropeWidth, height: band + OP.ropeGap + 14)
         }
-        let W = OP.cardW, H = OP.cardH
+        let W = OP.cardW, H = cardHeight
         card.frame = NSRect(x: (c - W / 2).rounded(), y: cardTop, width: W, height: H)
         if rootLine.superlayer == nil { card.layer?.addSublayer(rootLine) }
         CATransaction.begin(); CATransaction.setDisableActions(true)
@@ -1408,9 +1429,9 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
 
         // The footer: hints left, the two main keys right.
         let ow = footOpen.fittedWidth, aw = footActions.isHidden ? 0 : footActions.fittedWidth
-        footActions.frame = NSRect(x: W - 16 - aw, y: H - TV.footH + 10, width: aw, height: 28)
-        footOpen.frame = NSRect(x: (footActions.isHidden ? W - 16 : footActions.frame.minX - 8) - ow, y: H - TV.footH + 10, width: ow, height: 28)
-        foot.frame = NSRect(x: 22, y: H - TV.footH + 16, width: footOpen.frame.minX - 34, height: 16)
+        footActions.frame = NSRect(x: W - 16 - aw, y: H - TV.footH + 48, width: aw, height: Metrics.button)
+        footOpen.frame = NSRect(x: (footActions.isHidden ? W - 16 : footActions.frame.minX - 8) - ow, y: H - TV.footH + 48, width: ow, height: Metrics.button)
+        foot.frame = NSRect(x: 22, y: H - TV.footH + 16, width: W - 44, height: 24)
     }
 
     private func layoutDetail() {
@@ -1423,13 +1444,6 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         CATransaction.commit()
         dName.frame = NSRect(x: pad, y: 110, width: w - pad * 2, height: 24)
         dBlurb.frame = NSRect(x: pad, y: 137, width: w - pad * 2, height: 32)
-        var y: CGFloat = 182
-        for f in dFacts where !f.0.isHidden {
-            f.0.frame = NSRect(x: pad, y: y + 9, width: 120, height: 16)
-            f.1.frame = NSRect(x: pad + 110, y: y + 9, width: w - pad * 2 - 110, height: 16)
-            f.2.frame = NSRect(x: pad, y: y + 34, width: w - pad * 2, height: 1)
-            y += 35
-        }
         if dPin.isHidden {
             dSecondary.frame = NSRect(x: pad, y: h - 22 - 34, width: w - pad * 2, height: 34)
         } else {
@@ -1438,6 +1452,16 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             dSecondary.frame = NSRect(x: pad + half + 8, y: h - 22 - 34, width: w - pad * 2 - half - 8, height: 34)
         }
         dPrimary.frame = NSRect(x: pad, y: dSecondary.frame.minY - 8 - 34, width: w - pad * 2, height: 34)
+        var y: CGFloat = 182
+        let count = dFacts.filter { !$0.0.isHidden }.count
+        let rowHeight = min(35, max(20, (dPrimary.frame.minY - Space.m - y) / CGFloat(max(1, count))))
+        for f in dFacts where !f.0.isHidden {
+            let labelWidth = min(130, ceil(f.0.attributedStringValue.size().width))
+            f.0.frame = NSRect(x: pad, y: y + (rowHeight - 16) / 2, width: labelWidth, height: 16)
+            f.1.frame = NSRect(x: pad + labelWidth + 12, y: y + (rowHeight - 16) / 2, width: w - pad * 2 - labelWidth - 12, height: 16)
+            f.2.frame = NSRect(x: pad, y: y + rowHeight - 1, width: w - pad * 2, height: 1)
+            y += rowHeight
+        }
         dEmpty.frame = NSRect(x: pad, y: h / 2 - 30, width: w - pad * 2, height: 60)
     }
 
@@ -1446,6 +1470,9 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     /// She rappels down holding the opener; the branches draw down from the root and the rows
     /// slide in after them.
     func animateIn() {
+        exitAnimationID += 1
+        holder.layer?.removeAllAnimations()
+        rope.layer?.removeAllAnimations()
         window?.makeFirstResponder(field)
         guard !Motion.reduced, let hl = holder.layer else { holder.alphaValue = 1; return }
         holder.alphaValue = 1
@@ -1500,6 +1527,8 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     /// Back up the rope.
     func animateOut(_ done: @escaping () -> Void) {
         guard !Motion.reduced, let hl = holder.layer else { done(); return }
+        exitAnimationID += 1
+        let id = exitAnimationID
         CATransaction.begin()
         CATransaction.setCompletionBlock(done)
         let up = CABasicAnimation(keyPath: "transform.translation.y")
@@ -1515,8 +1544,9 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         rope.layer?.add(fade, forKey: "fade")
         CATransaction.commit()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.holder.layer?.removeAllAnimations()
-            self?.rope.layer?.removeAllAnimations()
+            guard let self = self, self.exitAnimationID == id else { return }
+            self.holder.layer?.removeAllAnimations()
+            self.rope.layer?.removeAllAnimations()
         }
     }
 
@@ -1576,8 +1606,8 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
 /// The tree's measurements, in the window.
 private enum TV {
     static let headH: CGFloat = 64
-    static let footH: CGFloat = 48
-    static let treeW: CGFloat = 470
+    static let footH: CGFloat = 96
+    static let treeW: CGFloat = 490
     /// Where each level's trunk runs, and where its rows start.
     static let trunkX: [CGFloat] = [35, 60, 89, 117]
     static let rowX: [CGFloat] = [50, 68, 97, 125]

@@ -10,7 +10,7 @@ enum MarkdownLite {
         var body: NSFont = Typo.body, bold: NSFont = Typo.bodyStrong, mono: NSFont = Typo.mono
         var h1: NSFont = NSFont.systemFont(ofSize: 14.5, weight: .bold)
         var h2: NSFont = NSFont.systemFont(ofSize: 13.5, weight: .semibold)
-        var h3: NSFont = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+        var h3: NSFont = Typo.bodyStrong
     }
 
     static func render(_ markdown: String, theme t: Theme, width: CGFloat) -> NSAttributedString {
@@ -395,12 +395,23 @@ final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
         addSubview(send)
         addSubview(copyButton); addSubview(saveNote); addSubview(stop)
 
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: ZeraAssistant.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: ZeraAssistant.changed, object: nil)
         reload()
     }
 
     required init?(coder: NSCoder) { fatalError() }
     deinit { caretTimer?.invalidate() }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { stopCaret() }
+        else if busy && ZeraAssistant.shared.liveText != nil { startCaret() }
+    }
+
+    @objc private func reloadIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        reload()
+    }
 
     // MARK: Sizing
 
@@ -565,10 +576,10 @@ final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     private func startCaret() {
-        guard caretTimer == nil else { return }
+        guard caretTimer == nil, window != nil else { return }
         caretTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self = self else { return }
+                guard let self = self, self.window?.isVisible == true, !self.isHiddenOrHasHiddenAncestor else { return }
                 self.caretOn.toggle()
                 self.reload()
             }

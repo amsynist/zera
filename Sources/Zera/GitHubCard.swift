@@ -96,20 +96,20 @@ final class PullRequestRow: NSView {
         tile.set(owner: pr.owner, mine: pr.mine)
         addSubview(tile)
 
-        let repo = NSMutableAttributedString(string: pr.repo, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: p.textSecondary])
-        repo.append(NSAttributedString(string: "   #\(pr.number)", attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: p.textTertiary]))
+        let repo = NSMutableAttributedString(string: pr.repo, attributes: [.font: Typo.bodyMedium, .foregroundColor: p.textSecondary])
+        repo.append(NSAttributedString(string: "   #\(pr.number)", attributes: [.font: Typo.bodyMedium, .foregroundColor: p.textTertiary]))
         repoLine.attributedStringValue = repo
         repoLine.lineBreakMode = .byTruncatingTail
         addSubview(repoLine)
 
         title.stringValue = pr.title
-        title.font = isNew ? NSFont.systemFont(ofSize: Typo.rowTitleStrong.pointSize, weight: .bold) : Typo.rowTitleStrong
+        title.font = isNew ? Typo.rowTitleStrong : Typo.rowTitle
         title.textColor = p.text
         title.lineBreakMode = .byTruncatingTail
         title.toolTip = pr.title
         addSubview(title)
 
-        meta.font = NSFont.systemFont(ofSize: 12)
+        meta.font = Typo.meta
         meta.textColor = p.textTertiary
         meta.lineBreakMode = .byTruncatingTail
         addSubview(meta)
@@ -216,7 +216,7 @@ private final class ReviewerChip: NSView {
     let person: GHPullRequest.Person
     let verdict: GHPullRequest.Review
     override var isFlipped: Bool { true }
-    private static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+    private static let font = Typo.bodyMedium
 
     init(_ p: GHPullRequest.Person, verdict v: GHPullRequest.Review) {
         person = p; verdict = v
@@ -284,7 +284,7 @@ final class PRDetailView: NSView {
     private let checksCaption = NSTextField(labelWithString: "FAILING CHECKS")
     private var checkLines: [NSTextField] = []
     private var actions: [PRActionButton] = []
-    private static let titleFont = NSFont.systemFont(ofSize: 16, weight: .semibold)
+    private static let titleFont = Typo.detailTitle
 
     override var isFlipped: Bool { true }
 
@@ -314,7 +314,7 @@ final class PRDetailView: NSView {
         tile.set(owner: pr.owner, mine: pr.mine)
         panel.addSubview(tile)
         repoLine.stringValue = "\(pr.fullRepo)  ·  #\(pr.number)  ·  opened \(longAgo(pr.created))"
-        repoLine.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        repoLine.font = Typo.bodyMedium
         repoLine.textColor = p.textSecondary
         repoLine.lineBreakMode = .byTruncatingTail
         panel.addSubview(repoLine)
@@ -327,7 +327,7 @@ final class PRDetailView: NSView {
         var m = "@\(pr.author.login)"
         if let b = pr.branch { m += " wants to merge \(b) into \(pr.base ?? "main")" }
         meta.stringValue = m
-        meta.font = NSFont.systemFont(ofSize: 12.5)
+        meta.font = Typo.body
         meta.textColor = p.textSecondary
         meta.lineBreakMode = .byTruncatingMiddle
         panel.addSubview(meta)
@@ -366,8 +366,8 @@ final class PRDetailView: NSView {
         for c in pr.failing.prefix(3) {
             let l = NSTextField(labelWithString: "")
             let s = NSMutableAttributedString(string: "✕  ", attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .bold), .foregroundColor: p.danger])
-            s.append(NSAttributedString(string: c.name, attributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), .foregroundColor: p.text]))
-            if !c.title.isEmpty { s.append(NSAttributedString(string: "  —  \(c.title)", attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: p.textSecondary])) }
+            s.append(NSAttributedString(string: c.name, attributes: [.font: Typo.bodyStrong, .foregroundColor: p.text]))
+            if !c.title.isEmpty { s.append(NSAttributedString(string: "  —  \(c.title)", attributes: [.font: Typo.body, .foregroundColor: p.textSecondary])) }
             l.attributedStringValue = s
             l.lineBreakMode = .byTruncatingTail
             checkLines.append(l); panel.addSubview(l)
@@ -489,11 +489,11 @@ final class PRInsightCard: NSView {
         bubble.layer?.borderWidth = 1
         bubble.layer?.borderColor = p.border.cgColor
         addSubview(bubble)
-        headline.font = NSFont.systemFont(ofSize: 14.5, weight: .semibold)
+        headline.font = Typo.rowTitle
         headline.textColor = p.text
         headline.lineBreakMode = .byTruncatingTail
         bubble.addSubview(headline)
-        detail.font = NSFont.systemFont(ofSize: 12)
+        detail.font = Typo.meta
         detail.textColor = p.textSecondary
         detail.lineBreakMode = .byTruncatingTail
         bubble.addSubview(detail)
@@ -574,7 +574,7 @@ private final class GHBanner: NSView {
             .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
         icon.contentTintColor = p.danger
         addSubview(icon)
-        message.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        message.font = Typo.control
         message.textColor = p.text
         message.lineBreakMode = .byTruncatingTail
         addSubview(message)
@@ -658,7 +658,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         moreButton = GHSquareButton(symbol: "ellipsis", label: "More", target: self, action: #selector(moreTapped))
 
         addSubview(headerTile)
-        subtitleLabel.font = NSFont.systemFont(ofSize: 12)
+        subtitleLabel.font = Typo.screenSubtitle
         subtitleLabel.textColor = p.textSecondary
         subtitleLabel.isHidden = false
         addSubview(refreshButton)
@@ -680,9 +680,9 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         addSubview(zeraHead)
         addSubview(bubble)
 
-        search.field.font = NSFont.systemFont(ofSize: 13)
+        search.field.font = Typo.screenSubtitle
         (search.field.cell as? NSTextFieldCell)?.placeholderAttributedString = NSAttributedString(
-            string: "Search PRs, repositories, or authors…", attributes: [.foregroundColor: p.textTertiary, .font: NSFont.systemFont(ofSize: 13)])
+            string: "Search PRs, repositories, or authors…", attributes: [.foregroundColor: p.textTertiary, .font: Typo.screenSubtitle])
         search.field.stringValue = Self.query
         search.field.delegate = self
         search.layer?.backgroundColor = p.surfaceRow.cgColor
@@ -711,7 +711,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         insightZera.imageAlignment = .alignBottom
         addSubview(insightZera)
 
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: GitHubService.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: GitHubService.changed, object: nil)
         reload()
     }
 
@@ -719,6 +719,11 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
     deinit { NotificationCenter.default.removeObserver(self) }
 
     // MARK: Data
+
+    @objc private func reloadIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        reload()
+    }
 
     private var gh: GitHubService { GitHubService.shared }
 
@@ -1021,8 +1026,8 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         // more on the right. Her own pictures and the insight box stay hidden in the island.
         [headerTile, zeraHead, bubble, insight, insightZera].forEach { $0.isHidden = true }
         layoutHeader()
-        moreButton.frame = NSRect(x: w - x - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
-        refreshButton.frame = NSRect(x: moreButton.frame.minX - 8 - 34, y: CardBase.titleTop + 1, width: 34, height: 34)
+        moreButton.frame = NSRect(x: w - x - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
+        refreshButton.frame = NSRect(x: moreButton.frame.minX - 8 - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
 
         if mode == .disconnected {
             state.frame = NSRect(x: x, y: L.segY, width: iw, height: GHStateView.height)

@@ -51,8 +51,8 @@ func snoozeItems(_ apply: @escaping (Date, String) -> Void) -> [DropdownItem] {
 private final class AgendaTip: NSView {
     var onAction: (() -> Void)?
     var onClose: (() -> Void)?
-    private let title = rlabel(NSFont.systemFont(ofSize: 14, weight: .semibold), Pal.text)
-    private let body = rlabel(NSFont.systemFont(ofSize: 12.5), Pal.textSecondary, lines: 2)
+    private let title = rlabel(Typo.rowTitle, Pal.text)
+    private let body = rlabel(Typo.body, Pal.textSecondary, lines: 2)
     private var action: PRActionButton?
     private var close: GHSquareButton!
     override var isFlipped: Bool { true }
@@ -160,8 +160,8 @@ final class RemindersView: NSView, CardContent {
     private var back: GHSquareButton!
     private var close: GHSquareButton!
     private let sideTile = AgendaTile()
-    private let sideTitle = rlabel(NSFont.systemFont(ofSize: 16, weight: .semibold), Pal.text)
-    private let sideSubtitle = rlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
+    private let sideTitle = rlabel(Typo.detailTitle, Pal.text)
+    private let sideSubtitle = rlabel(Typo.meta, Pal.textSecondary)
     private let sideZera = NSImageView()
     private var form: ReminderFormBase?
     private let detailScroll = NSScrollView()
@@ -169,9 +169,9 @@ final class RemindersView: NSView, CardContent {
     private var detailRows: [NSView] = []
     private var detailButtons: [[PRActionButton]] = []
     private let detailChip = PRStatusChip()
-    private let detailNext = rlabel(NSFont.systemFont(ofSize: 13, weight: .medium), Pal.textSecondary)
+    private let detailNext = rlabel(Typo.control, Pal.textSecondary)
     private let dots = SeriesDots()
-    private let dotsLabel = rlabel(NSFont.systemFont(ofSize: 12, weight: .semibold), Pal.textSecondary)
+    private let dotsLabel = rlabel(Typo.control, Pal.textSecondary)
 
     private var ticker: Timer?
     private var svc: ReminderService { ReminderService.shared }
@@ -309,7 +309,7 @@ final class RemindersView: NSView, CardContent {
         detailList.addSubview(dots)
         detailList.addSubview(dotsLabel)
 
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: ReminderService.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: ReminderService.changed, object: nil)
         reload()
     }
 
@@ -325,7 +325,7 @@ final class RemindersView: NSView, CardContent {
         ticker?.invalidate(); ticker = nil
         guard window != nil else { ZeraDropdown.shared.dismiss(); return }
         let t = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.reload() }
+            Task { @MainActor in self?.reloadIfVisible() }
         }
         RunLoop.main.add(t, forMode: .common)
         ticker = t
@@ -348,6 +348,11 @@ final class RemindersView: NSView, CardContent {
     }
 
     // MARK: Data
+
+    @objc private func reloadIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        reload()
+    }
 
     private func filtered(_ items: [AgendaItem]) -> [AgendaItem] { items.filter { Self.filter.matches($0) } }
 
@@ -911,15 +916,14 @@ final class RemindersView: NSView, CardContent {
 
     private func layoutMain(_ size: NSSize) {
         let w = size.width, h = size.height, x = RS.pad, iw = w - RS.pad * 2
-        let half = w / 2 - Isle.zeraGap / 2
 
         // Island header: title and summary left of Zera (she hangs in the middle); "+ Add ▾" on
         // the right. Her own pictures and the tip stay hidden in the island.
         [screenTile, peek, bubble, tip, tipZera].forEach { $0.isHidden = true }
-        titleLabel.frame = NSRect(x: x, y: CardBase.titleTop, width: half - x, height: 32)
-        subtitleLabel.frame = NSRect(x: x, y: CardBase.subtitleTop, width: half - x, height: 18)
+        titleLabel.frame = ScreenHeader.titleFrame(width: w, padding: x)
+        subtitleLabel.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
         let bw = min(170, addButton.fittedWidth + 8)
-        addButton.frame = NSRect(x: w - x - bw, y: CardBase.titleTop + 2, width: bw, height: 32)
+        addButton.frame = NSRect(x: w - x - bw, y: ScreenHeader.blockControlY(Metrics.headerButton), width: bw, height: Metrics.headerButton)
 
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
         filters.fill = filters.preferredWidth > iw
@@ -942,14 +946,13 @@ final class RemindersView: NSView, CardContent {
         let single = singlePane
         back.isHidden = !single
         close.isHidden = single
-        back.frame = NSRect(x: x, y: CardBase.titleTop + 2, width: 34, height: 34)
-        close.frame = NSRect(x: w - x - 34, y: CardBase.titleTop - 2, width: 34, height: 34)
+        back.frame = NSRect(x: x, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
+        close.frame = NSRect(x: w - x - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
         // Island header: back · title / subtitle left of Zera (she hangs in the middle).
         sideTile.isHidden = true
         sideZera.isHidden = true
-        let tx = x + 44, half = w / 2 - Isle.zeraGap / 2
-        sideTitle.frame = NSRect(x: tx, y: CardBase.titleTop - 2, width: max(60, half - tx), height: 22)
-        sideSubtitle.frame = NSRect(x: tx, y: CardBase.titleTop + 20, width: max(60, half - tx), height: 16)
+        sideTitle.frame = ScreenHeader.detailTitleFrame(width: w, padding: x)
+        sideSubtitle.frame = ScreenHeader.detailSubtitleFrame(width: w, padding: x)
 
         let bodyTop: CGFloat = Isle.headerHeight
         if let f = form {

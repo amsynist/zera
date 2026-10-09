@@ -88,6 +88,7 @@ final class ClaudeHookService {
 
     private func scan() {
         guard let files = try? fm.contentsOfDirectory(at: requestsDir, includingPropertiesForKeys: nil) else { return }
+        seen.formIntersection(Set(files.filter { $0.pathExtension == "json" }.map { $0.deletingPathExtension().lastPathComponent }))
         var changed = false
         for url in files where url.pathExtension == "json" {
             let id = url.deletingPathExtension().lastPathComponent

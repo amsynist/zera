@@ -92,13 +92,15 @@ final class AvatarCache {
     static let shared = AvatarCache()
     nonisolated static let loaded = Notification.Name("ZeraAvatarLoaded")
 
-    private var images: [URL: NSImage] = [:]
+    private let images = NSCache<NSURL, NSImage>()
     private var inflight: Set<URL> = []
     private var failed: Set<URL> = []
 
+    private init() { images.countLimit = 128; images.totalCostLimit = 8 * 1024 * 1024 }
+
     func image(for url: URL?) -> NSImage? {
         guard let url = url else { return nil }
-        if let i = images[url] { return i }
+        if let i = images.object(forKey: url as NSURL) { return i }
         guard !inflight.contains(url), !failed.contains(url),
               url.scheme == "https", url.host?.hasSuffix("githubusercontent.com") == true else { return nil }
         inflight.insert(url)
@@ -106,10 +108,11 @@ final class AvatarCache {
             let result = try? await URLSession.shared.data(from: url)
             self.inflight.remove(url)
             guard let r = result, (r.1 as? HTTPURLResponse)?.statusCode == 200, let img = NSImage(data: r.0) else {
+                if self.failed.count >= 256 { self.failed.removeAll() }
                 self.failed.insert(url)
                 return
             }
-            self.images[url] = img
+            self.images.setObject(img.rasterizedIcon(size: 64), forKey: url as NSURL, cost: 128 * 128 * 4)
             NotificationCenter.default.post(name: Self.loaded, object: nil)
         }
         return nil
@@ -240,7 +243,7 @@ final class PRStatusChip: NSView {
 final class CommentCount: NSView {
     var count = 0 { didSet { needsDisplay = true; isHidden = count == 0; setAccessibilityLabel("\(count) comments") } }
     override var isFlipped: Bool { true }
-    private static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+    private static let font = Typo.bodyMedium
 
     var fittedWidth: CGFloat { ceil(("\(count)" as NSString).size(withAttributes: [.font: Self.font]).width) + 8 + 14 + 4 + 8 }
 
@@ -449,8 +452,7 @@ class PRActionButton: NSButton {
     override func becomeFirstResponder() -> Bool { needsDisplay = true; return super.becomeFirstResponder() }
     override func resignFirstResponder() -> Bool { needsDisplay = true; return super.resignFirstResponder() }
 
-    /// Filled buttons carry their own soft drop shadow (`Palette.drawButton`); no coloured glow,
-    /// which rows' scroll views would clip square.
+    /// Shared button paint stays inside its rounded edge; no layer shadow to clip square.
     private func updateGlow() { layer?.shadowOpacity = 0 }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -506,7 +508,7 @@ final class GitHubFilterButton: NSView {
     private var hovered = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    private static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+    private static let font = Typo.control
 
     init(_ title: String) {
         base = title
@@ -779,7 +781,7 @@ final class ZeraGitHubBubble: NSView {
     var text = "" { didSet { needsDisplay = true; setAccessibilityLabel(text) } }
     /// Tail on the bottom-right instead (Zera stands to the right of the bubble).
     var tailRight = false { didSet { needsDisplay = true } }
-    static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+    static let font = Typo.control
     static let maxTextWidth: CGFloat = 140
     private static let padX: CGFloat = 12, padY: CGFloat = 8, tail: CGFloat = 7
     override var isFlipped: Bool { true }
@@ -834,7 +836,7 @@ final class GHSplitButton: NSView {
     private var pressedPart: Int? { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    private static let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+    private static let font = Typo.control
     private let chevronW: CGFloat = 38
 
     init(title: String, symbol: String) {
@@ -929,11 +931,11 @@ final class GHStateView: NSView {
         figure.imageScaling = .scaleProportionallyUpOrDown
         figure.imageAlignment = .alignBottom
         addSubview(figure)
-        title.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
+        title.font = Typo.detailTitle
         title.alignment = .center
         title.lineBreakMode = .byTruncatingTail
         addSubview(title)
-        subtitle.font = NSFont.systemFont(ofSize: 12.5)
+        subtitle.font = Typo.body
         subtitle.alignment = .center
         subtitle.maximumNumberOfLines = 2
         addSubview(subtitle)

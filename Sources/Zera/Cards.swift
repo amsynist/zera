@@ -23,8 +23,8 @@ class CardBase: NSView {
     /// Y where content starts, under the header row Zera hangs in.
     var headerBottom: CGFloat { Isle.headerHeight }
     /// v2: the title sits under the rail, which hangs in the header's top 44 pt.
-    static let titleTop: CGFloat = 56
-    static var subtitleTop: CGFloat { titleTop + 34 }
+    static let titleTop = ScreenHeader.titleTop
+    static var subtitleTop: CGFloat { ScreenHeader.subtitleTop }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -56,16 +56,15 @@ class CardBase: NSView {
     /// Lays out the header; subclasses call this first in `layout()`. The title stays left of
     /// Zera's spot in the middle; `trailingWidth` is room kept free on the right for buttons.
     func layoutHeader(trailingWidth: CGFloat = 0) {
-        let w = min(bounds.width - Metrics.cardPad * 2 - trailingWidth, bounds.width / 2 - Isle.zeraGap / 2 - Metrics.cardPad)
-        let top: CGFloat = subtitleLabel.isHidden && !whispering ? Self.titleTop + 8 : Self.titleTop
-        titleLabel.frame = NSRect(x: Metrics.cardPad, y: top, width: max(0, w), height: 32)
-        subtitleLabel.frame = NSRect(x: Metrics.cardPad, y: top + 34, width: max(0, w), height: 18)
+        titleLabel.frame = ScreenHeader.titleFrame(width: bounds.width)
+        titleLabel.frame.size.width = max(0, min(titleLabel.frame.width, bounds.width - Metrics.cardPad * 2 - trailingWidth))
+        subtitleLabel.frame = ScreenHeader.subtitleFrame(width: bounds.width)
+        subtitleLabel.frame.size.width = titleLabel.frame.width
     }
 
     /// The header's right side, for buttons: everything right of Zera's spot.
     var headerTrailingRect: NSRect {
-        let x = bounds.width / 2 + Isle.zeraGap / 2
-        return NSRect(x: x, y: Self.titleTop + 2, width: bounds.width - Metrics.cardPad - x, height: 36)
+        ScreenHeader.trailingRect(width: bounds.width)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -96,7 +95,8 @@ final class ListRow: NSView {
     var badge = 0 { didSet { needsDisplay = true; needsLayout = true } }
     var showsChevron = false { didSet { needsDisplay = true; needsLayout = true } }
     var selected = false { didSet { restyle() } }
-    var emphasized = false { didSet { title.font = emphasized ? Typo.rowTitleStrong : Typo.rowTitle } }
+    var titleFont = Typo.rowTitle { didSet { title.font = emphasized ? Typo.rowTitleStrong : titleFont } }
+    var emphasized = false { didSet { title.font = emphasized ? Typo.rowTitleStrong : titleFont } }
     /// A control shown at the right edge, vertically centred (e.g. Toggle, CardButton).
     var accessory: NSView? {
         didSet {
@@ -286,7 +286,7 @@ final class ActionTile: NSView {
         self.tint = color
         super.init(frame: .zero)
         title.stringValue = t
-        title.font = Typo.chip
+        title.font = Typo.control
         title.textColor = Pal.text(0.88)
         title.lineBreakMode = .byClipping
         addSubview(title)
@@ -296,21 +296,23 @@ final class ActionTile: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    static let height: CGFloat = 34
+    static let height = Metrics.segment
     private static let glyph: CGFloat = 16
     var fittedWidth: CGFloat { ceil(14 + Self.glyph + 8 + title.intrinsicContentSize.width + 16) }
+    private var contentX: CGFloat { max(Space.m, (bounds.width - Self.glyph - Space.s - title.intrinsicContentSize.width) / 2) }
 
     override func layout() {
         super.layout()
         let th = title.intrinsicContentSize.height
-        title.frame = NSRect(x: 14 + Self.glyph + 8, y: ((bounds.height - th) / 2).rounded(), width: max(0, bounds.width - 14 - Self.glyph - 8 - 12), height: th)
+        let x = contentX + Self.glyph + Space.s
+        title.frame = NSRect(x: x, y: ((bounds.height - th) / 2).rounded(), width: max(0, bounds.width - x - Space.m), height: th)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
         (pressed ? p.surfacePressed : (hovered ? p.surfaceHover : p.surface)).setFill(); shape.fill()
-        Neon.symbol(symbol, in: NSRect(x: 14, y: 0, width: Self.glyph, height: bounds.height), size: 12, weight: .semibold,
+        Neon.symbol(symbol, in: NSRect(x: contentX, y: 0, width: Self.glyph, height: bounds.height), size: 12, weight: .semibold,
                     color: tint.blended(withFraction: 0.25, of: .white) ?? tint)
     }
 
@@ -436,7 +438,9 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     var onAction: ((QuickAction) -> Void)?
     var onOpenURL: ((URL) -> Void)?
 
-    private let search = SearchBox(placeholder: "Ask Zera anything, or search recent files…")
+    private let search = SearchBox(placeholder: "Ask Zera or search files…")
+    private let body = FlippedView()
+    private let bodyScroll = NSScrollView()
     private let attentionHeader = SectionHeader("Needs attention")
     private var attentionRows: [ListRow] = []
     private let allClear = NSTextField(labelWithString: "")
@@ -456,36 +460,41 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     private var watchingVitals = false
 
     init() {
-        super.init(width: 540, title: "")
+        super.init(width: Isle.lensWidth, title: "")
         let p = Pal
         search.field.delegate = self
         addSubview(search)
+        bodyScroll.drawsBackground = false
+        bodyScroll.contentView.drawsBackground = false
+        bodyScroll.hasVerticalScroller = false
+        bodyScroll.documentView = body
+        addSubview(bodyScroll)
         vitalsStrip.onOpen = { [weak self] in self?.setVitals(true) }
-        addSubview(vitalsStrip)
-        addSubview(macHeader)
-        macHint.font = Typo.caption; macHint.textColor = p.textTertiary; macHint.alignment = .right
-        addSubview(macHint)
+        body.addSubview(vitalsStrip)
+        body.addSubview(macHeader)
+        macHint.font = Typo.secondary; macHint.textColor = p.textTertiary; macHint.alignment = .right
+        body.addSubview(macHint)
         vitalsPage.isHidden = true
         addSubview(vitalsPage)
         backButton = GHSquareButton(symbol: "chevron.left", label: "Back", target: self, action: #selector(backTapped))
         backButton.isHidden = true
         addSubview(backButton)
-        addSubview(attentionHeader)
+        body.addSubview(attentionHeader)
         allClear.font = Typo.body; allClear.textColor = p.textSecondary
-        addSubview(allClear)
+        body.addSubview(allClear)
         recentHeader.onLink = { [weak self] in self?.onOpen?(.shelf) }
-        addSubview(recentHeader)
+        body.addSubview(recentHeader)
         recentEmpty.font = Typo.caption; recentEmpty.textColor = p.textTertiary
-        addSubview(recentEmpty)
-        addSubview(quickHeader)
+        body.addSubview(recentEmpty)
+        body.addSubview(quickHeader)
         for a in QuickAction.grid {
             let t = ActionTile(symbol: a.symbol, color: a.color, title: a.tileTitle)
             t.onTap = { [weak self] in self?.onAction?(a) }
-            addSubview(t)
+            body.addSubview(t)
             tiles.append(t)
         }
         for name in [ShelfStore.changed, GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ClaudeActivityService.changed] {
-            NotificationCenter.default.addObserver(self, selector: #selector(refresh), name: name, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(refreshIfVisible), name: name, object: nil)
         }
         refresh()
     }
@@ -506,11 +515,12 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     func setVitals(_ on: Bool, animated: Bool = true) {
         guard on != showingVitals else { return }
         showingVitals = on
+        bodyScroll.isHidden = on
         [search, vitalsStrip, macHeader, macHint, attentionHeader, allClear, quickHeader].forEach { $0.isHidden = on }
         (attentionRows + recentRows + tiles).forEach { $0.isHidden = on }
         vitalsPage.isHidden = !on
         backButton.isHidden = !on
-        let tiles = vitalsStrip.frame
+        let tiles = vitalsStrip.convert(vitalsStrip.bounds, to: self)
         refresh()
         if animated {
             // A vital grows into This Mac; Back slides Home back in.
@@ -540,13 +550,22 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 
     private func listHeight(_ n: Int) -> CGFloat { n == 0 ? 20 : CGFloat(n) * (rowH + Metrics.rowGap) - Metrics.rowGap }
 
+    private var actionFrames: [NSRect] {
+        FlowLayout.frames(widths: tiles.map(\.fittedWidth), available: bounds.width - Metrics.cardPad * 2, height: tileHeight)
+    }
+
+    private var bodyHeight: CGFloat {
+        18 + Space.m + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.xxl
+        + 18 + Space.m + VitalsOrgans.height + Space.xxl
+        + 18 + Space.m + (actionFrames.last?.maxY ?? 0)
+    }
+
+    /// Search belongs to the content column, like the filter/search rows on other screens.
+    private var bodyTop: CGFloat { headerBottom + Metrics.field + Space.l }
+
     var desiredHeight: CGFloat {
         if showingVitals { return headerBottom + VitalsPage.height + Metrics.cardPad }
-        var h = headerBottom
-        h += 18 + Space.m + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.xxl
-        h += 18 + Space.m + VitalsOrgans.height + Space.xxl
-        h += 18 + Space.m + tileHeight + Space.xxl + 4
-        return h
+        return min(Isle.maxContentHeight, bodyTop + bodyHeight + Space.xl)
     }
 
     @objc func refresh() {
@@ -604,7 +623,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         }
         let needs = attentionRows.count
         attentionRows = Array(attentionRows.prefix(Self.maxAttention))
-        for r in attentionRows { r.isHidden = showingVitals; addSubview(r) }
+        for r in attentionRows { r.titleFont = Typo.settingLabel; r.isHidden = showingVitals; body.addSubview(r) }
         allClear.isHidden = showingVitals || !attentionRows.isEmpty
         allClear.stringValue = "All clear — nothing needs you right now ✨"
         let day = Date().formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
@@ -630,8 +649,9 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         entries.sort { $0.0 > $1.0 }
         // Recent shows only while you search: the matches, so Return can still ask Zera instead.
         for (_, text, r) in entries where !query.isEmpty && text.localizedCaseInsensitiveContains(query) {
+            r.titleFont = Typo.settingLabel
             r.isHidden = showingVitals
-            addSubview(r)
+            body.addSubview(r)
             recentRows.append(r)
             if recentRows.count == Self.maxAttention { break }
         }
@@ -639,6 +659,11 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         needsLayout = true
         layoutSubtreeIfNeeded()
         onHeightChange?()
+    }
+
+    @objc private func refreshIfVisible() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        refresh()
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -664,11 +689,9 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         super.layout()
         layoutHeader()
         let x = Metrics.cardPad, w = bounds.width - x * 2
-        var y = headerBottom
+        var y: CGFloat = 0
         if !showingVitals {
-            // Ask Zera sits right of her, level with the greeting.
-            let t = headerTrailingRect
-            search.frame = NSRect(x: t.minX + 8, y: t.midY - Metrics.field / 2, width: t.width - 8, height: Metrics.field)
+            search.frame = NSRect(x: x, y: headerBottom, width: w, height: Metrics.field)
         }
         if showingVitals {
             // Back button first; the title and subtitle move over for it.
@@ -677,41 +700,40 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             let shift = Metrics.headerButton + Space.m
             titleLabel.frame.origin.x += shift - 4; titleLabel.frame.size.width -= shift
             subtitleLabel.frame.origin.x += shift - 4; subtitleLabel.frame.size.width -= shift
-            vitalsPage.frame = NSRect(x: x, y: y, width: w, height: VitalsPage.height)
+            vitalsPage.frame = NSRect(x: x, y: headerBottom, width: w, height: VitalsPage.height)
             return
         }
+        bodyScroll.frame = NSRect(x: x, y: bodyTop, width: w, height: desiredHeight - bodyTop - Space.xl)
+        body.frame = NSRect(x: 0, y: 0, width: w, height: bodyHeight)
         // While searching, the matches take the place of "Needs you".
         let searching = !query.isEmpty
         attentionHeader.title.attributedStringValue = Typo.sectionText(searching ? "Matches" : "Needs you")
         let shown = searching ? recentRows : attentionRows
         attentionRows.forEach { $0.isHidden = searching }
         recentRows.forEach { $0.isHidden = !searching }
-        attentionHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.m
+        attentionHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
         if shown.isEmpty {
             allClear.isHidden = false
             allClear.stringValue = searching ? "No match — press Return to ask Zera." : "All clear — nothing needs you right now ✨"
-            allClear.frame = NSRect(x: x + Space.xs, y: y, width: w - Space.xs, height: 20)
+            allClear.frame = NSRect(x: Space.xs, y: y, width: w - Space.xs, height: 20)
             y += 20
         } else {
             allClear.isHidden = true
-            for r in shown { r.frame = NSRect(x: x, y: y, width: w, height: rowH); y += rowH + Metrics.rowGap }
+            for r in shown { r.frame = NSRect(x: 0, y: y, width: w, height: rowH); y += rowH + Metrics.rowGap }
             y -= Metrics.rowGap
         }
         y += Space.xxl
 
-        macHeader.frame = NSRect(x: x, y: y, width: w, height: 18)
-        macHint.frame = NSRect(x: x + w - 220, y: y + 1, width: 220, height: 16)
+        macHeader.frame = NSRect(x: 0, y: y, width: w, height: 18)
+        macHint.frame = NSRect(x: max(100, w - 220), y: y + 1, width: min(220, w - 100), height: 16)
         y += 18 + Space.m
-        vitalsStrip.frame = NSRect(x: x, y: y, width: w, height: VitalsOrgans.height)
+        vitalsStrip.frame = NSRect(x: 0, y: y, width: w, height: VitalsOrgans.height)
         y += VitalsOrgans.height + Space.xxl
 
-        quickHeader.frame = NSRect(x: x, y: y, width: w, height: 18); y += 18 + Space.m
-        var tx = x
-        for t in tiles {
-            let tw = t.fittedWidth
-            t.isHidden = showingVitals || tx + tw > x + w
-            t.frame = NSRect(x: tx, y: y, width: tw, height: tileHeight)
-            tx += tw + Space.s
+        quickHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
+        for (t, frame) in zip(tiles, actionFrames) {
+            t.isHidden = false
+            t.frame = frame.offsetBy(dx: 0, dy: y)
         }
         recentHeader.isHidden = true
         recentEmpty.isHidden = true
@@ -794,6 +816,8 @@ final class SettingsCard: CardBase, CardContent {
     private let pane = FlippedView()
     /// Panes taller than the island scroll instead of being cut off.
     private let paneScroll = NSScrollView()
+    private let scrollHint = NSTextField(labelWithString: "Scroll for more")
+    private let scrollArrow = NSTextField(labelWithString: "↓")
     private(set) var current: Pane = .general
     private var defaultKind: CardKind?
     private let showingZera: Bool
@@ -827,17 +851,29 @@ final class SettingsCard: CardBase, CardContent {
         navWash.edged = false
         navWash.target = { [weak self] in self?.navRows.first { $0.selected }?.frame }
         addSubview(navWash)
-        paneTitle.font = NSFont.systemFont(ofSize: 17, weight: .bold)
+        paneTitle.font = Typo.paneTitle
         paneTitle.textColor = Pal.text
         addSubview(paneTitle)
         paneScroll.drawsBackground = false
         paneScroll.contentView.drawsBackground = false
         paneScroll.borderType = .noBorder
-        paneScroll.hasVerticalScroller = false   // still scrolls with the trackpad or wheel
+        paneScroll.hasVerticalScroller = false // Scroll by trackpad/wheel without covering trailing controls.
+        paneScroll.autohidesScrollers = true
         paneScroll.scrollerStyle = .overlay
         paneScroll.verticalScrollElasticity = .allowed
         paneScroll.documentView = pane
         addSubview(paneScroll)
+        scrollHint.font = Typo.secondary
+        scrollHint.textColor = Pal.textSecondary
+        scrollArrow.font = Typo.secondary
+        scrollArrow.textColor = Pal.textSecondary
+        scrollArrow.wantsLayer = true
+        scrollHint.isHidden = true
+        scrollArrow.isHidden = true
+        addSubview(scrollHint)
+        addSubview(scrollArrow)
+        paneScroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(updateScrollHint), name: NSView.boundsDidChangeNotification, object: paneScroll.contentView)
         for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed, ClaudeActivityService.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(serviceChanged), name: name, object: nil)
         }
@@ -891,7 +927,18 @@ final class SettingsCard: CardBase, CardContent {
 
     /// Service notifications rebuild the pane — except while you are typing into a field,
     /// so a background GitHub poll cannot wipe a half-pasted token.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { refreshServicePane() }
+        updateScrollHint()
+    }
+
     @objc private func serviceChanged() {
+        guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        refreshServicePane()
+    }
+
+    private func refreshServicePane() {
         // Only panes that show a service's state need rebuilding. Claude sessions report changes
         // every second, and a rebuild would throw away whatever you're in the middle of.
         guard [.integrations, .claude, .github, .calendar, .shelf, .diagnostics].contains(current) else { return }
@@ -928,25 +975,25 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private func hint(_ text: String, _ s: inout Stack) {
-        let f = NSFont.systemFont(ofSize: 12.5)
+        let f = Typo.body
         let l = label(text, font: f, color: Pal.textTertiary, in: pane, wraps: true)
         let w = min(s.width, 520)
         let h = (text as NSString).boundingRect(with: NSSize(width: w, height: 200), options: [.usesLineFragmentOrigin], attributes: [.font: f]).height
-        s.y += 10
+        s.y += Space.m
         l.frame = NSRect(x: 4, y: s.y, width: w, height: ceil(h) + 2)
         s.y += ceil(h) + 2 + Space.m
     }
 
     /// v2: one setting per row — its name left, its control right, a hairline under it.
-    private static let rowH: CGFloat = 50
+    private static let rowH = Metrics.settingRow
     private func settingRow(_ title: String, _ s: inout Stack, control: NSView, controlWidth: CGFloat) {
         let row = FlippedView()
         let h = Self.rowH
-        let l = label(title, font: NSFont.systemFont(ofSize: 14, weight: .semibold), in: row)
-        l.frame = NSRect(x: 4, y: (h - 18) / 2, width: s.width - controlWidth - Space.m - 4, height: 18)
+        let l = label(title, font: Typo.settingLabel, in: row)
+        l.frame = NSRect(x: 4, y: (h - 18) / 2, width: max(0, s.width - min(controlWidth, s.width * 0.48) - Space.m - Space.xs), height: 18)
         let toggle = control is Toggle
-        let ch: CGFloat = toggle ? 24 : Metrics.control
-        let cw = toggle ? 44 : controlWidth
+        let ch: CGFloat = toggle ? 24 : Metrics.button
+        let cw = toggle ? 44 : min(controlWidth, s.width * 0.48)
         control.frame = NSRect(x: s.width - cw, y: ((h - ch) / 2).rounded(), width: cw, height: ch)
         row.addSubview(control)
         let rule = NSView(frame: NSRect(x: 0, y: h - 1, width: s.width, height: 1))
@@ -965,15 +1012,17 @@ final class SettingsCard: CardBase, CardContent {
         settingRow(title, &s, control: t, controlWidth: 40)
     }
 
-    private func popupRow(_ title: String, items: [String], selected: Int, _ s: inout Stack, action: Selector) -> NSPopUpButton {
-        let pop = NSPopUpButton()
-        pop.addItems(withTitles: items)
-        pop.selectItem(at: selected)
-        pop.target = self
-        pop.action = action
-        stylePopup(pop)
+    @discardableResult
+    private func popupRow(_ title: String, items: [String], selected: Int, _ s: inout Stack, action: Selector) -> ZeraSelect {
+        let pop = ZeraSelect(items)
+        pop.select(selected)
+        pop.setAccessibilityLabel(title)
+        pop.onChange = { [weak self, weak pop] _ in
+            guard let self = self, let pop = pop else { return }
+            NSApp.sendAction(action, to: self, from: pop)
+        }
         // Wide enough for the longest choice and the ⌄ beside it.
-        let longest = items.map { ($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium)]).width }.max() ?? 0
+        let longest = items.map { ($0 as NSString).size(withAttributes: [.font: Typo.control]).width }.max() ?? 0
         settingRow(title, &s, control: pop, controlWidth: max(150, ceil(longest) + 52))
         return pop
     }
@@ -1003,16 +1052,16 @@ final class SettingsCard: CardBase, CardContent {
         s.place(row, height: 20, gap: Space.m)
     }
 
-    private var defaultPopup: NSPopUpButton?
+    private var defaultPopup: ZeraSelect?
     private weak var shortcutRecorder: ShortcutRecorder?
-    private var breakPopup: NSPopUpButton?
+    private var breakPopup: ZeraSelect?
     private var tokenField: ThemedSecureField?
     private var apiKeyField: ThemedSecureField?
     private var overrideField: ThemedField?
-    private var modelPopup: NSPopUpButton?
-    private var cliModelPopup: NSPopUpButton?
-    private var timeoutPopup: NSPopUpButton?
-    private var maxOutputPopup: NSPopUpButton?
+    private var modelPopup: ZeraSelect?
+    private var cliModelPopup: ZeraSelect?
+    private var timeoutPopup: ZeraSelect?
+    private var maxOutputPopup: ZeraSelect?
     private var claudeTestResult: String?
     private var apiTestResult: String?
     private static let timeoutChoices = [60, 120, 180, 300, 600, 900]
@@ -1097,14 +1146,14 @@ final class SettingsCard: CardBase, CardContent {
              + "become its done tasks (only commit messages go to Claude, through your Claude Code login).", &s)
     }
 
-    @objc private func batteryLowChanged(_ sender: NSPopUpButton) {
-        let i = sender.indexOfSelectedItem
+    @objc private func batteryLowChanged(_ sender: ZeraSelect) {
+        let i = sender.selectedIndex
         guard BatteryAlerts.lowChoices.indices.contains(i) else { return }
         BatteryAlerts.shared.lowThreshold = BatteryAlerts.lowChoices[i]
     }
 
-    @objc private func batteryHealthChanged(_ sender: NSPopUpButton) {
-        let i = sender.indexOfSelectedItem
+    @objc private func batteryHealthChanged(_ sender: ZeraSelect) {
+        let i = sender.selectedIndex
         guard BatteryAlerts.healthChoices.indices.contains(i) else { return }
         BatteryAlerts.shared.healthThreshold = BatteryAlerts.healthChoices[i]
     }
@@ -1173,15 +1222,15 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     static let replyWindows = [0, 10, 20, 30, 60]
-    @objc private func replyWindowChanged(_ sender: NSPopUpButton) {
-        ClaudeActivityService.shared.replyWindow = Self.replyWindows[max(0, sender.indexOfSelectedItem)]
+    @objc private func replyWindowChanged(_ sender: ZeraSelect) {
+        ClaudeActivityService.shared.replyWindow = Self.replyWindows[max(0, sender.selectedIndex)]
     }
 
-    @objc private func clipKeepChanged(_ sender: NSPopUpButton) {
-        ClipboardStore.shared.keepDays = ClipboardStore.keepChoices[max(0, sender.indexOfSelectedItem)]
+    @objc private func clipKeepChanged(_ sender: ZeraSelect) {
+        ClipboardStore.shared.keepDays = ClipboardStore.keepChoices[max(0, sender.selectedIndex)]
     }
-    @objc private func clipMaxChanged(_ sender: NSPopUpButton) {
-        ClipboardStore.shared.maxItems = ClipboardStore.maxChoices[max(0, sender.indexOfSelectedItem)]
+    @objc private func clipMaxChanged(_ sender: ZeraSelect) {
+        ClipboardStore.shared.maxItems = ClipboardStore.maxChoices[max(0, sender.selectedIndex)]
     }
     @objc private func clipClearTapped() {
         ClipboardStore.shared.clear()
@@ -1211,6 +1260,10 @@ final class SettingsCard: CardBase, CardContent {
 
     private func buildAppearance(_ s: inout Stack) {
         let store = ThemeStore.shared
+        sectionLabel("Menus", &s)
+        popupRow("Menu appearance", items: DropdownStyle.allCases.map(\.title), selected: DropdownStyle.current.rawValue,
+                 &s, action: #selector(menuAppearanceChanged(_:)))
+        hint("Zera glass matches your theme. Native macOS menus follow your system appearance.", &s)
         sectionLabel("Theme", &s)
         for t in store.builtIns { themeRow(t, &s) }
         if !store.custom.isEmpty {
@@ -1314,6 +1367,7 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private func sectionLabel(_ text: String, _ s: inout Stack) {
+        if s.y > 0 { s.y += Space.l }
         let l = label("", in: pane)
         l.attributedStringValue = Typo.sectionText(text)
         s.place(l, height: 18, gap: Space.xs)
@@ -1468,7 +1522,7 @@ final class SettingsCard: CardBase, CardContent {
         kvRow("Active provider", active, &s)
         let health = a.lastRunSummary.isEmpty ? (cli.status == .connected ? "Healthy" : cli.status.label) : a.lastRunSummary
         kvRow("Zera connection", health, &s)
-        kvRow("Shell PATH entries", "\(ShellEnvironment.shared.path.count)", &s)
+        kvRow("Shell PATH entries", ShellEnvironment.shared.cachedPathCount.map(String.init) ?? "Not checked", &s)
         kvRow("Last checked", cli.checkedAt.map { relativeTime($0) } ?? "never", &s)
         if a.debugLogging, !a.lastStderr.isEmpty {
             sectionLabel("Last error output", &s)
@@ -1563,8 +1617,8 @@ final class SettingsCard: CardBase, CardContent {
         hint("Only names, sizes and dates are read. Half-finished downloads (.crdownload, .download, .part) show once they finish.", &s)
     }
 
-    @objc private func freshWindowChanged(_ sender: NSPopUpButton) {
-        let i = sender.indexOfSelectedItem
+    @objc private func freshWindowChanged(_ sender: ZeraSelect) {
+        let i = sender.selectedIndex
         guard FreshFiles.windows.indices.contains(i) else { return }
         FreshFiles.shared.window = FreshFiles.windows[i].1
     }
@@ -1619,18 +1673,22 @@ final class SettingsCard: CardBase, CardContent {
 
     @objc private func defaultChanged() {
         guard let pop = defaultPopup else { return }
-        defaultKind = Self.defaultChoices[max(0, min(Self.defaultChoices.count - 1, pop.indexOfSelectedItem))]
+        defaultKind = Self.defaultChoices[max(0, min(Self.defaultChoices.count - 1, pop.selectedIndex))]
         onDefaultChanged?(defaultKind)
     }
 
-    @objc private func openerStyleChanged(_ pop: NSPopUpButton) {
-        AppOpenerSettings.style = AppOpenerSettings.Style(rawValue: pop.indexOfSelectedItem) ?? .orbit
+    @objc private func openerStyleChanged(_ pop: ZeraSelect) {
+        AppOpenerSettings.style = AppOpenerSettings.Style(rawValue: pop.selectedIndex) ?? .orbit
         say?(AppOpenerSettings.style == .orbit ? "the opener comes down in the middle now ✨" : "back to the classic tree 🌳", .happy)
+    }
+
+    @objc private func menuAppearanceChanged(_ pop: ZeraSelect) {
+        DropdownStyle.current = DropdownStyle(rawValue: pop.selectedIndex) ?? .zera
     }
 
     @objc private func breakChanged() {
         guard let pop = breakPopup else { return }
-        let m = Self.breakChoices[max(0, min(Self.breakChoices.count - 1, pop.indexOfSelectedItem))]
+        let m = Self.breakChoices[max(0, min(Self.breakChoices.count - 1, pop.selectedIndex))]
         ReminderService.shared.breakInterval = m
         say?(m == 0 ? "no more break nudges" : "I'll nudge you every \(Reminder.intervalLabel(m)) ☕", .cozy)
     }
@@ -1734,23 +1792,23 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     @objc private func apiModelChanged() {
-        guard let pop = modelPopup, let title = pop.titleOfSelectedItem else { return }
-        AnthropicAPIClient.shared.model = title
+        guard let pop = modelPopup else { return }
+        AnthropicAPIClient.shared.model = pop.selectedTitle
     }
 
     @objc private func cliModelChanged() {
         guard let pop = cliModelPopup else { return }
-        ZeraAssistant.shared.cliModel = Self.cliModelChoices[max(0, min(Self.cliModelChoices.count - 1, pop.indexOfSelectedItem))]
+        ZeraAssistant.shared.cliModel = Self.cliModelChoices[max(0, min(Self.cliModelChoices.count - 1, pop.selectedIndex))]
     }
 
     @objc private func timeoutChanged() {
         guard let pop = timeoutPopup else { return }
-        ZeraAssistant.shared.timeout = TimeInterval(Self.timeoutChoices[max(0, min(Self.timeoutChoices.count - 1, pop.indexOfSelectedItem))])
+        ZeraAssistant.shared.timeout = TimeInterval(Self.timeoutChoices[max(0, min(Self.timeoutChoices.count - 1, pop.selectedIndex))])
     }
 
     @objc private func maxOutputChanged() {
         guard let pop = maxOutputPopup else { return }
-        ZeraAssistant.shared.maxOutputTokens = Self.maxOutputChoices[max(0, min(Self.maxOutputChoices.count - 1, pop.indexOfSelectedItem))]
+        ZeraAssistant.shared.maxOutputTokens = Self.maxOutputChoices[max(0, min(Self.maxOutputChoices.count - 1, pop.selectedIndex))]
     }
 
     @objc private func diagnosticsTapped() { select(.diagnostics) }
@@ -1791,6 +1849,23 @@ final class SettingsCard: CardBase, CardContent {
     @objc private func clearShelfTapped() { ShelfStore.shared.clear(); say?("all tidy! ✨", .happy) }
     @objc private func openStagingTapped() { NSWorkspace.shared.open(ShelfStore.shared.stagingDir) }
 
+    @objc private func updateScrollHint() {
+        let hasMore = paneHeight > paneScroll.contentView.bounds.maxY + 2
+        scrollHint.isHidden = !hasMore
+        scrollArrow.isHidden = !hasMore
+        if hasMore && window != nil && !Motion.reduced {
+            if scrollArrow.layer?.animation(forKey: "scrollPulse") == nil {
+                let pulse = CABasicAnimation(keyPath: "opacity")
+                pulse.fromValue = 0.45
+                pulse.toValue = 1
+                pulse.duration = 1.1
+                pulse.autoreverses = true
+                pulse.repeatCount = .infinity
+                scrollArrow.layer?.add(pulse, forKey: "scrollPulse")
+            }
+        } else { scrollArrow.layer?.removeAnimation(forKey: "scrollPulse") }
+    }
+
     override func layout() {
         super.layout()
         layoutHeader()
@@ -1816,6 +1891,11 @@ final class SettingsCard: CardBase, CardContent {
         }
         paneScroll.frame = NSRect(x: px, y: headerBottom + 40, width: pw, height: visiblePaneHeight)
         pane.frame = NSRect(x: 0, y: 0, width: pw, height: paneHeight)
+        let hintWidth = ceil((scrollHint.stringValue as NSString).size(withAttributes: [.font: Typo.secondary]).width)
+        let hintX = px + (pw - hintWidth - 18) / 2
+        scrollArrow.frame = NSRect(x: hintX, y: paneScroll.frame.maxY + 4, width: 14, height: 16)
+        scrollHint.frame = NSRect(x: hintX + 18, y: paneScroll.frame.maxY + 4, width: hintWidth, height: 16)
+        updateScrollHint()
     }
 }
 
