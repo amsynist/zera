@@ -2474,7 +2474,7 @@ final class TreeButton: NSView {
                 NSGradient(starting: fill.blended(withFraction: hovered ? 0.03 : 0, of: .white) ?? fill,
                            ending: OpenerLook.primaryBottom)?.draw(in: path, angle: -90)
             } else { fill.setFill(); path.fill() }
-            (primary ? OpenerLook.accent.withAlphaComponent(0.22) : OpenerLook.edge).setStroke()
+            (primary ? NSColor.white.withAlphaComponent(0.12) : OpenerLook.edge).setStroke()
             path.lineWidth = 1; path.stroke()
             ink = primary ? .white : (openerPinned ? OpenerLook.accent : OpenerLook.muted)
         } else {
@@ -2500,7 +2500,7 @@ final class TreeButton: NSView {
             let keyX = x0 + iw + ts.width + Self.keyGap
             if openerAppearance {
                 let chip = NSRect(x: keyX, y: bounds.midY - 10, width: keyWidth, height: 20)
-                NSColor.white.withAlphaComponent(primary ? 0.2 : 0.06).setFill()
+                NSColor.white.withAlphaComponent(primary ? 0.10 : 0.06).setFill()
                 let path = NSBezierPath(roundedRect: chip, xRadius: 5, yRadius: 5)
                 path.fill()
                 OpenerLook.edge.setStroke(); path.lineWidth = 1; path.stroke()
@@ -2672,8 +2672,10 @@ extension OpenerSurface {
         let mods = event.modifierFlags.intersection([.command, .control, .option, .shift])
         if mods.contains(.command) || mods.contains(.control) { return performKeyEquivalent(with: event) }
         guard mods.isEmpty || (mods == .shift && event.keyCode == 48),
-              let editor = window?.fieldEditor(true, for: searchField) as? NSTextView,
-              !editor.hasMarkedText() else { return false }
+              let editor = window?.fieldEditor(true, for: searchField) as? NSTextView else { return false }
+        // Composition owns these keys only while its editor has focus. AppKit reuses the
+        // field editor, so stale marked text must not block navigation after another click.
+        if window?.firstResponder === editor, editor.hasMarkedText() { return false }
         let command: Selector
         switch event.keyCode {
         case 53: command = #selector(NSResponder.cancelOperation(_:))

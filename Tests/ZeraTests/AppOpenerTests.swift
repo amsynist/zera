@@ -257,6 +257,55 @@ final class AppOpenerTests: XCTestCase {
     }
 
     @MainActor
+    func testClassicWindowRoutesEveryArrowAfterFocusChanges() throws {
+        _ = NSApplication.shared
+        let saved = UserDefaults.standard.object(forKey: "appOpener.style")
+        defer { UserDefaults.standard.set(saved, forKey: "appOpener.style") }
+        AppOpenerSettings.style = .tree
+        let manager = AppOpener()
+        manager.open(notch: NSRect(x: 370, y: 870, width: 180, height: 30), screen: NSRect(x: 0, y: 0, width: 1024, height: 900))
+        defer { manager.close(); RunLoop.main.run(until: Date().addingTimeInterval(0.35)) }
+        let view = try XCTUnwrap(manager.panel.contentView as? TreeOpenerView)
+        view.previewType("kill")
+        let other = NSButton(title: "Focus elsewhere", target: nil, action: nil)
+        view.addSubview(other)
+        func key(_ code: UInt16, _ characters: String, mods: NSEvent.ModifierFlags = []) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0,
+                windowNumber: manager.panel.windowNumber, context: nil, characters: characters,
+                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
+        }
+        func selectedTitle() throws -> String {
+            try XCTUnwrap(descendants(view).compactMap { $0 as? TreeRowView }.first { $0.selected }?.accessibilityLabel())
+        }
+        for (forward, backward) in [(UInt16(124), UInt16(123)), (125, 126)] {
+            XCTAssertTrue(manager.panel.makeFirstResponder(other))
+            let before = try selectedTitle()
+            manager.panel.sendEvent(try key(forward, ""))
+            XCTAssertNotEqual(try selectedTitle(), before)
+            manager.panel.sendEvent(try key(backward, ""))
+            XCTAssertEqual(try selectedTitle(), before)
+        }
+        // Active input composition keeps navigation keys; an inactive editor cannot steal them.
+        XCTAssertTrue(manager.panel.makeFirstResponder(view.searchField))
+        let editor = try XCTUnwrap(manager.panel.firstResponder as? NSTextView)
+        editor.setMarkedText("k", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertTrue(editor.hasMarkedText())
+        XCTAssertFalse(view.handleKeyEvent(try key(125, "")))
+        XCTAssertTrue(manager.panel.makeFirstResponder(other))
+        editor.setMarkedText("k", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        XCTAssertTrue(view.handleKeyEvent(try key(125, "")))
+        editor.unmarkText()
+        view.previewType("kill")
+        XCTAssertTrue(manager.panel.performKeyEquivalent(with: try key(46, "m", mods: .command)))
+        XCTAssertTrue(view.isShowingActions)
+        XCTAssertTrue(manager.panel.makeFirstResponder(other))
+        manager.panel.sendEvent(try key(53, ""))
+        XCTAssertFalse(view.isShowingActions)
+        manager.panel.sendEvent(try key(53, ""))
+        XCTAssertFalse(manager.isOpen)
+    }
+
+    @MainActor
     func testRapidCloseReopenDoesNotHideTheNewPresentation() throws {
         _ = NSApplication.shared
         let manager = AppOpener()

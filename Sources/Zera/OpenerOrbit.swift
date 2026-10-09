@@ -15,16 +15,16 @@ import AppKit
 /// Colours of the v2 opener, kept local so the other screens retain their theme.
 enum OpenerLook {
     static let accent = NSColor(srgbRed: 0.59, green: 0.64, blue: 1, alpha: 1)
-    static let surface = NSColor(srgbRed: 0.065, green: 0.074, blue: 0.12, alpha: 1)
+    static let surface = NSColor(srgbRed: 0.065, green: 0.07, blue: 0.085, alpha: 1)
     static let edge = NSColor.white.withAlphaComponent(0.08)
     static let muted = NSColor(srgbRed: 0.64, green: 0.66, blue: 0.73, alpha: 1)
     static let text = NSColor.white
-    static let primary = NSColor(srgbRed: 0.25, green: 0.28, blue: 0.42, alpha: 1)
-    static let primaryBottom = NSColor(srgbRed: 0.19, green: 0.22, blue: 0.34, alpha: 1)
+    static let primary = NSColor(srgbRed: 0.20, green: 0.22, blue: 0.28, alpha: 1)
+    static let primaryBottom = NSColor(srgbRed: 0.14, green: 0.16, blue: 0.21, alpha: 1)
     /// Gentle depth on floating cards; the desktop blur remains a separate native layer.
     static let glassGradient = [
-        NSColor(srgbRed: 0.17, green: 0.19, blue: 0.28, alpha: 0.42),
-        NSColor(srgbRed: 0.07, green: 0.08, blue: 0.13, alpha: 0.24)
+        NSColor(srgbRed: 0.12, green: 0.13, blue: 0.16, alpha: 0.32),
+        NSColor(srgbRed: 0.07, green: 0.075, blue: 0.09, alpha: 0.20)
     ]
     static let width: CGFloat = 720
     static let searchHeight: CGFloat = 52
@@ -342,7 +342,7 @@ final class OpenerVeil: NSView {
         // A restrained neutral tint, rather than an opaque painted backdrop.
         let tint = NSView(frame: bounds)
         tint.wantsLayer = true
-        tint.layer?.backgroundColor = OpenerLook.surface.withAlphaComponent(0.18).cgColor
+        tint.layer?.backgroundColor = NSColor(white: 0.035, alpha: 0.28).cgColor
         tint.autoresizingMask = [.width, .height]
         addSubview(tint)
     }
