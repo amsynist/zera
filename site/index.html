@@ -4,16 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zera — your AI buddy in the notch</title>
-<meta name="description" content="A free, open-source macOS app that lives in your notch: your Mac's vitals, Claude Code sessions and approvals, fresh downloads, tasks and timesheets from your commits, clipboard, pull requests and your calendar.">
+<meta name="description" content="A free, open-source macOS app that lives in your notch: approve Claude Code from the notch, drop files on it and drag them anywhere, ask Claude about them, a focus orb with quick add, timesheets from your commits, pull requests, your calendar, and ⌥Space to open any app.">
 <meta name="theme-color" content="#08070d">
 <link rel="icon" type="image/png" href="assets/icon.png">
 <link rel="apple-touch-icon" href="assets/icon.png">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zera — your AI buddy in the notch">
-<meta property="og:description" content="Your Mac's vitals, Claude Code, fresh downloads, tasks and timesheets, in your Mac's notch. Free and open source.">
-<meta property="og:url" content="https://amsynist.github.io/zera/">
-<meta property="og:image" content="https://amsynist.github.io/zera/assets/og.jpg">
-<link rel="canonical" href="https://amsynist.github.io/zera/">
+<meta property="og:description" content="Approve Claude Code from the notch, drop files on it, ask Claude about them, focus, timesheets and ⌥Space for any app. Free and open source.">
+<meta property="og:url" content="https://zera.pravincodes.in/">
+<meta property="og:image" content="https://zera.pravincodes.in/assets/og.jpg">
+<link rel="canonical" href="https://zera.pravincodes.in/">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -100,8 +100,8 @@ h1,h2,h3{margin:0;color:var(--ink)}
 .notchbar{position:relative;height:0}
 .stage{position:relative;max-width:700px;margin:0 auto}
 .island{position:relative;margin:0 auto;width:100%;cursor:default}
-.island .screens{position:relative;width:100%;aspect-ratio:1311/1051}
-.island .screens img{position:absolute;left:50%;top:0;width:auto;max-width:100%;max-height:100%;transform:translateX(-50%);opacity:0;transition:opacity .45s var(--ease),transform .6s var(--ease)}
+.island .screens{position:relative;width:100%;aspect-ratio:1600/1139}
+.island .screens img{position:absolute;left:50%;top:0;width:100%;transform:translateX(-50%);opacity:0;transition:opacity .45s var(--ease),transform .6s var(--ease);filter:drop-shadow(0 30px 60px rgba(0,0,0,.55)) drop-shadow(0 0 40px rgba(var(--accent-rgb),.14))}
 .island .screens img.on{opacity:1;transform:translateX(-50%)}
 .island .screens img.from-right{transform:translateX(calc(-50% + 36px))}
 .island .screens img.from-left{transform:translateX(calc(-50% - 36px))}
@@ -180,9 +180,18 @@ h1,h2,h3{margin:0;color:var(--ink)}
 .toggle button{position:relative;z-index:1;height:34px;padding:0 15px;border:0;background:none;color:var(--dim);font:500 13.5px/1 Geist,sans-serif;border-radius:9px;cursor:pointer;transition:color .2s}
 .toggle button.on{color:var(--ink)}
 .toggle .pill{position:absolute;top:4px;bottom:4px;border-radius:9px;background:rgba(var(--accent-rgb),.2);border:1px solid rgba(var(--accent-rgb),.5);transition:left .4s var(--ease),width .4s var(--ease)}
-.swap{position:relative}
-.swap img{transition:opacity .45s var(--ease),transform .55s var(--ease)}
-.swap img.hide{position:absolute;inset:0;opacity:0;transform:translateY(14px) scale(.985);pointer-events:none}
+.swap{display:grid;align-items:start}
+.swap > *{grid-area:1/1;transition:opacity .45s var(--ease),transform .55s var(--ease)}
+.swap > .hide{opacity:0;transform:translateY(14px) scale(.985);pointer-events:none}
+
+/* product shots: each screen on its own frosted stage */
+.pic{width:100%;filter:drop-shadow(0 30px 60px rgba(0,0,0,.55)) drop-shadow(0 0 40px rgba(var(--accent-rgb),.12));transition:transform .5s var(--ease)}
+/* feature loops, in a glass frame */
+.vframe{position:relative;border-radius:22px;padding:8px;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02));border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 60px rgba(var(--accent-rgb),.12);transition:transform .5s var(--ease)}
+.vframe video{width:100%;aspect-ratio:16/9;border-radius:15px;display:block;background:#08070d}
+.soundhint{position:absolute;right:26px;top:24px;height:38px;padding:0 15px;border-radius:999px;border:1px solid rgba(255,255,255,.22);background:rgba(8,7,13,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;font:600 13.5px/1 Geist,sans-serif;cursor:pointer;transition:opacity .3s,transform .2s}
+.soundhint:hover{transform:translateY(-1px);border-color:rgba(var(--accent-rgb),.6)}
+.soundhint.gone{opacity:0;pointer-events:none}
 
 /* battery demo */
 .drain{display:flex;align-items:center;gap:14px;margin-top:22px;font:600 15px/1 "Geist Mono",monospace;color:var(--ink)}
@@ -211,8 +220,8 @@ h1,h2,h3{margin:0;color:var(--ink)}
 .sw i{width:16px;height:16px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
 .sw:hover{color:var(--ink);transform:translateY(-1px)}
 .sw.on{color:var(--ink);border-color:var(--accent);background:rgba(var(--accent-rgb),.14)}
-.themeview{position:relative;max-width:760px;margin:40px auto 0;aspect-ratio:1311/936}
-.themeview img{position:absolute;inset:0;margin:0 auto;max-height:100%;width:auto;left:50%;transform:translateX(-50%);opacity:0;transition:opacity .6s var(--ease)}
+.themeview{position:relative;max-width:820px;margin:40px auto 0;aspect-ratio:1600/1138}
+.themeview img{position:absolute;inset:0;width:100%;opacity:0;transition:opacity .6s var(--ease)}
 .themeview img.on{opacity:1}
 
 /* grid of more */
@@ -222,7 +231,7 @@ h1,h2,h3{margin:0;color:var(--ink)}
 .card:hover{border-color:rgba(var(--accent-rgb),.45)}
 .card::before{content:"";position:absolute;inset:0;background:radial-gradient(400px circle at var(--mx,50%) var(--my,0%),rgba(var(--accent-rgb),.14),transparent 45%);opacity:0;transition:opacity .3s;pointer-events:none}
 .card:hover::before{opacity:1}
-.card img{border-radius:12px;margin:-4px auto 6px;max-height:230px;width:auto}
+.card img{border-radius:14px;margin:-4px auto 6px;max-height:230px;width:auto;max-width:100%}
 .card h3{font:650 19px/1.25 Geist,sans-serif;margin-top:16px}
 .card p{margin:8px 0 0;color:var(--dim);font-size:15px;line-height:1.55}
 
@@ -263,11 +272,10 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
   <nav class="wrap" aria-label="Main">
     <a class="brand" href="#top"><img src="assets/zera-hang.png" alt="">Zera</a>
     <div class="navlinks">
-      <a href="#new">What's new</a>
-      <a href="#vitals">Vitals</a>
-      <a href="#fresh">Shelf</a>
+      <a href="#film">Film</a>
       <a href="#claude">Claude Code</a>
-      <a href="#tasks">Tasks</a>
+      <a href="#shelf">Shelf</a>
+      <a href="#tasks">Focus</a>
       <a href="#opener">Opener</a>
       <a href="#themes">Themes</a>
       <a href="#faq">FAQ</a>
@@ -286,20 +294,19 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
       <div class="hero-copy">
         <span class="eyebrow rv"><i></i>For macOS · free and open source</span>
         <h1 class="h1 kin" style="margin-top:22px">Your AI buddy<br><span class="grad">in the notch.</span></h1>
-        <p class="lead rv d2">Zera hangs from your Mac's notch and keeps your day in one place: your Mac's vitals, Claude Code sessions, fresh downloads, tasks and timesheets, clipboard, pull requests and calendar.</p>
+        <p class="lead rv d2">Zera hangs from your Mac's notch and turns it into a place to work: approve Claude Code from the notch, drop files on it and drag them anywhere, ask Claude about them, plan your day with a focus orb, and open any app with ⌥Space.</p>
         <div class="ctas rv d3">
           <a class="btn primary" href="https://github.com/amsynist/zera/releases/latest">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
             Download for Mac
           </a>
-          <a class="btn" href="#new">Watch what's new</a>
+          <a class="btn" href="#film">Watch the film</a>
         </div>
         <p class="meta rv d4">macOS 13+ · Apple silicon and Intel · no account, no API key</p>
       </div>
       <div class="hero-demo">
         <div class="stage">
           <div class="island" id="island">
-            <img class="zera-hang" src="assets/zera-hang.png" alt="">
             <div class="screens" id="screens"></div>
           </div>
         </div>
@@ -309,19 +316,97 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
     </div>
   </section>
 
-  <!-- What's new: the film -->
-  <section id="new" class="film">
+  <!-- The film -->
+  <section id="film" class="film">
     <div class="wrap" style="text-align:center">
-      <span class="eyebrow new rv"><i></i>What's new</span>
-      <h2 class="h2 kin">Vitals, fresh downloads,<br>and a nudge before the battery dies.</h2>
+      <span class="eyebrow new rv"><i></i>Zera in 40 seconds</span>
+      <h2 class="h2 kin">Finally, a job<br>for your notch.</h2>
       <div class="frame rv d2" id="filmframe">
-        <video id="film" src="assets/zera-film.mp4" poster="assets/zera-film-poster.jpg" muted loop playsinline preload="metadata" aria-label="What's new in Zera: the vitals strip and This Mac, the Shelf's Fresh tab, clipboard, tasks, pull request approvals, Claude sessions, the battery banner and export"></video>
+        <video id="filmvid" src="assets/zera-film.mp4" poster="assets/zera-film-poster.jpg" muted loop playsinline preload="metadata" aria-label="Zera in 40 seconds: the tabs bloom from the notch, Claude Code asks and you approve, a file dropped on the notch and dragged back out, Claude summarizes it, clipboard, a task added from the focus orb, the timesheet export, pull requests, a meeting banner, and choosing an app on the ⌥Space arc"></video>
         <div class="vctl">
           <button class="vbtn" id="vplay" aria-label="Pause"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1"></rect><rect x="14" y="4" width="5" height="16" rx="1"></rect></svg></button>
+          <button class="vbtn" id="vsound" aria-label="Turn the sound on"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l4 6M21 9l-4 6"/></svg></button>
           <div class="vprog"><i id="vbar"></i></div>
         </div>
+        <button class="soundhint" id="soundhint">🔊 Sound on</button>
       </div>
-      <p class="meta">Recorded from the app with sample data.</p>
+    </div>
+  </section>
+
+  <!-- Claude Code -->
+  <section id="claude" class="feature">
+    <div class="wrap split">
+      <div class="copy">
+        <span class="eyebrow rv"><i></i>Claude Code, live</span>
+        <h2 class="h2 kin">Claude asks.<br>You approve.</h2>
+        <p class="lead rv d1">While Claude Code works, Zera sprouts two wings beside the notch: what it's doing, how far it's got, and the command it wants to run. Approve it right there, no terminal.</p>
+        <div class="ticks rv d2">
+          <div class="tick"><span><b>Every session at a glance</b>: running, waiting on you, done.</span></div>
+          <div class="tick"><span><b>Approve or reject</b> commands from the notch, only when the terminal would have asked.</span></div>
+          <div class="tick"><span><b>Reply when it's done</b> and the same session keeps going.</span></div>
+        </div>
+      </div>
+      <div class="media">
+        <div class="vframe rv d1"><video class="loop" src="assets/loops/claude.mp4" muted loop playsinline preload="none" aria-label="The wings ask to run npm test; the cursor clicks Approve; Claude finishes: all green"></video></div>
+        <img class="pic rv d2" src="assets/shots/claude-sessions.webp" alt="Claude sessions: running, waiting on you, done" loading="lazy" style="max-width:82%;margin:22px 0 0 auto">
+      </div>
+    </div>
+  </section>
+
+  <!-- Shelf: drop and drag -->
+  <section id="shelf" class="feature">
+    <div class="wrap split rev">
+      <div class="copy">
+        <span class="eyebrow new rv"><i></i>Shelf</span>
+        <h2 class="h2 kin">Drop it on the notch.<br>Drag it anywhere.</h2>
+        <p class="lead rv d1">Drag a file onto the notch and the Shelf opens to catch it. It waits there until you need it: tap to copy, or drag it straight into Slack, Mail, Finder or any other app.</p>
+        <div class="ticks rv d2">
+          <div class="tick"><span><b>Fresh</b> lists what just landed in Downloads, Desktop and folders you add, newest first.</span></div>
+          <div class="tick"><span><b>Half-finished downloads stay hidden</b> until they're done.</span></div>
+          <div class="tick"><span><b>Files stay where they are</b>: the Shelf keeps a reference, not a copy.</span></div>
+        </div>
+        <div class="toggle rv d3" id="shtoggle"><span class="pill"></span><button class="on" data-i="0">Drop and drag</button><button data-i="1">Fresh</button></div>
+      </div>
+      <div class="media swap" id="shswap">
+        <div class="vframe"><video class="loop" src="assets/loops/shelf.mp4" muted loop playsinline preload="none" aria-label="A file dragged onto the notch: Drop it here. It lands on the Shelf, then gets dragged back out into another app."></video></div>
+        <img class="pic hide" src="assets/shots/shelf-fresh.webp" alt="The Shelf's Fresh tab: new files from Downloads and Desktop, newest first" loading="lazy">
+      </div>
+    </div>
+  </section>
+
+  <!-- Ask Claude -->
+  <section id="ask" class="feature">
+    <div class="wrap split">
+      <div class="copy">
+        <span class="eyebrow new rv"><i></i>Ask Claude</span>
+        <h2 class="h2 kin">Ask Claude<br>about any file.</h2>
+        <p class="lead rv d1">Pick a file on the Shelf and ask for a summary, the key points, the full text, or anything else. The answer streams in right there, through your own Claude Code login.</p>
+        <div class="ticks rv d2">
+          <div class="tick"><span><b>Summarize, Explain, Extract</b>, or ask your own question and follow up.</span></div>
+          <div class="tick"><span><b>Only when you ask:</b> a file's contents go to Claude when you click, never before.</span></div>
+          <div class="tick"><span><b>No API key needed</b>: it uses the Claude Code you're already signed in to.</span></div>
+        </div>
+      </div>
+      <div class="media">
+        <div class="vframe rv d1"><video class="loop" src="assets/loops/summary.mp4" muted loop playsinline preload="none" aria-label="Summarize is clicked; Zera reads the file; the summary streams into the file's page"></video></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tasks and focus -->
+  <section id="tasks" class="feature">
+    <div class="wrap split rev">
+      <div class="copy">
+        <span class="eyebrow rv"><i></i>Tasks and focus</span>
+        <h2 class="h2 kin">Tap +. Type it.<br>Tab, and it starts.</h2>
+        <p class="lead rv d1">A focus orb floats at the edge of your screen. Tap its <span class="kbd">+</span> (or press <span class="kbd">⌥⌘T</span> anywhere), type <span class="kbd">Write docs #website 30m</span>, and <span class="kbd">⇥</span> starts the timer. Link a project to its repos and your commits become done tasks, ready for your timesheet.</p>
+        <div class="toggle rv d2" id="extoggle"><span class="pill"></span><button class="on" data-i="0">Focus orb</button><button data-i="1">Your week</button><button data-i="2">Timesheet</button></div>
+      </div>
+      <div class="media swap" id="exswap">
+        <div class="vframe"><video class="loop" src="assets/loops/orb.mp4" muted loop playsinline preload="none" aria-label="The focus orb: tap +, quick add, type a task, Tab starts it and the focus card opens with its timer running"></video></div>
+        <img class="pic hide" src="assets/shots/tasks-week.webp" alt="Tasks: the last 7 days, done tasks made from commits" loading="lazy">
+        <div class="vframe hide"><video class="loop" src="assets/loops/export.mp4" muted loop playsinline preload="none" aria-label="Export: everything as a timesheet, then Excel"></video></div>
+      </div>
     </div>
   </section>
 
@@ -329,7 +414,7 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
   <section id="vitals" class="feature">
     <div class="wrap split">
       <div class="copy">
-        <span class="eyebrow new rv"><i></i>New · Home</span>
+        <span class="eyebrow rv"><i></i>Home</span>
         <h2 class="h2 kin">Your Mac,<br>at a glance.</h2>
         <p class="lead rv d1">A slim strip on Home shows CPU, memory, GPU, Wi-Fi and battery. The numbers glide instead of flicker, and nothing moves around them. Tap it for the full picture.</p>
         <div class="ticks rv d2">
@@ -346,47 +431,8 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
           <div class="seg"><svg width="34" height="24" viewBox="0 0 34 24" style="flex:none"><polyline id="spark" fill="none" stroke="#5fe0b2" stroke-width="1.8" stroke-linejoin="round" points=""></polyline></svg><div><div class="l">Wi-Fi ↑<span data-n="up">0</span></div><div class="n">↓<span data-n="down">0</span><small> Mb/s</small></div></div></div>
           <div class="seg"><div class="batt"><i id="battfill" style="width:80%"></i></div><div><div class="l">Battery</div><div class="n"><span data-n="batt">80</span>%</div></div></div>
         </div></div>
-        <p class="hint">↑ A live replica (simulated numbers). Click it.</p>
-        <div class="thismac" id="thismac"><img class="shot" src="assets/shots/this-mac.webp" alt="This Mac: CPU and GPU rings, per-core bars, Wi-Fi graph with a speed test, memory by kind and battery health" loading="lazy" style="max-width:640px;margin:0 auto"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Shelf · Fresh -->
-  <section id="fresh" class="feature">
-    <div class="wrap split rev">
-      <div class="copy">
-        <span class="eyebrow new rv"><i></i>New · Shelf</span>
-        <h2 class="h2 kin">Downloads,<br>ready to drop.</h2>
-        <p class="lead rv d1">The Shelf's Fresh tab lists what just landed in Downloads, Desktop and any folder you add, newest first. Tap to copy it, or drag it straight into Slack, Mail or Finder. No more hunting through Finder.</p>
-        <div class="ticks rv d2">
-          <div class="tick"><span><b>Watched, not polled:</b> a new download slides in at the top by itself.</span></div>
-          <div class="tick"><span><b>Half-finished downloads stay hidden</b> until they're done.</span></div>
-          <div class="tick"><span><b>Your window:</b> the last 6 hours up to 7 days.</span></div>
-        </div>
-      </div>
-      <div class="media stack">
-        <img class="shot front rv" src="assets/shots/shelf-fresh.webp" alt="The Shelf's Fresh tab: new files from Downloads and Desktop, newest first" loading="lazy">
-        <img class="shot back rv d2" src="assets/shots/settings-shelf.webp" alt="Settings: Fresh files, look back 24 h, Downloads and Desktop" loading="lazy">
-      </div>
-    </div>
-  </section>
-
-  <!-- Battery -->
-  <section id="battery" class="feature">
-    <div class="wrap split">
-      <div class="copy">
-        <span class="eyebrow new rv"><i></i>New · Battery</span>
-        <h2 class="h2 kin">A nudge before<br>it dies.</h2>
-        <p class="lead rv d1">When the battery crosses your mark, Zera drops a banner with its own sound. Once more at 10%, never in between, and fresh after you plug in. Optionally, a heads-up when battery health drops.</p>
-        <div class="drain rv d2" aria-hidden="true"><div class="batt"><i id="drainfill" style="width:60%"></i></div><span id="drainpct">60%</span></div>
-      </div>
-      <div class="media" style="position:relative">
-        <div style="position:relative" class="rv d1">
-          <div class="ring-pulse" id="pulse"></div>
-          <img class="shot" id="battshot" src="assets/shots/battery-banner.webp" alt="Battery at 18%: about 1h 4m left, time to find a charger. Battery settings, Got it." loading="lazy">
-        </div>
-        <img class="shot rv d2" src="assets/shots/settings-general.webp" alt="Settings › General: warn when the battery is low at 20%, warn when battery health drops below 80%" loading="lazy" style="max-width:78%;margin:28px 0 0 auto">
+        <p class="hint">↑ A live replica. Click it.</p>
+        <div class="thismac" id="thismac"><img class="pic" src="assets/shots/this-mac.webp" alt="This Mac: CPU and GPU rings, per-core bars, Wi-Fi graph with a speed test, memory by kind and battery health" loading="lazy" style="max-width:720px;margin:0 auto"></div>
       </div>
     </div>
   </section>
@@ -396,74 +442,57 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
     <div class="wrap split rev">
       <div class="copy">
         <span class="eyebrow rv"><i></i>Pull requests</span>
-        <h2 class="h2 kin">Approved?<br>You'll know.</h2>
-        <p class="lead rv d1">Approvals lists the PRs you approved and yours that someone else approved, however old. Each PR has its own page: checks, reviewers, and Review in one click.</p>
-        <div class="toggle rv d2" id="prtoggle"><span class="pill"></span><button class="on" data-i="0">Approvals</button><button data-i="1">A PR's page</button></div>
+        <h2 class="h2 kin">Every PR,<br>at a glance.</h2>
+        <p class="lead rv d1">Reviews waiting on you, checks failing, and Approvals: the PRs you approved and yours that someone else approved, however old. Each PR has its own page: checks, reviewers, and Review in one click.</p>
+        <div class="toggle rv d2" id="prtoggle"><span class="pill"></span><button class="on" data-i="0">In motion</button><button data-i="1">Approvals</button><button data-i="2">A PR's page</button></div>
       </div>
       <div class="media swap" id="prswap">
-        <img class="shot" src="assets/shots/pr-approvals.webp" alt="Approvals: your PRs approved by @sam and @theo" loading="lazy">
-        <img class="shot hide" src="assets/shots/pr-page.webp" alt="A pull request's page: checks failing, reviewers, Review button" loading="lazy">
+        <div class="vframe"><video class="loop" src="assets/loops/prs.mp4" muted loop playsinline preload="none" aria-label="Pull requests: the list, Approvals, then a PR's page"></video></div>
+        <img class="pic hide" src="assets/shots/pr-approvals.webp" alt="Approvals: your PRs approved by @sam and @theo" loading="lazy">
+        <img class="pic hide" src="assets/shots/pr-page.webp" alt="A pull request's page: checks failing, reviewers, Review button" loading="lazy">
       </div>
     </div>
   </section>
 
-  <!-- Claude Code -->
-  <section id="claude" class="feature">
+  <!-- Reminders and battery -->
+  <section id="day" class="feature">
     <div class="wrap split">
       <div class="copy">
-        <span class="eyebrow rv"><i></i>Claude Code, live</span>
-        <h2 class="h2 kin">Watch it work.<br>Approve from the notch.</h2>
-        <p class="lead rv d1">While Claude Code works, Zera sprouts two wings beside the notch: what it's doing, how far it's got, and the command it wants to run.</p>
-        <div class="ticks rv d2">
-          <div class="tick"><span><b>Every session at a glance</b>: running, waiting on you, done.</span></div>
-          <div class="tick"><span><b>Approve or reject</b> commands right there, only when the terminal would have asked.</span></div>
-          <div class="tick"><span><b>Reply when it's done</b> and the same session keeps going.</span></div>
+        <span class="eyebrow rv"><i></i>Your day</span>
+        <h2 class="h2 kin">Meetings drop in,<br>right on time.</h2>
+        <p class="lead rv d1">Your day from every calendar macOS knows (Google, Outlook, iCloud), with a heads-up and a Join button before each meeting. Plus water and break nudges, and a banner before the battery dies.</p>
+        <div class="drain rv d2" aria-hidden="true"><div class="batt"><i id="drainfill" style="width:60%"></i></div><span id="drainpct">60%</span></div>
+      </div>
+      <div class="media">
+        <div class="vframe rv d1"><video class="loop" src="assets/loops/reminders.mp4" muted loop playsinline preload="none" aria-label="Reminders for today, then a meeting heads-up drops from the notch with a Join call button"></video></div>
+        <div style="position:relative;margin-top:22px" class="rv d2">
+          <div class="ring-pulse" id="pulse"></div>
+          <img class="pic" id="battshot" src="assets/shots/battery-banner.webp" alt="Battery at 18%: about 1h 4m left, time to find a charger" loading="lazy">
         </div>
-      </div>
-      <div class="media wings">
-        <img class="shot rv" src="assets/shots/wings-approval.webp" alt="The wings asking to approve npm test" loading="lazy">
-        <img class="shot rv d1" src="assets/shots/wings-running.webp" alt="The wings while Claude is working" loading="lazy">
-        <img class="shot rv d2" src="assets/shots/claude-sessions.webp" alt="Claude sessions: running, waiting and completed" loading="lazy" style="max-width:640px;margin:10px auto 0">
-      </div>
-    </div>
-  </section>
-
-  <!-- Tasks -->
-  <section id="tasks" class="feature">
-    <div class="wrap split rev">
-      <div class="copy">
-        <span class="eyebrow rv"><i></i>Tasks and timesheets</span>
-        <h2 class="h2 kin">Month end<br>in a minute.</h2>
-        <p class="lead rv d1">Type <span class="kbd">Write docs #website 30m</span> and press play: an orb keeps the time on the screen edge. Link a project to its repos and your commits become done tasks, grouped by day. Then click a day to copy it into your timesheet.</p>
-        <div class="toggle rv d2" id="extoggle"><span class="pill"></span><button class="on" data-i="0">Your week</button><button data-i="1">Timesheet</button><button data-i="2">Excel</button></div>
-      </div>
-      <div class="media swap" id="exswap">
-        <img class="shot" src="assets/shots/tasks-week.webp" alt="Tasks: the last 7 days, done tasks from commits" loading="lazy">
-        <img class="shot hide" src="assets/shots/export-timesheet.webp" alt="Export: click a day to copy it" loading="lazy">
-        <img class="shot hide" src="assets/shots/export-excel.webp" alt="Export: the Excel preview as a table" loading="lazy">
       </div>
     </div>
   </section>
 
   <!-- App opener -->
   <section id="opener" class="feature">
-    <div class="wrap split">
+    <div class="wrap split rev">
       <div class="copy">
-        <span class="eyebrow rv"><i></i>App opener</span>
-        <h2 class="h2 kin">Open anything<br>with ⌥Space.</h2>
-        <p class="lead rv d1">Press <span class="kbd">⌥</span> <span class="kbd">Space</span> and a tree of your apps drops from the notch: your usual ones first, then everything, then commands. Type to narrow it, <span class="kbd">⏎</span> to open, <span class="kbd">⌘K</span> for what you can do with it.</p>
+        <span class="eyebrow new rv"><i></i>App opener</span>
+        <h2 class="h2 kin">⌥Space.<br>Arrow. Return.</h2>
+        <p class="lead rv d1">Press <span class="kbd">⌥</span> <span class="kbd">Space</span> and Zera drops down with your usual apps on an arc. <span class="kbd">←</span> <span class="kbd">→</span> glide the choice along it and <span class="kbd">⏎</span> tosses the app up to her. Or just type: apps, commands and actions.</p>
         <div class="keys rv d2" aria-hidden="true"><span class="key k1">⌥</span><span class="plus">+</span><span class="key k2">Space</span></div>
         <div class="ticks rv d2">
           <div class="tick"><span><b>⌘K actions:</b> show in Finder, copy its path or bundle ID, pin it, quit it.</span></div>
-          <div class="tick"><span><b>Commands:</b> Kill Process, Kill Port, Quit All Apps, right in the tree.</span></div>
-          <div class="tick"><span><b>⌘1–⌘6</b> open the first six without leaving the keyboard.</span></div>
+          <div class="tick"><span><b>Commands:</b> Kill Process, Kill Port, Quit All Apps.</span></div>
+          <div class="tick"><span><b>Prefer a list?</b> The classic style hangs a tree under the notch.</span></div>
         </div>
-        <div class="toggle rv d3" id="optoggle"><span class="pill"></span><button class="on" data-i="0">Search</button><button data-i="1">⌘K actions</button><button data-i="2">Commands</button></div>
+        <div class="toggle rv d3" id="optoggle"><span class="pill"></span><button class="on" data-i="0">The arc</button><button data-i="1">⌘K actions</button><button data-i="2">Commands</button><button data-i="3">Classic</button></div>
       </div>
       <div class="media swap" id="opswap">
-        <img class="shot" src="assets/shots/opener-search.webp" alt="The app opener: searching for Safari" loading="lazy">
-        <img class="shot hide" src="assets/shots/opener-actions.webp" alt="⌘K on Safari: open, show in Finder, copy path, copy bundle identifier, pin" loading="lazy">
-        <img class="shot hide" src="assets/shots/app-opener.webp" alt="Commands: Kill Process, Kill Port, Quit All Apps" loading="lazy">
+        <div class="vframe"><video class="loop" src="assets/loops/opener.mp4" muted loop playsinline preload="none" aria-label="⌥Space: Zera drops down with apps on an arc; the arrow keys move the choice along it and Return tosses the app up to her"></video></div>
+        <img class="pic hide" src="assets/shots/opener-actions.webp" alt="⌘K on Safari: open, show in Finder, copy path, copy bundle identifier, pin" loading="lazy">
+        <img class="pic hide" src="assets/shots/opener-commands.webp" alt="Commands: Quit All Apps, Kill Port, Kill Process" loading="lazy">
+        <img class="pic hide" src="assets/shots/opener-classic.webp" alt="The classic opener: a tree of apps under the notch" loading="lazy">
       </div>
     </div>
   </section>
@@ -488,22 +517,12 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
       </div>
       <div class="cards">
         <div class="card rv"><img src="assets/shots/clipboard.webp" alt="Clipboard history" loading="lazy"><h3>Clipboard history</h3><p>Everything you copied, searchable, ⌘1–9 to paste. Passwords and private copies are never kept.</p></div>
-        <div class="card rv d1"><img src="assets/shots/shelf.webp" alt="The Shelf" loading="lazy"><h3>The Shelf</h3><p>Drop files on the notch. Tap to copy, drag to use, or ask Claude to summarize, explain or extract.</p></div>
-        <div class="card rv d2"><img src="assets/shots/focus-card.webp" alt="The focus card" loading="lazy"><h3>Focus</h3><p>The orb tracks your time against the estimate and pauses itself when you walk away.</p></div>
-        <div class="card rv"><img src="assets/shots/meeting-banner.webp" alt="A meeting heads-up" loading="lazy"><h3>Meetings and reminders</h3><p>Heads-ups with a Join button, breaks and water, from macOS Calendar: Google, Outlook, iCloud.</p></div>
-        <div class="card rv d1"><img src="assets/shots/app-opener.webp" alt="The app opener" loading="lazy"><h3>App opener</h3><p><span class="kbd">⌥Space</span> brings down a tree of your apps; <span class="kbd">⌘K</span> for actions and Quit All.</p></div>
+        <div class="card rv d1"><img src="assets/shots/focus-card.webp" alt="The focus card" loading="lazy"><h3>Focus</h3><p>The card tracks your time against the estimate, and pauses itself when you walk away.</p></div>
+        <div class="card rv d2"><img src="assets/shots/meeting-banner.webp" alt="A meeting heads-up" loading="lazy"><h3>Heads-ups</h3><p>Meetings with a Join button, water and breaks, new PRs, and a nudge before the battery runs out.</p></div>
+        <div class="card rv"><img src="assets/shots/wings-approval.webp" alt="The Claude wings" loading="lazy"><h3>The wings</h3><p>Claude Code's progress beside the notch, with Approve and Reject when it needs you.</p></div>
+        <div class="card rv d1"><img src="assets/shots/settings-appearance.webp" alt="Settings" loading="lazy"><h3>Yours to tune</h3><p>Themes, sounds, shortcuts, the Shelf's folders, and which tab opens when you tap her.</p></div>
         <div class="card rv d2" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center"><img src="assets/zera-wave.png" alt="Zera waving" loading="lazy" style="width:150px;max-height:none"><h3>And her</h3><p>She reacts to what you do, dozes off when you're away, and cheers when the build goes green.</p></div>
       </div>
-    </div>
-  </section>
-
-  <!-- The full tour -->
-  <section class="film" style="padding-top:110px">
-    <div class="wrap" style="text-align:center">
-      <span class="eyebrow rv"><i></i>The full tour</span>
-      <h2 class="h2 kin">Every screen, in the app.</h2>
-      <div class="frame rv d2"><video src="assets/zera-tour.mp4" poster="assets/zera-tour-poster.jpg" controls muted playsinline preload="none" aria-label="The full tour of Zera: Home and This Mac, Claude sessions and the wings, the Shelf and Fresh, clipboard, tasks and the week, focus, export, pull requests, reminders, a meeting heads-up, the battery banner, settings and themes, and the app opener"></video></div>
-      <p class="meta">Recorded from the app with sample data.</p>
     </div>
   </section>
 
@@ -561,6 +580,8 @@ open dist/Zera.app</div>
       <details><summary>How does the speed test work?</summary><p>It runs macOS's built-in networkQuality tool when you press Run speed test, about 20 seconds, and remembers the last result. Live Wi-Fi rates and the link speed are read from the system all the time; nothing is tested in the background.</p></details>
       <details><summary>Why does macOS ask about Downloads and Desktop?</summary><p>The Shelf's Fresh tab lists new files there. Zera only asks the first time you open Fresh, and only reads names, sizes and dates.</p></details>
       <details><summary>Will it slow my Mac down?</summary><p>No. It's a native Swift app with no web views. Vitals are read once a second only while they're on screen; tab switches take a few milliseconds.</p></details>
+      <details><summary>How does Ask Claude work?</summary><p>When you click Summarize, Explain, Extract or ask a question, Zera sends that one file to Claude through the Claude Code CLI you're already signed in to, and streams the answer onto the file's page. Nothing is sent until you click.</p></details>
+      <details><summary>Can I open apps from the keyboard?</summary><p>Yes. ⌥Space brings down your usual apps on an arc; the arrow keys move along it and Return opens one. Typing searches every app, command and action, and ⌘1–⌘6 open the first six.</p></details>
       <details><summary>Is it really free?</summary><p>Yes, and open source on GitHub. Issues and pull requests are welcome.</p></details>
     </div>
   </section>
@@ -614,12 +635,13 @@ open dist/Zera.app</div>
   const S = [
     ['home-vitals', 'Home', 'Your Mac at a glance, and what needs you', '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'],
     ['claude-sessions', 'Claude', 'Every Claude Code session, live', '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>'],
-    ['shelf-fresh', 'Shelf', 'Fresh downloads, tap to copy, drag anywhere', '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 2h6l1-2h5"/>'],
+    ['shelf', 'Shelf', 'Drop files on the notch, drag them anywhere', '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 2h6l1-2h5"/>'],
+    ['summary', 'Ask Claude', 'Summaries and answers about any file', '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>'],
     ['clipboard', 'Clipboard', 'Everything you copied, searchable', '<rect x="8" y="3" width="12" height="15" rx="2"/><path d="M4 7v12a2 2 0 0 0 2 2h10"/>'],
-    ['tasks-week', 'Tasks', 'Your week, written from your commits', '<circle cx="5" cy="7" r="2"/><circle cx="5" cy="17" r="2"/><path d="M10 7h10M10 17h10"/>'],
-    ['pr-approvals', 'Pull requests', "Approvals, checks and reviews", '<circle cx="7" cy="5" r="2"/><path d="M7 7v14M7 13c6 0 10-2 10-8"/>'],
-    ['this-mac', 'This Mac', 'Vitals, battery health and a speed test', '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'],
-    ['opener-actions', 'Opener', '⌥Space opens anything; ⌘K for actions', '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'],
+    ['tasks', 'Tasks', 'Your day in one line each', '<circle cx="5" cy="7" r="2"/><circle cx="5" cy="17" r="2"/><path d="M10 7h10M10 17h10"/>'],
+    ['pr-list', 'Pull requests', 'Reviews, checks and approvals', '<circle cx="7" cy="5" r="2"/><path d="M7 7v14M7 13c6 0 10-2 10-8"/>'],
+    ['reminders', 'Reminders', 'Your day from every calendar', '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'],
+    ['opener-arc', 'Opener', '⌥Space, arrow to an app, Return', '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'],
     ['settings-appearance', 'Settings', 'Seven themes, sounds, shortcuts', '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>'],
   ];
   const screens = $('#screens'), tabs = $('#tabs'), cap = $('#caption'), island = $('#island');
@@ -661,7 +683,7 @@ open dist/Zera.app</div>
   island.addEventListener('mouseleave', () => { held = false; tabs.classList.remove('paused'); });
 
   // ---------- the film: plays while it's on screen ----------
-  const film = $('#film'), vbar = $('#vbar'), vplay = $('#vplay');
+  const film = $('#filmvid'), vbar = $('#vbar'), vplay = $('#vplay'), vsound = $('#vsound'), hint = $('#soundhint');
   let userPaused = false;
   new IntersectionObserver(([e]) => {
     if (reduce) return;
@@ -673,6 +695,21 @@ open dist/Zera.app</div>
     : '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1"/><rect x="14" y="4" width="5" height="16" rx="1"/></svg>';
   film.addEventListener('play', setIcon); film.addEventListener('pause', setIcon);
   vplay.onclick = () => { if (film.paused) { userPaused = false; film.play(); } else { userPaused = true; film.pause(); } };
+  // The film has a voice-over: sound on starts it from the top.
+  const soundIcon = () => vsound.innerHTML = film.muted
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l4 6M21 9l-4 6"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>';
+  const sound = on => { film.muted = !on; if (on) { film.currentTime = 0; userPaused = false; film.play(); } hint.classList.add('gone'); vsound.setAttribute('aria-label', on ? 'Mute' : 'Turn the sound on'); soundIcon(); };
+  vsound.onclick = () => sound(film.muted);
+  hint.onclick = () => sound(true);
+
+  // Feature loops play only while they're on screen (and not tucked behind a toggle).
+  const loops = $$('video.loop');
+  const lio = new IntersectionObserver(es => es.forEach(e => {
+    const v = e.target, hidden = v.closest('.hide');
+    if (e.isIntersecting && !hidden && !reduce) v.play().catch(() => {}); else v.pause();
+  }), { threshold: 0.35 });
+  loops.forEach(v => lio.observe(v));
 
   // ---------- the vitals strip: simulated numbers that glide, like the app ----------
   const C = 2 * Math.PI * 13;
@@ -721,11 +758,15 @@ open dist/Zera.app</div>
 
   // ---------- segmented toggles that swap screenshots ----------
   function segmented(root, swap) {
-    const bs = $$('button', root), pill = $('.pill', root), ims = $$('img', swap);
+    const bs = $$('button', root), pill = $('.pill', root), ims = [...swap.children];
     const place = b => { pill.style.left = b.offsetLeft + 'px'; pill.style.width = b.offsetWidth + 'px'; };
     bs.forEach((b, i) => b.onclick = () => {
       bs.forEach(x => x.classList.toggle('on', x === b)); place(b);
-      ims.forEach((im, k) => im.classList.toggle('hide', k !== i));
+      ims.forEach((im, k) => {
+        im.classList.toggle('hide', k !== i);
+        const v = im.matches('video') ? im : $('video', im);
+        if (v) { if (k === i && !reduce) v.play().catch(() => {}); else v.pause(); }
+      });
     });
     requestAnimationFrame(() => place(bs[0]));
     addEventListener('resize', () => place($('button.on', root)));
@@ -733,12 +774,13 @@ open dist/Zera.app</div>
   segmented($('#prtoggle'), $('#prswap'));
   segmented($('#extoggle'), $('#exswap'));
   segmented($('#optoggle'), $('#opswap'));
+  segmented($('#shtoggle'), $('#shswap'));
 
   // ---------- themes: the screenshot and the page change together ----------
   const T = [['zera', 'Zera', '#9D8CFF'], ['tokyo-night', 'Tokyo Night', '#7AA2F7'], ['dracula', 'Dracula', '#BD93F9'], ['catppuccin-mocha', 'Catppuccin', '#CBA6F7'],
              ['nord', 'Nord', '#88C0D0'], ['rose-pine', 'Rosé Pine', '#EBBCBA'], ['gruvbox', 'Gruvbox', '#FABD2F']];
   const sw = $('#swatches'), tv = $('#themeview');
-  const timgs = T.map(([id, name], i) => { const im = new Image(); im.src = `assets/shots/theme-${id}.webp`; im.alt = `Zera's Home in ${name}`; im.loading = 'lazy'; im.className = 'shot' + (i ? '' : ' on'); tv.append(im); return im; });
+  const timgs = T.map(([id, name], i) => { const im = new Image(); im.src = `assets/shots/theme-${id}.webp`; im.alt = `Zera's Home in ${name}`; im.loading = 'lazy'; im.className = (i ? '' : 'on'); tv.append(im); return im; });
   const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(',');
   T.forEach(([id, name, hex], i) => {
     const b = document.createElement('button'); b.className = 'sw' + (i ? '' : ' on');
@@ -758,7 +800,7 @@ open dist/Zera.app</div>
       const r = c.getBoundingClientRect();
       c.style.setProperty('--mx', (e.clientX - r.left) + 'px'); c.style.setProperty('--my', (e.clientY - r.top) + 'px');
     }));
-    $$('.media .shot, .stack .shot').forEach(im => {
+    $$('.media .pic, .vframe').forEach(im => {
       im.addEventListener('pointermove', e => {
         const r = im.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
         im.style.transform = `perspective(1200px) rotateY(${x * 6}deg) rotateX(${-y * 6}deg) translateY(-4px)`;
