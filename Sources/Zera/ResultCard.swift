@@ -10,7 +10,7 @@ enum MarkdownLite {
         var body: NSFont = Typo.body, bold: NSFont = Typo.bodyStrong, mono: NSFont = Typo.mono
         var h1: NSFont = NSFont.systemFont(ofSize: 14.5, weight: .bold)
         var h2: NSFont = NSFont.systemFont(ofSize: 13.5, weight: .semibold)
-        var h3: NSFont = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+        var h3: NSFont = Typo.bodyStrong
     }
 
     static func render(_ markdown: String, theme t: Theme, width: CGFloat) -> NSAttributedString {

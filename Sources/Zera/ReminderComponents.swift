@@ -162,8 +162,8 @@ final class AgendaRow: NSView {
     private let timeLabel = rlabel(NSFont.systemFont(ofSize: 13.5, weight: .semibold), Pal.text)
     private let subTimeLabel = rlabel(NSFont.systemFont(ofSize: 11.5, weight: .medium), Pal.textTertiary)
     private let tile = AgendaTile()
-    private let titleLabel = rlabel(Typo.rowTitleStrong, Pal.text)
-    private let detailLabel = rlabel(NSFont.systemFont(ofSize: 12), Pal.textSecondary)
+    private let titleLabel = rlabel(Typo.rowTitle, Pal.text)
+    private let detailLabel = rlabel(Typo.meta, Pal.textSecondary)
     private let chip = PRStatusChip()
     private var check: GHSquareButton!
     private var more: GHSquareButton!
@@ -520,7 +520,7 @@ final class PickerBox: NSView {
         picker.isBordered = false
         picker.drawsBackground = false
         picker.textColor = p.text
-        picker.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        picker.font = Typo.control
         picker.target = self
         picker.action = #selector(changed)
         picker.setAccessibilityLabel(time ? "Time" : "Date")
@@ -643,7 +643,7 @@ final class CountField: NSView, NSTextFieldDelegate {
     override init(frame: NSRect) {
         super.init(frame: frame)
         field.alignment = .center
-        field.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        field.font = Typo.control
         field.delegate = self
         field.stringValue = "1"
         minus = GHSquareButton(symbol: "minus", label: "Less", target: self, action: #selector(minusTapped))
@@ -714,7 +714,7 @@ final class FormCanvas: NSView {
     }
 
     static func label(_ s: String) -> NSTextField {
-        let l = rlabel(NSFont.systemFont(ofSize: 12, weight: .semibold), Pal.textSecondary)
+        let l = rlabel(Typo.control, Pal.textSecondary)
         l.stringValue = s
         return l
     }
@@ -760,8 +760,8 @@ final class FormCanvas: NSView {
 final class DetailInfoRow: NSView {
     private let symbol: String
     private let tint: NSColor
-    private let label = rlabel(NSFont.systemFont(ofSize: 12, weight: .semibold), Pal.textTertiary)
-    private let value = rlabel(NSFont.systemFont(ofSize: 13, weight: .medium), Pal.text, lines: 4)
+    private let label = rlabel(Typo.control, Pal.textTertiary)
+    private let value = rlabel(Typo.control, Pal.text, lines: 4)
     override var isFlipped: Bool { true }
 
     init(symbol: String, tint: NSColor? = nil, label l: String, value v: String) {

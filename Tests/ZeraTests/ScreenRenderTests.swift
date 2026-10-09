@@ -20,7 +20,7 @@ final class ScreenRenderTests: XCTestCase {
     // MARK: Capturing
 
     private func shot(_ v: NSView, _ name: String, afterShown: (() -> Void)? = nil) {
-        if let only = ProcessInfo.processInfo.environment["ZERA_RENDER_ONLY"], only != name { return }
+        if let only = ProcessInfo.processInfo.environment["ZERA_RENDER_ONLY"], !only.split(separator: ",").contains(Substring(name)) { return }
         let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 60, y: 60), size: v.frame.size), styleMask: .borderless, backing: .buffered, defer: false)
         w.backgroundColor = desk
         w.appearance = NSAppearance(named: .darkAqua)

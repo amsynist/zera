@@ -4,7 +4,7 @@ Branch: `v2-design`. Zera is a native macOS AppKit companion in the notch for Ma
 
 ## Current status — 9 October 2026
 
-**Both opener designs are approved by the user. Home is the current review, following the Settings refinement at the user’s request.** Remaining shell and main-screen phases retain their pending status; shipping integration/display checks are still tracked below.
+**Both opener designs are approved by the user. The shared layout/typography pass now covers all main screens, following Home and Settings.** Each screen's live interaction/visual approval and shipping checks remain tracked below.
 
 There are **8 main screens**, plus the shared companion/notch shell, the opener's **2 styles**, and auxiliary panels listed below. Settings contains **12 panes**. Auxiliary states belong to their screen's review; they do not disappear from the checklist when the main screen is finished.
 
@@ -14,12 +14,12 @@ There are **8 main screens**, plus the shared companion/notch shell, the opener'
 | 2 | Classic opener | Visual design approved | Shipping integration checks |
 | 3 | Companion/notch shell | Shared transition fixes implemented; visual review pending | Hover menus, badges, wings, open/switch/close and placement |
 | 4.1 | Home | Current review; typography/layout refined | Visual approval, live search/actions and This Mac flows |
-| 4.2 | Claude | Performance reviewed; visual review pending | Sessions, approvals, replies and wings |
-| 4.3 | Shelf + file assistant | Performance reviewed; visual review pending | Files, Fresh, drag/drop, details and assistant states |
-| 4.4 | Clipboard | Overlap/memory bugs fixed; full visual review pending | Filters, search, preview, copy/delete and privacy flows |
-| 4.5 | Tasks + focus | Performance reviewed; visual review pending | Lists, projects, mini task, orb, quick add and export |
-| 4.6 | Pull requests | Performance reviewed; visual review pending | Tabs, detail, checks, approvals, menus and feedback |
-| 4.7 | Reminders + calendar | Performance reviewed; visual review pending | Lists, forms, meetings, water and battery alerts |
+| 4.2 | Claude | Shared layout/type pass implemented | Live sessions, approvals, replies and wings |
+| 4.3 | Shelf + file assistant | Shared layout/type pass implemented | Live files, Fresh, drag/drop, details and assistant states |
+| 4.4 | Clipboard | Layout/type and overlap/memory fixes implemented | Live filters, search, preview, copy/delete and privacy flows |
+| 4.5 | Tasks + focus | Shared layout/type pass implemented | Live lists, projects, mini task, orb, quick add and export |
+| 4.6 | Pull requests | Shared layout/type pass implemented | Live tabs, detail, checks, approvals, menus and feedback |
+| 4.7 | Reminders + calendar | Shared layout/type pass implemented | Live lists, forms, meetings, water and battery alerts |
 | 4.8 | Settings | Shared typography/controls and scroll cue implemented | Live visual approval and integration checks |
 | 5 | Shipping | Not started | Themes, accessibility, display sizes, integration errors and release validation |
 
@@ -131,6 +131,19 @@ First pass: soften the search/detail type, reduce halo glow, reuse the muted v2 
 - [ ] Empty/loading/error/offline/permission states and external integration flows.
 - [ ] Extended open/switch/close session, memory/CPU profiling and recovery after relaunch.
 - [ ] Full regression suite and distributable build; fix remaining release defects.
+
+### Shared layout and typography pass — 9 October
+
+- [x] Use shared medium row, chip and button fonts; migrate standard text roles in Claude, Shelf, Clipboard, Tasks, PRs, Reminders, forms and supporting cards.
+- [x] Use shared detail-title/subtitle and Back/action-button placement across Claude, Shelf and Reminders.
+- [x] Keep Claude/Clipboard search available on compact layouts with one shared wrapping toolbar; align filters and search vertically.
+- [x] Reuse Home's wrapping action layout in Shelf suggestions and Claude quick asks; keep every action reachable and align input/footer spacing.
+- [x] Relax Clipboard rows to the standard 58-point tier and shared 8-point gap.
+- [x] Use the shared monospaced metric font for task/focus timers and vitals.
+- [x] Check the six remaining main-screen captures, Shelf detail, export, focus card/orb and quick-add locally; no captures uploaded to CI or PRs.
+- [x] Pass compact toolbar and horizontal/vertical screen-bounds checks; full suite: 200 tests, 13 optional skips, zero failures.
+- [x] Verify the final detail-footer changes with 13 targeted checks and the local detail/floating-panel capture pass.
+- [ ] Complete the live interaction/visual approval items for each surface above.
 
 ## Defect tracker
 
