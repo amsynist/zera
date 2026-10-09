@@ -560,9 +560,12 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         + 18 + Space.m + (actionFrames.last?.maxY ?? 0)
     }
 
+    /// Search belongs to the content column, like the filter/search rows on other screens.
+    private var bodyTop: CGFloat { headerBottom + Metrics.field + Space.l }
+
     var desiredHeight: CGFloat {
         if showingVitals { return headerBottom + VitalsPage.height + Metrics.cardPad }
-        return min(Isle.maxContentHeight, headerBottom + bodyHeight + Metrics.cardPad)
+        return min(Isle.maxContentHeight, bodyTop + bodyHeight + Space.xl)
     }
 
     @objc func refresh() {
@@ -688,9 +691,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         let x = Metrics.cardPad, w = bounds.width - x * 2
         var y: CGFloat = 0
         if !showingVitals {
-            // Ask Zera sits right of her, level with the greeting.
-            let t = headerTrailingRect
-            search.frame = NSRect(x: t.minX, y: ScreenHeader.controlY(Metrics.field), width: t.width, height: Metrics.field)
+            search.frame = NSRect(x: x, y: headerBottom, width: w, height: Metrics.field)
         }
         if showingVitals {
             // Back button first; the title and subtitle move over for it.
@@ -702,7 +703,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             vitalsPage.frame = NSRect(x: x, y: headerBottom, width: w, height: VitalsPage.height)
             return
         }
-        bodyScroll.frame = NSRect(x: x, y: headerBottom, width: w, height: desiredHeight - headerBottom - Metrics.cardPad)
+        bodyScroll.frame = NSRect(x: x, y: bodyTop, width: w, height: desiredHeight - bodyTop - Space.xl)
         body.frame = NSRect(x: 0, y: 0, width: w, height: bodyHeight)
         // While searching, the matches take the place of "Needs you".
         let searching = !query.isEmpty
