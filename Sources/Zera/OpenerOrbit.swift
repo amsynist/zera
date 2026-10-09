@@ -27,6 +27,12 @@ enum OpenerLook {
     static let cardRadius: CGFloat = 16
     static let buttonRadius: CGFloat = 8
     static let tileRadius: CGFloat = 12
+    static let searchFont = NSFont.systemFont(ofSize: 16, weight: .regular)
+    static let detailFont = NSFont.systemFont(ofSize: 16, weight: .semibold)
+    static let buttonFont = Typo.bodyMedium
+    // Classic has a taller field and a dedicated detail pane.
+    static let classicSearchFont = NSFont.systemFont(ofSize: 17, weight: .regular)
+    static let classicDetailFont = NSFont.systemFont(ofSize: 20, weight: .medium)
 }
 
 /// Where an item sits on the arc, `k` steps from the chosen one.
@@ -243,9 +249,10 @@ final class OpenerLanes: NSView {
     private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    private static let font = NSFont.systemFont(ofSize: 14, weight: .medium)
-    private static let countFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-    private static let inset: CGFloat = 4, gap: CGFloat = 6
+    private static let font = Typo.branchLabel
+    private static let countFont = Typo.count
+    private static let inset = Space.xs
+    private static let gap = Space.xs + 2
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -253,9 +260,9 @@ final class OpenerLanes: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    private func label(_ l: Lane) -> String { l.title.lowercased().capitalized.replacingOccurrences(of: "Your Usual", with: "Your usual") }
+    private func label(_ l: Lane) -> String { l.title.uppercased() }
     private func laneWidth(_ l: Lane) -> CGFloat {
-        let t = (label(l) as NSString).size(withAttributes: [.font: Self.font, .kern: 0]).width
+        let t = (label(l) as NSString).size(withAttributes: [.font: Self.font, .kern: Typo.branchKern]).width
         let c = ("\(l.count)" as NSString).size(withAttributes: [.font: Self.countFont]).width
         return ceil(t + 10 + max(20, c + 12)) + 34
     }
@@ -283,7 +290,7 @@ final class OpenerLanes: NSView {
         OpenerLook.edge.setStroke(); pill.lineWidth = 1; pill.stroke()
         for (i, l) in lanes.enumerated() {
             let r = slot(i), on = i == selected
-            let t = NSAttributedString(string: label(l), attributes: [.font: Self.font, .kern: 0, .foregroundColor: on ? Neon.text : OpenerLook.muted])
+            let t = NSAttributedString(string: label(l), attributes: [.font: Self.font, .kern: Typo.branchKern, .foregroundColor: on ? Neon.text : OpenerLook.muted])
             let c = NSAttributedString(string: "\(l.count)", attributes: [.font: Self.countFont, .foregroundColor: OpenerLook.muted])
             let countW = max(20, c.size().width + 12)
             let w = t.size().width + 10 + countW

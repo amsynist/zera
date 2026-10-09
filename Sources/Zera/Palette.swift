@@ -81,6 +81,9 @@ enum Typo {
     static let badge = NSFont.systemFont(ofSize: 10.5, weight: .bold)
     static let nav = NSFont.systemFont(ofSize: 12, weight: .medium)
     static let mono = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .medium)
+    /// Compact uppercase branch labels, shared by both opener styles.
+    static let branchLabel = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold)
+    static let branchKern: CGFloat = 1.1
 
     // v2: the seven roles every screen shares.
     /// v2: the lens title — large and tight, like the design's display face.
