@@ -1,6 +1,6 @@
 import Foundation
 import AppKit
-import EventKit
+@preconcurrency import EventKit
 
 // MARK: - Agenda
 
