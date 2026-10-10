@@ -7,13 +7,13 @@ final class BubbleLayoutTests: XCTestCase {
     private let safeFrame = NSRect(x: 8, y: 8, width: 1496, height: 934)
     private let figure = NSRect(x: 724, y: 866, width: 64, height: 84)
 
-    func testCaptionHangsUnderHerFeet() {
+    func testCaptionSitsBesideHerFace() {
         let size = BubbleView.size(for: "Hi! 👋")
         let frame = BubbleView.frame(for: size, figure: figure, safeFrame: safeFrame)
         XCTAssertTrue(safeFrame.contains(frame))
         XCTAssertFalse(frame.intersects(figure))
-        XCTAssertEqual(figure.minY - frame.maxY, BubbleView.gap, accuracy: 1)
-        XCTAssertEqual(frame.midX, figure.midX, accuracy: 1)
+        XCTAssertEqual(frame.minX - figure.maxX, BubbleView.gap, accuracy: 1)
+        XCTAssertEqual(frame.midY, figure.minY + figure.height * 0.45, accuracy: 1)
     }
 
     func testCaptionClearsWingsAndMenuBar() {
@@ -39,8 +39,21 @@ final class BubbleLayoutTests: XCTestCase {
         let edgeFigure = NSRect(x: 1470, y: 866, width: 64, height: 84)
         let frame = BubbleView.frame(for: NSSize(width: 280, height: 46), figure: edgeFigure, safeFrame: safeFrame)
         XCTAssertTrue(safeFrame.contains(frame))
-        XCTAssertEqual(frame.maxX, safeFrame.maxX, accuracy: 1)
-        XCTAssertLessThanOrEqual(frame.maxY, edgeFigure.minY - BubbleView.gap + 0.5)
+        XCTAssertEqual(edgeFigure.minX - frame.maxX, BubbleView.gap, accuracy: 1)
+        XCTAssertGreaterThan(frame.maxY, edgeFigure.minY)
+    }
+
+    func testCaptionUsesEmptySpaceBesideTheArc() {
+        let island = IslandView(frame: NSRect(x: 0, y: 0, width: 900, height: 760))
+        island.centerX = 450; island.hoverStyle = .arc; island.peek()
+        let obstacles = island.captionObstacles.map {
+            NSRect(x: $0.minX, y: 1000 - $0.maxY, width: $0.width, height: $0.height)
+        }
+        let zera = NSRect(x: 418, y: 882, width: 64, height: 84)
+        let frame = BubbleView.frame(for: BubbleView.size(for: "Yes? 👀"), figure: zera,
+                                     safeFrame: NSRect(x: 8, y: 8, width: 884, height: 958), obstacles: obstacles)
+        XCTAssertFalse(obstacles.contains { $0.intersects(frame) })
+        XCTAssertGreaterThan(frame.maxY, zera.minY)
     }
 
     func testLongCaptionsWrapToTwoLinesAtMost() {
@@ -54,7 +67,7 @@ final class BubbleLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(BubbleView.size(for: String(repeating: "long-repository-name", count: 100), maxWidth: 240).width, 240)
     }
 
-    func testPanelLeavesRoomForTheGlow() {
+    func testPanelLeavesRoomForTheShadow() {
         let tag = NSRect(x: 100, y: 100, width: 120, height: 30)
         XCTAssertEqual(BubbleView.panelFrame(for: tag), tag.insetBy(dx: -BubbleView.halo, dy: -BubbleView.halo))
     }

@@ -145,7 +145,7 @@ final class ScreenRenderTests: XCTestCase {
     /// Accelerated local review of the six waiting lines; production timing stays 12s.
     func testRenderWaterWaitingExpressions() async throws {
         guard ProcessInfo.processInfo.environment["ZERA_RENDER_WATER"] != nil else { throw XCTSkip("set ZERA_RENDER_WATER") }
-        let scene = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 260))
+        let scene = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 310))
         let water = WaterVisitView(frame: NSRect(origin: CGPoint(x: 43, y: 18), size: WaterVisitView.size))
         scene.addSubview(water)
         let window = NSWindow(contentRect: scene.frame, styleMask: .borderless, backing: .buffered, defer: false)
@@ -283,6 +283,32 @@ final class ScreenRenderTests: XCTestCase {
         })
     }
 
+    func testRenderHoverMenus() throws {
+        for style in HoverMenuStyle.allCases {
+            for band: CGFloat in [24, 34] {
+                let iv = IslandView(frame: NSRect(x: 0, y: 0, width: 900, height: 540))
+                iv.centerX = 450; iv.band = band; iv.notchWidth = band == 34 ? 190 : 180
+                iv.hoverStyle = style
+                iv.counts = [.claude: 1, .shelf: 4, .github: 2]
+                iv.badges = [.claude]
+                iv.instruments = [.home: IslandInstrument(progress: 0.78, text: "78", tone: nil),
+                                  .claude: IslandInstrument(progress: 0.62, text: nil, tone: nil)]
+                iv.peek()
+                let buddy = BuddyView(frame: NSRect(x: 340, y: 0, width: 220, height: band + 108))
+                buddy.hangInset = band - Theme.topTuck; buddy.bottomPad = Theme.figurePad
+                iv.addSubview(buddy)
+                let figure = NSRect(x: 418, y: 540 - band - 84, width: 64, height: 84)
+                let obstacles = iv.captionObstacles.map { NSRect(x: $0.minX, y: 540 - $0.maxY, width: $0.width, height: $0.height) }
+                let tag = BubbleView.frame(for: BubbleView.size(for: "Yes? 👀"), figure: figure,
+                    safeFrame: NSRect(x: 8, y: 8, width: 884, height: 532 - band), obstacles: obstacles)
+                let panel = BubbleView.panelFrame(for: tag)
+                let bubble = BubbleView(frame: NSRect(x: panel.minX, y: 540 - panel.maxY, width: panel.width, height: panel.height))
+                bubble.text = "Yes? 👀"; iv.addSubview(bubble)
+                shot(iv, "hover-\(style.title.lowercased())-\(band == 34 ? "notched" : "notchless")")
+            }
+        }
+    }
+
     func testRenderEveryScreen() throws {
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
         let tasks = sampleTasks()
@@ -365,7 +391,6 @@ final class ScreenRenderTests: XCTestCase {
         bubble.text = "all green! ✅"
         let tag = BubbleView.size(for: bubble.text)
         bubble.frame = NSRect(origin: .zero, size: BubbleView.panelFrame(for: NSRect(origin: .zero, size: tag)).size)
-        bubble.tailX = bubble.frame.width / 2
         panel(bubble, "17b-caption")
 
         // Floating panels.

@@ -263,6 +263,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
         bubblePanel.contentView = bubble
         bubblePanel.ignoresMouseEvents = true
+        bubblePanel.hasShadow = false // the capsule draws its own subtle edge; no second black ring
         bubblePanel.alphaValue = 0
 
         island.onClose = { [weak self] in self?.dismissCardByUser() }
@@ -476,8 +477,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private var figureRect: NSRect { geometry.figureRect(centerX: buddyPanel.frame.midX) }
     private var headPoint: NSPoint { NSPoint(x: figureRect.midX, y: figureRect.minY + figureRect.height * 0.55) }
 
-    /// Her caption hangs under her feet: below the wings or the peeking island when they're up,
-    /// never in the menu bar, never beside her.
+    /// Keep speech beside Zera and clear of the hover rail, wings and menu bar.
     private func positionBubble() {
         let screen = geometry.screen.frame
         // Reserve the menu bar even when macOS has it hidden.
@@ -485,7 +485,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                                width: screen.width - 16, height: geometry.notchRect.minY - screen.minY - 8)
         let size = BubbleView.size(for: bubble.text.isEmpty ? " " : bubble.text, maxWidth: safeFrame.width)
         var obstacles: [NSRect] = []
-        if cardVisible || pillVisible { obstacles.append(islandScreenRect) }
+        if cardVisible || pillVisible {
+            let panel = cardPanel.frame
+            obstacles += island.captionObstacles.map {
+                NSRect(x: panel.minX + $0.minX, y: panel.maxY - $0.maxY, width: $0.width, height: $0.height)
+            }
+        }
         if liveVisible { obstacles.append(livePanel.frame) }
         // Holding the rope with both hands, her body sits off the rope's line.
         let bodyX = figureRect.midX + (zera.activity != .none ? zera.claudeBodyOffset : 0)
@@ -493,7 +498,6 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let panel = BubbleView.panelFrame(for: tag)
         bubblePanel.setFrame(panel, display: true)
         bubble.frame = NSRect(origin: .zero, size: panel.size)
-        bubble.tailX = bodyX - panel.minX
     }
 
     /// Spans the screen around her at chest height: the left wing ends in a tendril just left
@@ -1066,7 +1070,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     /// Puts the current line where it belongs: the island header while a screen is open,
-    /// otherwise the tag under her feet.
+    /// otherwise the speech capsule beside her.
     private func routeCaption() {
         guard let line = captionLine, buddyEnabled else {
             hideBubble()
@@ -1088,14 +1092,14 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private func showBubble() {
         guard buddyEnabled else { return }
         if bubblePanel.alphaValue < 0.05 || !bubblePanel.isVisible {
-            // Drops into place from just under her feet.
+            // Ease the capsule into place beside her.
             let target = bubblePanel.frame
             bubblePanel.setFrame(target.offsetBy(dx: 0, dy: 8), display: false)
             bubblePanel.alphaValue = 0
             bubblePanel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = Motion.duration(0.34)
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.25, 1.5, 0.45, 1)
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 bubblePanel.animator().alphaValue = 1
                 bubblePanel.animator().setFrame(target, display: true)
             }
@@ -1498,6 +1502,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             let s = SettingsCard(defaultKind: defaultCard, showingZera: buddySetting,
                                  loginEnabled: SMAppService.mainApp.status == .enabled)
             s.onDefaultChanged = { [weak self] k in self?.defaultCard = k }
+            s.onHoverMenuChanged = { [weak self] style in self?.island.hoverStyle = style }
             s.onShowZeraChanged = { [weak self] on in self?.setBuddyEnabled(on) }
             s.onFullScreenHideChanged = { [weak self] in self?.fullScreenChanged() }
             s.clipboardShortcut = clipboardShortcut

@@ -102,11 +102,11 @@ final class WaterVisitTests: XCTestCase {
             let view = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
             view.bubbleOnLeft = mirrored; view.layoutSubtreeIfNeeded()
             XCTAssertTrue(view.bounds.contains(view.figure.frame))
-            XCTAssertEqual(view.figure.artworkBounds.size, CGSize(width: 102, height: 152))
-            XCTAssertEqual(view.figure.animationPadding, 22)
+            XCTAssertEqual(view.figure.artworkBounds.size, CGSize(width: 116, height: 174))
+            XCTAssertEqual(view.figure.animationPadding, 28)
             // The sprite retains its original scale; the extra transparent canvas
             // catches lean, bounce, squash and breathing outside the old rectangle.
-            XCTAssertEqual(view.figure.frame.width, 146)
+            XCTAssertEqual(view.figure.frame.width, 172)
         }
     }
     func testBuddyDrawingStaysInsideCanvasDuringFlightWaitingAndRepeatedTaps() throws {

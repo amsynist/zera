@@ -133,3 +133,23 @@ Water base prompt:
 Website asset `site/assets/zera-hang-base.png` is a 528-pixel PNG derivative of the existing `hang_smile_base` artwork (168 KB); it uses the same provenance above. Website animation uses native SVG and browser APIs, with no new dependency.
 
 Website asset `site/assets/zera-boba-base.png` is a 528-pixel derivative of the existing `boba_base.png` artwork (301 KB), with the same provenance above. Water preview captures remain under `.build/ui-review/`.
+
+
+## Phase 6 — Hover layouts, speech and water surface · 10 October
+
+Branch: `codex/water-caption-refinement`.
+
+- [x] Add **Settings → General → Hover menu → Arc / Tiles**, using the shared dropdown and a saved preference; Arc remains the default.
+- [x] Reuse all eight navigation destinations, instruments, badges and the opener search action in both layouts.
+- [x] Give Tiles two evenly spaced rows, a search footer and a clear header for the animated Zera; retain the notch attachment and smooth shape transition.
+- [x] Keep transparent shoulders click-through so the menu bar remains usable.
+- [x] Place speech beside Zera using individual menu-control obstacles; fall back below full-width live wings.
+- [x] Remove the caption's doubled outline/tail and macOS window shadow; retain a single quiet capsule edge.
+- [x] Relax the water card's shared typography and spacing; add flowing liquid ribbons and an animated droplet on the existing clock, respecting Reduce Motion.
+- [x] Check both 24-point notchless and 34-point notched layouts with local renders, and all destination/search actions.
+- [x] Verify water persistence, acknowledgement, replies and transparent animation edges; retain normal reminder intervals.
+- [x] Full suite passed: 232 tests, 18 optional skips, zero failures; nine final focused checks passed after the click-through fix. Universal release build passed and the development bundle is running.
+- [ ] Review Arc/Tiles and caption placement in the running app; floating companion controls were not accessible to the native automation tool.
+- [ ] User review of water styling and flow during an ordinary reminder.
+
+Local review files stay under `.build/ui-review`; nothing is published to CI. BetterDisplay was hiding the user's physical notch: the existing notch expansion is retained rather than treated as a duplicate-notch defect.
