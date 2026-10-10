@@ -17,7 +17,7 @@
 ## What's new
 
 - **A buddy with personality:** Zera follows your cursor with live eyes, blinks, breathes and reacts to hover and taps. Four quick taps earn a playful huff.
-- **Water breaks, with company:** she springs over to your cursor with boba, puppy eyes and funny waiting expressions. Reply **Took a sip!** for a cheer, or **One sec…** for a quiet moment. [Try the interactive preview](https://zera.pravincodes.in/#water).
+- **Water breaks · Splash:** a glass pops up beside your cursor and Zera jumps from the notch into it with a splash. Answer **Drank** or **10 min**, and she jumps back up. After each sip a small glass under the notch shows today's count, and your week makes a shareable card. [Try the interactive preview](https://zera.pravincodes.in/#water).
 
 - **Your Mac at a glance:** a vitals strip on Home (CPU, memory, GPU, Wi-Fi, battery). Tap it for **This Mac**: per-core load, a minute of network and GPU, memory by kind, battery health and cycles, and an internet speed test on demand.
 - **Shelf · Fresh:** new files from Downloads, Desktop and folders you add, newest first. Tap to copy, drag straight into Slack, Mail or Finder.
@@ -35,7 +35,7 @@
 - **Timesheets from commits** — link a project to its repos and your commits become done tasks, grouped by Claude. Click a day to copy it, or export to Excel, CSV or text.
 - **Shelf** — drop files on the notch, drag them back out into any app, tap to copy, or ask Claude to summarize, explain or extract. **Fresh** lists what just landed in your Downloads and Desktop.
 - **Clipboard history**, **pull requests** (reviews, checks, approvals), **reminders and calendar** with meeting heads-ups, **battery alerts**.
-- **Playful hydration reminders** — choose your interval and active hours; a cursor-side Zera visit keeps you company until you confirm a sip, then thanks you and returns to the notch.
+- **Playful hydration reminders** — choose your interval and active hours; when it's time, a glass pops up beside your cursor and Zera jumps into it until you answer.
 - **App opener** — ⌥Space: Zera drops down with your usual apps on an arc. Arrow to one and press Return, or type to search apps and commands, with ⌘K actions. Prefer a tree under the notch? Pick the classic style.
 - **Themes** — Zera, Tokyo Night, Dracula, Catppuccin, Nord, Rosé Pine and Gruvbox, or your own from a JSON file ([docs/THEMES.md](docs/THEMES.md)).
 
@@ -63,13 +63,15 @@ Everything is in **Settings → Integrations**:
 
 In **Reminders**, open the **Add Event ▾** menu and choose **Hydration**. Pick an interval and your active hours, then create the reminder.
 
-When it's time, Zera crouches, springs over to your cursor and lands softly. She brings emotional support boba and cycles through puppy eyes, a skeptical look, a dramatic droop and a little cheer while waiting.
+When it's time, a glass of water pops up just beside your cursor (never under it, so your clicks still land). At the same moment Zera lets go of her rope, flips through the air from the notch and lands in the glass with a splash. She waves from the water, and a slim bar beside her shows **Water break** with two answers:
 
-- **Took a sip!** — confirms this reminder, earns a happy bounce and a “Sip, sip, hooray!”, then sends her back to her perch.
-- **One sec…** — keeps the reminder waiting and gives you 20 quiet seconds. She resumes her gentle nudges afterward.
-- Hover the sip reply and she smiles. You can still tap Zera herself for her usual playful reaction.
+- **Drank** — the water goes down as she drinks with you, then she jumps back up to her rope. The reminder is marked done.
+- **10 min** — she jumps back up and the reminder comes back in ten minutes.
+- No answer for 30 seconds — she heads home and leaves a small drop under the notch. Click it whenever you're ready and she comes back down.
 
-The visit does not steal focus or send clicks or keyboard shortcuts to other apps. Reduce Motion skips flights and body animation. Reminder data stays on your Mac.
+After each sip, a tiny glass shows under the notch for a few seconds with today's water, like **5/8**: glasses you've had against the water reminders scheduled for today. It also shows beside the waiting drop, and stays hidden the rest of the time. Click it, or choose **Water this week…** from the Zera menu-bar icon, for your week: seven glasses side by side with your total and streak. **Save image** puts a 1080 × 1350 card in Downloads, ready to share. On Fridays, or the day you reach a 7-day streak, Zera mentions it once.
+
+If Zera is hidden (a full-screen app, or she's turned off), only the drop under the notch appears. The visit never takes focus or clicks anything in other apps; only its two buttons take clicks. Reduce Motion skips the jump and the splash. Reminder data stays on your Mac.
 
 [Try the water-break preview on the website](https://zera.pravincodes.in/#water).
 
