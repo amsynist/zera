@@ -44,7 +44,7 @@ The app opener is excluded from this change, as requested.
 - [x] Route hydration alerts to a persistent nonactivating visit rather than an expiring banner.
 - [x] Jump from the perch to the cursor's display on a smooth arc; mirror the layout near the right edge.
 - [x] Keep the live boba rig throughout the visit; lean and tap with a ripple, blink, follow the cursor and animate speaking.
-- [x] Rotate six playful prompts and distinct facial/body reactions every 12 seconds until **Okay, drinking** is clicked.
+- [x] Rotate six playful prompts and distinct facial/body reactions every 12 seconds until **Took a sip!** is clicked.
 - [x] Mark waiting hydration occurrences done once, thank the user, and return to the perch.
 - [x] Coalesce reminders during a visit; preserve a new reminder arriving after acknowledgement.
 - [x] Use existing palette, typography, rounded button, backdrop blur and subtle surface gradient.
@@ -65,6 +65,17 @@ The app opener is excluded from this change, as requested.
 
 New local preview: `.build/ui-review/zera-water-patience.gif` compresses the six 12-second waiting beats for review. Production timing remains 12 seconds per line. The temporary one-minute test reminder remains active in local app data.
 
+### Water replies and clipping fix — 10 October
+
+- [x] Keep the original character and card sizes; add transparent animation space for the tilt, bounce and squash after landing.
+- [x] Check the actual drawing's transparent outer edges across the jump, all six waiting beats and repeated taps.
+- [x] Replace the formal acknowledgement with **Took a sip!**, a droplet and a quiet shared gradient button; hover makes Zera smile.
+- [x] Add **One sec…** for 20 seconds of quiet company without completing the reminder.
+- [x] Cheer with “Sip, sip, hooray!”, then return once; retain reminder coalescing.
+- [x] Remove redundant window repositioning while Zera waits.
+- [x] Native animation/render suite passed (19 checks), followed by 10 water checks including pixel-edge coverage; release bundle build passed.
+- [ ] User review of the clipping fix and new replies during the one-minute test reminder.
+
 ## Phase 5 — Website companion
 
 - [x] Hang Zera from the top-center notch, with a smaller perch while scrolling.
@@ -75,6 +86,10 @@ New local preview: `.build/ui-review/zera-water-patience.gif` compresses the six
 - [x] Slow the screen tour; add pause/play, arrow-key navigation and accessible tab selection.
 - [x] Pause the mascot clock in hidden tabs; stop idle motion for Reduce Motion.
 - [x] Check desktop and narrow mobile layouts, asset paths, script syntax and interaction lifecycle.
+- [x] Add an interactive water-break preview: bounded hop, live face, six waiting lines, both replies, cheer, return and replay.
+- [x] Pause the preview timer and CSS animation offscreen or in a hidden tab; respect Reduce Motion.
+- [x] Check water reply timing, visibility pause/resume and replay; inspect 1440px desktop and 390px mobile layouts and keyboard confirmation. No horizontal overflow on mobile and no browser errors.
+- [x] Document Hydration setup, cursor-side visits and reply behavior in the README.
 - [ ] User review of the local website preview.
 - [ ] Public deployment after merging the website changes to `main` (the Pages workflow deploys from `main`).
 
@@ -116,3 +131,5 @@ Water base prompt:
 > Prepare the attached friendly Zera character holding a boba cup for a layered facial animation. Make a clean blank face layer: replace the eye, eyebrow and mouth details with matching soft cream and pink skin shading. Keep the character, expression silhouette, tuft, cheeks, clothing, cup, straw, proportions, pose and transparent background exactly like the original. The drink and straw stay intact. No additional margins, text or pose changes.
 
 Website asset `site/assets/zera-hang-base.png` is a 528-pixel PNG derivative of the existing `hang_smile_base` artwork (168 KB); it uses the same provenance above. Website animation uses native SVG and browser APIs, with no new dependency.
+
+Website asset `site/assets/zera-boba-base.png` is a 528-pixel derivative of the existing `boba_base.png` artwork (301 KB), with the same provenance above. Water preview captures remain under `.build/ui-review/`.

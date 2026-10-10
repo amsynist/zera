@@ -105,7 +105,7 @@ final class WaterReminderVisit {
         guard let screen else { return }
         view.landing = WaterVisitMotion.landing(cursor: mouse, visibleFrame: screen.visibleFrame, size: WaterVisitView.size)
         view.bubbleOnLeft = view.landing.x < mouse.x
-        view.departure = CGPoint(x: home.x - (view.bubbleOnLeft ? 335 : 55), y: home.y - 88)
+        view.departure = CGPoint(x: home.x - (view.bubbleOnLeft ? 335 : 55) - WaterVisitView.edge, y: home.y - 88 - WaterVisitView.edge)
         view.begin()
         panel.setFrameOrigin(view.departure)
         panel.orderFrontRegardless()
@@ -116,7 +116,8 @@ final class WaterReminderVisit {
 }
 
 final class WaterVisitView: NSView, ZeraAnimating {
-    static let size = CGSize(width: 390, height: 180)
+    static let edge: CGFloat = 22
+    static let size = CGSize(width: 390 + edge * 2, height: 180 + edge * 2)
     static let prompts = [
         "Tiny screen tap! Your water misses you. A sip? 💧",
         "One tiny sip? Look, I'm doing my very best puppy eyes.",
@@ -135,7 +136,9 @@ final class WaterVisitView: NSView, ZeraAnimating {
     private let glass = WaterSpeechGlass()
     private let text = rlabel(Typo.bodyMedium, Pal.text, lines: 3)
     private let heading = rlabel(Typo.detailTitle, Pal.text)
-    private var okay: PRActionButton!
+    private var okay: WaterReplyButton!
+    private var moment: CardButton!
+    private(set) var quietUntil: TimeInterval = 0
     private(set) var waitingExpression: ZeraExpression = .neutral
     private var lastPrompt = -1
     private var lastTap: TimeInterval = -10
@@ -147,8 +150,14 @@ final class WaterVisitView: NSView, ZeraAnimating {
         glass.roundLayer(Radius.card); addSubview(glass)
         heading.stringValue = "A little water break"
         glass.addSubview(heading); glass.addSubview(text)
-        okay = PRActionButton("Okay, drinking", style: .secondary, symbol: "checkmark", target: self, action: #selector(acknowledge))
-        glass.addSubview(okay)
+        okay = WaterReplyButton("Took a sip!", style: .primary, symbol: "drop.fill", target: self, action: #selector(acknowledge))
+        okay.onHover = { [weak self] hovered in
+            guard let self, self.motion.stage == .waiting else { return }
+            self.figure.expression = hovered ? .happy : self.waitingExpression
+        }
+        moment = CardButton("One sec…", style: .tertiary, target: self, action: #selector(oneMoment))
+        glass.addSubview(okay); glass.addSubview(moment)
+        figure.animationPadding = Self.edge
         figure.pose = "boba"; addSubview(figure)
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -158,16 +167,24 @@ final class WaterVisitView: NSView, ZeraAnimating {
         if window == nil { ZeraAnimationClock.shared.remove(self) } else { ZeraAnimationClock.shared.add(self) }
     }
     func begin(at now: TimeInterval = CACurrentMediaTime()) {
-        motion = WaterVisitMotion(at: now); time = now; lastPrompt = -1; lastTap = -10
-        heading.stringValue = "A little water break"; okay.isHidden = false
+        motion = WaterVisitMotion(at: now); time = now; lastPrompt = -1; lastTap = -10; quietUntil = 0
+        heading.stringValue = "A little water break"; okay.isHidden = false; moment.isHidden = false
         figure.pose = "boba"; figure.expression = .surprised; figure.bodyMotion = .init(); glass.isHidden = true
         needsLayout = true
     }
+    @objc func oneMoment() { pauseForAMoment(at: CACurrentMediaTime()) }
+    func pauseForAMoment(at now: TimeInterval) {
+        guard motion.stage == .waiting else { return }
+        quietUntil = now + 20; lastPrompt = -1
+        heading.stringValue = "I'll keep you company"
+        text.stringValue = "No rush. I'll sip my boba while you find your water. 🧋"
+        waitingExpression = .happy; figure.expression = .happy; figure.bodyMotion = .init(); figure.speak()
+    }
     @objc func acknowledge() {
         guard motion.acknowledge(at: CACurrentMediaTime()) else { return }
-        heading.stringValue = "That's my hydrated human!"
-        text.stringValue = "Nice sip. Your brain says thanks. Back to my perch! 💙"
-        okay.isHidden = true; figure.pose = "boba"; figure.expression = .happy; figure.tap(); figure.speak(for: 2.1)
+        heading.stringValue = "Sip, sip, hooray!"
+        text.stringValue = "Cheers! Your brain says thanks. I'll head back up. 💙"
+        okay.isHidden = true; moment.isHidden = true; quietUntil = 0; figure.pose = "boba"; figure.expression = .happy; figure.tap(); figure.speak(for: 2.1)
         glass.isHidden = false
         onAcknowledge?()
     }
@@ -177,14 +194,15 @@ final class WaterVisitView: NSView, ZeraAnimating {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         motion.advance(at: now, reduced: reduced)
         let point = motion.position(at: now, from: departure, to: landing)
-        figure.bodyMotion = reduced ? .init() : motion.body(at: now, direction: bubbleOnLeft ? -1 : 1)
-        if !reduced || oldStage != motion.stage { onPosition?(point) }
+        figure.bodyMotion = reduced || (motion.stage == .waiting && now < quietUntil) ? .init() : motion.body(at: now, direction: bubbleOnLeft ? -1 : 1)
+        if motion.stage == .arriving || motion.stage == .returning || oldStage != motion.stage { onPosition?(point) }
         glass.isHidden = motion.stage == .arriving || motion.stage == .returning || motion.stage == .finished
         glass.alphaValue = reduced || motion.stage != .waiting ? 1 : min(1, max(0, (now - motion.changedAt) / 0.18))
-        if motion.stage == .waiting {
+        if motion.stage == .waiting && now >= quietUntil {
             let elapsed = now - motion.changedAt
             let index = Int(elapsed / 12) % Self.prompts.count
             if index != lastPrompt {
+                heading.stringValue = "A little water break"
                 lastPrompt = index; text.stringValue = Self.prompts[index]
                 waitingExpression = [.neutral, .pleading, .unimpressed, .sleepy, .happy, .thoughtful][index]
                 figure.expression = waitingExpression
@@ -199,25 +217,33 @@ final class WaterVisitView: NSView, ZeraAnimating {
     }
     override func layout() {
         super.layout()
-        figure.frame = NSRect(x: bubbleOnLeft ? 284 : 4, y: 16, width: 102, height: 152)
-        glass.frame = NSRect(x: bubbleOnLeft ? 6 : 108, y: 18, width: 276, height: 144)
+        let e = Self.edge
+        figure.frame = NSRect(x: (bubbleOnLeft ? 284 : 4) + e, y: 16 + e, width: 102, height: 152).insetBy(dx: -e, dy: -e)
+        glass.frame = NSRect(x: (bubbleOnLeft ? 6 : 108) + e, y: 18 + e, width: 276, height: 144)
         heading.frame = NSRect(x: Space.l, y: Space.m, width: 244, height: 22)
         text.frame = NSRect(x: Space.l, y: 42, width: 244, height: 48)
         okay.frame = NSRect(x: Space.l, y: 100, width: okay.fittedWidth, height: 32)
+        moment.frame = NSRect(x: okay.frame.maxX + Space.s, y: 100, width: moment.fittedWidth, height: 32)
     }
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point), hit !== self else { return nil }
         return hit
     }
     override func draw(_ dirtyRect: NSRect) {
-        guard motion.stage == .waiting, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        guard motion.stage == .waiting, time >= quietUntil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         let t = time - lastTap
         guard t >= 0 && t < 0.5 else { return }
         let radius = CGFloat(5 + t * 28)
         Pal.accent.withAlphaComponent(CGFloat(1 - t / 0.5) * 0.65).setStroke()
-        let ripple = NSBezierPath(ovalIn: NSRect(x: (bubbleOnLeft ? 286 : 94) - radius, y: 99 - radius, width: radius * 2, height: radius * 2))
+        let ripple = NSBezierPath(ovalIn: NSRect(x: (bubbleOnLeft ? 286 : 94) + Self.edge - radius, y: 99 + Self.edge - radius, width: radius * 2, height: radius * 2))
         ripple.lineWidth = 1.5; ripple.stroke()
     }
+}
+
+private final class WaterReplyButton: PRActionButton {
+    var onHover: ((Bool) -> Void)?
+    override func mouseEntered(with event: NSEvent) { super.mouseEntered(with: event); onHover?(true) }
+    override func mouseExited(with event: NSEvent) { super.mouseExited(with: event); onHover?(false) }
 }
 
 private final class WaterSpeechGlass: NSView {
