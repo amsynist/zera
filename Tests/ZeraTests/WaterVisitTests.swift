@@ -83,6 +83,7 @@ final class WaterVisitTests: XCTestCase {
     func testViewCallbacksFireOnceAndZeraFliesBothWays() {
         let view = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
         view.home = CGPoint(x: 720, y: 880); view.origin = CGPoint(x: 200, y: 300)
+        view.reducedMotion = { false }   // CI machines can have Reduce Motion on
         var drank = 0, returns: [WaterVisitMotion.Outcome?] = [], flights: [CGPoint?] = []
         view.onDrank = { drank += 1 }
         view.onReturn = { returns.append($0) }

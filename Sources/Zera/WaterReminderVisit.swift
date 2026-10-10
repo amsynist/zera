@@ -188,6 +188,8 @@ final class WaterVisitView: NSView, ZeraAnimating {
     /// Zera in the air: her centre in screen points (nil: not flying), her spin and her pose.
     var onJumper: ((CGPoint?, CGFloat, String) -> Void)?
 
+    /// Whether to skip the jumps and the splash (the system's Reduce Motion; tests can set it).
+    var reducedMotion: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     private let box = WaterGlassBox()
     let figure = AnimatedZeraView()
     private let capsule = WaterCapsule()
@@ -238,11 +240,11 @@ final class WaterVisitView: NSView, ZeraAnimating {
     private func land(at now: TimeInterval) {
         landedAt = now
         figure.isHidden = false
-        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { box.splashAt = now }
+        if !reducedMotion() { box.splashAt = now }
     }
 
     func advanceAnimation(at now: TimeInterval) {
-        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reduced = reducedMotion()
         motion.advance(at: now, reduced: reduced)
         let stage = motion.stage
         defer { lastStage = stage }
