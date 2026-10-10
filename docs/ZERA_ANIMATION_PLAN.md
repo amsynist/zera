@@ -163,3 +163,10 @@ Local review files stay under `.build/ui-review`; nothing is published to CI. Be
 - [x] Replace the arc nodes' clipped in-view blur with circular compositor shadows and quiet glass label backplates; keep all arc positions and actions.
 - [x] Inspect updated local water-motion and white/dark arc previews; 21 focused tests passed and the universal release build passed.
 - [ ] User review of the corrected arc shadows, comic pointer and blue water in everyday use.
+
+### Correction — blue belongs to the liquid
+
+- [x] Restore the water reminder's shared card gradient, section typography, accent and droplet outline; remove the blue tint from its background.
+- [x] Keep only the flowing liquid, crests, bubbles and droplet contents blue; inset the water using shared spacing so the card border retains its theme color.
+- [x] Inspect the local motion preview; all 11 water behavior and rendering checks passed. Layout, replies and reminder intervals are unchanged.
+- [x] Universal release build passed.

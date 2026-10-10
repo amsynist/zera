@@ -136,7 +136,7 @@ final class WaterVisitView: NSView, ZeraAnimating {
     private let glass = WaterSpeechGlass()
     private let text = rlabel(Typo.bodyMedium, Pal.text, lines: 3)
     private let heading = rlabel(Typo.paneTitle, Pal.text)
-    private let badge = rlabel(Typo.sectionLabel, Pal.water)
+    private let badge = rlabel(Typo.sectionLabel, Pal.accent)
     private var okay: WaterReplyButton!
     private var moment: CardButton!
     private(set) var quietUntil: TimeInterval = 0
@@ -150,7 +150,7 @@ final class WaterVisitView: NSView, ZeraAnimating {
         super.init(frame: frame)
         glass.roundLayer(Radius.card); addSubview(glass)
         heading.stringValue = "A little water break?"
-        badge.stringValue = "WATER BREAK"
+        badge.attributedStringValue = Typo.sectionText("WATER BREAK", color: Pal.accent)
         glass.addSubview(badge); glass.addSubview(heading); glass.addSubview(text)
         okay = WaterReplyButton("Took a sip!", style: .primary, symbol: "drop.fill", target: self, action: #selector(acknowledge))
         okay.onHover = { [weak self] hovered in
@@ -256,7 +256,7 @@ private final class WaterSpeechGlass: NSView {
     override var isFlipped: Bool { true }
     override init(frame: NSRect) {
         super.init(frame: frame)
-        blur.material = .hudWindow; blur.blendingMode = .behindWindow; blur.state = .active
+        blur.material = Pal.blurMaterial; blur.blendingMode = .behindWindow; blur.state = .active
         addSubview(blur); addSubview(paint)
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -272,11 +272,11 @@ private final class WaterSpeechPaint: NSView {
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.card, yRadius: Radius.card)
-        let top = Pal.cardTop.blended(withFraction: 0.04, of: Pal.water) ?? Pal.cardTop
-        let bottom = Pal.cardBottom.blended(withFraction: 0.12, of: Pal.waterDeep) ?? Pal.cardBottom
-        NSGradient(starting: top.withAlphaComponent(0.72), ending: bottom.withAlphaComponent(0.86))?.draw(in: path, angle: -90)
+        NSGradient(starting: Pal.cardTop.withAlphaComponent(0.72), ending: Pal.cardBottom.withAlphaComponent(0.86))?.draw(in: path, angle: -90)
         NSGraphicsContext.saveGraphicsState()
-        path.addClip()
+        // The liquid is an inset decoration, never a tint on the card's rim.
+        NSBezierPath(roundedRect: bounds.insetBy(dx: Space.s, dy: Space.s),
+                     xRadius: Radius.card - Space.s, yRadius: Radius.card - Space.s).addClip()
         // Layered currents travel at different speeds, with a soft blue crest.
         // All movement stays in the lower glass; text and replies remain steady.
         for layer in 0..<3 {
@@ -317,7 +317,7 @@ private final class WaterSpeechPaint: NSView {
         drop.curve(to: NSPoint(x: 30, y: 16), controlPoint1: NSPoint(x: 37, y: 25), controlPoint2: NSPoint(x: 33, y: 21))
         drop.close()
         NSGraphicsContext.saveGraphicsState(); drop.addClip()
-        Pal.water.withAlphaComponent(0.12).setFill(); drop.fill()
+        Pal.accent.withAlphaComponent(0.12).setFill(); drop.fill()
         let liquid = NSBezierPath()
         for x in stride(from: CGFloat(22), through: 38, by: 1) {
             let point = NSPoint(x: x, y: 27 + sin((x - 22) / 4 + CGFloat(phase)) * 1.6)
@@ -326,6 +326,6 @@ private final class WaterSpeechPaint: NSView {
         liquid.line(to: NSPoint(x: 38, y: 39)); liquid.line(to: NSPoint(x: 22, y: 39)); liquid.close()
         NSGradient(starting: Pal.water, ending: Pal.waterDeep)?.draw(in: liquid, angle: -90)
         NSGraphicsContext.restoreGraphicsState()
-        Pal.water.withAlphaComponent(0.85).setStroke(); drop.lineWidth = 1.25; drop.stroke()
+        Pal.accent.withAlphaComponent(0.85).setStroke(); drop.lineWidth = 1.25; drop.stroke()
     }
 }
