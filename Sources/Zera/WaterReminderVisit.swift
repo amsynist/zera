@@ -219,6 +219,7 @@ final class WaterVisitView: NSView, ZeraAnimating {
         figure.pose = "hello"; figure.bodyMotion = .init(); figure.isHidden = true
         box.level = 0.64; box.splashAt = nil; box.scale = 0
         capsule.alphaValue = 0; capsule.isHidden = true
+        capsule.drank.reset()
         needsLayout = true
         advanceAnimation(at: now)
     }
@@ -287,7 +288,11 @@ final class WaterVisitView: NSView, ZeraAnimating {
         }
 
         // The capsule slides in once she's surfaced, and goes as soon as you answer.
-        let showCapsule = stage == .waiting && (landedAt.map { now - $0 >= (reduced ? 0 : 0.35) } ?? false)
+        let surfaced = landedAt.map { now - $0 >= (reduced ? 0 : 0.35) } ?? false
+        // After Drank the bar stays a moment, so you see the button fill with water.
+        let filling = stage == .drinking && !reduced && now - motion.changedAt < 0.55
+        let showCapsule = (stage == .waiting && surfaced) || filling
+        capsule.drank.advance(at: now, reduced: reduced)
         let target: CGFloat = showCapsule ? 1 : 0
         capsule.alphaValue += (target - capsule.alphaValue) * (reduced ? 1 : 0.3)
         if abs(capsule.alphaValue - target) < 0.02 { capsule.alphaValue = target }
@@ -454,7 +459,7 @@ private final class WaterSplashDrops: NSView {
 private final class WaterCapsule: NSView {
     let title = rlabel(Typo.rowTitleStrong, Pal.text)
     let meta = rlabel(Typo.meta, Pal.textSecondary)
-    let drank = PRActionButton("Drank", style: .primary, target: nil, action: #selector(WaterVisitView.drank))
+    let drank = WaterDrankButton("Drank", style: .secondary, target: nil, action: #selector(WaterVisitView.drank))
     let later = PRActionButton("10 min", style: .secondary, target: nil, action: #selector(WaterVisitView.later))
     var offset: CGFloat = 0
     private let blur = NSVisualEffectView()
@@ -496,6 +501,78 @@ private final class WaterCapsuleRim: NSView {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: r - 0.5, yRadius: r - 0.5)
         Pal.cardBottom.withAlphaComponent(0.35).setFill(); path.fill()
         NSColor.white.withAlphaComponent(0.16).setStroke(); path.lineWidth = 1; path.stroke()
+    }
+}
+
+/// Drank, as a little glass of water: a sip of water sloshes in it at rest, it rises when you
+/// point at it, and a tap fills it to the brim with waves and bubbles.
+final class WaterDrankButton: PRActionButton {
+    private var pointing = false
+    private(set) var fill: CGFloat = 0.22
+    private var phase: CGFloat = 0
+    private var lastTime: TimeInterval?
+    private(set) var tappedAt: TimeInterval?
+
+    func reset() { fill = 0.22; tappedAt = nil; lastTime = nil; needsDisplay = true }
+
+    override func mouseEntered(with event: NSEvent) { super.mouseEntered(with: event); pointing = true }
+    override func mouseExited(with event: NSEvent) { super.mouseExited(with: event); pointing = false }
+    override func sendAction(_ action: Selector?, to target: Any?) -> Bool {
+        if tappedAt == nil { tappedAt = CACurrentMediaTime() }
+        return super.sendAction(action, to: target)
+    }
+
+    func advance(at time: TimeInterval, reduced: Bool) {
+        let dt = CGFloat(min(0.1, max(0, time - (lastTime ?? time))))
+        lastTime = time
+        let tapped = tappedAt != nil || isHighlighted
+        let target: CGFloat = tapped ? 1.12 : (pointing || window?.firstResponder === self ? 0.52 : 0.22)
+        fill += (target - fill) * (reduced ? 1 : 1 - exp(-dt * (tapped ? 7 : 5)))
+        phase = reduced ? 0 : CGFloat(time)
+        needsDisplay = true
+    }
+
+    override func drawContentBackground(in rect: NSRect) {
+        let radius = min(Radius.m - 1, rect.height / 2)
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).addClip()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        let flipped = NSGraphicsContext.current?.isFlipped ?? false
+        // The splash of a tap: the surface sloshes harder for a moment, then settles.
+        let since = tappedAt.map { CGFloat(CACurrentMediaTime() - $0) } ?? 9
+        let slosh = 1 + 2.2 * max(0, 1 - since / 0.8)
+        func surface(_ speed: CGFloat, _ wavelength: CGFloat, _ amp: CGFloat, _ lift: CGFloat) -> NSBezierPath {
+            let path = NSBezierPath()
+            for x in stride(from: rect.minX - 2, through: rect.maxX + 2, by: 2) {
+                let level = rect.height * min(1.12, fill) + lift
+                    + sin(x / wavelength + phase * speed) * amp * slosh + sin(x / (wavelength * 0.55) - phase * speed * 0.6) * amp * 0.4
+                let y = flipped ? rect.maxY - level : rect.minY + level
+                if x == rect.minX - 2 { path.move(to: NSPoint(x: x, y: y)) } else { path.line(to: NSPoint(x: x, y: y)) }
+            }
+            return path
+        }
+        let bottom = flipped ? rect.maxY + 2 : rect.minY - 2
+        for (i, layer) in [(speed: CGFloat(-1.6), wavelength: CGFloat(13), amp: CGFloat(1.2), lift: CGFloat(1.5)),
+                           (speed: CGFloat(2.2), wavelength: CGFloat(9), amp: CGFloat(1.4), lift: CGFloat(0))].enumerated() {
+            let crest = surface(layer.speed, layer.wavelength, layer.amp, layer.lift)
+            let water = crest.copy() as! NSBezierPath
+            water.line(to: NSPoint(x: rect.maxX + 2, y: bottom)); water.line(to: NSPoint(x: rect.minX - 2, y: bottom)); water.close()
+            NSGradient(starting: Pal.water.withAlphaComponent(i == 0 ? 0.22 : 0.42),
+                       ending: Pal.waterDeep.withAlphaComponent(i == 0 ? 0.18 : 0.55))?.draw(in: water, angle: flipped ? -90 : 90)
+            if i == 1 { NSColor.white.withAlphaComponent(0.45).setStroke(); crest.lineWidth = 0.9; crest.stroke() }
+        }
+        // Bubbles rise once there's water to rise through.
+        guard fill > 0.35 else { return }
+        for i in 0..<5 {
+            let t = (phase * 0.55 + CGFloat(i) * 0.23).truncatingRemainder(dividingBy: 1)
+            let x = rect.minX + rect.width * (0.15 + 0.17 * CGFloat(i)) + sin(phase * 2 + CGFloat(i)) * 2
+            let rise = rect.height * min(1, fill) * t
+            let y = flipped ? rect.maxY - 2 - rise : rect.minY + 2 + rise
+            let r: CGFloat = i.isMultiple(of: 2) ? 1.3 : 1.9
+            NSColor.white.withAlphaComponent(0.55 * sin(t * .pi)).setStroke()
+            let bubble = NSBezierPath(ovalIn: NSRect(x: x - r, y: y - r, width: r * 2, height: r * 2))
+            bubble.lineWidth = 0.8; bubble.stroke()
+        }
     }
 }
 
