@@ -21,7 +21,7 @@
 
 - **Your Mac at a glance:** a vitals strip on Home (CPU, memory, GPU, Wi-Fi, battery). Tap it for **This Mac**: per-core load, a minute of network and GPU, memory by kind, battery health and cycles, and an internet speed test on demand.
 - **Shelf · Fresh:** new files from Downloads, Desktop and folders you add, newest first. Tap to copy, drag straight into Slack, Mail or Finder.
-- **Battery alerts:** a banner and its own sound when the battery crosses your mark, and optionally when its health drops.
+- **Battery alerts:** a banner and its own sound when the battery crosses your mark, and optionally when its health drops. Plug in and the warning goes away, replaced by a short **Charging** banner with the time to full (Settings › General can turn that off).
 - **Approvals:** your open PRs that someone approved now show up too, with who approved them.
 - **Themes:** Zera, Tokyo Night, Dracula, Catppuccin, Nord, Rosé Pine and Gruvbox, or your own from a JSON file.
 - **Snappier:** tabs switch in a few milliseconds, the Shelf copies pictures instantly, and drops land in the same frame.

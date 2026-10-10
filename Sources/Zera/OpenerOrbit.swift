@@ -376,3 +376,40 @@ extension Array {
     /// The element at `i`, or nil when `i` is out of range.
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
+
+
+/// Zera's live face over her picture in the opener: blinks, and looks at `target` (the app
+/// you're on), falling back to the pointer.
+final class OpenerZeraFace: NSView, ZeraAnimating {
+    var target: (() -> NSPoint?)?
+    private var face = ZeraFace()
+    private var gaze = CGPoint.zero
+    private var lastFrameAt: TimeInterval?
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow(); lastFrameAt = nil
+        if window == nil { ZeraAnimationClock.shared.remove(self) } else { ZeraAnimationClock.shared.add(self) }
+    }
+
+    func advanceAnimation(at now: TimeInterval) {
+        let dt = min(0.1, max(0, now - (lastFrameAt ?? now)))
+        lastFrameAt = now
+        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let follow = reduced ? 1 : CGFloat(1 - exp(-dt / 0.15))
+        if let window {
+            let eyes = window.convertPoint(toScreen: convert(NSPoint(x: bounds.midX, y: bounds.height * 0.3), to: nil))
+            let look = target?() ?? NSEvent.mouseLocation
+            gaze.x += (tanh((look.x - eyes.x) / 220) - gaze.x) * follow
+            gaze.y += (tanh((look.y - eyes.y) / 170) - gaze.y) * follow
+        }
+        face.advance(at: now, reducedMotion: reduced)
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let rig = ZeraFacePose.available(for: "hang_peek") else { return }
+        face.draw(in: bounds, gaze: gaze, alpha: 1, pose: rig)
+        if let art = ZeraFacePose.artwork(for: "hang_peek") { ZeraFace.drawForeground(art, pose: rig, in: bounds, alpha: 1) }
+    }
+}

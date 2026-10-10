@@ -723,6 +723,8 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     private func updateLook(_ mouse: NSPoint) {
         let head = headPoint
+        // In the app opener she watches the app you're on: under the pointer, or the selection.
+        let mouse = openerOpen ? (opener.focusPoint ?? mouse) : mouse
         // Respond near the face and ease towards a bounded gaze farther away.
         let x = tanh((mouse.x - head.x) / 260)
         let y = tanh((mouse.y - head.y) / 200)
@@ -1250,12 +1252,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let mood: ZeraMood
         switch a.kind {
         case .breakTime: mood = .cozy
-        case .battery: mood = .worried
+        case .battery: mood = BatteryAlerts.isChargingAlert(a) ? .happy : .worried
         case .calendarHeadsUp, .headsUp: mood = .hello
         case .calendarNow, .now, .snoozed: mood = .excited
         }
         if a.hydration { sound(.water) }
-        else if a.kind == .battery { sound(.batteryLow) }
+        else if a.kind == .battery { sound(BatteryAlerts.isChargingAlert(a) ? .reminderDone : .batteryLow) }
         else if a.kind == .breakTime { sound(.breakTime) }
         else if a.isEvent { sound(.calendar) }
         else { sound(.reminder) }
