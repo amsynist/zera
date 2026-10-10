@@ -58,6 +58,13 @@ final class ScreenLayoutTests: XCTestCase {
     }
 
     func testCompactFilterToolbarsKeepSearchReachable() throws {
+        // Clipboard shows its toolbar only with history on (a fresh Mac, like CI, has it off).
+        // Sample items first, so turning it on never watches the real clipboard.
+        let store = ClipboardStore.shared
+        let saved = store.items, wasEnabled = store.enabled
+        defer { store.preview(saved); store.enabled = wasEnabled }
+        store.preview([ClipItem(kind: .text, text: "Ship the theme picker", bytes: 21, sourceApp: "Notes", fingerprint: "layout-1")])
+        store.enabled = true
         for screen in [ClaudeSessionsView() as NSView, ClipboardView()] {
             for width: CGFloat in [560, Isle.lensWidth] {
                 screen.setFrameSize(NSSize(width: width, height: Isle.maxContentHeight))
