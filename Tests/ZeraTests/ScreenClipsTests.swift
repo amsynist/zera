@@ -260,7 +260,10 @@ final class ScreenClipsTests: XCTestCase {
     }
 
     private func capture() {
-        guard let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), [.bestResolution, .boundsIgnoreFraming]) else { return }
+        typealias CGWindowListCreateImageFunc = @convention(c) (CGRect, CGWindowListOption, CGWindowID, CGWindowImageOption) -> CGImage?
+        let sym = dlsym(dlopen(nil, RTLD_NOW), "CGWindowListCreateImage")
+        let create = unsafeBitCast(sym, to: CGWindowListCreateImageFunc.self)
+        guard let cg = create(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), [.bestResolution, .boundsIgnoreFraming]) else { return }
         let n = times.count
         times.append(CACurrentMediaTime() - start)
         let dir = frames!
