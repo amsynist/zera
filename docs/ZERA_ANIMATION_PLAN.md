@@ -63,7 +63,7 @@ The app opener is excluded from this change, as requested.
 - [x] Inspect local flight and patience previews; 17 selected checks and release bundle build passed.
 - [ ] User review of the refined jump and waiting reactions in the running app.
 
-New local preview: `.build/ui-review/zera-water-patience.gif` compresses the six 12-second waiting beats for review. Production timing remains 12 seconds per line. The temporary one-minute test reminder remains active in local app data.
+New local preview: `.build/ui-review/zera-water-patience.gif` compresses the six 12-second waiting beats for review. Production timing remains 12 seconds per line. The temporary one-minute test reminder and its test completion history were removed on 10 October before the v0.1.6 release; the previous reminder configuration was restored.
 
 ### Water replies and clipping fix — 10 October
 
@@ -74,7 +74,7 @@ New local preview: `.build/ui-review/zera-water-patience.gif` compresses the six
 - [x] Cheer with “Sip, sip, hooray!”, then return once; retain reminder coalescing.
 - [x] Remove redundant window repositioning while Zera waits.
 - [x] Native animation/render suite passed (19 checks), followed by 10 water checks including pixel-edge coverage; release bundle build passed.
-- [ ] User review of the clipping fix and new replies during the one-minute test reminder.
+- [ ] User review of the clipping fix and new replies with normal hydration reminders.
 
 ## Phase 5 — Website companion
 
