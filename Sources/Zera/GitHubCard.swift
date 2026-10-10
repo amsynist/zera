@@ -619,7 +619,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
     private static var sort: Sort = .updated
 
     private let headerTile = GHHeaderTile()
-    private let zeraHead = NSImageView()
+    private let zeraHead = AnimatedZeraView()
     private let bubble = ZeraGitHubBubble()
     private var refreshButton: GHSquareButton!
     private var moreButton: GHSquareButton!
@@ -644,7 +644,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
     private var shownDetailID: String?
     private var detailID: String?
     private let insight = PRInsightCard()
-    private let insightZera = NSImageView()
+    private let insightZera = AnimatedZeraView()
     private var mode: Mode = .loading
     private var headerLine = ""
 
@@ -671,8 +671,6 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         segmented.switches = { [weak self] in self.map { [$0.scroll] } ?? [] }
         addSubview(segmented)
         // Zera sits on the bar, so she goes above it.
-        zeraHead.imageScaling = .scaleProportionallyUpOrDown
-        zeraHead.imageAlignment = .alignBottom
         zeraHead.setAccessibilityLabel("Zera")
         addSubview(zeraHead)
         addSubview(bubble)
@@ -704,8 +702,6 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         insight.split.onMain = { [weak self] in self?.openBrowserTapped() }
         insight.split.onMenu = { [weak self] v in self?.showInsightMenu(from: v) }
         addSubview(insight)
-        insightZera.imageScaling = .scaleProportionallyUpOrDown
-        insightZera.imageAlignment = .alignBottom
         addSubview(insightZera)
 
         NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: GitHubService.changed, object: nil)
@@ -933,7 +929,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
             pose = "card_laptop_side"
             headerLine = n == 0 ? "No new PRs today ✨" : "\(n) PR\(n == 1 ? "" : "s") opened in 24h — want a look? 👀"
         }
-        zeraHead.image = SpriteLibrary.shared.sprite(pose)?.image ?? SpriteLibrary.shared.sprite("idle")?.image
+        zeraHead.pose = pose
         bubble.text = headerLine
 
         let headline: String, sub: String, ipose: String
@@ -964,7 +960,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
             ipose = "card_cheer"
         }
         insight.set(headline: headline, detail: sub)
-        insightZera.image = SpriteLibrary.shared.sprite(ipose)?.image ?? SpriteLibrary.shared.sprite("idle")?.image
+        insightZera.pose = ipose
     }
 
     /// She glances at the PR under the pointer.

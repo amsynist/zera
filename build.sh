@@ -39,8 +39,8 @@ rm -rf "$ICONSET"; mkdir -p "$ICONSET"
 ICONBUILD="$DIST/iconbuild"
 rm -rf "$ICONBUILD"; mkdir -p "$ICONBUILD"
 cp Tools/MakeIcon.swift "$ICONBUILD/main.swift"
-cp Sources/Zera/ZeraView.swift Sources/Zera/Sprites.swift Sources/Zera/ZeraFace.swift "$ICONBUILD/"
-swiftc -O -o "$ICONBUILD/makeicon" "$ICONBUILD/main.swift" "$ICONBUILD/ZeraView.swift" "$ICONBUILD/Sprites.swift" "$ICONBUILD/ZeraFace.swift"
+cp Sources/Zera/ZeraView.swift Sources/Zera/Sprites.swift Sources/Zera/ZeraFace.swift Sources/Zera/ZeraAnimationClock.swift "$ICONBUILD/"
+swiftc -O -o "$ICONBUILD/makeicon" "$ICONBUILD/main.swift" "$ICONBUILD/ZeraView.swift" "$ICONBUILD/Sprites.swift" "$ICONBUILD/ZeraFace.swift" "$ICONBUILD/ZeraAnimationClock.swift"
 "$ICONBUILD/makeicon" "$DIST/icon_1024.png" "$(pwd)/Resources/Sprites" >/dev/null
 rm -rf "$ICONBUILD"
 for s in 16 32 64 128 256 512; do

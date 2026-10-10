@@ -3,6 +3,15 @@ import XCTest
 @testable import Zera
 
 final class ZeraFaceTests: XCTestCase {
+    func testSharedClockDoesNotRetainDetachedScreenMascots() {
+        weak var retained: AnimatedZeraView?
+        autoreleasepool {
+            let mascot = AnimatedZeraView(frame: .zero)
+            retained = mascot
+            ZeraAnimationClock.shared.add(mascot)
+        }
+        XCTAssertNil(retained)
+    }
     func testCursorFollowingUsesElapsedTimeAndRemainsBounded() {
         let slow = ZeraView(frame: .zero), fast = ZeraView(frame: .zero)
         slow.lookTarget = CGPoint(x: 1, y: -1); fast.lookTarget = slow.lookTarget

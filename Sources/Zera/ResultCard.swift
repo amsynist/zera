@@ -233,7 +233,7 @@ final class ProcessingBlock: NSView {
     private var stepDots: [NSView] = []
     private var stage: ZeraAssistant.Stage = .reading
     private var progress: Double = 0
-    private let zera = NSImageView()
+    private let zera = AnimatedZeraView()
 
     static let steps = ["Reading file", "Analyzing content", "Generating", "Done"]
     static let height: CGFloat = Space.m + 34 + Space.m + 4 + Space.m + 4 * 22 + Space.s
@@ -254,8 +254,8 @@ final class ProcessingBlock: NSView {
             addSubview(dot); stepDots.append(dot)
             let l = NSTextField(labelWithString: name); l.font = Typo.secondary; addSubview(l); stepLabels.append(l)
         }
-        zera.imageScaling = .scaleProportionallyUpOrDown
-        zera.imageAlignment = .alignBottomRight
+
+        zera.alignRight = true
         addSubview(zera)
         setAccessibilityRole(.progressIndicator)
     }
@@ -302,7 +302,7 @@ final class ProcessingBlock: NSView {
         case .generating: pose = "card_writing"
         case .done: pose = "card_cheer"
         }
-        zera.image = SpriteLibrary.shared.sprite(pose)?.image ?? SpriteLibrary.shared.sprite("laptop")?.image
+        zera.pose = pose
         needsLayout = true
     }
 
