@@ -6,7 +6,7 @@ import AppKit
 final class ZeraCompanion: NSView {
     enum Side { case bubbleRight, bubbleLeft }
 
-    private let figure = NSImageView()
+    private let figure = AnimatedZeraView()
     private let bubble = NSView()
     private let label = NSTextField(wrappingLabelWithString: "")
     private var size: CGFloat
@@ -18,8 +18,6 @@ final class ZeraCompanion: NSView {
         self.size = size
         self.side = side
         super.init(frame: .zero)
-        figure.imageScaling = .scaleProportionallyUpOrDown
-        figure.imageAlignment = .alignBottom
         figure.setAccessibilityLabel("Zera")
         addSubview(figure)
         bubble.wantsLayer = true
@@ -39,9 +37,7 @@ final class ZeraCompanion: NSView {
 
     /// Any file name from Resources/Sprites, e.g. "hello", "laptop", "celebrate", "peek".
     func set(pose: String) {
-        figure.image = SpriteLibrary.shared.sprite(pose)?.image
-            ?? SpriteLibrary.shared.sprite("idle")?.image
-            ?? ZeraView.headImage(size: size)
+        figure.pose = pose
     }
 
     /// What she says; nil hides the bubble.

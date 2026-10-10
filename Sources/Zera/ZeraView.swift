@@ -55,7 +55,7 @@ struct ZeraPokeReaction {
 /// Zera, rendered from the PNG cut-outs in `Resources/Sprites`: a pendulum sway on the rope,
 /// a lean toward whatever she is looking at, cross-fades between expressions and idle fidgets.
 /// If the sprites are missing she draws a tiny placeholder so the app still runs.
-final class ZeraView: NSView {
+final class ZeraView: NSView, ZeraAnimating {
 
     var mood: ZeraMood = .idle {
         didSet {
@@ -65,7 +65,6 @@ final class ZeraView: NSView {
         }
     }
     var style: ZeraStyle = .hanging { didSet { needsDisplay = true } }
-    var framesPerSecond: Double = 30
     /// Points at the top of the view hidden behind the notch. The rope runs through them.
     var hangInset: CGFloat = 0
     /// Empty room under her feet, so bounces and sparkles never reach the window's edge.
@@ -104,8 +103,9 @@ final class ZeraView: NSView {
 
     /// Returns true on the fourth quick tap. Further taps let the reaction finish.
     func poke() -> Bool {
+        let pose = currentSprite?.name ?? spriteName(for: mood)
         let triggered = pokeReaction.register(at: CACurrentMediaTime())
-        if triggered { bumpAt = -10 }
+        if triggered { bumpAt = -10; reactionPose = pose }
         else if !isReactingToPokes { bump() }
         needsDisplay = true
         return triggered
@@ -136,7 +136,10 @@ final class ZeraView: NSView {
     var lookTarget: CGPoint = .zero
     private(set) var look: CGPoint = .zero
 
-    private var timer: Timer?
+    private var lastFrameAt: TimeInterval?
+    private var face = ZeraFace()
+    private var hoverAmount: CGFloat = 0
+    private var reactionPose: String?
     private var phase: Double = 0
     private var happyStartedAt: Double = -10
     private var raise: CGFloat = 0
@@ -169,41 +172,18 @@ final class ZeraView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if let o = occlusionObserver { NotificationCenter.default.removeObserver(o); occlusionObserver = nil }
-        guard let w = window else { stop(); return }
-        // Her animation clock only runs while her window is actually on screen: ordered out
-        // (hidden in Settings) it would otherwise keep waking 30 times a second for nothing.
-        occlusionObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in
-            self?.syncClock()
-        }
-        syncClock()
+        super.viewDidMoveToWindow(); lastFrameAt = nil
+        if window == nil { ZeraAnimationClock.shared.remove(self) }
+        else { ZeraAnimationClock.shared.add(self) }
     }
+    override func viewDidHide() { super.viewDidHide(); ZeraAnimationClock.shared.refresh() }
+    override func viewDidUnhide() { super.viewDidUnhide(); ZeraAnimationClock.shared.refresh() }
 
-    private var occlusionObserver: NSObjectProtocol?
-
-    private func syncClock() {
-        guard let w = window, w.occlusionState.contains(.visible) else { stop(); return }
-        if timer == nil { start() }
-    }
-
-    deinit {
-        timer?.invalidate()
-        if let o = occlusionObserver { NotificationCenter.default.removeObserver(o) }
-    }
-
-    private func start() {
-        stop()
-        let t = Timer(timeInterval: 1.0 / framesPerSecond, repeats: true) { [weak self] _ in self?.tick() }
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
-    }
-
-    private func stop() { timer?.invalidate(); timer = nil }
-
-    private func tick() {
-        guard let w = window, w.isVisible, w.alphaValue > 0.02, !isHiddenOrHasHiddenAncestor else { return }
-        phase += 1.0 / framesPerSecond
+    /// One frame of the shared clock; also used by the local animation preview.
+    func advanceAnimation(at now: TimeInterval) {
+        let dt = min(0.1, max(0, now - (lastFrameAt ?? now)))
+        lastFrameAt = now
+        phase += dt
         func blend(_ v: inout CGFloat, _ target: CGFloat, _ k: CGFloat) { v += (target - v) * k }
         blend(&raise, [.excited, .happy, .celebrate, .surprised].contains(mood) ? 1 : 0, 0.22)
         blend(&wave, mood == .hello ? 1 : 0, 0.20)
@@ -216,8 +196,11 @@ final class ZeraView: NSView {
         let sparkling = !angry && (activity == .done || CACurrentMediaTime() - bumpAt < 1.4)
         blend(&starsAmt, sparkling ? 1 : 0, 0.15)
         blend(&moteAlpha, motes.isEmpty || hovered || islandPose != nil ? 0 : 1, 0.12)
-        look.x += (lookTarget.x - look.x) * 0.18
-        look.y += (lookTarget.y - look.y) * 0.18
+        let follow = Self.reduceMotion ? 1 : CGFloat(1 - exp(-dt / 0.17))
+        look.x += (lookTarget.x - look.x) * follow
+        look.y += (lookTarget.y - look.y) * follow
+        hoverAmount += ((hovered ? 1 : 0) - hoverAmount) * follow
+        face.advance(at: now, reducedMotion: Self.reduceMotion)
         needsDisplay = true
     }
 
@@ -261,7 +244,7 @@ final class ZeraView: NSView {
     private static let hangingFidgets = ["hang_upsidedown", "hang_upsidedown2", "hang_back", "hang_swing", "hang_think", "hang_climb"]
 
     private func resolvedSpriteName(now: Double) -> String {
-        if pokeReaction.isActive(at: now) { return style == .hanging ? Self.claudePose : "error" }
+        if pokeReaction.isActive(at: now), let reactionPose { return reactionPose }
         if style == .hanging, let p = islandPose { return p }
         if style == .hanging, activity != .none { return Self.claudePose }
         if style == .hanging, mood == .idle, !Self.reduceMotion {
@@ -294,7 +277,8 @@ final class ZeraView: NSView {
         if currentSprite?.name != name, let next = SpriteLibrary.shared.sprite(name) {
             previousSprite = currentSprite
             currentSprite = next
-            fadeStart = now
+            // First paint has no pose to cross-fade from; show her immediately.
+            fadeStart = previousSprite == nil ? now - 0.22 : now
         }
         guard let sprite = currentSprite else { drawPlaceholder(lift: lift); return }
         let t = Self.reduceMotion ? 1 : CGFloat(min(1, (now - fadeStart) / 0.22))
@@ -380,6 +364,10 @@ final class ZeraView: NSView {
             let body = rendered(sprite, size: rect.size, shadow: true)
             body.draw(in: rect.insetBy(dx: -Self.renderPad, dy: -Self.renderPad), from: .zero, operation: .sourceOver,
                       fraction: alpha, respectFlipped: false, hints: nil)
+            if let rig = ZeraFacePose.available(for: sprite.name) {
+                face.draw(in: rect, gaze: look, alpha: alpha, pose: rig, annoyance: pokeReaction.intensity(at: CACurrentMediaTime()), hover: hoverAmount)
+                if let artwork = ZeraFacePose.artwork(for: sprite.name) { ZeraFace.drawForeground(artwork, pose: rig, in: rect, alpha: alpha) }
+            }
             if effects {
                 if isReactingToPokes { drawAngryReaction(around: rect, alpha: alpha) }
                 else { drawEffects(around: rect) }
@@ -399,6 +387,10 @@ final class ZeraView: NSView {
             rendered(sprite, size: rect.size, shadow: false)
                 .draw(in: rect.insetBy(dx: -Self.renderPad, dy: -Self.renderPad), from: .zero, operation: .sourceOver,
                       fraction: alpha, respectFlipped: false, hints: nil)
+            if let rig = ZeraFacePose.available(for: sprite.name) {
+                face.draw(in: rect, gaze: look, alpha: alpha, pose: rig, annoyance: pokeReaction.intensity(at: CACurrentMediaTime()), hover: hoverAmount)
+                if let artwork = ZeraFacePose.artwork(for: sprite.name) { ZeraFace.drawForeground(artwork, pose: rig, in: rect, alpha: alpha) }
+            }
         }
         ctx.restoreGState()
     }
@@ -427,7 +419,8 @@ final class ZeraView: NSView {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: false)
         if shadow { cg.setShadow(offset: CGSize(width: 0, height: -3), blur: 7, color: NSColor.black.withAlphaComponent(0.45).cgColor) }
-        sprite.image.draw(in: NSRect(x: pad, y: pad, width: w, height: h), from: .zero, operation: .sourceOver, fraction: 1,
+        let artwork = ZeraFacePose.artwork(for: sprite.name)?.image ?? sprite.image
+        artwork.draw(in: NSRect(x: pad, y: pad, width: w, height: h), from: .zero, operation: .sourceOver, fraction: 1,
                           respectFlipped: false, hints: [.interpolation: NSImageInterpolation.high])
         NSGraphicsContext.restoreGraphicsState()
         guard let image = cg.makeImage() else { return sprite.image }
@@ -498,22 +491,13 @@ final class ZeraView: NSView {
     private static let cyan = NSColor(srgbRed: 0.30, green: 0.74, blue: 1.0, alpha: 1)
     private static let green = NSColor(srgbRed: 0.21, green: 0.89, blue: 0.67, alpha: 1)
 
-    /// Eyebrows follow the tilted face of hang_climb; small steam clouds stay in her window.
+    /// Live facial anger is drawn by the rig; the mark and small steam clouds stay in her window.
     private func drawAngryReaction(around rect: NSRect, alpha: CGFloat) {
         let now = CACurrentMediaTime()
         let strength = (Self.reduceMotion ? 1 : pokeReaction.intensity(at: now)) * alpha
         let w = rect.width, h = rect.height
         func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
             NSPoint(x: rect.minX + w * x, y: rect.minY + h * y)
-        }
-        NSColor(srgbRed: 0.20, green: 0.10, blue: 0.13, alpha: strength).setStroke()
-        for (a, b) in [(point(0.31, 0.285), point(0.455, 0.235)),
-                       (point(0.61, 0.385), point(0.73, 0.47))] {
-            let brow = NSBezierPath()
-            brow.move(to: a); brow.line(to: b)
-            brow.lineWidth = max(1.3, w * 0.027)
-            brow.lineCapStyle = .round
-            brow.stroke()
         }
 
         // A tiny anime anger mark beside her tuft, easing with the reaction.

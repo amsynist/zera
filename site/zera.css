@@ -1,0 +1,138 @@
+/* Shared quiet surfaces and spacing, with Zera hanging from the page's notch. */
+:root{--surface:linear-gradient(145deg,rgba(126,135,186,.10),rgba(21,20,31,.68));--section-space:clamp(72px,9vw,120px)}
+html{scroll-padding-top:150px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:5px}
+header{border-bottom:1px solid transparent}
+header nav{height:76px;gap:24px}
+.navlinks{gap:22px}
+.navcta{gap:10px}
+.brand{font-weight:600}
+.brand img{width:29px;height:29px}
+.backdrop::before{opacity:.45}
+.orb{opacity:.16;filter:blur(100px);will-change:auto;animation:none!important}
+.btn{font-weight:500;background:var(--surface);border-color:rgba(180,177,216,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.btn.primary{background:linear-gradient(135deg,#b1b5e2,#999dd1 58%,#a59bd2);color:#17172a;border-color:rgba(214,216,255,.32);box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 4px 18px rgba(75,70,126,.14)}
+.btn.primary:hover{color:#17172a;box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 6px 22px rgba(75,70,126,.22)}
+.btn.primary::after{display:none}
+.h1{font-weight:600;font-size:clamp(48px,6vw,76px);line-height:1.08;letter-spacing:-.045em}
+.h2{font-weight:600;line-height:1.12}
+.grad{background-image:linear-gradient(100deg,#dddff6,var(--accent));color:transparent}
+.eyebrow{font:500 12px/1 Geist,system-ui,sans-serif;letter-spacing:.035em;text-transform:none;border-color:var(--line);background:rgba(255,255,255,.035);color:var(--dim);padding:9px 14px}
+.eyebrow i,.tick::before{box-shadow:none}
+.hero{padding:142px 0 16px}
+.herogrid{grid-template-columns:minmax(0,1fr);gap:52px}
+.hero-copy{padding:0;text-align:center;max-width:760px;margin:auto}
+.hero-copy .lead{margin:22px auto 0;max-width:610px;line-height:1.7}
+.ctas{justify-content:center;margin-top:28px}
+.buddy-hint{margin:12px 0 0;color:var(--faint);font-size:12px;line-height:1.6}
+.meta{font:400 13px/1.6 Geist,system-ui,sans-serif;color:var(--dim)}
+.hero-demo{width:100%;max-width:1040px;margin:auto;padding:24px 24px 0;border:1px solid var(--line);border-radius:28px;background:var(--surface);box-shadow:0 20px 80px rgba(0,0,0,.18)}
+.demo-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px;text-align:left;color:var(--dim);font-size:14px}
+.demo-play{font:500 12px/1 Geist,system-ui,sans-serif;color:var(--dim);padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.025);cursor:pointer}
+.demo-play:hover{color:var(--ink);border-color:rgba(var(--accent-rgb),.4)}
+.tabs{margin:0;max-width:none;gap:6px;justify-content:center}
+.tab{padding:0 11px;font-size:12.5px;height:36px;border-radius:10px}
+.tab .bar{opacity:.55}
+.stage{max-width:820px;margin:18px auto 0}
+.caption{height:auto;min-height:44px;margin:0;font-size:13px;line-height:1.6;padding:0 0 16px}
+.caption span{animation:none}
+.feature{padding-top:var(--section-space)}
+.film{padding-top:var(--section-space)}
+.card,.panel{background:var(--surface)}
+.card h3{font-weight:600}
+.buddy-perch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:112px;z-index:2;transition:width .5s var(--ease);pointer-events:none}
+.web-notch{position:absolute;left:50%;transform:translateX(-50%);top:-1px;width:100px;height:16px;border-radius:0 0 15px 15px;background:#030305;box-shadow:0 1px 0 rgba(255,255,255,.07)}
+.web-zera{display:block;position:relative;width:100%;padding:0;border:0;background:none;cursor:pointer;pointer-events:auto;-webkit-tap-highlight-color:transparent;touch-action:manipulation;border-radius:24px;filter:drop-shadow(0 7px 12px rgba(0,0,0,.24))}
+.web-zera svg{width:100%;height:auto;display:block;overflow:visible}
+.eye-happy,.buddy-huff{display:none}
+.eye-happy{stroke:#130b11;stroke-width:5;stroke-linecap:round;fill:none}
+.eye-brow{stroke:#a66e69;stroke-width:2.4;stroke-linecap:round;fill:none;opacity:.4}
+.web-zera.happy .eye-happy{display:block}
+.web-zera.happy .eye-open{visibility:hidden}
+.web-zera.annoyed .buddy-smile{display:none}
+.web-zera.annoyed .buddy-huff{display:block}
+.buddy-bubble{position:absolute;left:calc(100% + 10px);top:105px;width:max-content;max-width:220px;padding:10px 14px;font:400 13px/1.4 Geist,system-ui,sans-serif;border:1px solid rgba(175,172,216,.18);border-radius:14px 14px 14px 4px;color:#d4d1e3;background:linear-gradient(145deg,rgba(38,36,55,.92),rgba(22,21,32,.9));backdrop-filter:blur(14px);opacity:0;transform:translateY(6px);transition:opacity .25s,transform .35s var(--ease);pointer-events:none}
+.buddy-bubble.show{opacity:1;transform:none}
+header.scrolled .buddy-perch{width:68px}
+header.scrolled .buddy-bubble{top:74px}
+@media(max-width:1100px){.navlinks{display:none}}
+@media(max-width:600px){
+  .wrap{padding:0 20px}
+  header nav{height:64px}
+  .navcta .btn:first-child{display:none}
+  .buddy-perch{width:88px}
+  .web-notch{width:82px;height:13px}
+  .buddy-bubble{left:50%;top:100%;transform:translate(-50%,6px);font-size:12px;max-width:230px;border-radius:12px}
+  .buddy-bubble.show{transform:translate(-50%,0)}
+  header.scrolled .buddy-perch{width:58px}
+  header.scrolled .buddy-bubble{top:100%}
+  .hero{padding-top:132px}
+  .herogrid{gap:36px}
+  .h1{font-size:46px}
+  .hero-copy .lead{font-size:16px}
+  .hero-demo{padding:18px 12px 0;border-radius:20px}
+  .demo-heading{font-size:12px;gap:8px;margin-bottom:14px}
+  .tabs{gap:6px}
+  .tab{padding:0 10px;font-size:11.5px;height:34px}
+  .tab svg{width:13px;height:13px}
+  .caption{font-size:12px;min-height:55px}
+  .film{padding-left:0;padding-right:0}
+  .frame{padding:5px;border-radius:16px}
+  .vctl{opacity:1;left:16px;bottom:16px;gap:8px}
+  .vprog{width:80px}
+  .soundhint{right:16px;top:16px;font-size:12px}
+  .toggle{flex-wrap:wrap}
+  .keys{gap:8px}
+  .key.k2{min-width:120px}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+/* The water visit is contained in its preview, with room for every lean and bounce. */
+.water-demo{--perch-y:-92px;--hop-x:52px;--hop-y:-120px;--rest-y:0px;--rest-scale:1;border:1px solid var(--line);border-radius:24px;padding:22px;background:var(--surface);box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.water-demo-label{display:flex;align-items:center;justify-content:space-between;color:var(--dim);font-size:12px}
+.water-live-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);opacity:.65}
+.water-scene{display:grid;grid-template-columns:106px minmax(0,1fr);gap:12px;align-items:end;min-height:260px;padding:70px 0 28px}
+.water-character{width:106px;padding:0;border:0;border-radius:20px;background:none;cursor:pointer;transform-origin:50% 94%;animation:water-breathe 3.5s ease-in-out infinite;--eye-size:1;--eye-lid:1}
+.water-character svg{display:block;width:100%;overflow:visible}
+.water-gaze{transform:translate(var(--gaze-x,0),var(--gaze-y,0));transition:transform .17s ease-out}
+.water-eye-open{transform-box:fill-box;transform-origin:center;animation:water-blink 5.3s linear infinite}
+.water-eye-happy{display:none;fill:none;stroke:#130b11;stroke-width:5;stroke-linecap:round}
+.water-brow{fill:none;stroke:#a66e69;stroke-width:2.5;stroke-linecap:round;opacity:.5}
+.water-mouth-oh{display:none}
+.water-speech{align-self:center;min-height:180px;padding:20px;border:1px solid rgba(175,172,216,.15);border-radius:18px;background:linear-gradient(145deg,rgba(43,41,60,.7),rgba(22,21,32,.8));backdrop-filter:blur(14px)}
+.water-speech h3{font:500 16px/1.35 Geist,system-ui,sans-serif}
+.water-speech p{min-height:64px;margin:10px 0 18px;font-size:14px;line-height:1.6;color:var(--dim)}
+.water-send,.water-sip,.water-moment{min-height:38px;padding:9px 13px;border:1px solid rgba(var(--accent-rgb),.25);border-radius:11px;background:linear-gradient(135deg,rgba(var(--accent-rgb),.22),rgba(var(--accent-rgb),.10));color:var(--ink);font:500 13px/1.3 Geist,system-ui,sans-serif;cursor:pointer;transition:background .2s,transform .2s var(--ease)}
+.water-send:hover,.water-sip:hover{background:rgba(var(--accent-rgb),.24);transform:translateY(-1px)}
+.water-replies{display:flex;gap:7px;flex-wrap:wrap}
+.water-replies[hidden],.water-send[hidden]{display:none}
+.water-moment{border-color:transparent;background:none;color:var(--dim);font-weight:400;padding:9px 6px}
+.water-moment:hover{color:var(--ink);background:rgba(255,255,255,.03)}
+.water-demo-note{margin:0;text-align:center;font-size:11px;line-height:1.5;color:var(--faint)}
+.water-demo[data-state=idle]{--rest-y:var(--perch-y);--rest-scale:.82}
+.water-demo[data-state=arriving] .water-character{animation:water-arrive 1.25s both}
+.water-demo[data-state=thanking] .water-character{animation:water-cheer 1.4s both}
+.water-demo[data-state=returning] .water-character{animation:water-return 1s both}
+.water-character.poke{animation:water-cheer 1.4s both}
+.water-demo[data-mood=pleading] .water-character{--eye-size:1.13}
+.water-demo[data-mood=sleepy] .water-character{--eye-lid:.55;animation:water-sigh 2.4s both}
+.water-demo[data-mood=unimpressed] .water-eye-open{clip-path:polygon(0 32%,100% 20%,100% 100%,0 100%)}
+.water-demo[data-mood=unimpressed] .water-brow{transform:rotate(12deg);transform-box:fill-box;transform-origin:center}
+.water-demo[data-mood=happy] .water-eye-open{visibility:hidden}
+.water-demo[data-mood=happy] .water-eye-happy{display:block}
+.water-demo[data-mood=surprised] .water-mouth-smile,.water-demo[data-mood=surprised] .water-tongue{display:none}
+.water-demo[data-mood=surprised] .water-mouth-oh{display:block}
+.water-demo.offscreen *{animation-play-state:paused!important}
+@keyframes water-arrive{0%{transform:translate(0,var(--perch-y)) rotate(-4deg) scale(.82)}12%{transform:translate(0,var(--perch-y)) rotate(-6deg) scale(.90,.72)}40%{transform:translate(var(--hop-x),var(--hop-y)) rotate(12deg) scale(.92,1.08)}74%{transform:translate(0,0) rotate(0) scale(1)}83%{transform:scale(1.09,.84)}93%{transform:translateY(-7px) scale(.97,1.04)}100%{transform:none}}
+@keyframes water-return{0%{transform:none}16%{transform:scale(1.08,.86)}52%{transform:translate(var(--hop-x),var(--hop-y)) rotate(-10deg) scale(.92,1.08)}100%{transform:translate(0,var(--perch-y)) scale(.82)}}
+@keyframes water-breathe{0%,100%{transform:translateY(var(--rest-y)) scale(var(--rest-scale))}50%{transform:translateY(calc(var(--rest-y) - 2px)) scale(calc(var(--rest-scale) * 1.008),calc(var(--rest-scale) * .996))}}
+@keyframes water-cheer{0%,100%{transform:translateY(var(--rest-y)) scale(var(--rest-scale))}25%{transform:translateY(calc(var(--rest-y) - 7px)) rotate(-5deg) scale(var(--rest-scale))}50%{transform:translateY(var(--rest-y)) scale(calc(var(--rest-scale) * 1.05),calc(var(--rest-scale) * .95))}75%{transform:translateY(calc(var(--rest-y) - 4px)) rotate(4deg) scale(var(--rest-scale))}}
+@keyframes water-sigh{0%,100%{transform:none}50%{transform:translateY(3px) rotate(9deg) scale(1.04,.94)}}
+@keyframes water-blink{0%,91%,96%,100%{transform:scale(var(--eye-size),calc(var(--eye-size) * var(--eye-lid)))}93%,94%{transform:scale(var(--eye-size),.045)}}
+@media(max-width:600px){
+  .water-demo{padding:18px;--perch-y:-22px;--hop-x:24px;--hop-y:-36px}
+  .water-scene{grid-template-columns:minmax(0,1fr);gap:16px;padding:42px 0 24px}
+  .water-character{width:100px;margin:0 auto}
+  .water-speech{min-height:0;padding:18px}
+  .water-speech p{min-height:0}
+}

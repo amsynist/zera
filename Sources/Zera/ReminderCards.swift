@@ -20,7 +20,7 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
     /// Tapping the banner (anywhere but its buttons): open the reminder's details.
     var onView: ((ReminderAlert) -> Void)?
 
-    private let figure = NSImageView()
+    private let figure = AnimatedZeraView()
     private let tile = AgendaTile()
     private let headline = rlabel(NSFont.systemFont(ofSize: 15, weight: .bold), Pal.text)
     private let detail = rlabel(Typo.body, Pal.textSecondary, lines: 2)
@@ -35,8 +35,6 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
     init() {
         super.init(width: 540, title: "")
         titleLabel.isHidden = true
-        figure.imageScaling = .scaleProportionallyUpOrDown
-        figure.imageAlignment = .alignBottom
         addSubview(figure)
         addSubview(tile)
         addSubview(headline)
@@ -76,7 +74,9 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
     @objc func reload() {
         let svc = ReminderService.shared
         let previousID = current?.id
-        current = svc.pendingAlerts.first
+        // Water has its own persistent cursor-side visit, independent of timed banners.
+        let banners = svc.pendingAlerts.filter { !$0.hydration }
+        current = banners.first
         guard let a = current else { onDrained?(); return }
 
         // Look and pose for what it is.
@@ -98,13 +98,13 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         tile.look = look
         tile.lineIcon = a.kind == .breakTime ? "coffee" : a.kind == .battery ? "battery" : a.hydration ? "droplet"
             : a.eventID != nil ? (a.joinURL != nil ? "video" : "calendar") : "bell"
-        figure.image = SpriteLibrary.shared.sprite(pose)?.image ?? SpriteLibrary.shared.sprite("card_bell")?.image
+        figure.pose = pose
 
         headline.stringValue = Self.bannerHeadline(a.headline)
         detail.stringValue = a.detail
         headline.toolTip = headline.stringValue
         detail.toolTip = a.detail
-        counter.stringValue = svc.pendingAlerts.count > 1 ? "1 of \(svc.pendingAlerts.count)" : ""
+        counter.stringValue = banners.count > 1 ? "1 of \(banners.count)" : ""
         setAccessibilityLabel("\(a.headline). \(a.detail)")
 
         if a.kind != .battery { snooze.setLine("moon") }

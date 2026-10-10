@@ -10,7 +10,7 @@ final class ClaudeActivityCard: CardBase, CardContent {
     var onClose: (() -> Void)?
 
     // Header
-    private let avatar = NSImageView()
+    private let avatar = AnimatedZeraView()
     private let chip = StatusChip()
     private let elapsed = NSTextField(labelWithString: "")
     private let close: IconButton
@@ -53,8 +53,6 @@ final class ClaudeActivityCard: CardBase, CardContent {
         let p = Pal
         for b in [close, copyButton] { b.target = self }
         for b in [reject, approve, install] { b.target = self }
-        avatar.imageScaling = .scaleProportionallyUpOrDown
-        avatar.imageAlignment = .alignBottom
         addSubview(avatar); addSubview(chip); addSubview(close)
         elapsed.font = Typo.caption; elapsed.textColor = p.textTertiary; addSubview(elapsed)
         for h in [commandHeader, activityHeader, historyHeader, approvalTitle] {
@@ -182,7 +180,7 @@ final class ClaudeActivityCard: CardBase, CardContent {
         case .idle: (pose, chipText, chipColor) = ("card_sleepy_sit", "Idle", p.muted)
         case .ended: (pose, chipText, chipColor) = ("card_sleepy_sit", "Ended", p.muted)
         }
-        avatar.image = SpriteLibrary.shared.sprite(pose)?.image
+        avatar.pose = pose
         chip.set(text: chipText, color: chipColor)
         elapsed.stringValue = s.promptAt == nil ? "" : "· \(Self.clock(s.elapsed))"
 

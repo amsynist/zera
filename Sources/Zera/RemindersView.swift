@@ -140,7 +140,7 @@ final class RemindersView: NSView, CardContent {
     }()
     private let titleLabel = rlabel(Typo.screenTitle, Pal.text)
     private let subtitleLabel = rlabel(Typo.screenSubtitle, Pal.textSecondary)
-    private let peek = NSImageView()
+    private let peek = AnimatedZeraView()
     private let bubble = ZeraGitHubBubble()
     private let addButton = GHSplitButton(title: "Add Event", symbol: "plus")
     private let tabs = GitHubSegmentedControl(items: [])
@@ -151,7 +151,7 @@ final class RemindersView: NSView, CardContent {
     private let emptyState = GHStateView()
     private var emptyKey = ""
     private let tip = AgendaTip()
-    private let tipZera = NSImageView()
+    private let tipZera = AnimatedZeraView()
     private var tipAction: (() -> Void)?
 
     // Side panel
@@ -160,7 +160,7 @@ final class RemindersView: NSView, CardContent {
     private let sideTile = AgendaTile()
     private let sideTitle = rlabel(Typo.detailTitle, Pal.text)
     private let sideSubtitle = rlabel(Typo.meta, Pal.textSecondary)
-    private let sideZera = NSImageView()
+    private let sideZera = AnimatedZeraView()
     private var form: ReminderFormBase?
     private let detailScroll = NSScrollView()
     private let detailList = FlippedView()
@@ -233,9 +233,7 @@ final class RemindersView: NSView, CardContent {
         main.addSubview(titleLabel)
         subtitleLabel.stringValue = "Your day, all in one place"
         main.addSubview(subtitleLabel)
-        peek.imageScaling = .scaleProportionallyUpOrDown
-        peek.imageAlignment = .alignBottom
-        peek.image = SpriteLibrary.shared.sprite("card_peek_down")?.image ?? SpriteLibrary.shared.sprite("peek")?.image
+        peek.pose = "card_peek_down"
         main.addSubview(peek)
         bubble.tailRight = true
         main.addSubview(bubble)
@@ -281,8 +279,6 @@ final class RemindersView: NSView, CardContent {
             self?.reload()
         }
         main.addSubview(tip)
-        tipZera.imageScaling = .scaleProportionallyUpOrDown
-        tipZera.imageAlignment = .alignBottom
         main.addSubview(tipZera)
 
         // Side panel.
@@ -293,8 +289,6 @@ final class RemindersView: NSView, CardContent {
         sidePanel.addSubview(sideTile)
         sidePanel.addSubview(sideTitle)
         sidePanel.addSubview(sideSubtitle)
-        sideZera.imageScaling = .scaleProportionallyUpOrDown
-        sideZera.imageAlignment = .alignBottom
         sidePanel.addSubview(sideZera)
         detailScroll.hasVerticalScroller = false
         detailScroll.borderType = .noBorder
@@ -488,7 +482,7 @@ final class RemindersView: NSView, CardContent {
         } else {
             tip.set(title: "Zera's tip ✨", body: "Tap anything to see details, snooze it or mark it done.", action: nil, closable: false)
         }
-        tipZera.image = SpriteLibrary.shared.sprite(pose)?.image ?? SpriteLibrary.shared.sprite("idle")?.image
+        tipZera.pose = pose
     }
 
     // MARK: Side panel
@@ -617,7 +611,7 @@ final class RemindersView: NSView, CardContent {
     }
 
     private func setZera(_ pose: String) {
-        sideZera.image = SpriteLibrary.shared.sprite(pose)?.image ?? SpriteLibrary.shared.sprite("idle")?.image
+        sideZera.pose = pose
     }
 
     private func info(_ symbol: String, _ label: String, _ value: String, tint: NSColor? = nil) {

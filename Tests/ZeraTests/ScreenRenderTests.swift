@@ -90,6 +90,132 @@ final class ScreenRenderTests: XCTestCase {
 
     // MARK: Renders
 
+    func testRenderMascotPoses() throws {
+        guard ProcessInfo.processInfo.environment["ZERA_RENDER_FACE"] != nil else { throw XCTSkip("local animation review") }
+        let grid = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 520))
+        var figures: [AnimatedZeraView] = []
+        for (index, name) in ["hang_wave", "hang_climb", "hang_peek", "hang_smile", "hang_think", "hang_swing", "hang_upsidedown", "boba"].enumerated() {
+            let x = CGFloat(index % 4) * 190, y = CGFloat(1 - index / 4) * 260
+            let figure = AnimatedZeraView(frame: NSRect(x: x + 10, y: y + 30, width: 170, height: 220))
+            figure.pose = name; grid.addSubview(figure); figures.append(figure)
+            let label = NSTextField(labelWithString: name)
+            label.font = Typo.caption; label.textColor = .white; label.alignment = .center
+            label.frame = NSRect(x: x, y: y + 5, width: 190, height: 20); grid.addSubview(label)
+        }
+        shot(grid, "zera-all-poses", afterShown: {
+            figures.forEach { $0.advanceAnimation(at: CACurrentMediaTime()) }
+        })
+    }
+
+    /// Local production-motion preview on a neutral desktop; no reminder data is changed.
+    func testRenderWaterVisitMotion() async throws {
+        guard ProcessInfo.processInfo.environment["ZERA_RENDER_WATER"] != nil else { throw XCTSkip("set ZERA_RENDER_WATER") }
+        let scene = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
+        let caption = NSTextField(labelWithString: "Zera's water visit · jump → tap → acknowledge → return")
+        caption.font = Typo.detailTitle; caption.textColor = .white
+        caption.frame = NSRect(x: 40, y: 30, width: 820, height: 24); scene.addSubview(caption)
+        let water = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
+        water.departure = CGPoint(x: 385, y: 410); water.landing = CGPoint(x: 155, y: 155)
+        water.onPosition = { [weak water] point in water?.setFrameOrigin(point) }
+        scene.addSubview(water)
+        let window = NSWindow(contentRect: scene.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = scene; window.backgroundColor = desk; window.appearance = NSAppearance(named: .darkAqua)
+        window.orderFrontRegardless(); water.layoutSubtreeIfNeeded(); water.begin()
+        defer { window.orderOut(nil); window.contentView = nil }
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(out.appendingPathComponent("zera-water-visit.gif") as CFURL, "com.compuserve.gif" as CFString, 175, nil))
+        CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        let started = CACurrentMediaTime()
+        for frame in 0..<175 {
+            if frame == 80 { water.acknowledge() }
+            let now = CACurrentMediaTime()
+            water.advanceAnimation(at: now); water.figure.advanceAnimation(at: now)
+            scene.display(); CATransaction.flush()
+            let bitmap = try XCTUnwrap(scene.bitmapImageRepForCachingDisplay(in: scene.bounds))
+            scene.cacheDisplay(in: scene.bounds, to: bitmap)
+            CGImageDestinationAddImage(destination, try XCTUnwrap(bitmap.cgImage), [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.04]] as CFDictionary)
+            if frame == 45, let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: out.appendingPathComponent("zera-water-waiting.png")) }
+            if frame == 95, let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: out.appendingPathComponent("zera-water-thanks.png")) }
+            let remaining = started + Double(frame + 1) * 0.04 - CACurrentMediaTime()
+            if remaining > 0 { try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000)) }
+        }
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        XCTAssertEqual(water.motion.stage, .finished)
+    }
+
+    /// Accelerated local review of the six waiting lines; production timing stays 12s.
+    func testRenderWaterWaitingExpressions() async throws {
+        guard ProcessInfo.processInfo.environment["ZERA_RENDER_WATER"] != nil else { throw XCTSkip("set ZERA_RENDER_WATER") }
+        let scene = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 260))
+        let water = WaterVisitView(frame: NSRect(origin: CGPoint(x: 43, y: 18), size: WaterVisitView.size))
+        scene.addSubview(water)
+        let window = NSWindow(contentRect: scene.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = scene; window.backgroundColor = desk; window.appearance = NSAppearance(named: .darkAqua)
+        window.orderFrontRegardless(); water.layoutSubtreeIfNeeded()
+        defer { window.orderOut(nil); window.contentView = nil }
+        let started = CACurrentMediaTime()
+        water.begin(at: started - WaterVisitMotion.arrivalDuration)
+        water.advanceAnimation(at: started)
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(out.appendingPathComponent("zera-water-patience.gif") as CFURL, "com.compuserve.gif" as CFString, 180, nil))
+        CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        for frame in 0..<180 {
+            let phrase = frame / 30, beat = Double(frame % 30) / 12.5
+            let now = started + Double(phrase) * 12 + beat
+            water.advanceAnimation(at: now); water.figure.speak(for: 120); water.figure.advanceAnimation(at: now)
+            scene.display(); CATransaction.flush()
+            let bitmap = try XCTUnwrap(scene.bitmapImageRepForCachingDisplay(in: scene.bounds))
+            scene.cacheDisplay(in: scene.bounds, to: bitmap)
+            CGImageDestinationAddImage(destination, try XCTUnwrap(bitmap.cgImage), [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.08]] as CFDictionary)
+            if frame % 30 == 15, let png = bitmap.representation(using: .png, properties: [:]) {
+                try png.write(to: out.appendingPathComponent("zera-water-expression-\(phrase).png"))
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        XCTAssertEqual(water.motion.stage, .waiting)
+    }
+
+    /// On-demand preview of the hanging rig, stepping the production frame update.
+    func testRenderZeraFace() async throws {
+        guard ProcessInfo.processInfo.environment["ZERA_RENDER_FACE"] != nil else {
+            throw XCTSkip("set ZERA_RENDER_FACE for a local character preview")
+        }
+        let view = ZeraView(frame: NSRect(x: 0, y: 0, width: 220, height: 340))
+        view.style = .hanging; view.mood = .idle; view.bottomPad = 16
+        panel(view, "zera-face-idle")
+        view.lookTarget = CGPoint(x: -1, y: -0.5)
+        shot(view, "zera-face-left", afterShown: {
+            let now = CACurrentMediaTime()
+            for frame in 0..<30 { view.advanceAnimation(at: now + Double(frame) / 30) }
+        })
+        XCTAssertLessThan(view.look.x, -0.9)
+        view.lookTarget = CGPoint(x: 1, y: 0.6)
+        shot(view, "zera-face-right", afterShown: {
+            let now = CACurrentMediaTime()
+            for frame in 0..<30 { view.advanceAnimation(at: now + Double(frame) / 30) }
+        })
+        XCTAssertGreaterThan(view.look.x, 0.9)
+        let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = view; window.backgroundColor = desk; window.orderFrontRegardless()
+        defer { window.orderOut(nil); window.contentView = nil }
+        let url = out.appendingPathComponent("zera-face-motion.gif")
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "com.compuserve.gif" as CFString, 150, nil))
+        CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        let started = CACurrentMediaTime()
+        for frame in 0..<150 {
+            let angle = Double(frame) / 150 * .pi * 2
+            view.lookTarget = CGPoint(x: sin(angle), y: cos(angle) * 0.7)
+            view.advanceAnimation(at: CACurrentMediaTime())
+            view.display(); CATransaction.flush()
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            CGImageDestinationAddImage(destination, try XCTUnwrap(bitmap.cgImage),
+                [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.04]] as CFDictionary)
+            let remaining = started + Double(frame + 1) * 0.04 - CACurrentMediaTime()
+            if remaining > 0 { try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000)) }
+        }
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+    }
+
     /// Short local preview of the actual Core Animation transition; never runs in CI.
     func testRenderOpenerActionMotion() async throws {
         guard ProcessInfo.processInfo.environment["ZERA_RENDER_OPENER_MOTION"] != nil else {
@@ -212,7 +338,9 @@ final class ScreenRenderTests: XCTestCase {
         island(ReminderAlertCard(), tab: .reminders, "13-banner-meeting")
         ReminderService.shared.preview(ReminderAlert(id: "render-water", kind: .now, headline: "Drink water",
             detail: "Every 2 hours · next 1:00 PM", hydration: true))
-        island(ReminderAlertCard(), tab: nil, "14-banner-water")
+        let water = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
+        water.begin(at: CACurrentMediaTime() - 1)
+        panel(water, "14-banner-water")
         let toast = ToastCard()
         toast.show(event: GHEvent(id: "render", kind: .prOpened, title: "Add themes: seven built in, plus your own",
             subtitle: "acme/aurora #11", date: Date(), url: URL(string: "https://example.com/pr/11")!, approval: nil))
