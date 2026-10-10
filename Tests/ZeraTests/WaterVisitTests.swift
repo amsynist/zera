@@ -75,9 +75,67 @@ final class WaterVisitTests: XCTestCase {
     func testLandingStaysOnCursorDisplayIncludingNegativeCoordinates() {
         for screen in [CGRect(x: 0, y: 0, width: 1440, height: 875), CGRect(x: -1440, y: -900, width: 1440, height: 875)] {
             for cursor in [CGPoint(x: screen.minX, y: screen.minY), CGPoint(x: screen.maxX, y: screen.maxY), CGPoint(x: screen.midX, y: screen.midY)] {
-                let size = CGSize(width: 390, height: 180)
+                let size = WaterVisitView.size
                 let origin = WaterVisitMotion.landing(cursor: cursor, visibleFrame: screen, size: size)
                 XCTAssertTrue(screen.contains(CGRect(origin: origin, size: size)))
+            }
+        }
+    }
+    func testOneMomentPausesActingWithoutCompletingTheReminder() {
+        let view = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
+        view.begin(at: 0); view.advanceAnimation(at: WaterVisitMotion.arrivalDuration)
+        var completions = 0
+        view.onAcknowledge = { completions += 1 }
+        view.pauseForAMoment(at: 2)
+        view.advanceAnimation(at: 15)
+        XCTAssertEqual(view.motion.stage, .waiting)
+        XCTAssertEqual(view.figure.bodyMotion.angle, 0)
+        XCTAssertEqual(view.waitingExpression, .happy)
+        XCTAssertEqual(completions, 0)
+        view.advanceAnimation(at: 26)
+        XCTAssertEqual(view.waitingExpression, .unimpressed)
+        view.acknowledge()
+        XCTAssertEqual(completions, 1)
+    }
+    func testAnimationCanvasReservesSpaceWithoutShrinkingTheBuddy() {
+        for mirrored in [false, true] {
+            let view = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
+            view.bubbleOnLeft = mirrored; view.layoutSubtreeIfNeeded()
+            XCTAssertTrue(view.bounds.contains(view.figure.frame))
+            XCTAssertEqual(view.figure.artworkBounds.size, CGSize(width: 102, height: 152))
+            XCTAssertEqual(view.figure.animationPadding, 22)
+            // The sprite retains its original scale; the extra transparent canvas
+            // catches lean, bounce, squash and breathing outside the old rectangle.
+            XCTAssertEqual(view.figure.frame.width, 146)
+        }
+    }
+    func testBuddyDrawingStaysInsideCanvasDuringFlightWaitingAndRepeatedTaps() throws {
+        let view = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
+        view.layoutSubtreeIfNeeded()
+        let figure = view.figure, start = CACurrentMediaTime()
+        var motion = WaterVisitMotion(at: start)
+        for elapsed in stride(from: 0.0, through: 72.0, by: 0.2) {
+            // Include the strongest poke reaction alongside the visit's acting.
+            if elapsed == 0 { for offset in [0.0, 0.04, 0.08, 0.12] { figure.tap(at: start + offset) } }
+            motion.advance(at: start + elapsed, reduced: false)
+            figure.bodyMotion = motion.body(at: start + elapsed)
+            figure.advanceAnimation(at: start + elapsed)
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil,
+                pixelsWide: Int(figure.bounds.width), pixelsHigh: Int(figure.bounds.height),
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+            figure.draw(figure.bounds)
+            NSGraphicsContext.restoreGraphicsState()
+            let width = bitmap.pixelsWide, height = bitmap.pixelsHigh
+            for x in 0..<width {
+                XCTAssertLessThan(bitmap.colorAt(x: x, y: 0)!.alphaComponent, 0.02)
+                XCTAssertLessThan(bitmap.colorAt(x: x, y: height - 1)!.alphaComponent, 0.02)
+            }
+            for y in 0..<height {
+                XCTAssertLessThan(bitmap.colorAt(x: 0, y: y)!.alphaComponent, 0.02)
+                XCTAssertLessThan(bitmap.colorAt(x: width - 1, y: y)!.alphaComponent, 0.02)
             }
         }
     }

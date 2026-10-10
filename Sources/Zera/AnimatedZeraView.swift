@@ -8,6 +8,9 @@ final class AnimatedZeraView: NSView, ZeraAnimating {
         var x: CGFloat = 0, y: CGFloat = 0, angle: CGFloat = 0
         var sx: CGFloat = 1, sy: CGFloat = 1
     }
+    // Reserve transparent drawing space for acting without shrinking the artwork.
+    var animationPadding: CGFloat = 0
+    var artworkBounds: NSRect { bounds.insetBy(dx: animationPadding, dy: animationPadding) }
     var bodyMotion = BodyMotion()
     var alignRight = false
     var expression: ZeraExpression?
@@ -89,10 +92,10 @@ final class AnimatedZeraView: NSView, ZeraAnimating {
         let breathe = reduced ? 0 : CGFloat(sin(phase * 2.2)) * 0.008
         ctx.saveGState()
         if !reduced {
-            ctx.translateBy(x: bounds.midX + bodyMotion.x, y: 3 + bodyMotion.y)
+            ctx.translateBy(x: bounds.midX + bodyMotion.x, y: artworkBounds.minY + 3 + bodyMotion.y)
             ctx.rotate(by: bodyMotion.angle * .pi / 180)
             ctx.scaleBy(x: bodyMotion.sx, y: bodyMotion.sy)
-            ctx.translateBy(x: -bounds.midX, y: -3)
+            ctx.translateBy(x: -bounds.midX, y: -artworkBounds.minY - 3)
         }
         ctx.translateBy(x: bounds.midX, y: bounds.midY + bounce + motion.dy)
         ctx.rotate(by: reduced ? 0 : (-gaze.x * 2 + motion.angle) * .pi / 180)
@@ -107,7 +110,7 @@ final class AnimatedZeraView: NSView, ZeraAnimating {
 
     private func drawPose(_ name: String, alpha: CGFloat) {
         guard let sprite = ZeraFacePose.artwork(for: name) ?? SpriteLibrary.shared.sprite("idle") else { return }
-        let space = bounds.insetBy(dx: 3, dy: 3)
+        let space = artworkBounds.insetBy(dx: 3, dy: 3)
         let height = min(space.height, space.width / sprite.aspect)
         let width = height * sprite.aspect
         let rect = NSRect(x: alignRight ? space.maxX - width : space.midX - width / 2, y: space.minY, width: width, height: height)

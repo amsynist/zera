@@ -146,7 +146,7 @@ final class ScreenRenderTests: XCTestCase {
     func testRenderWaterWaitingExpressions() async throws {
         guard ProcessInfo.processInfo.environment["ZERA_RENDER_WATER"] != nil else { throw XCTSkip("set ZERA_RENDER_WATER") }
         let scene = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 260))
-        let water = WaterVisitView(frame: NSRect(x: 65, y: 40, width: 390, height: 180))
+        let water = WaterVisitView(frame: NSRect(origin: CGPoint(x: 43, y: 18), size: WaterVisitView.size))
         scene.addSubview(water)
         let window = NSWindow(contentRect: scene.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = scene; window.backgroundColor = desk; window.appearance = NSAppearance(named: .darkAqua)
