@@ -455,6 +455,9 @@ class PRActionButton: NSButton {
     /// Shared button paint stays inside its rounded edge; no layer shadow to clip square.
     private func updateGlow() { layer?.shadowOpacity = 0 }
 
+    /// Optional decoration beneath the shared icon and title.
+    func drawContentBackground(in rect: NSRect) {}
+
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let pressed = isHighlighted
@@ -470,6 +473,7 @@ class PRActionButton: NSButton {
         case .success: tone = .success
         }
         let color = p.drawButton(path, tone: tone, hovered: hovered || (emphasized && style == .primary), pressed: pressed, enabled: isEnabled)
+        drawContentBackground(in: r.insetBy(dx: 1, dy: 1))
         if window?.firstResponder === self {
             let ring = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5, dy: 1.5), xRadius: max(0, radius - 1), yRadius: max(0, radius - 1))
             p.accent.withAlphaComponent(0.9).setStroke(); ring.lineWidth = 2; ring.stroke()

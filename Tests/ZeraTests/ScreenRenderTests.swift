@@ -19,10 +19,10 @@ final class ScreenRenderTests: XCTestCase {
 
     // MARK: Capturing
 
-    private func shot(_ v: NSView, _ name: String, afterShown: (() -> Void)? = nil) {
+    private func shot(_ v: NSView, _ name: String, background: NSColor? = nil, afterShown: (() -> Void)? = nil) {
         if let only = ProcessInfo.processInfo.environment["ZERA_RENDER_ONLY"], !only.split(separator: ",").contains(Substring(name)) { return }
         let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 60, y: 60), size: v.frame.size), styleMask: .borderless, backing: .buffered, defer: false)
-        w.backgroundColor = desk
+        w.backgroundColor = background ?? desk
         w.appearance = NSAppearance(named: .darkAqua)
         w.contentView = v
         w.orderFrontRegardless()
@@ -107,71 +107,48 @@ final class ScreenRenderTests: XCTestCase {
         })
     }
 
-    /// Local production-motion preview on a neutral desktop; no reminder data is changed.
+    /// Local preview of Splash on a neutral desktop: the glass pops up, Zera jumps in, you tap
+    /// Drank, she drinks and jumps home. No reminder data is changed.
     func testRenderWaterVisitMotion() async throws {
         guard ProcessInfo.processInfo.environment["ZERA_RENDER_WATER"] != nil else { throw XCTSkip("set ZERA_RENDER_WATER") }
         let scene = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
-        let caption = NSTextField(labelWithString: "Zera's water visit · jump → tap → acknowledge → return")
-        caption.font = Typo.detailTitle; caption.textColor = .white
-        caption.frame = NSRect(x: 40, y: 30, width: 820, height: 24); scene.addSubview(caption)
-        let water = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
-        water.departure = CGPoint(x: 385, y: 410); water.landing = CGPoint(x: 155, y: 155)
-        water.onPosition = { [weak water] point in water?.setFrameOrigin(point) }
+        let notch = NSView(frame: NSRect(x: 360, y: 568, width: 180, height: 32))
+        notch.wantsLayer = true; notch.layer?.backgroundColor = NSColor.black.cgColor; notch.layer?.cornerRadius = 14
+        scene.addSubview(notch)
+        let origin = CGPoint(x: 150, y: 120)
+        let water = WaterVisitView(frame: NSRect(origin: origin, size: WaterVisitView.size))
+        water.origin = origin; water.home = CGPoint(x: 450, y: 520); water.detail = "Every 2 hours · next 1:00 PM"
         scene.addSubview(water)
+        let jumper = WaterJumperView(frame: NSRect(origin: .zero, size: WaterJumperView.size))
+        jumper.isHidden = true; scene.addSubview(jumper)
+        water.onJumper = { center, angle, pose in
+            guard let center else { jumper.isHidden = true; return }
+            jumper.isHidden = false; jumper.figure.pose = pose; jumper.figure.frameCenterRotation = angle
+            jumper.setFrameOrigin(CGPoint(x: center.x - WaterJumperView.size.width / 2, y: center.y - WaterJumperView.size.height / 2))
+        }
         let window = NSWindow(contentRect: scene.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = scene; window.backgroundColor = desk; window.appearance = NSAppearance(named: .darkAqua)
         window.orderFrontRegardless(); water.layoutSubtreeIfNeeded(); water.begin()
         defer { window.orderOut(nil); window.contentView = nil }
-        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(out.appendingPathComponent("zera-water-visit.gif") as CFURL, "com.compuserve.gif" as CFString, 175, nil))
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(out.appendingPathComponent("zera-water-visit.gif") as CFURL, "com.compuserve.gif" as CFString, 120, nil))
         CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
         let started = CACurrentMediaTime()
-        for frame in 0..<175 {
-            if frame == 80 { water.acknowledge() }
+        for frame in 0..<120 {
+            if frame == 60 { water.drank() }
             let now = CACurrentMediaTime()
-            water.advanceAnimation(at: now); water.figure.advanceAnimation(at: now)
+            water.advanceAnimation(at: now); water.figure.advanceAnimation(at: now); jumper.figure.advanceAnimation(at: now)
             scene.display(); CATransaction.flush()
             let bitmap = try XCTUnwrap(scene.bitmapImageRepForCachingDisplay(in: scene.bounds))
             scene.cacheDisplay(in: scene.bounds, to: bitmap)
             CGImageDestinationAddImage(destination, try XCTUnwrap(bitmap.cgImage), [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.04]] as CFDictionary)
-            if frame == 45, let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: out.appendingPathComponent("zera-water-waiting.png")) }
-            if frame == 95, let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: out.appendingPathComponent("zera-water-thanks.png")) }
+            for (at, name) in [(8, "jump"), (21, "splash"), (45, "waiting"), (75, "drinking"), (95, "home")] where frame == at {
+                if let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: out.appendingPathComponent("zera-water-\(name).png")) }
+            }
             let remaining = started + Double(frame + 1) * 0.04 - CACurrentMediaTime()
             if remaining > 0 { try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000)) }
         }
         XCTAssertTrue(CGImageDestinationFinalize(destination))
         XCTAssertEqual(water.motion.stage, .finished)
-    }
-
-    /// Accelerated local review of the six waiting lines; production timing stays 12s.
-    func testRenderWaterWaitingExpressions() async throws {
-        guard ProcessInfo.processInfo.environment["ZERA_RENDER_WATER"] != nil else { throw XCTSkip("set ZERA_RENDER_WATER") }
-        let scene = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 260))
-        let water = WaterVisitView(frame: NSRect(origin: CGPoint(x: 43, y: 18), size: WaterVisitView.size))
-        scene.addSubview(water)
-        let window = NSWindow(contentRect: scene.frame, styleMask: .borderless, backing: .buffered, defer: false)
-        window.contentView = scene; window.backgroundColor = desk; window.appearance = NSAppearance(named: .darkAqua)
-        window.orderFrontRegardless(); water.layoutSubtreeIfNeeded()
-        defer { window.orderOut(nil); window.contentView = nil }
-        let started = CACurrentMediaTime()
-        water.begin(at: started - WaterVisitMotion.arrivalDuration)
-        water.advanceAnimation(at: started)
-        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(out.appendingPathComponent("zera-water-patience.gif") as CFURL, "com.compuserve.gif" as CFString, 180, nil))
-        CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
-        for frame in 0..<180 {
-            let phrase = frame / 30, beat = Double(frame % 30) / 12.5
-            let now = started + Double(phrase) * 12 + beat
-            water.advanceAnimation(at: now); water.figure.speak(for: 120); water.figure.advanceAnimation(at: now)
-            scene.display(); CATransaction.flush()
-            let bitmap = try XCTUnwrap(scene.bitmapImageRepForCachingDisplay(in: scene.bounds))
-            scene.cacheDisplay(in: scene.bounds, to: bitmap)
-            CGImageDestinationAddImage(destination, try XCTUnwrap(bitmap.cgImage), [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.08]] as CFDictionary)
-            if frame % 30 == 15, let png = bitmap.representation(using: .png, properties: [:]) {
-                try png.write(to: out.appendingPathComponent("zera-water-expression-\(phrase).png"))
-            }
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        XCTAssertTrue(CGImageDestinationFinalize(destination))
-        XCTAssertEqual(water.motion.stage, .waiting)
     }
 
     /// On-demand preview of the hanging rig, stepping the production frame update.
@@ -283,6 +260,39 @@ final class ScreenRenderTests: XCTestCase {
         })
     }
 
+    func testRenderHoverMenus() throws {
+        for style in HoverMenuStyle.allCases {
+            for band: CGFloat in [24, 34] {
+                let iv = IslandView(frame: NSRect(x: 0, y: 0, width: 900, height: 540))
+                iv.centerX = 450; iv.band = band; iv.notchWidth = band == 34 ? 190 : 180
+                iv.hoverStyle = style
+                iv.counts = [.claude: 1, .shelf: 4, .github: 2]
+                iv.badges = [.claude]
+                iv.instruments = [.home: IslandInstrument(progress: 0.78, text: "78", tone: nil),
+                                  .claude: IslandInstrument(progress: 0.62, text: nil, tone: nil)]
+                iv.peek()
+                let buddy = BuddyView(frame: NSRect(x: 340, y: 0, width: 220, height: band + 108))
+                buddy.hangInset = band - Theme.topTuck; buddy.bottomPad = Theme.figurePad
+                iv.addSubview(buddy)
+                let figure = NSRect(x: 418, y: 540 - band - 84, width: 64, height: 84)
+                let obstacles = iv.captionObstacles.map { NSRect(x: $0.minX, y: 540 - $0.maxY, width: $0.width, height: $0.height) }
+                let tag = BubbleView.frame(for: BubbleView.size(for: "Yes? 👀"), figure: figure,
+                    safeFrame: NSRect(x: 8, y: 8, width: 884, height: 532 - band), obstacles: obstacles)
+                let panel = BubbleView.panelFrame(for: tag)
+                let bubble = BubbleView(frame: NSRect(x: panel.minX, y: 540 - panel.maxY, width: panel.width, height: panel.height))
+                bubble.text = "Yes? 👀"
+                bubble.pointToward(NSPoint(x: figure.midX - panel.minX, y: panel.maxY - (figure.minY + figure.height * 0.45)))
+                iv.addSubview(bubble)
+                let name = "hover-\(style.title.lowercased())-\(band == 34 ? "notched" : "notchless")"
+                shot(iv, name)
+                if style == .arc && band == 34 {
+                    shot(iv, "hover-arc-white", background: .white)
+                    shot(iv, "hover-arc-dark", background: ThemeStore.shared.current.glassBottom)
+                }
+            }
+        }
+    }
+
     func testRenderEveryScreen() throws {
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
         let tasks = sampleTasks()
@@ -339,8 +349,18 @@ final class ScreenRenderTests: XCTestCase {
         ReminderService.shared.preview(ReminderAlert(id: "render-water", kind: .now, headline: "Drink water",
             detail: "Every 2 hours · next 1:00 PM", hydration: true))
         let water = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
-        water.begin(at: CACurrentMediaTime() - 1)
+        water.detail = WaterStats.todayLine(count: 4, goal: 8)
+        let begun = CACurrentMediaTime() - 2
+        water.begin(at: begun)
+        for step in 0..<30 { water.advanceAnimation(at: begun + 2 + Double(step) * 0.03) }
         panel(water, "14-banner-water")
+        let counter = WaterGlassCounterView(frame: NSRect(origin: .zero, size: WaterGlassCounterView.size))
+        counter.count = 4; counter.goal = 8
+        panel(counter, "14b-water-glass")
+        let card = WaterWeekCardView(frame: NSRect(x: 0, y: 0, width: 360, height: 450))
+        card.week = (0..<7).map { WaterStats.Day(date: Date().addingTimeInterval(Double($0 - 6) * 86400), count: [8, 7, 8, 6, 8, 5, 8][$0]) }
+        card.goal = 8; card.streak = 7
+        panel(card, "14c-water-week-card")
         let toast = ToastCard()
         toast.show(event: GHEvent(id: "render", kind: .prOpened, title: "Add themes: seven built in, plus your own",
             subtitle: "acme/aurora #11", date: Date(), url: URL(string: "https://example.com/pr/11")!, approval: nil))
@@ -365,7 +385,6 @@ final class ScreenRenderTests: XCTestCase {
         bubble.text = "all green! ✅"
         let tag = BubbleView.size(for: bubble.text)
         bubble.frame = NSRect(origin: .zero, size: BubbleView.panelFrame(for: NSRect(origin: .zero, size: tag)).size)
-        bubble.tailX = bubble.frame.width / 2
         panel(bubble, "17b-caption")
 
         // Floating panels.

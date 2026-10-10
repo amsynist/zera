@@ -41,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(withTitle: "Shelf", action: #selector(showShelf), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Reminders", action: #selector(showReminders), keyEquivalent: "").target = self
         menu.addItem(withTitle: "GitHub", action: #selector(showGitHub), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Water this week…", action: #selector(showWaterWeek), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Quit Zera", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -58,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showGitHub() { controller.show(.github) }
     @objc private func showReminders() { controller.show(.reminders) }
     @objc private func showSettings() { controller.show(.settings) }
+    @objc private func showWaterWeek() { controller.showWaterWeek() }
 
     @objc private func refreshBadge() {
         let n = ShelfStore.shared.items.count

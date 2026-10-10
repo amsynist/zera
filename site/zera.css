@@ -87,52 +87,46 @@ header.scrolled .buddy-bubble{top:74px}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 
-/* The water visit is contained in its preview, with room for every lean and bounce. */
-.water-demo{--perch-y:-92px;--hop-x:52px;--hop-y:-120px;--rest-y:0px;--rest-scale:1;border:1px solid var(--line);border-radius:24px;padding:22px;background:var(--surface);box-shadow:0 20px 60px rgba(0,0,0,.2)}
+/* Splash: a little desk with a notch; the glass pops up where you click and Zera jumps into it. */
+.water-demo{border:1px solid var(--line);border-radius:24px;padding:18px;background:var(--surface);box-shadow:0 20px 60px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:14px}
 .water-demo-label{display:flex;align-items:center;justify-content:space-between;color:var(--dim);font-size:12px}
 .water-live-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);opacity:.65}
-.water-scene{display:grid;grid-template-columns:106px minmax(0,1fr);gap:12px;align-items:end;min-height:260px;padding:70px 0 28px}
-.water-character{width:106px;padding:0;border:0;border-radius:20px;background:none;cursor:pointer;transform-origin:50% 94%;animation:water-breathe 3.5s ease-in-out infinite;--eye-size:1;--eye-lid:1}
-.water-character svg{display:block;width:100%;overflow:visible}
-.water-gaze{transform:translate(var(--gaze-x,0),var(--gaze-y,0));transition:transform .17s ease-out}
-.water-eye-open{transform-box:fill-box;transform-origin:center;animation:water-blink 5.3s linear infinite}
-.water-eye-happy{display:none;fill:none;stroke:#130b11;stroke-width:5;stroke-linecap:round}
-.water-brow{fill:none;stroke:#a66e69;stroke-width:2.5;stroke-linecap:round;opacity:.5}
-.water-mouth-oh{display:none}
-.water-speech{align-self:center;min-height:180px;padding:20px;border:1px solid rgba(175,172,216,.15);border-radius:18px;background:linear-gradient(145deg,rgba(43,41,60,.7),rgba(22,21,32,.8));backdrop-filter:blur(14px)}
-.water-speech h3{font:500 16px/1.35 Geist,system-ui,sans-serif}
-.water-speech p{min-height:64px;margin:10px 0 18px;font-size:14px;line-height:1.6;color:var(--dim)}
-.water-send,.water-sip,.water-moment{min-height:38px;padding:9px 13px;border:1px solid rgba(var(--accent-rgb),.25);border-radius:11px;background:linear-gradient(135deg,rgba(var(--accent-rgb),.22),rgba(var(--accent-rgb),.10));color:var(--ink);font:500 13px/1.3 Geist,system-ui,sans-serif;cursor:pointer;transition:background .2s,transform .2s var(--ease)}
-.water-send:hover,.water-sip:hover{background:rgba(var(--accent-rgb),.24);transform:translateY(-1px)}
-.water-replies{display:flex;gap:7px;flex-wrap:wrap}
-.water-replies[hidden],.water-send[hidden]{display:none}
-.water-moment{border-color:transparent;background:none;color:var(--dim);font-weight:400;padding:9px 6px}
-.water-moment:hover{color:var(--ink);background:rgba(255,255,255,.03)}
-.water-demo-note{margin:0;text-align:center;font-size:11px;line-height:1.5;color:var(--faint)}
-.water-demo[data-state=idle]{--rest-y:var(--perch-y);--rest-scale:.82}
-.water-demo[data-state=arriving] .water-character{animation:water-arrive 1.25s both}
-.water-demo[data-state=thanking] .water-character{animation:water-cheer 1.4s both}
-.water-demo[data-state=returning] .water-character{animation:water-return 1s both}
-.water-character.poke{animation:water-cheer 1.4s both}
-.water-demo[data-mood=pleading] .water-character{--eye-size:1.13}
-.water-demo[data-mood=sleepy] .water-character{--eye-lid:.55;animation:water-sigh 2.4s both}
-.water-demo[data-mood=unimpressed] .water-eye-open{clip-path:polygon(0 32%,100% 20%,100% 100%,0 100%)}
-.water-demo[data-mood=unimpressed] .water-brow{transform:rotate(12deg);transform-box:fill-box;transform-origin:center}
-.water-demo[data-mood=happy] .water-eye-open{visibility:hidden}
-.water-demo[data-mood=happy] .water-eye-happy{display:block}
-.water-demo[data-mood=surprised] .water-mouth-smile,.water-demo[data-mood=surprised] .water-tongue{display:none}
-.water-demo[data-mood=surprised] .water-mouth-oh{display:block}
-.water-demo.offscreen *{animation-play-state:paused!important}
-@keyframes water-arrive{0%{transform:translate(0,var(--perch-y)) rotate(-4deg) scale(.82)}12%{transform:translate(0,var(--perch-y)) rotate(-6deg) scale(.90,.72)}40%{transform:translate(var(--hop-x),var(--hop-y)) rotate(12deg) scale(.92,1.08)}74%{transform:translate(0,0) rotate(0) scale(1)}83%{transform:scale(1.09,.84)}93%{transform:translateY(-7px) scale(.97,1.04)}100%{transform:none}}
-@keyframes water-return{0%{transform:none}16%{transform:scale(1.08,.86)}52%{transform:translate(var(--hop-x),var(--hop-y)) rotate(-10deg) scale(.92,1.08)}100%{transform:translate(0,var(--perch-y)) scale(.82)}}
-@keyframes water-breathe{0%,100%{transform:translateY(var(--rest-y)) scale(var(--rest-scale))}50%{transform:translateY(calc(var(--rest-y) - 2px)) scale(calc(var(--rest-scale) * 1.008),calc(var(--rest-scale) * .996))}}
-@keyframes water-cheer{0%,100%{transform:translateY(var(--rest-y)) scale(var(--rest-scale))}25%{transform:translateY(calc(var(--rest-y) - 7px)) rotate(-5deg) scale(var(--rest-scale))}50%{transform:translateY(var(--rest-y)) scale(calc(var(--rest-scale) * 1.05),calc(var(--rest-scale) * .95))}75%{transform:translateY(calc(var(--rest-y) - 4px)) rotate(4deg) scale(var(--rest-scale))}}
-@keyframes water-sigh{0%,100%{transform:none}50%{transform:translateY(3px) rotate(9deg) scale(1.04,.94)}}
-@keyframes water-blink{0%,91%,96%,100%{transform:scale(var(--eye-size),calc(var(--eye-size) * var(--eye-lid)))}93%,94%{transform:scale(var(--eye-size),.045)}}
-@media(max-width:600px){
-  .water-demo{padding:18px;--perch-y:-22px;--hop-x:24px;--hop-y:-36px}
-  .water-scene{grid-template-columns:minmax(0,1fr);gap:16px;padding:42px 0 24px}
-  .water-character{width:100px;margin:0 auto}
-  .water-speech{min-height:0;padding:18px}
-  .water-speech p{min-height:0}
-}
+.water-desk{position:relative;height:340px;border-radius:16px;overflow:hidden;cursor:crosshair;border:1px solid rgba(180,177,216,.12);background:radial-gradient(420px 260px at 20% 0%,rgba(var(--accent-rgb),.16),transparent 70%),linear-gradient(180deg,#17161f,#121119)}
+.water-notch{position:absolute;left:50%;top:0;width:150px;height:24px;margin-left:-75px;background:#000;border-radius:0 0 13px 13px;z-index:4}
+.water-count{position:absolute;left:50%;top:27px;margin-left:44px;height:20px;padding:0 8px 0 6px;display:flex;align-items:center;gap:5px;border-radius:10px;background:rgba(0,0,0,.8);box-shadow:inset 0 0 0 1px rgba(127,178,255,.35);font:700 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#bfd6ff;z-index:5;opacity:0;transform:translateY(-4px);transition:opacity .3s,transform .3s}
+.water-count.on{opacity:1;transform:none}
+.water-count i{position:relative;width:9px;height:12px;overflow:hidden;clip-path:polygon(0 0,100% 0,85% 100%,15% 100%);background:rgba(255,255,255,.22)}
+.water-count b{position:absolute;left:0;right:0;bottom:0;height:50%;background:var(--blue);transition:height 1s cubic-bezier(.2,.8,.2,1)}
+.water-rope{position:absolute;left:50%;top:20px;width:3px;height:60px;margin-left:-1.5px;border-radius:2px;background:linear-gradient(#5a3b22,#8a6240);transform-origin:50% 0;opacity:0;z-index:3}
+.water-rope.on{opacity:1;animation:water-sway 2.4s ease-in-out infinite}
+@keyframes water-sway{0%,100%{transform:rotate(9deg)}50%{transform:rotate(-9deg)}}
+.water-hang{position:absolute;left:50%;top:2px;width:48px;height:auto;margin-left:-25px;z-index:3;transition:opacity .12s}
+.water-bead{position:absolute;left:50%;top:26px;margin-left:16px;width:14px;height:17px;padding:0;border:0;cursor:pointer;z-index:5;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;background:radial-gradient(circle at 35% 30%,#fff 0 14%,var(--blue) 60%,#3d55d6);box-shadow:0 0 10px rgba(127,178,255,.6)}
+.water-bead[hidden]{display:none}
+.water-glass{position:absolute;width:62px;height:74px;z-index:6;transform:scale(0);transform-origin:50% 100%;pointer-events:none}
+.water-glass::before{content:"";position:absolute;inset:0;clip-path:polygon(0 0,100% 0,88% 100%,12% 100%);background:linear-gradient(90deg,rgba(127,178,255,.16),rgba(20,20,34,.5) 40%,rgba(127,178,255,.12))}
+.water-in{position:absolute;left:3px;top:-14px;width:56px;height:auto;opacity:0;transition:top .9s cubic-bezier(.4,.1,.3,1)}
+.water-level{position:absolute;left:0;right:0;bottom:0;height:62%;clip-path:polygon(0 0,100% 0,88% 100%,12% 100%);background:linear-gradient(180deg,rgba(127,178,255,.66),rgba(61,85,214,.86));transition:height 1s cubic-bezier(.4,.1,.3,1)}
+.water-level::before{content:"";position:absolute;left:-30%;top:-2px;width:160%;height:5px;border-radius:50%;background:rgba(220,232,255,.55);animation:water-slosh 3s ease-in-out infinite}
+@keyframes water-slosh{0%,100%{transform:translateX(0) rotate(-2deg)}50%{transform:translateX(10%) rotate(2deg)}}
+.water-rim{position:absolute;inset:0;clip-path:polygon(0 0,100% 0,88% 100%,12% 100%);box-shadow:inset 0 0 0 1.5px rgba(230,240,255,.6)}
+.water-rim::after{content:"";position:absolute;left:8px;top:8px;width:3px;height:52px;border-radius:2px;background:rgba(255,255,255,.5);transform:rotate(-4deg)}
+.water-cap{position:absolute;z-index:7;height:52px;display:flex;align-items:center;gap:8px;padding:0 8px 0 16px;border-radius:26px;background:rgba(24,24,36,.82);backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.15),0 16px 36px rgba(0,0,0,.45);opacity:0;transform:translateX(-10px) scale(.96);pointer-events:none;transition:opacity .25s,transform .45s cubic-bezier(.3,1.2,.4,1)}
+.water-cap.on{opacity:1;transform:none;pointer-events:auto}
+.water-cap.left{transform:translateX(10px) scale(.96)}
+.water-cap.left.on{transform:none}
+.water-cap-text{display:flex;flex-direction:column;min-width:0;margin-right:4px}
+.water-cap-text b{font:600 13px/1.3 Geist,system-ui,sans-serif;color:var(--ink);white-space:nowrap}
+.water-cap-text span{font-size:11px;color:var(--dim);white-space:nowrap}
+.water-act{height:32px;padding:0 12px;border-radius:16px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:var(--ink);font:500 12.5px/1 Geist,system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+.water-act.main{background:rgba(var(--accent-rgb),.24);border-color:rgba(var(--accent-rgb),.55)}
+.water-act:hover{background:rgba(255,255,255,.12)}
+.water-act:focus-visible,.water-send:focus-visible,.water-bead:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.water-jumper{position:absolute;left:0;top:0;width:46px;height:auto;z-index:8;opacity:0;pointer-events:none}
+.water-drop{position:absolute;z-index:9;width:6px;height:8px;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;background:radial-gradient(circle at 35% 30%,#fff 0 15%,var(--blue) 65%);pointer-events:none}
+.water-ripple{position:absolute;z-index:9;width:62px;height:12px;border-radius:50%;border:1.5px solid rgba(220,232,255,.85);pointer-events:none}
+.water-demo-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.water-send{min-height:38px;padding:9px 14px;border:1px solid rgba(var(--accent-rgb),.25);border-radius:11px;background:linear-gradient(135deg,rgba(var(--accent-rgb),.22),rgba(var(--accent-rgb),.10));color:var(--ink);font:500 13px/1.3 Geist,system-ui,sans-serif;cursor:pointer}
+.water-send:hover{background:rgba(var(--accent-rgb),.28)}
+.water-demo-note{margin:0;font-size:11px;line-height:1.5;color:var(--faint)}
+@media(max-width:600px){.water-desk{height:300px}}

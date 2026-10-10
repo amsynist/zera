@@ -133,3 +133,48 @@ Water base prompt:
 Website asset `site/assets/zera-hang-base.png` is a 528-pixel PNG derivative of the existing `hang_smile_base` artwork (168 KB); it uses the same provenance above. Website animation uses native SVG and browser APIs, with no new dependency.
 
 Website asset `site/assets/zera-boba-base.png` is a 528-pixel derivative of the existing `boba_base.png` artwork (301 KB), with the same provenance above. Water preview captures remain under `.build/ui-review/`.
+
+
+## Phase 6 — Hover layouts, speech and water surface · 10 October
+
+Branch: `codex/water-caption-refinement`.
+
+- [x] Add **Settings → General → Hover menu → Arc / Tiles**, using the shared dropdown and a saved preference; Arc remains the default.
+- [x] Reuse all eight navigation destinations, instruments, badges and the opener search action in both layouts.
+- [x] Give Tiles two evenly spaced rows, a search footer and a clear header for the animated Zera; retain the notch attachment and smooth shape transition.
+- [x] Keep transparent shoulders click-through so the menu bar remains usable.
+- [x] Place speech beside Zera using individual menu-control obstacles; fall back below full-width live wings.
+- [x] Remove the caption's doubled outline and macOS window shadow; retain one comic-bubble edge with a small tail pointing toward Zera.
+- [x] Relax the water card's shared typography and spacing; add flowing liquid ribbons and an animated droplet on the existing clock, respecting Reduce Motion.
+- [x] Check both 24-point notchless and 34-point notched layouts with local renders, and all destination/search actions.
+- [x] Verify water persistence, acknowledgement, replies and transparent animation edges; retain normal reminder intervals.
+- [x] Full suite passed: 232 tests, 18 optional skips, zero failures; nine final focused checks passed after the click-through fix. Universal release build passed and the development bundle is running.
+- [ ] Review Arc/Tiles and caption placement in the running app; floating companion controls were not accessible to the native automation tool.
+- [ ] User review of water styling and flow during an ordinary reminder.
+
+Local review files stay under `.build/ui-review`; nothing is published to CI. BetterDisplay was hiding the user's physical notch: the existing notch expansion is retained rather than treated as a duplicate-notch defect.
+
+
+### Follow-up — blue water and comic speech
+
+- [x] Keep water blue across themes, with three flowing currents, soft crests, rising air bubbles and liquid moving inside the droplet.
+- [x] Retain the themed glass, shared text/buttons and the existing animation clock; Reduce Motion freezes the water.
+- [x] Restore one continuous comic-bubble silhouette with a left/right/top pointer toward Zera; keep the double black ring removed.
+- [x] Replace the arc nodes' clipped in-view blur with circular compositor shadows and quiet glass label backplates; keep all arc positions and actions.
+- [x] Inspect updated local water-motion and white/dark arc previews; 21 focused tests passed and the universal release build passed.
+- [ ] User review of the corrected arc shadows, comic pointer and blue water in everyday use.
+
+### Correction — blue belongs to the liquid
+
+- [x] Restore the water reminder's shared card gradient, section typography, accent and droplet outline; remove the blue tint from its background.
+- [x] Keep only the flowing liquid, crests, bubbles and droplet contents blue; inset the water using shared spacing so the card border retains its theme color.
+- [x] Inspect the local motion preview; all 11 water behavior and rendering checks passed. Layout, replies and reminder intervals are unchanged.
+- [x] Universal release build passed.
+
+### Follow-up — liquid reply button
+
+- [x] Replace the solid droplet on **Took a sip** with a light checkmark; use the shared button family and 32-point height for both replies, with equal widths and shared spacing.
+- [x] Add a diagonal blue liquid front inside the acknowledgement button, with travelling ripples and a smooth hover/focus fill and settle. Keep its themed rim and shared typography.
+- [x] Reuse the existing companion animation clock and freeze movement with Reduce Motion; introduce no new timers.
+- [x] Review idle and hover renders and the motion preview; all 11 water checks passed, and the updated preview verified the actual button click completes acknowledgement and return.
+- [x] Universal release build passed.

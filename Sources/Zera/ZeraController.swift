@@ -14,6 +14,13 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private let bubblePanel: FloatingPanel
     private let bubble = BubbleView()
     private var waterVisit: WaterReminderVisit?
+    /// The glass under the notch (today's water) and the weekly card it opens.
+    private let waterCounterPanel = FloatingPanel.make(size: WaterGlassCounterView.size, level: .popUpMenu, keyable: false)
+    private let waterCounter = WaterGlassCounterView(frame: NSRect(origin: .zero, size: WaterGlassCounterView.size))
+    private lazy var waterWeek = WaterWeekPanel()
+    /// The glass under the notch only shows for a moment after a sip (and while a reminder waits).
+    private var waterGlassUntil = Date.distantPast
+    private var waterGlassTimer: Timer?
     /// Claude Code's live readout: two wings hanging off her on either side of the rope.
     private let livePanel: FloatingPanel
     private let live = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
@@ -263,6 +270,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
         bubblePanel.contentView = bubble
         bubblePanel.ignoresMouseEvents = true
+        bubblePanel.hasShadow = false // the capsule draws its own subtle edge; no second black ring
         bubblePanel.alphaValue = 0
 
         island.onClose = { [weak self] in self?.dismissCardByUser() }
@@ -455,6 +463,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     private func setBuddy(visible: Bool, animated: Bool) {
+        defer { refreshWaterGlass() }
         let visible = visible && !(waterVisit?.isActive ?? false)
         if visible {
             if buddyPanel.alphaValue < 0.05 { buddyPanel.orderFrontRegardless() }
@@ -476,8 +485,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private var figureRect: NSRect { geometry.figureRect(centerX: buddyPanel.frame.midX) }
     private var headPoint: NSPoint { NSPoint(x: figureRect.midX, y: figureRect.minY + figureRect.height * 0.55) }
 
-    /// Her caption hangs under her feet: below the wings or the peeking island when they're up,
-    /// never in the menu bar, never beside her.
+    /// Keep speech beside Zera and clear of the hover rail, wings and menu bar.
     private func positionBubble() {
         let screen = geometry.screen.frame
         // Reserve the menu bar even when macOS has it hidden.
@@ -485,7 +493,12 @@ final class ZeraController: NSObject, ShelfViewDelegate {
                                width: screen.width - 16, height: geometry.notchRect.minY - screen.minY - 8)
         let size = BubbleView.size(for: bubble.text.isEmpty ? " " : bubble.text, maxWidth: safeFrame.width)
         var obstacles: [NSRect] = []
-        if cardVisible || pillVisible { obstacles.append(islandScreenRect) }
+        if cardVisible || pillVisible {
+            let panel = cardPanel.frame
+            obstacles += island.captionObstacles.map {
+                NSRect(x: panel.minX + $0.minX, y: panel.maxY - $0.maxY, width: $0.width, height: $0.height)
+            }
+        }
         if liveVisible { obstacles.append(livePanel.frame) }
         // Holding the rope with both hands, her body sits off the rope's line.
         let bodyX = figureRect.midX + (zera.activity != .none ? zera.claudeBodyOffset : 0)
@@ -493,7 +506,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let panel = BubbleView.panelFrame(for: tag)
         bubblePanel.setFrame(panel, display: true)
         bubble.frame = NSRect(origin: .zero, size: panel.size)
-        bubble.tailX = bodyX - panel.minX
+        bubble.pointToward(NSPoint(x: bodyX - panel.minX, y: panel.maxY - (figureRect.minY + figureRect.height * 0.45)))
     }
 
     /// Spans the screen around her at chest height: the left wing ends in a tendril just left
@@ -765,6 +778,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     /// Hovering her: the notch widens to show the tabs (an open island already shows them).
     private func showPill() {
         pillVisible = true
+        refreshWaterGlass()
         railVitals(true)
         hideLive()
         refreshBadges()
@@ -777,6 +791,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     private func hidePill() {
         pillVisible = false
+        refreshWaterGlass()
         pillLeftAt = nil
         if !cardVisible { closeIsland() }
         updateLive()
@@ -1066,7 +1081,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     /// Puts the current line where it belongs: the island header while a screen is open,
-    /// otherwise the tag under her feet.
+    /// otherwise the speech capsule beside her.
     private func routeCaption() {
         guard let line = captionLine, buddyEnabled else {
             hideBubble()
@@ -1088,14 +1103,14 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private func showBubble() {
         guard buddyEnabled else { return }
         if bubblePanel.alphaValue < 0.05 || !bubblePanel.isVisible {
-            // Drops into place from just under her feet.
+            // Ease the capsule into place beside her.
             let target = bubblePanel.frame
             bubblePanel.setFrame(target.offsetBy(dx: 0, dy: 8), display: false)
             bubblePanel.alphaValue = 0
             bubblePanel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = Motion.duration(0.34)
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.25, 1.5, 0.45, 1)
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 bubblePanel.animator().alphaValue = 1
                 bubblePanel.animator().setFrame(target, display: true)
             }
@@ -1229,32 +1244,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     @objc private func reminderFired(_ note: Notification) {
         guard let a = note.userInfo?["alert"] as? ReminderAlert else { return }
         if a.hydration {
-            if waterVisit == nil {
-                let visit = WaterReminderVisit()
-                visit.onAcknowledge = {
-                    // A newer occurrence can replace one already visiting; acknowledge all
-                    // currently waiting water nudges together, without creating a second Zera.
-                    MainActor.assumeIsolated {
-                        for alert in ReminderService.shared.pendingAlerts.filter(\.hydration) {
-                            ReminderService.shared.complete(alert)
-                        }
-                    }
-                }
-                visit.onReturn = { [weak self] in
-                    guard let self else { return }
-                    if MainActor.assumeIsolated({ ReminderService.shared.pendingAlerts.contains(where: \.hydration) }) {
-                        self.waterVisit?.show(from: self.headPoint)
-                    }
-                    self.setBuddy(visible: self.buddyEnabled, animated: true)
-                    self.settle()
-                }
-                waterVisit = visit
-            }
-            if waterVisit?.isActive != true {
-                sound(.water); hideBubble()
-                waterVisit?.show(from: headPoint)
-                setBuddy(visible: false, animated: true)
-            }
+            showWaterVisit()
             return
         }
         let mood: ZeraMood
@@ -1275,10 +1265,117 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         else { (cards[.reminderAlert] as? ReminderAlertCard)?.reload() }
     }
 
-    @objc private func remindersChanged() {
-        if waterVisit?.isActive == true && MainActor.assumeIsolated({ !ReminderService.shared.pendingAlerts.contains(where: \.hydration) }) {
-            waterVisit?.acknowledge()
+    /// Splash: a glass pops up beside the pointer and Zera jumps from the notch into it.
+    /// Today's glasses against the day's goal.
+    private var waterToday: (count: Int, goal: Int) {
+        MainActor.assumeIsolated {
+            let svc = ReminderService.shared, now = Date()
+            return (WaterStats.glasses(on: now, in: svc.completions), WaterStats.goal(on: now, reminders: svc.reminders))
         }
+    }
+
+    /// The glass under the notch: not always there. It shows for a few seconds after a sip, so you
+    /// see it fill, and while a water reminder waits as the bead; hovering it keeps it up.
+    private func refreshWaterGlass() {
+        let moment = Date() < waterGlassUntil || (waterVisit?.isBeadShowing ?? false) || waterCounter.hovered
+        let show = moment && buddyEnabled && !cardVisible && !pillVisible && !(waterVisit?.isActive ?? false)
+        guard show else { waterCounterPanel.orderOut(nil); return }
+        let today = waterToday
+        waterCounter.count = today.count; waterCounter.goal = today.goal
+        if waterCounterPanel.contentView !== waterCounter {
+            waterCounterPanel.hasShadow = false
+            waterCounterPanel.contentView = waterCounter
+            waterCounter.onClick = { [weak self] in self?.toggleWaterWeek() }
+            waterCounter.onHover = { [weak self] inside in if !inside { self?.refreshWaterGlass() } }
+        }
+        let n = geometry.notchRect, s = WaterGlassCounterView.size
+        waterCounterPanel.setFrameOrigin(CGPoint(x: n.maxX - s.width - 12, y: n.minY - s.height - 4))
+        if !waterCounterPanel.isVisible { waterCounterPanel.orderFrontRegardless() }
+    }
+
+    /// Shows the glass for `seconds`, then tucks it away again.
+    private func flashWaterGlass(for seconds: TimeInterval = 6) {
+        waterGlassUntil = Date().addingTimeInterval(seconds)
+        refreshWaterGlass()
+        waterGlassTimer?.invalidate()
+        waterGlassTimer = Timer.scheduledTimer(withTimeInterval: seconds + 0.05, repeats: false) { [weak self] _ in self?.refreshWaterGlass() }
+    }
+
+    /// Menu bar › Water this week…
+    func showWaterWeek() { if !waterWeek.isVisible { toggleWaterWeek() } }
+
+    private func toggleWaterWeek() {
+        if waterWeek.isVisible { waterWeek.close(); return }
+        let (week, goal, streak) = MainActor.assumeIsolated { () -> ([WaterStats.Day], Int, Int) in
+            let svc = ReminderService.shared, now = Date()
+            return (WaterStats.week(ending: now, in: svc.completions), WaterStats.goal(on: now, reminders: svc.reminders),
+                    WaterStats.streak(ending: now, in: svc.completions))
+        }
+        waterWeek.onSaved = { [weak self] _ in self?.say("saved to Downloads 💧", mood: .happy, for: 2.4) }
+        waterWeek.show(week: week, goal: goal, streak: streak, below: geometry.notchRect)
+    }
+
+    /// After a sip on a Friday (or the day a 7-day streak lands), mention the weekly card once.
+    private func offerWaterWeekIfDue() {
+        let key = "water.cardOfferedWeek", now = Date()
+        let streak = MainActor.assumeIsolated { WaterStats.streak(ending: now, in: ReminderService.shared.completions) }
+        guard WaterStats.shouldOfferCard(now: now, streak: streak, offeredWeek: UserDefaults.standard.string(forKey: key)) else { return }
+        UserDefaults.standard.set(WaterStats.weekKey(now), forKey: key)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak self] in
+            self?.say("your water week is ready ✨ click the glass by the notch", mood: .happy, for: 4)
+        }
+    }
+
+    private func showWaterVisit() {
+        if waterVisit == nil {
+            let visit = WaterReminderVisit()
+            visit.onDrank = { [weak self] in
+                // A newer occurrence can replace one already visiting; complete every waiting
+                // water nudge together, without a second Zera.
+                MainActor.assumeIsolated {
+                    for alert in ReminderService.shared.pendingAlerts.filter(\.hydration) {
+                        ReminderService.shared.complete(alert)
+                    }
+                }
+                self?.offerWaterWeekIfDue()
+            }
+            visit.onLater = {
+                MainActor.assumeIsolated {
+                    for alert in ReminderService.shared.pendingAlerts.filter(\.hydration) {
+                        ReminderService.shared.snooze(alert, minutes: 10)
+                    }
+                }
+            }
+            visit.onReturn = { [weak self] outcome in
+                guard let self else { return }
+                // Left alone: she's back on her rope and a bead under the notch keeps the reminder.
+                if outcome == .ignored, MainActor.assumeIsolated({ ReminderService.shared.pendingAlerts.contains(where: \.hydration) }) {
+                    self.waterVisit?.showBead(below: self.geometry.notchRect)
+                }
+                self.setBuddy(visible: self.buddyEnabled, animated: false)
+                // After a sip the glass shows for a moment so you see it fill.
+                if outcome == .drank { self.flashWaterGlass() }
+                self.settle()
+            }
+            visit.onBead = { [weak self] in self?.showWaterVisit() }
+            waterVisit = visit
+        }
+        guard waterVisit?.isActive != true else { return }
+        // Zera is tucked away (full screen, or turned off): just the bead under the notch.
+        guard buddyEnabled else { waterVisit?.showBead(below: geometry.notchRect); return }
+        sound(.water); hideBubble()
+        let today = waterToday
+        waterVisit?.show(from: headPoint, detail: WaterStats.todayLine(count: today.count, goal: today.goal))
+        // She leaves her rope for the jump; the notch Zera hides until she's back.
+        setBuddy(visible: false, animated: false)
+    }
+
+    @objc private func remindersChanged() {
+        if MainActor.assumeIsolated({ !ReminderService.shared.pendingAlerts.contains(where: \.hydration) }) {
+            if waterVisit?.isActive == true, waterVisit?.view.motion.stage == .waiting { waterVisit?.drank() }
+            waterVisit?.hideBead()
+        }
+        refreshWaterGlass()
         refreshBadges()
         if cardVisible, currentCard == .reminderAlert { (cards[.reminderAlert] as? ReminderAlertCard)?.reload() }
         if cardVisible, currentCard == .reminders { (cards[.reminders] as? RemindersView)?.reload() }
@@ -1498,6 +1595,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             let s = SettingsCard(defaultKind: defaultCard, showingZera: buddySetting,
                                  loginEnabled: SMAppService.mainApp.status == .enabled)
             s.onDefaultChanged = { [weak self] k in self?.defaultCard = k }
+            s.onHoverMenuChanged = { [weak self] style in self?.island.hoverStyle = style }
             s.onShowZeraChanged = { [weak self] on in self?.setBuddyEnabled(on) }
             s.onFullScreenHideChanged = { [weak self] in self?.fullScreenChanged() }
             s.clipboardShortcut = clipboardShortcut
@@ -1692,6 +1790,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
         if !cardVisible { islandVisited = false }
         cardVisible = true
+        refreshWaterGlass()
         railVitals(true)
         refreshBadges()
         hideLive()   // the island takes the space; the readout comes back when it closes
@@ -1742,6 +1841,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         sound(.islandClose)
         MainActor.assumeIsolated { ZeraDropdown.shared.dismiss() }
         cardVisible = false
+        refreshWaterGlass()
         bannerCountdown = nil
         outsideSince = nil
         externalDragOver = false

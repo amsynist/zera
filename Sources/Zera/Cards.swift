@@ -752,6 +752,7 @@ final class SettingsCard: CardBase, CardContent {
     /// Settings › In full-screen apps changed.
     var onFullScreenHideChanged: (() -> Void)?
     var onShowZeraChanged: ((Bool) -> Void)?
+    var onHoverMenuChanged: ((HoverMenuStyle) -> Void)?
     /// The shortcut that opens Clipboard from any app.
     var clipboardShortcut: HotKeyShortcut? = .default
     /// Returns false when the shortcut can't be used (another app owns it).
@@ -1077,6 +1078,8 @@ final class SettingsCard: CardBase, CardContent {
         defaultPopup = popupRow("Tap on Zera opens", items: Self.defaultChoices.map { $0?.title ?? "Nothing" },
                                 selected: Self.defaultChoices.firstIndex(of: defaultKind) ?? 0, &s, action: #selector(defaultChanged))
         toggleRow("Show Zera at the notch", on: showingZera, &s) { [weak self] on in self?.onShowZeraChanged?(on) }
+        popupRow("Hover menu", items: HoverMenuStyle.allCases.map(\.title), selected: HoverMenuStyle.current.rawValue,
+                 &s, action: #selector(hoverMenuChanged(_:)))
         popupRow("In full-screen apps", items: FullScreenHide.titles,
                  selected: FullScreenHide.choices.firstIndex(of: FullScreenHide.delay) ?? 0, &s, action: #selector(fullScreenHideChanged(_:)))
         hint("So she doesn't get in the way of full-screen work. She's back when you leave full screen, or any time from the Zera icon in the menu bar › Bring Zera Back.", &s)
@@ -1686,6 +1689,13 @@ final class SettingsCard: CardBase, CardContent {
         guard let pop = defaultPopup else { return }
         defaultKind = Self.defaultChoices[max(0, min(Self.defaultChoices.count - 1, pop.selectedIndex))]
         onDefaultChanged?(defaultKind)
+    }
+
+    @objc private func hoverMenuChanged(_ pop: ZeraSelect) {
+        let style = HoverMenuStyle(rawValue: pop.selectedIndex) ?? .arc
+        HoverMenuStyle.current = style
+        onHoverMenuChanged?(style)
+        say?("Hover menu: \(style.title)", .happy)
     }
 
     @objc private func openerStyleChanged(_ pop: ZeraSelect) {
