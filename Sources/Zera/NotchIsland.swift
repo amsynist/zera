@@ -86,6 +86,15 @@ enum Isle {
     }
 }
 
+enum HoverMenuStyle: Int, CaseIterable {
+    case arc, tiles
+    var title: String { self == .arc ? "Arc" : "Tiles" }
+    static var current: HoverMenuStyle {
+        get { HoverMenuStyle(rawValue: UserDefaults.standard.integer(forKey: "zera.hoverMenuStyle")) ?? .arc }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "zera.hoverMenuStyle") }
+    }
+}
+
 /// The notch island: every screen opens out of the notch as compact navy glass with a blue neon
 /// edge — the live wings' look. The notch band carries the tabs on either side of the notch;
 /// Zera hangs in the middle (her own window sits above this one).
@@ -97,6 +106,11 @@ final class IslandView: NSView {
 
     var onTab: ((CardKind) -> Void)?
     private(set) var mode: Mode = .closed
+    var hoverStyle = HoverMenuStyle.current
+    private var tiledPeek: Bool { mode == .peek && hoverStyle == .tiles }
+    private var tileWidth: CGFloat { min(560, bounds.width - 2 * Isle.margin) }
+    private var tileTop: CGFloat { band + 108 }
+    private var tileHeight: CGFloat { band + 420 }
 
     /// Notch height (the black band) and width.
     var band: CGFloat = 34 { didSet { needsLayout = true } }
@@ -220,26 +234,34 @@ final class IslandView: NSView {
 
     /// Flat top flush with the screen edge, concave ears where it meets it, round bottom corners.
     /// Always the same elements, so one shape morphs smoothly into another.
-    private static func path(_ r: NSRect, corner c: CGFloat, closed: Bool) -> CGPath {
+    private static func path(_ r: NSRect, corner c: CGFloat, closed: Bool, neck: CGFloat? = nil, band: CGFloat = 0) -> CGPath {
         let p = CGMutablePath()
         let e = Isle.ear, x0 = r.minX, x1 = r.maxX, h = r.maxY
         let k: CGFloat = 0.45
-        p.move(to: CGPoint(x: x0 - e, y: 0))
-        p.addQuadCurve(to: CGPoint(x: x0, y: e), control: CGPoint(x: x0, y: 0))
+        let n0 = neck.map { r.midX - $0 / 2 } ?? x0
+        let n1 = neck.map { r.midX + $0 / 2 } ?? x1
+        let shoulder = neck == nil ? e : band + 64
+        let root = neck == nil ? e : band
+        p.move(to: CGPoint(x: n0 - e, y: 0))
+        p.addQuadCurve(to: CGPoint(x: n0, y: e), control: CGPoint(x: n0, y: 0))
+        p.addLine(to: CGPoint(x: n0, y: root))
+        p.addCurve(to: CGPoint(x: x0, y: shoulder), control1: CGPoint(x: n0, y: shoulder), control2: CGPoint(x: x0, y: root))
         p.addLine(to: CGPoint(x: x0, y: h - c))
         p.addCurve(to: CGPoint(x: x0 + c, y: h), control1: CGPoint(x: x0, y: h - c * k), control2: CGPoint(x: x0 + c * k, y: h))
         p.addLine(to: CGPoint(x: x1 - c, y: h))
         p.addCurve(to: CGPoint(x: x1, y: h - c), control1: CGPoint(x: x1 - c * k, y: h), control2: CGPoint(x: x1, y: h - c * k))
-        p.addLine(to: CGPoint(x: x1, y: e))
-        p.addQuadCurve(to: CGPoint(x: x1 + e, y: 0), control: CGPoint(x: x1, y: 0))
+        p.addLine(to: CGPoint(x: x1, y: shoulder))
+        p.addCurve(to: CGPoint(x: n1, y: root), control1: CGPoint(x: x1, y: root), control2: CGPoint(x: n1, y: shoulder))
+        p.addLine(to: CGPoint(x: n1, y: e))
+        p.addQuadCurve(to: CGPoint(x: n1 + e, y: 0), control: CGPoint(x: n1, y: 0))
         if closed { p.closeSubpath() }
         return p
     }
 
     private func applyShape(_ r: NSRect, corner: CGFloat, animated: Bool) {
         islandRect = r
-        let closedPath = Self.path(r, corner: corner, closed: true)
-        let openPath = Self.path(r, corner: corner, closed: false)
+        let closedPath = Self.path(r, corner: corner, closed: true, neck: tiledPeek ? notchWidth : nil, band: band)
+        let openPath = Self.path(r, corner: corner, closed: false, neck: tiledPeek ? notchWidth : nil, band: band)
         let pairs: [(CAShapeLayer, CGPath)] = [(glow, closedPath), (fillMask, closedPath), (hostMask, closedPath), (edge, openPath)]
         for (layer, p) in pairs {
             if animated, !Motion.reduced {
@@ -337,12 +359,30 @@ final class IslandView: NSView {
 
     /// Each node's frame in the bloom (with room for its name), and the search node's.
     private func bloomFrame(_ i: Int) -> NSRect {
+        if tiledPeek {
+            let pad = Space.xl, gap = Space.m
+            let w = (tileWidth - 2 * pad - 3 * gap) / 4
+            return NSRect(x: (centerX - tileWidth / 2 + pad + CGFloat(i % 4) * (w + gap)).rounded(),
+                          y: tileTop + CGFloat(i / 4) * 120, width: w.rounded(), height: 108)
+        }
         let p = Isle.bloom[i], d = Isle.bloomNode
         return NSRect(x: (centerX + p.x - 48).rounded(), y: (p.y - d / 2).rounded(), width: 96, height: d + IslandTab.labelH)
     }
     private var bloomSearchFrame: NSRect {
+        if tiledPeek {
+            return NSRect(x: centerX - tileWidth / 2 + Space.xl, y: tileTop + 252,
+                          width: tileWidth - 2 * Space.xl, height: 38)
+        }
         let p = Isle.bloomSearch
         return NSRect(x: (centerX + p.x - 22).rounded(), y: p.y - 22, width: 44, height: 44)
+    }
+
+    /// Actual controls, rather than their bounding union: captions can use the empty
+    /// space beside Zera without being pushed beneath the entire arc or grid.
+    var captionObstacles: [NSRect] {
+        guard mode == .peek else { return [islandRect] }
+        let root = NSRect(x: centerX - notchWidth / 2, y: 0, width: notchWidth, height: band)
+        return [root] + tabs.indices.map { bloomFrame($0) } + [bloomSearchFrame]
     }
 
     /// Everything the pointer can be over while she's bloomed (or the island's shape otherwise).
@@ -356,6 +396,8 @@ final class IslandView: NSView {
     /// Glides the nodes to where the mode wants them: out round her (peek), or into the rail.
     private func moveNodes(animated: Bool) {
         let bloom = mode == .peek
+        tabs.forEach { $0.tiled = tiledPeek }
+        searchNode.expanded = tiledPeek
         guard animated, !Motion.reduced else {
             tabs.forEach { $0.bloomed = bloom }
             layoutTabs()
@@ -416,7 +458,8 @@ final class IslandView: NSView {
         if CACurrentMediaTime() < nodesMovingUntil { layoutClose(); return }
         let bloom = mode == .peek
         let rail = railFrames()
-        for (i, t) in tabs.enumerated() { t.bloomed = bloom; t.frame = bloom ? bloomFrame(i) : rail[i] }
+        for (i, t) in tabs.enumerated() { t.tiled = tiledPeek; t.bloomed = bloom; t.frame = bloom ? bloomFrame(i) : rail[i] }
+        searchNode.expanded = tiledPeek
         searchNode.frame = bloom ? bloomSearchFrame : railSearchFrame
         searchNode.isHidden = !bloom
         layoutClose()
@@ -518,7 +561,9 @@ final class IslandView: NSView {
         setTabs(visible: true)
         setChrome(.peek)
         // v2: the notch only widens a little; the nodes float round her.
-        applyShape(shapeRect(width: notchWidth + 44, height: band + 2), corner: 14, animated: true)
+        applyShape(shapeRect(width: tiledPeek ? tileWidth : notchWidth + 44,
+                             height: tiledPeek ? tileHeight : band + 2),
+                   corner: tiledPeek ? Isle.corner : 14, animated: true)
         moveNodes(animated: true)
     }
 
@@ -606,7 +651,10 @@ final class IslandView: NSView {
     /// The island, with a little slack, in view coordinates; tabs count in peek.
     func islandContains(_ p: NSPoint) -> Bool {
         guard mode != .closed else { return false }
-        if islandRect.insetBy(dx: -2, dy: -2).contains(p) { return true }
+        if tiledPeek {
+            // Transparent shoulders must not intercept the macOS menu bar.
+            if fillMask.path?.contains(p) == true { return true }
+        } else if islandRect.insetBy(dx: -2, dy: -2).contains(p) { return true }
         // Bloomed: the nodes and the search node take clicks; the gaps between them don't.
         guard mode == .peek else { return false }
         return tabs.contains { $0.frame.contains(p) } || (!searchNode.isHidden && searchNode.alphaValue > 0 && searchNode.frame.contains(p))
@@ -690,6 +738,11 @@ final class IslandTab: NSView {
     init(kind: CardKind) {
         self.kind = kind
         super.init(frame: .zero)
+        wantsLayer = true
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowRadius = 7
+        layer?.shadowOffset = .zero
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(kind.title)
@@ -698,15 +751,30 @@ final class IslandTab: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// Bloomed around Zera: a larger node with its name under it.
-    var bloomed = false { didSet { if bloomed != oldValue { needsDisplay = true } } }
+    var tiled = false { didSet { if tiled != oldValue { needsDisplay = true; needsLayout = true } } }
+    var bloomed = false { didSet { if bloomed != oldValue { needsDisplay = true; needsLayout = true } } }
     static let labelH: CGFloat = 20
 
     /// The node's circle inside its frame (the frame leaves room for the badge, and in the
     /// bloom for the name under it).
     var disc: NSRect {
+        if tiled {
+            let d = max(0, min(64, bounds.width - Space.s * 2, bounds.height - Self.labelH - Space.s * 2))
+            return NSRect(x: (bounds.width - d) / 2, y: Space.m, width: d, height: d)
+        }
         let h = bloomed ? bounds.height - Self.labelH : bounds.height
         let d = min(bounds.width, h) - 4
         return NSRect(x: (bounds.width - d) / 2, y: (h - d) / 2, width: d, height: d)
+    }
+
+    override func layout() {
+        super.layout()
+        // Compositor shadow follows the disc, outside the view's drawing buffer.
+        // Drawing a blur in draw() clips it to the rectangular node backing.
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        layer?.shadowPath = CGPath(ellipseIn: disc, transform: nil)
+        layer?.shadowOpacity = bloomed && !tiled ? 0.22 : 0
+        CATransaction.commit()
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -715,13 +783,17 @@ final class IslandTab: NSView {
         let k = c.width / 28          // everything scales with the node
         let t = ThemeStore.shared.current
         let circle = NSBezierPath(ovalIn: c)
-        if bloomed {
-            Neon.glowing(NSColor.black.withAlphaComponent(0.55), blur: 18) { t.glassBottom.setFill(); circle.fill() }
+        if tiled {
+            let card = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: Radius.l, yRadius: Radius.l)
+            NSGradient(starting: t.glassTop, ending: t.glassBottom)?.draw(in: card, angle: -90)
+            (hovered ? t.accent.withAlphaComponent(0.6) : t.border).setStroke()
+            card.lineWidth = 0.75; card.stroke()
         }
         // A glass bead: lit a little from the top with the accent.
         let top = t.glassTop.blended(withFraction: hovered ? 0.24 : 0.14, of: t.accent) ?? t.glassTop
         NSGradient(starting: top, ending: t.glassBottom)?.draw(in: circle, angle: -90)
         (hovered && !isOn ? t.accent.withAlphaComponent(0.7) : t.border.withAlphaComponent(min(1, t.border.alphaComponent * 1.6))).setStroke()
+        if bloomed && !tiled { t.accent.withAlphaComponent(hovered ? 0.7 : 0.4).setStroke() }
         circle.lineWidth = 1; circle.stroke()
 
         let ink = isOn || hovered ? Neon.text : Neon.textDim
@@ -767,10 +839,18 @@ final class IslandTab: NSView {
         }
         if bloomed {
             let name = kind == .github ? "Pull requests" : kind.title
-            let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
-                                                    .foregroundColor: hovered ? Neon.text : Neon.textDim]
+            let a: [NSAttributedString.Key: Any] = [.font: Typo.control,
+                                                    .foregroundColor: !tiled || hovered ? Neon.text : Neon.textDim]
             let sz = (name as NSString).size(withAttributes: a)
-            (name as NSString).draw(at: NSPoint(x: bounds.midX - sz.width / 2, y: bounds.maxY - Self.labelH + 4), withAttributes: a)
+            let y = tiled ? bounds.maxY - Space.s - sz.height : bounds.maxY - Self.labelH + (Self.labelH - sz.height) / 2
+            if !tiled {
+                let width = min(bounds.width - 1, ceil(sz.width) + Space.m)
+                let plate = NSBezierPath(roundedRect: NSRect(x: bounds.midX - width / 2,
+                    y: bounds.maxY - Self.labelH, width: width, height: Self.labelH), xRadius: Radius.s, yRadius: Radius.s)
+                NSGradient(starting: t.glassTop, ending: t.glassBottom)?.draw(in: plate, angle: -90)
+                t.border.setStroke(); plate.lineWidth = 0.75; plate.stroke()
+            }
+            (name as NSString).draw(at: NSPoint(x: bounds.midX - sz.width / 2, y: y), withAttributes: a)
         }
     }
 
@@ -793,6 +873,7 @@ final class IslandClose: NSView {
     private let symbol: String
     /// The search node glows in the accent; close stays quiet.
     private let accent: Bool
+    var expanded = false { didSet { needsDisplay = true } }
     private var hovered = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -807,6 +888,16 @@ final class IslandClose: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
     override func draw(_ dirtyRect: NSRect) {
+        if expanded {
+            let t = ThemeStore.shared.current
+            let p = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.m, yRadius: Radius.m)
+            (hovered ? t.glassTop : t.glassBottom).setFill(); p.fill()
+            (hovered ? t.accent.withAlphaComponent(0.6) : t.border).setStroke(); p.lineWidth = 0.75; p.stroke()
+            Neon.symbol(symbol, in: NSRect(x: 12, y: 9, width: 20, height: 20), size: 15, weight: .regular, color: Neon.textDim)
+            ("Search apps and commands…" as NSString).draw(at: NSPoint(x: 42, y: 11),
+                withAttributes: [.font: Typo.control, .foregroundColor: Neon.textDim])
+            return
+        }
         let d = min(bounds.width, bounds.height) - 2
         let disc = NSRect(x: (bounds.width - d) / 2, y: (bounds.height - d) / 2, width: d, height: d)
         let c = NSBezierPath(ovalIn: disc)
