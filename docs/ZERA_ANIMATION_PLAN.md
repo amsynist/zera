@@ -20,30 +20,51 @@ Reference studied: [Coucou's animation engine](https://github.com/Louis-CFM/couc
 
 ## Phase 2 — Expressions and reactions
 
-- [ ] Happy squint, surprised eyes, sleepy eyelids and worried eyebrows.
-- [ ] Hover acknowledgement and tap/repeated-poke facial reactions.
-- [ ] Expression priorities and clean return to idle after interruptions.
+- [x] Shared glossy eyes, happy squints, eyelids, brows and animated mouth layers.
+- [x] Hover acknowledgement and a four-tap huff with shaking, squash and recovery.
+- [x] Keep the current pose during a poke reaction instead of replacing it with a static expression.
+- [x] Cross-fade pose changes; draw the rope and straw in front of facial layers.
+- [ ] User review of repeated taps and expression timing.
 
-## Phase 3 — Activity and other poses
+## Phase 3 — All screens except the app opener
 
-- [ ] Rig standing idle, peeking and climbing poses with their own facial anchors.
-- [ ] Connect facial expressions to thinking, approval, completion and error states.
-- [ ] Reuse the rig in the opener and screen mascots as each pose is prepared.
-- [ ] Review transitions, small sizes, display changes and reduced motion across those surfaces.
+- [x] Share one 30 fps animation clock with weak view membership; pause hidden or occluded views.
+- [x] Interactive body motion, pointer response, breathing, hover and taps for screen mascots and companions.
+- [x] Prepare facial rigs for `hang_wave`, `hang_climb`, `hang_peek`, `hang_smile`, `hang_swing` and `boba`.
+- [x] Preserve existing screen layout, shared typography and control spacing.
+- [x] Check detached-view release and all eight screen layouts.
+- [ ] Independent facial layers for `hang_think` and `hang_upsidedown`. Image generation rejected these edits; their original artwork still has animated body motion and taps.
+- [ ] Independent facial layers for the remaining decorative standing poses. Body animation and interaction are active now.
+- [ ] User review on Home, Claude, Shelf, Clipboard, Tasks, PRs, Reminders and Settings.
+
+The app opener is excluded from this change, as requested.
+
+## Phase 4 — Cursor-side water visit
+
+- [x] Route hydration alerts to a persistent nonactivating visit rather than an expiring banner.
+- [x] Jump from the perch to the cursor's display on a smooth arc; mirror the layout near the right edge.
+- [x] Point and tap three times, then hold the drink, blink, follow the cursor and animate speaking.
+- [x] Rotate playful prompts every 12 seconds until **Okay, drinking** is clicked.
+- [x] Mark waiting hydration occurrences done once, thank the user, and return to the perch.
+- [x] Coalesce reminders during a visit; preserve a new reminder arriving after acknowledgement.
+- [x] Use existing palette, typography, rounded button, backdrop blur and subtle surface gradient.
+- [x] Respect Reduce Motion; no synthesized clicks or keyboard events, no new global monitor.
+- [x] Verify persistence, acknowledgement, flight endpoints and display-edge placement.
+- [x] Inspect waiting/thank-you renders and a seven-second local motion preview.
+- [ ] User review of the water visit in everyday use, including multiple displays.
 
 ## Local review
 
-The first rig is active only for the hanging `hang_smile` pose. Other poses still use their existing sprites. Idle fidgets and mood changes may temporarily switch away from the rig.
-
-Run the on-demand preview locally:
-
 ```sh
 env CFFIXED_USER_HOME="$PWD/.build/ui-review-home" \
-  ZERA_RENDER_SCREENS="$PWD/.build/ui-review" ZERA_RENDER_FACE=1 \
-  swift test --filter 'ZeraFaceTests|PokeReactionTests|ScreenRenderTests/testRenderZeraFace'
+  ZERA_RENDER_SCREENS="$PWD/.build/ui-review" \
+  ZERA_RENDER_FACE=1 ZERA_RENDER_WATER=1 \
+  swift test --filter 'ZeraFaceTests|PokeReactionTests|WaterVisitTests|ScreenRenderTests/testRenderMascotPoses|ScreenRenderTests/testRenderWaterVisitMotion'
 ```
 
-This writes `zera-face-idle.png`, `zera-face-left.png`, `zera-face-right.png` and `zera-face-motion.gif` under `.build/ui-review`. Captures are local diagnostics, not CI artifacts.
+Outputs include `zera-all-poses.png`, `zera-water-waiting.png`, `zera-water-thanks.png` and `zera-water-visit.gif` under `.build/ui-review`. Captures stay local; they are not published to CI or PRs. The original phase-one preview remains available with `ScreenRenderTests/testRenderZeraFace`.
+
+Verification: 38 selected animation, recurrence and screen-layout tests passed; release build passed. Two local preview tests also passed and were visually reviewed. The standalone icon renderer also passed.
 
 ## Asset provenance
 
@@ -54,3 +75,14 @@ Prepared with the built-in image generation tool, preserving transparency. Origi
 Final edit prompt:
 
 > Use case: precise-object-edit. Edit target: attached hanging Zera PNG. Produce an animation body base on transparent background. REMOVE ONLY the two glossy black eyes and their white glints, the tiny mouth and the eyebrow marks; reconstruct the pale cream/pink softly shaded face underneath seamlessly. KEEP every other detail unchanged: exact angled head shape, blue purple tuft, pink cheeks, fuzzy rim, hand positions, body, black hoodie, purple Z, feet, brown rope, original pose and silhouette. Keep the rope straight vertical and identical rope position; same image proportions, composition, framing and bounding box, no extra margins or zoom. This is the same character and same sprite, just a blank face for layered animated eyes/mouth. No new facial features, no expression, no text, no redraw of the clothing, no opaque background.
+
+
+Additional blank-face bases: `hang_wave_base.png`, `hang_climb_base.png`, `hang_peek_base.png`, `hang_swing_base.png`, `boba_base.png`. Each was edited from its same-named original using the built-in image tool; original sprites are retained. Large bases decode to at most 528 pixels at runtime.
+
+Header base prompt (replace NAME with the sprite name):
+
+> Use case: precise-object-edit. Edit target: NAME, attached existing Zera sprite. Produce the SAME sprite as an animation body base with a blank face. Remove ONLY the two eyes including white glints or closed-eye arcs, eyebrows, and mouth. Seamlessly reconstruct the cream/pink face shading underneath. Preserve every other detail exactly: head silhouette, pose, tilt, scale, placement, purple-blue tuft, blush, hands, black hoodie and purple Z, feet, rope, stars or question marks. Keep original framing, proportions, silhouette and rope occlusion. Transparent alpha background. No new facial features, extra margins, zoom, text, or pose changes.
+
+Water base prompt:
+
+> Prepare the attached friendly Zera character holding a boba cup for a layered facial animation. Make a clean blank face layer: replace the eye, eyebrow and mouth details with matching soft cream and pink skin shading. Keep the character, expression silhouette, tuft, cheeks, clothing, cup, straw, proportions, pose and transparent background exactly like the original. The drink and straw stay intact. No additional margins, text or pose changes.

@@ -913,7 +913,7 @@ final class GHSplitButton: NSView {
 
 /// Empty / loading / error / not-connected: Zera, a line, a smaller line, maybe a button.
 final class GHStateView: NSView {
-    private let figure = NSImageView()
+    private let figure = AnimatedZeraView()
     private let title = NSTextField(labelWithString: "")
     private let subtitle = NSTextField(wrappingLabelWithString: "")
     private let spinner = NSProgressIndicator()
@@ -923,8 +923,6 @@ final class GHStateView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        figure.imageScaling = .scaleProportionallyUpOrDown
-        figure.imageAlignment = .alignBottom
         addSubview(figure)
         title.font = Typo.detailTitle
         title.alignment = .center
@@ -943,7 +941,7 @@ final class GHStateView: NSView {
 
     func set(pose: String, title t: String, subtitle s: String, loading: Bool = false, button b: PRActionButton? = nil) {
         let p = Pal
-        figure.image = SpriteLibrary.shared.sprite(pose)?.image ?? SpriteLibrary.shared.sprite("idle")?.image
+        figure.pose = pose
         title.stringValue = t; title.textColor = p.text
         subtitle.stringValue = s; subtitle.textColor = p.textSecondary
         spinnerAnimating = loading

@@ -513,7 +513,7 @@ final class ClaudeSessionProgress: NSView {
 
 /// Zera beside a bubble card saying what Claude is up to, in her own pose for the state.
 final class ZeraSessionReaction: NSView {
-    private let figure = NSImageView()
+    private let figure = AnimatedZeraView()
     private let bubble = FlippedView()
     private let title = label(Typo.rowTitle, Pal.text)
     private let detail = label(Typo.body, Pal.textSecondary, lines: 2)
@@ -523,8 +523,6 @@ final class ZeraSessionReaction: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         let p = Pal
-        figure.imageScaling = .scaleProportionallyUpOrDown
-        figure.imageAlignment = .alignBottom
         bubble.wantsLayer = true
         bubble.layer?.cornerRadius = Radius.l + 2
         bubble.layer?.cornerCurve = .continuous
@@ -588,7 +586,7 @@ final class ZeraSessionReaction: NSView {
                 detail.stringValue = "Start a new one any time with New Session."
             }
         }
-        figure.image = SpriteLibrary.shared.sprite(pose)?.image ?? SpriteLibrary.shared.sprite("idle")?.image
+        figure.pose = pose
         needsLayout = true
     }
 
@@ -905,7 +903,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     private let claudeTile = ScreenIconTile.claude()
     private let leftTitle = label(Typo.screenTitle, Pal.text)
     private let leftSub = label(Typo.screenSubtitle, Pal.textSecondary)
-    private let peek = NSImageView()
+    private let peek = AnimatedZeraView()
     private let bubble = ZeraGitHubBubble()
     private var newSession: PRActionButton!
     private let filters = GitHubSegmentedControl(items: [])
@@ -1004,9 +1002,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         leftTitle.stringValue = "Claude sessions"
         left.addSubview(leftTitle)
         left.addSubview(leftSub)
-        peek.imageScaling = .scaleProportionallyUpOrDown
-        peek.imageAlignment = .alignBottom
-        peek.image = SpriteLibrary.shared.sprite("card_peek_down")?.image ?? SpriteLibrary.shared.sprite("peek")?.image
+        peek.pose = "card_peek_down"
         left.addSubview(peek)                // behind the button: she peeks over it
         bubble.tailRight = true
         left.addSubview(bubble)
