@@ -1102,6 +1102,7 @@ final class SettingsCard: CardBase, CardContent {
             let low = popupRow("Warn at", items: BatteryAlerts.lowChoices.map { "\($0)%" },
                                selected: BatteryAlerts.lowChoices.firstIndex(of: battery.lowThreshold) ?? 2, &s, action: #selector(batteryLowChanged(_:)))
             low.isEnabled = battery.lowEnabled
+            toggleRow("Show a banner when you plug in", on: battery.pluggedInEnabled, &s) { on in battery.pluggedInEnabled = on }
             toggleRow("Warn when battery health drops", on: battery.healthEnabled, &s) { [weak self] on in
                 battery.healthEnabled = on
                 self?.rebuildPane()

@@ -151,6 +151,9 @@ final class AppOpener: NSObject, NSWindowDelegate {
 
     func toggle(notch: NSRect, screen: NSRect) { isOpen ? close() : open(notch: notch, screen: screen) }
 
+    /// The app Zera should be looking at (see `OpenerSurface.focusPoint`), while open.
+    var focusPoint: NSPoint? { isOpen ? view?.focusPoint : nil }
+
     func open(notch: NSRect, screen: NSRect) {
         guard !isOpen else { return }
         closeWork?.cancel(); closeWork = nil
@@ -271,6 +274,8 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private let rope = NSView()
     private let holder = OpenerFlipped()
     private let zera = NSImageView()
+    /// Her live eyes, over the picture: they follow the app you're on (see `focusPoint`).
+    private let zeraFace = OpenerZeraFace()
     private let mascotMask = CAGradientLayer()
     /// The dimmed, blurred screen behind it all.
     private let veil = OpenerVeil()
@@ -569,8 +574,16 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         foot.lineBreakMode = .byTruncatingTail
         holder.addSubview(foot)
 
-        zera.image = sprite?.image
+        // The eyeless picture under a live face, so her eyes can follow the app you're on.
+        let live = ZeraFacePose.available(for: "hang_peek") != nil
+        zera.image = (live ? SpriteLibrary.shared.sprite("hang_peek_base") : nil)?.image ?? sprite?.image
         zera.imageScaling = .scaleProportionallyUpOrDown
+        if live {
+            zeraFace.frame = zera.bounds
+            zeraFace.autoresizingMask = [.width, .height]
+            zeraFace.target = { [weak self] in self?.focusPoint }
+            zera.addSubview(zeraFace)
+        }
         zera.wantsLayer = true
         mascotMask.colors = [NSColor.clear.cgColor, NSColor.white.cgColor, NSColor.white.cgColor]
         mascotMask.locations = [0, 0.28, 1]
@@ -2653,6 +2666,23 @@ protocol OpenerSurface: NSView, NSTextFieldDelegate {
     func toss(_ app: AppEntry, _ done: @escaping () -> Void)
 }
 extension OpenerSurface {
+    /// Where the app you're on sits, in screen points: the one under the pointer, else the
+    /// selected one. Zera looks there while the opener is up.
+    var focusPoint: NSPoint? {
+        guard let window else { return nil }
+        let mouse = window.mouseLocationOutsideOfEventStream
+        var spots: [(rect: NSRect, chosen: Bool)] = []
+        func walk(_ v: NSView) {
+            guard !v.isHidden, v.alphaValue > 0.05 else { return }
+            if let t = v as? OrbitTile { spots.append((t.convert(t.bounds, to: nil), t.chosen)) }
+            else if let r = v as? TreeRowView { spots.append((r.convert(r.bounds, to: nil), r.selected)) }
+            v.subviews.forEach(walk)
+        }
+        walk(self)
+        guard let spot = spots.first(where: { $0.rect.contains(mouse) }) ?? spots.first(where: \.chosen) else { return nil }
+        return window.convertPoint(toScreen: NSPoint(x: spot.rect.midX, y: spot.rect.midY))
+    }
+
     /// Navigation belongs to the opener window, not just to its search field's editor.
     func handleKeyEvent(_ event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return false }

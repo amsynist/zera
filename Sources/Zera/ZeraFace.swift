@@ -94,10 +94,16 @@ struct ZeraFace {
                 lid.line(to: CGPoint(x: radius * 1.1, y: -radius * 1.1)); lid.line(to: CGPoint(x: -radius * 1.1, y: -radius * 1.1)); lid.close(); lid.addClip()
                 let eye = NSBezierPath(ovalIn: NSRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
                 NSGradient(starting: NSColor(srgbRed: 0.13, green: 0.08, blue: 0.09, alpha: 1), ending: .black)?.draw(in: eye, angle: -90)
+                // The iris ring and the shine roll toward where she's looking, inside the eye,
+                // on top of the eye itself moving: her gaze reads even at a glance.
+                let roll = CGPoint(x: max(-1, min(1, gaze.x)) * radius * 0.2, y: max(-1, min(1, gaze.y)) * radius * 0.16)
+                let iris = NSBezierPath(ovalIn: NSRect(x: roll.x - radius * 0.66, y: roll.y - radius * 0.66, width: radius * 1.32, height: radius * 1.32))
+                NSColor(srgbRed: 0.42, green: 0.27, blue: 0.30, alpha: 0.45 * openness).setStroke()
+                iris.lineWidth = radius * 0.16; iris.stroke()
                 NSColor.white.withAlphaComponent(0.96 * openness * openness).setFill()
-                NSBezierPath(ovalIn: NSRect(x: -radius * 0.47, y: radius * 0.25, width: radius * 0.51, height: radius * 0.59)).fill()
+                NSBezierPath(ovalIn: NSRect(x: -radius * 0.47 + roll.x * 0.6, y: radius * 0.25 + roll.y * 0.6, width: radius * 0.51, height: radius * 0.59)).fill()
                 NSColor.white.withAlphaComponent(0.25 * openness * openness).setFill()
-                NSBezierPath(ovalIn: NSRect(x: radius * 0.25, y: -radius * 0.51, width: radius * 0.21, height: radius * 0.21)).fill()
+                NSBezierPath(ovalIn: NSRect(x: radius * 0.25 + roll.x * 0.4, y: -radius * 0.51 + roll.y * 0.4, width: radius * 0.21, height: radius * 0.21)).fill()
             }
             ctx.restoreGState()
         }

@@ -38,4 +38,29 @@ final class BatteryAlertsTests: XCTestCase {
         XCTAssertEqual(a.headline, "Battery health is 78%")
         XCTAssertEqual(a.detail, "Below your 80% mark · 277 cycles — it may be time for a service check")
     }
+
+    /// Plugging in clears the low banner and shows a short charging one; launching on power,
+    /// staying on power and running on battery don't.
+    func testPluggingInClearsLowBannerAndAnnouncesCharging() {
+        var plugged = battery(18, power: true); plugged.toFull = 80
+        let change = BatteryAlerts.powerChange(from: false, to: plugged, bannerEnabled: true)
+        XCTAssertTrue(change.clearLow)
+        XCTAssertEqual(change.banner?.headline, "Charging · 18%")
+        XCTAssertEqual(change.banner?.detail, "Full in about 1h 20m")
+        XCTAssertTrue(change.banner.map(BatteryAlerts.isChargingAlert) ?? false)
+        XCTAssertFalse(change.banner.map(BatteryAlerts.isLowAlert) ?? true)
+
+        XCTAssertNil(BatteryAlerts.powerChange(from: nil, to: plugged, bannerEnabled: true).banner, "not at launch")
+        XCTAssertNil(BatteryAlerts.powerChange(from: true, to: plugged, bannerEnabled: true).banner, "only on the change")
+        XCTAssertTrue(BatteryAlerts.powerChange(from: true, to: plugged, bannerEnabled: true).clearLow)
+        let off = BatteryAlerts.powerChange(from: false, to: plugged, bannerEnabled: false)
+        XCTAssertTrue(off.clearLow); XCTAssertNil(off.banner)
+        let unplugged = BatteryAlerts.powerChange(from: true, to: battery(18), bannerEnabled: true)
+        XCTAssertFalse(unplugged.clearLow); XCTAssertNil(unplugged.banner)
+
+        // A low warning raised while on battery is the kind that plugging in clears.
+        var warned = false, critical = false
+        let low = BatteryAlerts.lowAlert(battery(19), threshold: 20, enabled: true, warned: &warned, warnedCritical: &critical)
+        XCTAssertTrue(low.map(BatteryAlerts.isLowAlert) ?? false)
+    }
 }

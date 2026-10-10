@@ -17,6 +17,7 @@ final class BatteryAlerts {
         static let health = "zera.battery.healthAlerts"
         static let healthAt = "zera.battery.healthThreshold"
         static let healthWarned = "zera.battery.healthWarnedAt"
+        static let pluggedIn = "zera.battery.pluggedInBanner"
     }
 
     nonisolated static let lowChoices = [10, 15, 20, 25, 30]
@@ -31,6 +32,11 @@ final class BatteryAlerts {
     var lowThreshold: Int {
         get { defaults.object(forKey: Key.lowAt) as? Int ?? 20 }
         set { defaults.set(newValue, forKey: Key.lowAt); warnedLow = false; warnedCritical = false; check() }
+    }
+    /// A short banner when you plug in: the charge and how long until it's full.
+    var pluggedInEnabled: Bool {
+        get { defaults.object(forKey: Key.pluggedIn) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.pluggedIn) }
     }
     var healthEnabled: Bool {
         get { defaults.bool(forKey: Key.health) }
@@ -50,6 +56,8 @@ final class BatteryAlerts {
     /// This discharge has had its warning (and its last one); plugging in resets both.
     private var warnedLow = false
     private var warnedCritical = false
+    /// Whether the Mac was on power at the last look (nil before the first).
+    private var wasOnPower: Bool?
 
     func start() {
         guard source == nil else { return }
@@ -59,7 +67,8 @@ final class BatteryAlerts {
             // Delivered on the main run loop, where the source was added.
             MainActor.assumeIsolated { Unmanaged<BatteryAlerts>.fromOpaque(ctx).takeUnretainedValue().check() }
         }, ctx)?.takeRetainedValue() else { return }
-        CFRunLoopAddSource(CFRunLoopGetMain(), src, .defaultMode)
+        // Common modes, so a plug-in isn't missed while a menu or a drag is tracking.
+        CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
         source = src
         check()
     }
@@ -67,6 +76,17 @@ final class BatteryAlerts {
     /// Looks at the battery now and raises a banner if one is due.
     func check() {
         guard let b = SystemVitals.readBattery() else { return }
+        // Plugged in: a low-battery banner no longer applies, so it goes; a short charging one
+        // takes its place.
+        let change = Self.powerChange(from: wasOnPower, to: b, bannerEnabled: pluggedInEnabled)
+        wasOnPower = b.onPower || b.charging
+        if change.clearLow {
+            for a in ReminderService.shared.pendingAlerts where Self.isLowAlert(a) { ReminderService.shared.dismiss(a) }
+        }
+        if let charging = change.banner { ReminderService.shared.raiseNow(charging) }
+        if !(b.onPower || b.charging) {
+            for a in ReminderService.shared.pendingAlerts where Self.isChargingAlert(a) { ReminderService.shared.dismiss(a) }
+        }
         if let alert = Self.lowAlert(b, threshold: lowThreshold, enabled: lowEnabled, warned: &warnedLow, warnedCritical: &warnedCritical) {
             ReminderService.shared.raiseNow(alert)
         }
@@ -102,6 +122,27 @@ final class BatteryAlerts {
                                  headline: "Battery at \(b.percent)%", detail: "\(left) · time to find a charger")
         }
         return nil
+    }
+
+    nonisolated static func isLowAlert(_ a: ReminderAlert) -> Bool {
+        a.kind == .battery && (a.id.hasPrefix("battery-low-") || a.id.hasPrefix("battery-critical-"))
+    }
+    nonisolated static func isChargingAlert(_ a: ReminderAlert) -> Bool { a.kind == .battery && a.id.hasPrefix("battery-charging-") }
+
+    /// What plugging in (or not) means for `b`. Pure, for tests. Nothing at the first look
+    /// (`wasOnPower` nil), so launching on power doesn't announce it.
+    nonisolated static func powerChange(from wasOnPower: Bool?, to b: VitalsSample.Battery, bannerEnabled: Bool) -> (clearLow: Bool, banner: ReminderAlert?) {
+        let onPower = b.onPower || b.charging
+        guard onPower else { return (false, nil) }
+        guard wasOnPower == false else { return (true, nil) }
+        guard bannerEnabled else { return (true, nil) }
+        let detail: String
+        if b.percent >= 100 { detail = "Fully charged" }
+        else if let full = b.toFull { detail = "Full in about \(VitalsFormat.minutes(full))" }
+        else if b.charging { detail = "Charging now" }
+        else { detail = "Plugged in · not charging right now" }
+        return (true, ReminderAlert(id: "battery-charging-\(Int(Date().timeIntervalSince1970))", kind: .battery,
+                                    headline: b.charging ? "Charging · \(b.percent)%" : "Plugged in · \(b.percent)%", detail: detail))
     }
 
     nonisolated static func healthAlert(health: Int, threshold: Int, cycles: Int?) -> ReminderAlert {
