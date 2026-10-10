@@ -137,6 +137,8 @@ final class ZeraView: NSView {
     private(set) var look: CGPoint = .zero
 
     private var timer: Timer?
+    private var lastFrameAt: TimeInterval?
+    private var face = ZeraFace()
     private var phase: Double = 0
     private var happyStartedAt: Double = -10
     private var raise: CGFloat = 0
@@ -194,6 +196,7 @@ final class ZeraView: NSView {
 
     private func start() {
         stop()
+        lastFrameAt = CACurrentMediaTime()
         let t = Timer(timeInterval: 1.0 / framesPerSecond, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -203,7 +206,14 @@ final class ZeraView: NSView {
 
     private func tick() {
         guard let w = window, w.isVisible, w.alphaValue > 0.02, !isHiddenOrHasHiddenAncestor else { return }
-        phase += 1.0 / framesPerSecond
+        advanceAnimation(at: CACurrentMediaTime())
+    }
+
+    /// One frame of the shared clock; also used by the local animation preview.
+    func advanceAnimation(at now: TimeInterval) {
+        let dt = min(0.1, max(0, now - (lastFrameAt ?? now)))
+        lastFrameAt = now
+        phase += dt
         func blend(_ v: inout CGFloat, _ target: CGFloat, _ k: CGFloat) { v += (target - v) * k }
         blend(&raise, [.excited, .happy, .celebrate, .surprised].contains(mood) ? 1 : 0, 0.22)
         blend(&wave, mood == .hello ? 1 : 0, 0.20)
@@ -216,8 +226,10 @@ final class ZeraView: NSView {
         let sparkling = !angry && (activity == .done || CACurrentMediaTime() - bumpAt < 1.4)
         blend(&starsAmt, sparkling ? 1 : 0, 0.15)
         blend(&moteAlpha, motes.isEmpty || hovered || islandPose != nil ? 0 : 1, 0.12)
-        look.x += (lookTarget.x - look.x) * 0.18
-        look.y += (lookTarget.y - look.y) * 0.18
+        let follow = Self.reduceMotion ? 1 : CGFloat(1 - exp(-dt / 0.17))
+        look.x += (lookTarget.x - look.x) * follow
+        look.y += (lookTarget.y - look.y) * follow
+        face.advance(at: now, reducedMotion: Self.reduceMotion)
         needsDisplay = true
     }
 
@@ -294,7 +306,8 @@ final class ZeraView: NSView {
         if currentSprite?.name != name, let next = SpriteLibrary.shared.sprite(name) {
             previousSprite = currentSprite
             currentSprite = next
-            fadeStart = now
+            // First paint has no pose to cross-fade from; show her immediately.
+            fadeStart = previousSprite == nil ? now - 0.22 : now
         }
         guard let sprite = currentSprite else { drawPlaceholder(lift: lift); return }
         let t = Self.reduceMotion ? 1 : CGFloat(min(1, (now - fadeStart) / 0.22))
@@ -380,6 +393,9 @@ final class ZeraView: NSView {
             let body = rendered(sprite, size: rect.size, shadow: true)
             body.draw(in: rect.insetBy(dx: -Self.renderPad, dy: -Self.renderPad), from: .zero, operation: .sourceOver,
                       fraction: alpha, respectFlipped: false, hints: nil)
+            if sprite.name == "hang_smile", SpriteLibrary.shared.sprite("hang_smile_base") != nil {
+                face.draw(in: rect, gaze: look, alpha: alpha)
+            }
             if effects {
                 if isReactingToPokes { drawAngryReaction(around: rect, alpha: alpha) }
                 else { drawEffects(around: rect) }
@@ -427,7 +443,8 @@ final class ZeraView: NSView {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: false)
         if shadow { cg.setShadow(offset: CGSize(width: 0, height: -3), blur: 7, color: NSColor.black.withAlphaComponent(0.45).cgColor) }
-        sprite.image.draw(in: NSRect(x: pad, y: pad, width: w, height: h), from: .zero, operation: .sourceOver, fraction: 1,
+        let artwork = sprite.name == "hang_smile" ? SpriteLibrary.shared.sprite("hang_smile_base")?.image ?? sprite.image : sprite.image
+        artwork.draw(in: NSRect(x: pad, y: pad, width: w, height: h), from: .zero, operation: .sourceOver, fraction: 1,
                           respectFlipped: false, hints: [.interpolation: NSImageInterpolation.high])
         NSGraphicsContext.restoreGraphicsState()
         guard let image = cg.makeImage() else { return sprite.image }

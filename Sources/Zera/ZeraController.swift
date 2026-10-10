@@ -708,9 +708,9 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     private func updateLook(_ mouse: NSPoint) {
         let head = headPoint
-        let f = geometry.screen.frame
-        let x = max(-1, min(1, (mouse.x - head.x) / (f.width * 0.45)))
-        let y = max(-1, min(1, (mouse.y - head.y) / (f.height * 0.7)))
+        // Respond near the face and ease towards a bounded gaze farther away.
+        let x = tanh((mouse.x - head.x) / 260)
+        let y = tanh((mouse.y - head.y) / 200)
         zera.lookTarget = CGPoint(x: x, y: y)
     }
 
