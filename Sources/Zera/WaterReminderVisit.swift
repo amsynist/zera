@@ -1,166 +1,211 @@
 import AppKit
 
-/// The visit only leaves the waiting state after an explicit acknowledgement.
+/// Splash, the water visit: a glass of water pops up beside the pointer while Zera jumps from
+/// the notch into it with a splash. She waves from the water until you answer. Drank: she drinks
+/// and jumps home. 10 min: she jumps home and the reminder snoozes. Left alone for 30 s she jumps
+/// home and leaves a bead under the notch. It never takes focus or clicks outside its own buttons.
 struct WaterVisitMotion {
-    enum Stage { case arriving, waiting, thanking, returning, finished }
-    static let arrivalDuration: TimeInterval = 1.25
-    static let returnDuration: TimeInterval = 1.0
-    private(set) var stage: Stage = .arriving
+    enum Stage { case jumping, waiting, drinking, returning, finished }
+    enum Outcome { case drank, later, ignored }
+    static let jumpDuration: TimeInterval = 0.75
+    static let popDuration: TimeInterval = 0.42
+    static let drinkDuration: TimeInterval = 1.1
+    static let returnDuration: TimeInterval = 0.7
+    static let ignoreAfter: TimeInterval = 30
+    /// How far the arc rises above the higher of its two ends.
+    static let arcLift: CGFloat = 90
+
+    private(set) var stage: Stage = .jumping
     private(set) var changedAt: TimeInterval
-    init(at now: TimeInterval) { changedAt = now }
+    let startedAt: TimeInterval
+    private(set) var outcome: Outcome?
+    init(at now: TimeInterval) { changedAt = now; startedAt = now }
 
     mutating func advance(at now: TimeInterval, reduced: Bool) {
+        let elapsed = now - changedAt
         switch stage {
-        case .arriving where reduced || now - changedAt >= Self.arrivalDuration: stage = .waiting; changedAt = now
-        case .thanking where now - changedAt >= 2.1: stage = .returning; changedAt = now
-        case .returning where reduced || now - changedAt >= Self.returnDuration: stage = .finished; changedAt = now
+        case .jumping where reduced || elapsed >= Self.jumpDuration: move(to: .waiting, at: now)
+        case .waiting where elapsed >= Self.ignoreAfter: outcome = .ignored; move(to: .returning, at: now)
+        case .drinking where reduced || elapsed >= Self.drinkDuration: move(to: .returning, at: now)
+        case .returning where reduced || elapsed >= Self.returnDuration: move(to: .finished, at: now)
         default: break
         }
     }
-    @discardableResult mutating func acknowledge(at now: TimeInterval) -> Bool {
-        guard stage == .waiting || stage == .arriving else { return false }
-        stage = .thanking; changedAt = now; return true
+    @discardableResult mutating func drank(at now: TimeInterval) -> Bool {
+        guard stage == .waiting || stage == .jumping else { return false }
+        outcome = .drank; move(to: .drinking, at: now); return true
     }
-    func position(at now: TimeInterval, from: CGPoint, to: CGPoint) -> CGPoint {
-        guard stage == .arriving || stage == .returning else { return stage == .finished ? from : to }
-        let returning = stage == .returning
-        let elapsed = max(0, now - changedAt)
-        // Crouch, fly, then absorb the landing. The window stays still while the
-        // body anticipates and settles, so there is no positional correction.
-        let t = CGFloat(min(1, max(0, (elapsed - 0.16) / (returning ? 0.72 : 0.78))))
-        let ease = t * t * (3 - 2 * t)
-        let start = returning ? to : from, end = returning ? from : to
-        let distance = hypot(end.x - start.x, end.y - start.y)
-        let arc = 16 * t * t * (1 - t) * (1 - t) * min(145, max(65, distance * 0.16))
-        return CGPoint(x: start.x + (end.x - start.x) * ease,
-                       y: start.y + (end.y - start.y) * ease + arc)
+    @discardableResult mutating func later(at now: TimeInterval) -> Bool {
+        guard stage == .waiting else { return false }
+        outcome = .later; move(to: .returning, at: now); return true
     }
-    func body(at now: TimeInterval, direction: CGFloat = 1) -> AnimatedZeraView.BodyMotion {
-        let elapsed = max(0, now - changedAt)
+    private mutating func move(to next: Stage, at now: TimeInterval) { stage = next; changedAt = now }
+
+    /// 0…1 through the current jump (down into the glass or back up), nil while she isn't in the air.
+    func flight(at now: TimeInterval) -> CGFloat? {
+        let duration: TimeInterval
         switch stage {
-        case .arriving, .returning:
-            if elapsed < 0.16 {
-                let crouch = CGFloat(pow(sin(elapsed / 0.16 * .pi), 2))
-                return .init(angle: -direction * 5 * crouch, sx: 1 + 0.11 * crouch, sy: 1 - 0.17 * crouch)
-            }
-            let flight = stage == .returning ? 0.72 : 0.78
-            if elapsed < 0.16 + flight {
-                let t = CGFloat((elapsed - 0.16) / flight)
-                let stretch = pow(sin(t * .pi), 2)
-                return .init(angle: direction * 16 * sin(t * 2 * .pi) * stretch,
-                             sx: 1 - 0.07 * stretch, sy: 1 + 0.10 * stretch)
-            }
-            let duration = stage == .returning ? Self.returnDuration : Self.arrivalDuration
-            let settle = CGFloat(min(1, (elapsed - 0.16 - flight) / (duration - 0.16 - flight)))
-            let spring = sin(settle * 2 * .pi) * sin(settle * .pi)
-            return .init(y: max(0, -spring) * 8, angle: direction * 3 * spring,
-                         sx: 1 + 0.12 * spring, sy: 1 - 0.18 * spring)
-        case .waiting:
-            let beat = elapsed.truncatingRemainder(dividingBy: 12)
-            let phrase = Int(elapsed / 12) % WaterVisitView.prompts.count
-            // Brief acting at the start of a line, followed by a quiet idle.
-            let t = CGFloat(min(1, beat / 2.4)), envelope = pow(sin(t * .pi), 2)
-            switch phrase {
-            case 0: return .init(x: direction * 3 * sin(t * 6 * .pi) * envelope, angle: direction * 5 * envelope)
-            case 1: return .init(y: 5 * envelope, angle: -direction * 7 * envelope, sx: 1 + 0.025 * envelope, sy: 1 + 0.025 * envelope)
-            case 2: return .init(angle: 7 * sin(t * 4 * .pi) * envelope)
-            case 3: return .init(y: -3 * envelope, angle: direction * 9 * envelope, sx: 1 + 0.05 * envelope, sy: 1 - 0.07 * envelope)
-            case 4: return .init(y: 7 * pow(sin(t * 3 * .pi), 2) * envelope, angle: direction * 4 * envelope)
-            default: return .init(angle: -direction * 6 * envelope)
-            }
-        case .thanking:
-            let t = CGFloat(min(1, elapsed / 1.4)), joy = pow(sin(t * .pi), 2)
-            return .init(y: 8 * pow(sin(t * 2 * .pi), 2) * joy, angle: 5 * sin(t * 2 * .pi) * joy)
-        case .finished: return .init()
+        case .jumping: duration = Self.jumpDuration
+        case .returning: duration = Self.returnDuration
+        default: return nil
         }
+        return CGFloat(min(1, max(0, (now - changedAt) / duration)))
     }
-    static func landing(cursor: CGPoint, visibleFrame: CGRect, size: CGSize) -> CGPoint {
-        let proposedX = cursor.x + 28 + size.width <= visibleFrame.maxX ? cursor.x + 28 : cursor.x - size.width - 28
-        return CGPoint(x: max(visibleFrame.minX + 8, min(proposedX, visibleFrame.maxX - size.width - 8)),
-                       y: max(visibleFrame.minY + 8, min(cursor.y - size.height * 0.6, visibleFrame.maxY - size.height - 8)))
+    /// One arc from `a` to `b` in screen points (y up), eased, peaking `arcLift` above the higher end.
+    static func arc(_ t: CGFloat, from a: CGPoint, to b: CGPoint) -> CGPoint {
+        let s = t * t * (3 - 2 * t), u = 1 - s
+        let peak = max(a.y, b.y) + arcLift
+        return CGPoint(x: u * u * a.x + 2 * u * s * (a.x + b.x) / 2 + s * s * b.x,
+                       y: u * u * a.y + 2 * u * s * peak + s * s * b.y)
+    }
+    /// The glass growing from its base: 0 → 1.1 → 1.
+    static func popScale(_ elapsed: TimeInterval) -> CGFloat {
+        let t = CGFloat(min(1, max(0, elapsed / popDuration)))
+        if t < 0.6 { let k = t / 0.6; return 1.1 * k * k * (3 - 2 * k) }
+        let k = (t - 0.6) / 0.4
+        return 1.1 - 0.1 * k * k * (3 - 2 * k)
+    }
+    /// The glass squashing as she lands, settling back to 1 × 1.
+    static func squash(_ elapsed: TimeInterval) -> (sx: CGFloat, sy: CGFloat) {
+        guard elapsed >= 0, elapsed < 0.42 else { return (1, 1) }
+        let wave = CGFloat(sin(elapsed / 0.42 * .pi * 2) * (1 - elapsed / 0.42))
+        return (1 + 0.05 * wave, 1 - 0.06 * wave)
     }
 }
 
-/// Nonactivating, cursor-side visit. No global clicks, focus changes or extra timer.
+/// Owns the three small windows: the glass with its reminder, Zera in flight, and the bead.
 final class WaterReminderVisit {
     private let panel = FloatingPanel.make(size: WaterVisitView.size, level: .popUpMenu, keyable: false)
+    private let jumperPanel = FloatingPanel.make(size: WaterJumperView.size, level: .popUpMenu, keyable: false)
+    private let beadPanel = FloatingPanel.make(size: WaterBeadView.size, level: .popUpMenu, keyable: false)
     let view = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
-    var onAcknowledge: (() -> Void)?
-    var onReturn: (() -> Void)?
+    private let jumper = WaterJumperView(frame: NSRect(origin: .zero, size: WaterJumperView.size))
+    private let bead = WaterBeadView(frame: NSRect(origin: .zero, size: WaterBeadView.size))
+    var onDrank: (() -> Void)?
+    var onLater: (() -> Void)?
+    var onReturn: ((WaterVisitMotion.Outcome?) -> Void)?
+    var onBead: (() -> Void)?
     var isActive: Bool { view.motion.stage != .finished && panel.isVisible }
 
     init() {
-        panel.hasShadow = false
+        for p in [panel, jumperPanel, beadPanel] { p.hasShadow = false }
         panel.contentView = view
-        view.onPosition = { [weak self] point in self?.panel.setFrameOrigin(point) }
-        view.onAcknowledge = { [weak self] in self?.onAcknowledge?() }
-        view.onReturn = { [weak self] in
-            self?.panel.orderOut(nil); self?.onReturn?()
+        jumperPanel.contentView = jumper
+        jumperPanel.ignoresMouseEvents = true
+        beadPanel.contentView = bead
+        view.onDrank = { [weak self] in self?.onDrank?() }
+        view.onLater = { [weak self] in self?.onLater?() }
+        view.onJumper = { [weak self] center, angle, pose in self?.moveJumper(center, angle: angle, pose: pose) }
+        view.onReturn = { [weak self] outcome in
+            self?.panel.orderOut(nil); self?.jumperPanel.orderOut(nil)
+            self?.onReturn?(outcome)
         }
+        bead.onClick = { [weak self] in self?.hideBead(); self?.onBead?() }
     }
-    func show(from home: CGPoint) {
+
+    /// Pops the glass up beside the pointer and sends Zera from `home` (her head, in screen points).
+    func show(from home: CGPoint, detail: String) {
         guard !isActive else { return }
+        hideBead()
         let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
-        guard let screen else { return }
-        view.landing = WaterVisitMotion.landing(cursor: mouse, visibleFrame: screen.visibleFrame, size: WaterVisitView.size)
-        view.bubbleOnLeft = view.landing.x < mouse.x
-        view.departure = CGPoint(x: home.x - (view.bubbleOnLeft ? 422 : 62) - WaterVisitView.edge, y: home.y - 103 - WaterVisitView.edge)
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main else { return }
+        let place = WaterVisitView.placement(cursor: mouse, visibleFrame: screen.visibleFrame)
+        view.mirrored = place.mirrored
+        view.origin = place.origin
+        view.home = home
+        view.detail = detail
+        panel.setFrameOrigin(place.origin)
         view.begin()
-        panel.setFrameOrigin(view.departure)
         panel.orderFrontRegardless()
         ZeraAnimationClock.shared.refresh()
     }
-    func acknowledge() { view.acknowledge() }
-    deinit { panel.orderOut(nil) }
+    func drank() { view.drank() }
+
+    /// A small bead under the notch, right of her rope: the reminder is still waiting.
+    func showBead(below notch: CGRect) {
+        let s = WaterBeadView.size
+        beadPanel.setFrameOrigin(CGPoint(x: notch.midX + 26 - s.width / 2, y: notch.minY - s.height - 4))
+        bead.appear()
+        beadPanel.orderFrontRegardless()
+    }
+    func hideBead() { beadPanel.orderOut(nil) }
+    var isBeadShowing: Bool { beadPanel.isVisible }
+
+    private func moveJumper(_ center: CGPoint?, angle: CGFloat, pose: String) {
+        guard let center else { jumperPanel.orderOut(nil); return }
+        let s = WaterJumperView.size
+        jumper.figure.pose = pose
+        jumper.figure.frameCenterRotation = angle
+        jumperPanel.setFrameOrigin(CGPoint(x: center.x - s.width / 2, y: center.y - s.height / 2))
+        if !jumperPanel.isVisible { jumperPanel.orderFrontRegardless() }
+    }
+
+    deinit { panel.orderOut(nil); jumperPanel.orderOut(nil); beadPanel.orderOut(nil) }
 }
 
+/// The glass beside the pointer, Zera in it, the splash, and the reminder capsule.
 final class WaterVisitView: NSView, ZeraAnimating {
-    static let edge: CGFloat = 28
-    static let size = CGSize(width: 484 + edge * 2, height: 208 + edge * 2)
-    static let prompts = [
-        "Tiny screen tap! Your water misses you. A sip? 💧",
-        "One tiny sip? Look, I'm doing my very best puppy eyes.",
-        "Another tab? Interesting. Is that tab a glass of water?",
-        "I've aged three business days waiting for this sip.",
-        "Emotional support boba is here. Your water is over there.",
-        "Plot twist: the main character drinks water. That's you. 💧"
-    ]
+    static let size = CGSize(width: 612, height: 208)
+    static let glassSize = CGSize(width: 80, height: 96)
+    static let capsuleSize = CGSize(width: 420, height: 58)
+    /// Clear space round the glass for the splash and her head.
+    static let side: CGFloat = 60
+
+    /// The glass in this view's (flipped) coordinates.
+    static func glassRect(mirrored: Bool) -> NSRect {
+        NSRect(x: mirrored ? size.width - side - glassSize.width : side, y: 92, width: glassSize.width, height: glassSize.height)
+    }
+    static func capsuleRect(mirrored: Bool) -> NSRect {
+        let g = glassRect(mirrored: mirrored)
+        return NSRect(x: mirrored ? g.minX - 16 - capsuleSize.width : g.maxX + 16, y: g.minY + 12,
+                      width: capsuleSize.width, height: capsuleSize.height)
+    }
+    /// The glass 22 pt right of and below the pointer's tip (left of it near the right edge),
+    /// so it never sits under the pointer; the window kept inside the screen.
+    static func placement(cursor: CGPoint, visibleFrame: CGRect) -> (origin: CGPoint, mirrored: Bool) {
+        let mirrored = cursor.x + 22 + glassSize.width + 16 + capsuleSize.width + 16 > visibleFrame.maxX
+        let g = glassRect(mirrored: mirrored)
+        let glassLeft = mirrored ? cursor.x - 22 - g.width : cursor.x + 22
+        let glassTop = cursor.y - 22
+        let x = max(visibleFrame.minX, min(glassLeft - g.minX, visibleFrame.maxX - size.width))
+        let y = max(visibleFrame.minY, min(glassTop - size.height + g.minY, visibleFrame.maxY - size.height))
+        return (CGPoint(x: x, y: y), mirrored)
+    }
+    /// Where she sits in the glass, in screen points: the end of the jump down, the start of the one home.
+    static func seat(origin: CGPoint, mirrored: Bool) -> CGPoint {
+        let g = glassRect(mirrored: mirrored)
+        return CGPoint(x: origin.x + g.midX, y: origin.y + size.height - g.minY - 12)
+    }
+
     private(set) var motion = WaterVisitMotion(at: 0)
-    var departure = CGPoint.zero, landing = CGPoint.zero
-    var bubbleOnLeft = false { didSet { needsLayout = true } }
-    var onAcknowledge: (() -> Void)?
-    var onReturn: (() -> Void)?
-    var onPosition: ((CGPoint) -> Void)?
+    var mirrored = false { didSet { needsLayout = true } }
+    var origin = CGPoint.zero
+    var home = CGPoint.zero
+    var detail = "" { didSet { capsule.meta.stringValue = detail } }
+    var onDrank: (() -> Void)?
+    var onLater: (() -> Void)?
+    var onReturn: ((WaterVisitMotion.Outcome?) -> Void)?
+    /// Zera in the air: her centre in screen points (nil: not flying), her spin and her pose.
+    var onJumper: ((CGPoint?, CGFloat, String) -> Void)?
+
+    private let box = WaterGlassBox()
     let figure = AnimatedZeraView()
-    private let glass = WaterSpeechGlass()
-    private let text = rlabel(Typo.bodyMedium, Pal.text, lines: 3)
-    private let heading = rlabel(Typo.paneTitle, Pal.text)
-    private let badge = rlabel(Typo.sectionLabel, Pal.accent)
-    private var okay: WaterReplyButton!
-    private var moment: PRActionButton!
-    private(set) var quietUntil: TimeInterval = 0
-    private(set) var waitingExpression: ZeraExpression = .neutral
-    private var lastPrompt = -1
-    private var lastTap: TimeInterval = -10
-    private var time: TimeInterval = 0
+    private let capsule = WaterCapsule()
+    private var landedAt: TimeInterval?
+    private var lastStage: WaterVisitMotion.Stage = .finished
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        glass.roundLayer(Radius.card); addSubview(glass)
-        heading.stringValue = "A little water break?"
-        badge.attributedStringValue = Typo.sectionText("WATER BREAK", color: Pal.accent)
-        glass.addSubview(badge); glass.addSubview(heading); glass.addSubview(text)
-        okay = WaterReplyButton("Took a sip", style: .primary, symbol: "checkmark", target: self, action: #selector(acknowledge))
-        okay.onHover = { [weak self] hovered in
-            guard let self, self.motion.stage == .waiting else { return }
-            self.figure.expression = hovered ? .happy : self.waitingExpression
-        }
-        moment = PRActionButton("One sec…", style: .secondary, symbol: "clock", target: self, action: #selector(oneMoment))
-        glass.addSubview(okay); glass.addSubview(moment)
-        figure.animationPadding = Self.edge
-        figure.pose = "boba"; addSubview(figure)
+        box.wantsLayer = true
+        addSubview(box)
+        box.insertFigure(figure)
+        figure.pose = "hello"
+        figure.setAccessibilityLabel("Zera, in a glass of water")
+        capsule.drank.target = self; capsule.drank.action = #selector(drank)
+        capsule.later.target = self; capsule.later.action = #selector(later)
+        addSubview(capsule)
+        capsule.alphaValue = 0
     }
     required init?(coder: NSCoder) { fatalError() }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -168,207 +213,333 @@ final class WaterVisitView: NSView, ZeraAnimating {
         super.viewDidMoveToWindow()
         if window == nil { ZeraAnimationClock.shared.remove(self) } else { ZeraAnimationClock.shared.add(self) }
     }
+
     func begin(at now: TimeInterval = CACurrentMediaTime()) {
-        motion = WaterVisitMotion(at: now); time = now; lastPrompt = -1; lastTap = -10; quietUntil = 0
-        heading.stringValue = "A little water break?"; okay.isHidden = false; moment.isHidden = false
-        figure.pose = "boba"; figure.expression = .surprised; figure.bodyMotion = .init(); glass.isHidden = true
+        motion = WaterVisitMotion(at: now); landedAt = nil; lastStage = .jumping
+        figure.pose = "hello"; figure.bodyMotion = .init(); figure.isHidden = true
+        box.level = 0.64; box.splashAt = nil; box.scale = 0
+        capsule.alphaValue = 0; capsule.isHidden = true
         needsLayout = true
+        advanceAnimation(at: now)
     }
-    @objc func oneMoment() { pauseForAMoment(at: CACurrentMediaTime()) }
-    func pauseForAMoment(at now: TimeInterval) {
-        guard motion.stage == .waiting else { return }
-        quietUntil = now + 20; lastPrompt = -1
-        heading.stringValue = "I'll keep you company"
-        text.stringValue = "No rush. I'll sip my boba while you find your water. 🧋"
-        waitingExpression = .happy; figure.expression = .happy; figure.bodyMotion = .init(); figure.speak()
+
+    @objc func drank() {
+        guard motion.drank(at: CACurrentMediaTime()) else { return }
+        if landedAt == nil { land(at: CACurrentMediaTime()) }
+        figure.pose = "cheerful"
+        onDrank?()
     }
-    @objc func acknowledge() {
-        guard motion.acknowledge(at: CACurrentMediaTime()) else { return }
-        heading.stringValue = "Sip, sip, hooray!"
-        text.stringValue = "Cheers! Your brain says thanks. I'll head back up. 💙"
-        okay.isHidden = true; moment.isHidden = true; quietUntil = 0; figure.pose = "boba"; figure.expression = .happy; figure.tap(); figure.speak(for: 2.1)
-        glass.isHidden = false
-        onAcknowledge?()
+    @objc func later() {
+        guard motion.later(at: CACurrentMediaTime()) else { return }
+        onLater?()
     }
+
+    private func land(at now: TimeInterval) {
+        landedAt = now
+        figure.isHidden = false
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { box.splashAt = now }
+    }
+
     func advanceAnimation(at now: TimeInterval) {
-        time = now
-        let oldStage = motion.stage
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         motion.advance(at: now, reduced: reduced)
-        glass.advance(at: now, reduced: reduced)
-        if !okay.isHidden { okay.advance(at: now, reduced: reduced) }
-        let point = motion.position(at: now, from: departure, to: landing)
-        figure.bodyMotion = reduced || (motion.stage == .waiting && now < quietUntil) ? .init() : motion.body(at: now, direction: bubbleOnLeft ? -1 : 1)
-        if motion.stage == .arriving || motion.stage == .returning || oldStage != motion.stage { onPosition?(point) }
-        glass.isHidden = motion.stage == .arriving || motion.stage == .returning || motion.stage == .finished
-        glass.alphaValue = reduced || motion.stage != .waiting ? 1 : min(1, max(0, (now - motion.changedAt) / 0.18))
-        if motion.stage == .waiting && now >= quietUntil {
-            let elapsed = now - motion.changedAt
-            let index = Int(elapsed / 12) % Self.prompts.count
-            if index != lastPrompt {
-                heading.stringValue = "A little water break?"
-                lastPrompt = index; text.stringValue = Self.prompts[index]
-                waitingExpression = [.neutral, .pleading, .unimpressed, .sleepy, .happy, .thoughtful][index]
-                figure.expression = waitingExpression
-                figure.speak()
-            }
-            // Three light taps, followed by a quiet pause; never interact with another app.
-            let beat = elapsed.truncatingRemainder(dividingBy: 12)
-            if (index == 0 || index == 2) && beat < 1.1 && now - lastTap >= 0.36 { lastTap = now; figure.tap(at: now) }
+        let stage = motion.stage
+        defer { lastStage = stage }
+        if stage != .jumping, landedAt == nil { land(at: now) }
+
+        // The glass: pops up, squashes as she lands, shrinks away as she leaves.
+        var scale = reduced ? 1 : WaterVisitMotion.popScale(now - motion.startedAt)
+        if stage == .returning {
+            let t = CGFloat(min(1, max(0, (now - motion.changedAt - 0.15) / 0.42)))
+            scale *= reduced ? 0 : 1 - t * t
         }
-        if motion.stage == .finished && oldStage != .finished { onReturn?() }
-        needsDisplay = true
+        if stage == .finished { scale = 0 }
+        box.scale = scale
+        box.squash = landedAt.map { WaterVisitMotion.squash(now - $0) } ?? (1, 1)
+        box.time = now
+
+        // The water goes down as she drinks.
+        if stage == .drinking {
+            let t = CGFloat(min(1, (now - motion.changedAt) / WaterVisitMotion.drinkDuration))
+            box.level = 0.64 - 0.52 * t * t * (3 - 2 * t)
+        }
+
+        // Zera: in the glass while waiting or drinking, in the air on the way there and back.
+        figure.isHidden = !(stage == .waiting || stage == .drinking)
+        if let landed = landedAt, stage == .waiting, !reduced {
+            let t = CGFloat(min(1, (now - landed) / 0.5))
+            figure.bodyMotion = .init(y: -14 * (1 - t * t * (3 - 2 * t)))
+        } else {
+            figure.bodyMotion = .init()
+        }
+        if stage == .waiting { figure.pose = "hello" }
+
+        let seat = Self.seat(origin: origin, mirrored: mirrored)
+        if let t = motion.flight(at: now), !reduced, stage != .finished {
+            if stage == .jumping {
+                onJumper?(WaterVisitMotion.arc(t, from: home, to: seat), -360 * t, "excited")
+            } else {
+                let pose = motion.outcome == .drank ? "cheerful" : "sleepy"
+                onJumper?(WaterVisitMotion.arc(t, from: seat, to: home), 360 * t, pose)
+            }
+        } else if lastStage == .jumping || lastStage == .returning || stage == .finished {
+            onJumper?(nil, 0, "")
+        }
+
+        // The capsule slides in once she's surfaced, and goes as soon as you answer.
+        let showCapsule = stage == .waiting && (landedAt.map { now - $0 >= (reduced ? 0 : 0.35) } ?? false)
+        let target: CGFloat = showCapsule ? 1 : 0
+        capsule.alphaValue += (target - capsule.alphaValue) * (reduced ? 1 : 0.3)
+        if abs(capsule.alphaValue - target) < 0.02 { capsule.alphaValue = target }
+        capsule.isHidden = capsule.alphaValue == 0
+        capsule.offset = (1 - capsule.alphaValue) * (mirrored ? 10 : -10)
+        capsule.needsLayout = true
+
+        if stage == .finished && lastStage != .finished { onReturn?(motion.outcome) }
+        needsLayout = true
     }
+
     override func layout() {
         super.layout()
-        let e = Self.edge
-        figure.frame = NSRect(x: (bubbleOnLeft ? 364 : 4) + e, y: 16 + e, width: 116, height: 174).insetBy(dx: -e, dy: -e)
-        glass.frame = NSRect(x: (bubbleOnLeft ? 4 : 128) + e, y: 12 + e, width: 352, height: 184)
-        badge.frame = NSRect(x: 44, y: Space.l, width: 284, height: 18)
-        heading.frame = NSRect(x: Space.xxl, y: 48, width: 304, height: 24)
-        text.frame = NSRect(x: Space.xxl, y: 80, width: 304, height: 36)
-        let replyWidth = (glass.bounds.width - Space.xxl * 2 - Space.m) / 2
-        okay.frame = NSRect(x: Space.xxl, y: 128, width: replyWidth, height: Metrics.button)
-        moment.frame = NSRect(x: okay.frame.maxX + Space.m, y: 128, width: replyWidth, height: Metrics.button)
+        let g = Self.glassRect(mirrored: mirrored)
+        box.frame = NSRect(x: g.minX - Self.side, y: g.minY - 90, width: g.width + Self.side * 2, height: g.height + 98)
+        let c = Self.capsuleRect(mirrored: mirrored)
+        capsule.frame = c.offsetBy(dx: capsule.offset, dy: 0)
     }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard let hit = super.hitTest(point), hit !== self else { return nil }
+        // Only the capsule's buttons (and Zera herself) take clicks; the rest lets them through.
+        guard let hit = super.hitTest(point), hit !== self, hit !== box, hit !== capsule else { return nil }
         return hit
     }
-    override func draw(_ dirtyRect: NSRect) {
-        guard motion.stage == .waiting, time >= quietUntil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-        let t = time - lastTap
-        guard t >= 0 && t < 0.5 else { return }
-        let radius = CGFloat(5 + t * 28)
-        Pal.accent.withAlphaComponent(CGFloat(1 - t / 0.5) * 0.65).setStroke()
-        let ripple = NSBezierPath(ovalIn: NSRect(x: (bubbleOnLeft ? 366 : 108) + Self.edge - radius, y: 111 + Self.edge - radius, width: radius * 2, height: radius * 2))
-        ripple.lineWidth = 1.5; ripple.stroke()
-    }
 }
 
-private final class WaterReplyButton: PRActionButton {
-    var onHover: ((Bool) -> Void)?
-    private var waterHovered = false
-    private var fill: CGFloat = 0.12
-    private var phase: TimeInterval = 0
-    private var lastTime: TimeInterval?
+/// The glass, drawn in its own unflipped space so it can grow from its base.
+private final class WaterGlassBox: NSView {
+    /// The glass inside the box (y up): room above for her head and the splash, room round it for the drops.
+    static let glass = NSRect(x: WaterVisitView.side, y: 8, width: WaterVisitView.glassSize.width, height: WaterVisitView.glassSize.height)
+    var scale: CGFloat = 0 { didSet { applyTransform() } }
+    var squash: (sx: CGFloat, sy: CGFloat) = (1, 1) { didSet { applyTransform() } }
+    var level: CGFloat = 0.64 { didSet { front.needsDisplay = true } }
+    var splashAt: TimeInterval?
+    var time: TimeInterval = 0 { didSet { front.needsDisplay = true; drops.needsDisplay = true } }
+    private let back = WaterGlassBack()
+    private let front = WaterGlassFront()
+    private let drops = WaterSplashDrops()
 
-    override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event); waterHovered = true; onHover?(true)
-    }
-    override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event); waterHovered = false; onHover?(false)
-    }
-
-    func advance(at time: TimeInterval, reduced: Bool) {
-        let elapsed = min(0.1, max(0, time - (lastTime ?? time)))
-        lastTime = time
-        let target: CGFloat = isHighlighted ? 1 : (waterHovered || window?.firstResponder === self ? 0.85 : 0.12)
-        fill += (target - fill) * (reduced ? 1 : CGFloat(1 - exp(-elapsed * 8)))
-        phase = reduced ? 0 : time * 1.4
-        needsDisplay = true
-    }
-
-    override func drawContentBackground(in rect: NSRect) {
-        let radius = min(Radius.m - 1, rect.height / 2)
-        let clip = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
-        NSGraphicsContext.saveGraphicsState(); clip.addClip()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        let water = NSBezierPath(), crest = NSBezierPath()
-        let flipped = NSGraphicsContext.current?.isFlipped ?? false
-        let bottom = flipped ? rect.maxY : rect.minY
-        for x in stride(from: rect.minX, through: rect.maxX + 2, by: 2) {
-            // An angled rising front, softened by two travelling ripples.
-            let level = rect.height * fill + (rect.midX - x) * 0.12
-                + sin(x / 17 + CGFloat(phase)) * 1.4 + sin(x / 9 - CGFloat(phase) * 0.7) * 0.6
-            let point = NSPoint(x: x, y: flipped ? rect.maxY - level : rect.minY + level)
-            if x == rect.minX { water.move(to: point); crest.move(to: point) }
-            else { water.line(to: point); crest.line(to: point) }
-        }
-        water.line(to: NSPoint(x: rect.maxX + 2, y: bottom))
-        water.line(to: NSPoint(x: rect.minX, y: bottom)); water.close()
-        NSGradient(starting: Pal.water.withAlphaComponent(0.32),
-                   ending: Pal.waterDeep.withAlphaComponent(0.18))?.draw(in: water, angle: flipped ? -90 : 90)
-        Pal.water.withAlphaComponent(0.48).setStroke(); crest.lineWidth = 0.8; crest.stroke()
-    }
-}
-
-private final class WaterSpeechGlass: NSView {
-    private let blur = NSVisualEffectView()
-    private let paint = WaterSpeechPaint()
-    override var isFlipped: Bool { true }
     override init(frame: NSRect) {
         super.init(frame: frame)
-        blur.material = Pal.blurMaterial; blur.blendingMode = .behindWindow; blur.state = .active
-        addSubview(blur); addSubview(paint)
+        front.box = self; drops.box = self
+        addSubview(back); addSubview(front); addSubview(drops)
     }
     required init?(coder: NSCoder) { fatalError() }
-    override func layout() { super.layout(); blur.frame = bounds; paint.frame = bounds }
-    func advance(at time: TimeInterval, reduced: Bool) {
-        paint.phase = reduced ? 0 : time * 0.65
-        paint.needsDisplay = true
+
+    func insertFigure(_ figure: AnimatedZeraView) { addSubview(figure, positioned: .above, relativeTo: back) }
+
+    override func layout() {
+        super.layout()
+        back.frame = bounds; front.frame = bounds; drops.frame = bounds
+        let g = Self.glass
+        // Her head and shoulders clear the rim by about 30 pt; the water covers her below the waist.
+        for case let figure as AnimatedZeraView in subviews {
+            figure.frame = NSRect(x: g.minX + 2, y: g.minY + 44, width: 76, height: 82)
+        }
+        applyTransform()
+    }
+
+    private func applyTransform() {
+        guard let layer else { return }
+        let g = Self.glass
+        var t = CATransform3DMakeTranslation(g.midX, g.minY, 0)
+        t = CATransform3DScale(t, scale * squash.sx, scale * squash.sy, 1)
+        t = CATransform3DTranslate(t, -g.midX, -g.minY, 0)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        layer.sublayerTransform = t
+        CATransaction.commit()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        for case let figure as AnimatedZeraView in subviews where !figure.isHidden && figure.frame.contains(local) {
+            return figure
+        }
+        return nil
+    }
+
+    /// The glass's tapered outline.
+    static func outline() -> NSBezierPath {
+        let g = glass, inset: CGFloat = 9.6
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: g.minX, y: g.maxY))
+        p.line(to: NSPoint(x: g.maxX, y: g.maxY))
+        p.line(to: NSPoint(x: g.maxX - inset, y: g.minY))
+        p.line(to: NSPoint(x: g.minX + inset, y: g.minY))
+        p.close()
+        p.lineJoinStyle = .round
+        return p
     }
 }
 
-private final class WaterSpeechPaint: NSView {
-    var phase: TimeInterval = 0
-    override var isFlipped: Bool { true }
+/// Behind her: the glass's body and its shadow.
+private final class WaterGlassBack: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.card, yRadius: Radius.card)
-        NSGradient(starting: Pal.cardTop.withAlphaComponent(0.72), ending: Pal.cardBottom.withAlphaComponent(0.86))?.draw(in: path, angle: -90)
+        let g = WaterGlassBox.glass
+        NSColor.black.withAlphaComponent(0.32).setFill()
+        NSBezierPath(ovalIn: NSRect(x: g.minX + 4, y: g.minY - 6, width: g.width - 8, height: 9)).fill()
+        let body = WaterGlassBox.outline()
+        NSGradient(colors: [Pal.water.withAlphaComponent(0.14), Pal.cardBottom.withAlphaComponent(0.42), Pal.water.withAlphaComponent(0.10)])?
+            .draw(in: body, angle: 0)
+    }
+}
+
+/// In front of her: the water, its moving surface, the rim and one highlight.
+private final class WaterGlassFront: NSView {
+    weak var box: WaterGlassBox?
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        guard let box else { return }
+        let g = WaterGlassBox.glass, outline = WaterGlassBox.outline()
+        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let phase = reduced ? 0 : CGFloat(box.time) * 2.2
+        let surface = g.minY + g.height * box.level
         NSGraphicsContext.saveGraphicsState()
-        // The liquid is an inset decoration, never a tint on the card's rim.
-        NSBezierPath(roundedRect: bounds.insetBy(dx: Space.s, dy: Space.s),
-                     xRadius: Radius.card - Space.s, yRadius: Radius.card - Space.s).addClip()
-        // Layered currents travel at different speeds, with a soft blue crest.
-        // All movement stays in the lower glass; text and replies remain steady.
-        for layer in 0..<3 {
-            let wave = NSBezierPath(), crest = NSBezierPath()
-            let speed: CGFloat = [0.8, -0.6, 1.1][layer]
-            for x in stride(from: CGFloat(0), through: bounds.width + 4, by: 4) {
-                let t = x / CGFloat(52 + layer * 14) + CGFloat(phase) * speed
-                let y = bounds.maxY - CGFloat(20 + layer * 8)
-                    + sin(t) * CGFloat(4 + layer * 2) + sin(t * 1.7 - CGFloat(phase) * 0.35) * 2
-                let point = NSPoint(x: x, y: y)
-                if x == 0 { wave.move(to: point); crest.move(to: point) }
-                else { wave.line(to: point); crest.line(to: point) }
-            }
-            wave.line(to: NSPoint(x: bounds.maxX, y: bounds.maxY))
-            wave.line(to: NSPoint(x: 0, y: bounds.maxY)); wave.close()
-            NSGradient(starting: Pal.water.withAlphaComponent(0.14 + CGFloat(layer) * 0.035),
-                       ending: Pal.waterDeep.withAlphaComponent(0.06))?.draw(in: wave, angle: -90)
-            Pal.water.withAlphaComponent(0.18 + CGFloat(layer) * 0.06).setStroke()
-            crest.lineWidth = 0.8; crest.stroke()
+        outline.addClip()
+        let water = NSBezierPath(), crest = NSBezierPath()
+        for x in stride(from: g.minX - 2, through: g.maxX + 2, by: 2) {
+            let point = NSPoint(x: x, y: surface + sin(x / 9 + phase) * 1.3)
+            if x == g.minX - 2 { water.move(to: point); crest.move(to: point) } else { water.line(to: point); crest.line(to: point) }
         }
-        // A few slow air bubbles rise through the liquid band and disappear at its crest.
-        for i in 0..<4 {
-            let progress = (phase * 0.16 + Double(i) * 0.27).truncatingRemainder(dividingBy: 1)
-            let x = bounds.width * CGFloat(Double(i + 1) / 5) + CGFloat(sin(phase + Double(i))) * 3
-            let y = bounds.maxY - 4 - CGFloat(progress) * 28
-            let radius: CGFloat = i.isMultiple(of: 2) ? 1.6 : 2.4
-            Pal.water.withAlphaComponent(CGFloat(sin(progress * .pi)) * 0.38).setStroke()
-            let bubble = NSBezierPath(ovalIn: NSRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2))
-            bubble.lineWidth = 0.7; bubble.stroke()
-        }
+        water.line(to: NSPoint(x: g.maxX + 2, y: g.minY - 2)); water.line(to: NSPoint(x: g.minX - 2, y: g.minY - 2)); water.close()
+        NSGradient(starting: Pal.water.withAlphaComponent(0.62), ending: Pal.waterDeep.withAlphaComponent(0.86))?.draw(in: water, angle: -90)
+        NSColor.white.withAlphaComponent(0.55).setStroke(); crest.lineWidth = 1; crest.stroke()
         NSGraphicsContext.restoreGraphicsState()
-        Pal.border.withAlphaComponent(Pal.border.alphaComponent * 0.8).setStroke()
-        path.lineWidth = 0.75; path.stroke()
+        NSColor.white.withAlphaComponent(0.55).setStroke(); outline.lineWidth = 1.5; outline.stroke()
+        let mouth = NSBezierPath(ovalIn: NSRect(x: g.minX + 0.8, y: g.maxY - 3, width: g.width - 1.6, height: 6))
+        NSColor.white.withAlphaComponent(0.45).setStroke(); mouth.lineWidth = 1; mouth.stroke()
+        let shine = NSBezierPath()
+        shine.move(to: NSPoint(x: g.minX + 9, y: g.maxY - 10)); shine.line(to: NSPoint(x: g.minX + 14, y: g.minY + 12))
+        NSColor.white.withAlphaComponent(0.5).setStroke(); shine.lineWidth = 3; shine.lineCapStyle = .round; shine.stroke()
+    }
+}
+
+/// The splash: a ripple on the water and eight drops thrown up over the rim.
+private final class WaterSplashDrops: NSView {
+    weak var box: WaterGlassBox?
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        guard let box, let start = box.splashAt else { return }
+        let p = CGFloat((box.time - start) / 0.75)
+        guard p >= 0, p < 1 else { return }
+        let g = WaterGlassBox.glass
+        let surface = g.minY + g.height * box.level
+        let ring = NSBezierPath(ovalIn: NSRect(x: g.midX - 40 * (0.4 + 1.2 * p), y: surface - 6 * (0.4 + 1.2 * p),
+                                               width: 80 * (0.4 + 1.2 * p), height: 12 * (0.4 + 1.2 * p)))
+        NSColor.white.withAlphaComponent(0.8 * (1 - p)).setStroke(); ring.lineWidth = 1.5; ring.stroke()
+        for i in 0..<8 {
+            let lane = CGFloat(i) - 3.5
+            let reach = lane * 14 + CGFloat([3, -2, 4, -3, 2, -4, 1, -1][i])
+            let rise = 42 + CGFloat(i % 3) * 14
+            let x = g.midX + lane * 6 + reach * p
+            let y = surface + rise * 4 * p * (1 - p) - 28 * p * p
+            let drop = NSBezierPath(ovalIn: NSRect(x: x - 2.5, y: y - 3.5, width: 5, height: 7))
+            Pal.water.withAlphaComponent(0.9 * (1 - p * p)).setFill(); drop.fill()
+            NSColor.white.withAlphaComponent(0.8 * (1 - p * p)).setFill()
+            NSBezierPath(ovalIn: NSRect(x: x - 1.2, y: y + 0.6, width: 1.6, height: 1.6)).fill()
+        }
+    }
+}
+
+/// The reminder beside the glass: what it is, today's line, Drank and 10 min.
+private final class WaterCapsule: NSView {
+    let title = rlabel(Typo.rowTitleStrong, Pal.text)
+    let meta = rlabel(Typo.meta, Pal.textSecondary)
+    let drank = PRActionButton("Drank", style: .primary, target: nil, action: #selector(WaterVisitView.drank))
+    let later = PRActionButton("10 min", style: .secondary, target: nil, action: #selector(WaterVisitView.later))
+    var offset: CGFloat = 0
+    private let blur = NSVisualEffectView()
+    private let rim = WaterCapsuleRim()
+    override var isFlipped: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        blur.material = Pal.blurMaterial; blur.blendingMode = .behindWindow; blur.state = .active
+        blur.wantsLayer = true
+        addSubview(blur); addSubview(rim)
+        title.stringValue = "Water break"
+        meta.lineBreakMode = .byTruncatingTail
+        drank.setLine("check"); later.setLine("clock")
+        drank.setAccessibilityLabel("Drank water"); later.setAccessibilityLabel("Remind me in 10 minutes")
+        [title, meta, drank, later].forEach(addSubview)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        let r = bounds.height / 2
+        blur.frame = bounds; blur.layer?.cornerRadius = r; blur.layer?.masksToBounds = true
+        rim.frame = bounds
+        let lw = max(74, later.fittedWidth), dw = max(78, drank.fittedWidth), bh: CGFloat = 32
+        later.frame = NSRect(x: bounds.width - 12 - lw, y: (bounds.height - bh) / 2, width: lw, height: bh)
+        drank.frame = NSRect(x: later.frame.minX - 8 - dw, y: later.frame.minY, width: dw, height: bh)
+        let tw = max(40, drank.frame.minX - 12 - 20)
+        title.frame = NSRect(x: 20, y: 10, width: tw, height: 19)
+        meta.frame = NSRect(x: 20, y: 30, width: tw, height: 17)
+    }
+}
+
+private final class WaterCapsuleRim: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds.height / 2
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: r - 0.5, yRadius: r - 0.5)
+        Pal.cardBottom.withAlphaComponent(0.35).setFill(); path.fill()
+        NSColor.white.withAlphaComponent(0.16).setStroke(); path.lineWidth = 1; path.stroke()
+    }
+}
+
+/// Zera in the air between the notch and the glass. Spins about her middle.
+final class WaterJumperView: NSView {
+    static let size = CGSize(width: 140, height: 150)
+    let figure = AnimatedZeraView()
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        figure.frame = NSRect(x: 30, y: 30, width: 80, height: 90)
+        figure.pose = "excited"
+        addSubview(figure)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// The bead under the notch while a water reminder waits. Click it and she comes back down.
+final class WaterBeadView: NSView {
+    static let size = CGSize(width: 22, height: 26)
+    var onClick: (() -> Void)?
+    private var shownAt: TimeInterval = 0
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Water reminder waiting")
+        toolTip = "Water break · click when you're ready"
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    func appear() { alphaValue = 0; animator().alphaValue = 1; needsDisplay = true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseUp(with event: NSEvent) { onClick?() }
+    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds.insetBy(dx: 4, dy: 3)
         let drop = NSBezierPath()
-        drop.move(to: NSPoint(x: 30, y: 16))
-        drop.curve(to: NSPoint(x: 23, y: 29), controlPoint1: NSPoint(x: 27, y: 21), controlPoint2: NSPoint(x: 23, y: 25))
-        drop.curve(to: NSPoint(x: 37, y: 29), controlPoint1: NSPoint(x: 23, y: 38), controlPoint2: NSPoint(x: 37, y: 38))
-        drop.curve(to: NSPoint(x: 30, y: 16), controlPoint1: NSPoint(x: 37, y: 25), controlPoint2: NSPoint(x: 33, y: 21))
+        drop.move(to: NSPoint(x: r.midX, y: r.maxY))
+        drop.curve(to: NSPoint(x: r.maxX, y: r.minY + r.width / 2), controlPoint1: NSPoint(x: r.midX + 3, y: r.maxY - 6), controlPoint2: NSPoint(x: r.maxX, y: r.minY + r.width))
+        drop.appendArc(withCenter: NSPoint(x: r.midX, y: r.minY + r.width / 2), radius: r.width / 2, startAngle: 0, endAngle: 180, clockwise: true)
+        drop.curve(to: NSPoint(x: r.midX, y: r.maxY), controlPoint1: NSPoint(x: r.minX, y: r.minY + r.width), controlPoint2: NSPoint(x: r.midX - 3, y: r.maxY - 6))
         drop.close()
-        NSGraphicsContext.saveGraphicsState(); drop.addClip()
-        Pal.accent.withAlphaComponent(0.12).setFill(); drop.fill()
-        let liquid = NSBezierPath()
-        for x in stride(from: CGFloat(22), through: 38, by: 1) {
-            let point = NSPoint(x: x, y: 27 + sin((x - 22) / 4 + CGFloat(phase)) * 1.6)
-            if x == 22 { liquid.move(to: point) } else { liquid.line(to: point) }
-        }
-        liquid.line(to: NSPoint(x: 38, y: 39)); liquid.line(to: NSPoint(x: 22, y: 39)); liquid.close()
-        NSGradient(starting: Pal.water, ending: Pal.waterDeep)?.draw(in: liquid, angle: -90)
-        NSGraphicsContext.restoreGraphicsState()
-        Pal.accent.withAlphaComponent(0.85).setStroke(); drop.lineWidth = 1.25; drop.stroke()
+        NSGradient(starting: Pal.water.withAlphaComponent(0.85), ending: Pal.waterDeep)?.draw(in: drop, angle: -90)
+        NSColor.white.withAlphaComponent(0.7).setStroke(); drop.lineWidth = 0.8; drop.stroke()
     }
 }

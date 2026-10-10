@@ -505,44 +505,45 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
     </div>
   </section>
 
-  <!-- Water: a live, user-triggered preview of the cursor-side visit. -->
+  <!-- Water: Splash, a live preview. Click anywhere in the desk and a glass pops up there. -->
   <section id="water" class="feature">
     <div class="wrap split rev">
       <div class="copy">
-        <span class="eyebrow rv"><i></i>Water breaks, with company</span>
-        <h2 class="h2 kin">A tiny buddy.<br>A proper sip.</h2>
-        <p class="lead rv d1">Zera hops over to your cursor, gives the screen a little tap, and makes her best puppy eyes. Keep her waiting and the expressions get dramatic. Take a sip and she cheers you on, then jumps back to her perch.</p>
+        <span class="eyebrow rv"><i></i>Water breaks · Splash</span>
+        <h2 class="h2 kin">She jumps in.<br>You take a sip.</h2>
+        <p class="lead rv d1">When it’s time for water, a glass pops up right beside your cursor and Zera leaps from the notch into it with a splash. She waves from the water until you answer, then jumps back up to her rope.</p>
         <div class="ticks rv d2">
-          <div class="tick"><span><b>Your rhythm.</b> Choose the interval and active hours in Reminders → Hydration.</span></div>
-          <div class="tick"><span><b>A little conversation.</b> “Took a sip!” earns a happy bounce. “One sec…” gives you a quiet moment.</span></div>
-          <div class="tick"><span><b>Gentle company.</b> She stays beside your cursor without taking focus or clicking your other apps.</span></div>
+          <div class="tick"><span><b>Where you’re looking.</b> The glass appears next to your pointer, never under it, so your clicks still land.</span></div>
+          <div class="tick"><span><b>Two answers.</b> Drank, and she drinks with you before heading home. 10 min, and she’s back later.</span></div>
+          <div class="tick"><span><b>No nagging.</b> Ignore her for 30 seconds and she leaves a small drop under the notch. Click it when you’re ready.</span></div>
+          <div class="tick"><span><b>Your week, as a card.</b> After each sip a tiny glass under the notch shows today’s count for a moment. Click it for your week and save a card worth sharing.</span></div>
         </div>
       </div>
       <div class="media rv d1">
-        <div class="water-demo" id="water-demo" data-state="idle" data-mood="neutral">
-          <div class="water-demo-label"><span>Try a water break</span><span class="water-live-dot" aria-hidden="true"></span></div>
-          <div class="water-scene">
-            <button class="water-character" id="water-character" aria-label="Say hello to Zera with her boba"><svg viewBox="0 0 183 206" aria-hidden="true">
-                <defs><radialGradient id="boba-gloss" cx="32%" cy="25%" r="80%"><stop stop-color="#392129"/><stop offset="1" stop-color="#080407"/></radialGradient><clipPath id="boba-straw"><path d="M107 124 L113 149" stroke="white" stroke-width="9"/></clipPath></defs>
-                <image href="assets/zera-boba-base.png" width="183" height="206"/>
-                <g class="water-gaze">
-                  <g transform="translate(72 119) rotate(-12)"><g class="water-eye-open"><circle r="13" fill="url(#boba-gloss)"/><ellipse cx="-3.6" cy="-6" rx="3.3" ry="3.8" fill="white"/><circle cx="4.6" cy="5.3" r="1.4" fill="white" opacity=".3"/></g><path class="water-eye-happy" d="M-10 1 Q0 -13 10 1"/><path class="water-brow" d="M-6 -23 Q0 -25 6 -23"/></g>
-                  <g transform="translate(135 106) rotate(-12)"><g class="water-eye-open"><circle r="13" fill="url(#boba-gloss)"/><ellipse cx="-3.6" cy="-6" rx="3.3" ry="3.8" fill="white"/><circle cx="4.6" cy="5.3" r="1.4" fill="white" opacity=".3"/></g><path class="water-eye-happy" d="M-10 1 Q0 -13 10 1"/><path class="water-brow" d="M-6 -23 Q0 -25 6 -23"/></g>
-                </g>
-                <g transform="translate(108 127) rotate(-12)"><path class="water-mouth-smile" d="M-6 -1 Q-5 12 6 -1 Q0 1 -6 -1" fill="#210c12"/><ellipse class="water-mouth-oh" cy="3" rx="3.5" ry="4" fill="#210c12"/><ellipse class="water-tongue" cy="4" rx="2.8" ry="1.3" fill="#f35a63"/></g>
-                <image href="assets/zera-boba-base.png" width="183" height="206" clip-path="url(#boba-straw)"/>
-              </svg></button>
-            <div class="water-speech" aria-live="polite">
-              <h3 id="water-heading">Your water has a tiny advocate.</h3>
-              <p id="water-line">Send her over. She has boba, puppy eyes, and a very convincing argument.</p>
-              <button class="water-send" id="water-send">Send Zera over <span aria-hidden="true">↗</span></button>
-              <div class="water-replies" id="water-replies" hidden>
-                <button class="water-sip" id="water-sip"><span aria-hidden="true">💧</span> Took a sip!</button>
-                <button class="water-moment" id="water-moment">One sec…</button>
-              </div>
+        <div class="water-demo" id="water-demo">
+          <div class="water-demo-label"><span>Click anywhere in the desk</span><span class="water-live-dot" aria-hidden="true"></span></div>
+          <div class="water-desk" id="water-desk">
+            <div class="water-notch" aria-hidden="true"></div>
+            <div class="water-count" id="water-count" aria-label="Water today: 4 of 8"><i><b id="water-count-fill"></b></i><span id="water-count-num">4/8</span></div>
+            <div class="water-rope" id="water-rope" aria-hidden="true"></div>
+            <img class="water-hang" id="water-hang" src="assets/zera-hang.png" alt="Zera hanging from the notch" width="153" height="264">
+            <button class="water-bead" id="water-bead" type="button" aria-label="Water reminder waiting. Bring Zera back" hidden></button>
+            <div class="water-glass" id="water-glass" aria-hidden="true">
+              <img class="water-in" id="water-in" src="assets/zera-hello.png" alt="" width="189" height="203">
+              <div class="water-level" id="water-level"></div>
+              <div class="water-rim"></div>
             </div>
+            <div class="water-cap" id="water-cap">
+              <div class="water-cap-text"><b>Water break</b><span id="water-today">4 of 8 today</span></div>
+              <button class="water-act main" id="water-drank" type="button">Drank</button>
+              <button class="water-act" id="water-later" type="button">10 min</button>
+            </div>
+            <img class="water-jumper" id="water-jumper" src="assets/zera-jump.png" alt="" width="196" height="199">
           </div>
-          <p class="water-demo-note">Interactive preview · set your reminders in the Mac app.</p>
+          <div class="water-demo-foot">
+            <button class="water-send" id="water-send" type="button">Remind me now</button>
+            <p class="water-demo-note">Interactive preview · set your reminders in the Mac app.</p>
+          </div>
         </div>
       </div>
     </div>
