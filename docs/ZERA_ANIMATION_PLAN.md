@@ -144,7 +144,7 @@ Branch: `codex/water-caption-refinement`.
 - [x] Give Tiles two evenly spaced rows, a search footer and a clear header for the animated Zera; retain the notch attachment and smooth shape transition.
 - [x] Keep transparent shoulders click-through so the menu bar remains usable.
 - [x] Place speech beside Zera using individual menu-control obstacles; fall back below full-width live wings.
-- [x] Remove the caption's doubled outline/tail and macOS window shadow; retain a single quiet capsule edge.
+- [x] Remove the caption's doubled outline and macOS window shadow; retain one comic-bubble edge with a small tail pointing toward Zera.
 - [x] Relax the water card's shared typography and spacing; add flowing liquid ribbons and an animated droplet on the existing clock, respecting Reduce Motion.
 - [x] Check both 24-point notchless and 34-point notched layouts with local renders, and all destination/search actions.
 - [x] Verify water persistence, acknowledgement, replies and transparent animation edges; retain normal reminder intervals.
@@ -153,3 +153,13 @@ Branch: `codex/water-caption-refinement`.
 - [ ] User review of water styling and flow during an ordinary reminder.
 
 Local review files stay under `.build/ui-review`; nothing is published to CI. BetterDisplay was hiding the user's physical notch: the existing notch expansion is retained rather than treated as a duplicate-notch defect.
+
+
+### Follow-up — blue water and comic speech
+
+- [x] Keep water blue across themes, with three flowing currents, soft crests, rising air bubbles and liquid moving inside the droplet.
+- [x] Retain the themed glass, shared text/buttons and the existing animation clock; Reduce Motion freezes the water.
+- [x] Restore one continuous comic-bubble silhouette with a left/right/top pointer toward Zera; keep the double black ring removed.
+- [x] Replace the arc nodes' clipped in-view blur with circular compositor shadows and quiet glass label backplates; keep all arc positions and actions.
+- [x] Inspect updated local water-motion and white/dark arc previews; 21 focused tests passed and the universal release build passed.
+- [ ] User review of the corrected arc shadows, comic pointer and blue water in everyday use.

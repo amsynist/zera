@@ -498,6 +498,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         let panel = BubbleView.panelFrame(for: tag)
         bubblePanel.setFrame(panel, display: true)
         bubble.frame = NSRect(origin: .zero, size: panel.size)
+        bubble.pointToward(NSPoint(x: bodyX - panel.minX, y: panel.maxY - (figureRect.minY + figureRect.height * 0.45)))
     }
 
     /// Spans the screen around her at chest height: the left wing ends in a tendril just left

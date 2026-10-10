@@ -136,7 +136,7 @@ final class WaterVisitView: NSView, ZeraAnimating {
     private let glass = WaterSpeechGlass()
     private let text = rlabel(Typo.bodyMedium, Pal.text, lines: 3)
     private let heading = rlabel(Typo.paneTitle, Pal.text)
-    private let badge = rlabel(Typo.sectionLabel, Pal.accent)
+    private let badge = rlabel(Typo.sectionLabel, Pal.water)
     private var okay: WaterReplyButton!
     private var moment: CardButton!
     private(set) var quietUntil: TimeInterval = 0
@@ -272,23 +272,44 @@ private final class WaterSpeechPaint: NSView {
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.card, yRadius: Radius.card)
-        NSGradient(starting: Pal.cardTop.withAlphaComponent(0.60), ending: Pal.cardBottom.withAlphaComponent(0.78))?.draw(in: path, angle: -90)
+        let top = Pal.cardTop.blended(withFraction: 0.04, of: Pal.water) ?? Pal.cardTop
+        let bottom = Pal.cardBottom.blended(withFraction: 0.12, of: Pal.waterDeep) ?? Pal.cardBottom
+        NSGradient(starting: top.withAlphaComponent(0.72), ending: bottom.withAlphaComponent(0.86))?.draw(in: path, angle: -90)
         NSGraphicsContext.saveGraphicsState()
         path.addClip()
-        // A low-contrast liquid ribbon stays below the controls, leaving text still.
+        // Layered currents travel at different speeds, with a soft blue crest.
+        // All movement stays in the lower glass; text and replies remain steady.
         for layer in 0..<3 {
-            let wave = NSBezierPath()
-            for x in stride(from: CGFloat(0), through: bounds.width + 8, by: 8) {
-                let y = bounds.maxY - CGFloat(12 + layer * 4) + sin(x / 58 + phase + Double(layer)) * CGFloat(2 + layer)
+            let wave = NSBezierPath(), crest = NSBezierPath()
+            let speed: CGFloat = [0.8, -0.6, 1.1][layer]
+            for x in stride(from: CGFloat(0), through: bounds.width + 4, by: 4) {
+                let t = x / CGFloat(52 + layer * 14) + CGFloat(phase) * speed
+                let y = bounds.maxY - CGFloat(20 + layer * 8)
+                    + sin(t) * CGFloat(4 + layer * 2) + sin(t * 1.7 - CGFloat(phase) * 0.35) * 2
                 let point = NSPoint(x: x, y: y)
-                if x == 0 { wave.move(to: point) } else { wave.line(to: point) }
+                if x == 0 { wave.move(to: point); crest.move(to: point) }
+                else { wave.line(to: point); crest.line(to: point) }
             }
             wave.line(to: NSPoint(x: bounds.maxX, y: bounds.maxY))
             wave.line(to: NSPoint(x: 0, y: bounds.maxY)); wave.close()
-            Pal.accent.withAlphaComponent(0.035 + CGFloat(layer) * 0.015).setFill(); wave.fill()
+            NSGradient(starting: Pal.water.withAlphaComponent(0.14 + CGFloat(layer) * 0.035),
+                       ending: Pal.waterDeep.withAlphaComponent(0.06))?.draw(in: wave, angle: -90)
+            Pal.water.withAlphaComponent(0.18 + CGFloat(layer) * 0.06).setStroke()
+            crest.lineWidth = 0.8; crest.stroke()
+        }
+        // A few slow air bubbles rise through the liquid band and disappear at its crest.
+        for i in 0..<4 {
+            let progress = (phase * 0.16 + Double(i) * 0.27).truncatingRemainder(dividingBy: 1)
+            let x = bounds.width * CGFloat(Double(i + 1) / 5) + CGFloat(sin(phase + Double(i))) * 3
+            let y = bounds.maxY - 4 - CGFloat(progress) * 28
+            let radius: CGFloat = i.isMultiple(of: 2) ? 1.6 : 2.4
+            Pal.water.withAlphaComponent(CGFloat(sin(progress * .pi)) * 0.38).setStroke()
+            let bubble = NSBezierPath(ovalIn: NSRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2))
+            bubble.lineWidth = 0.7; bubble.stroke()
         }
         NSGraphicsContext.restoreGraphicsState()
-        Pal.border.withAlphaComponent(0.65).setStroke(); path.lineWidth = 0.75; path.stroke()
+        Pal.border.withAlphaComponent(Pal.border.alphaComponent * 0.8).setStroke()
+        path.lineWidth = 0.75; path.stroke()
         let drop = NSBezierPath()
         drop.move(to: NSPoint(x: 30, y: 16))
         drop.curve(to: NSPoint(x: 23, y: 29), controlPoint1: NSPoint(x: 27, y: 21), controlPoint2: NSPoint(x: 23, y: 25))
@@ -296,11 +317,15 @@ private final class WaterSpeechPaint: NSView {
         drop.curve(to: NSPoint(x: 30, y: 16), controlPoint1: NSPoint(x: 37, y: 25), controlPoint2: NSPoint(x: 33, y: 21))
         drop.close()
         NSGraphicsContext.saveGraphicsState(); drop.addClip()
-        Pal.accent.withAlphaComponent(0.18).setFill(); drop.fill()
-        let level = CGFloat(sin(phase)) * 1.5 + 26
-        Pal.accent.withAlphaComponent(0.7).setFill()
-        NSRect(x: 22, y: level, width: 16, height: 12).fill()
+        Pal.water.withAlphaComponent(0.12).setFill(); drop.fill()
+        let liquid = NSBezierPath()
+        for x in stride(from: CGFloat(22), through: 38, by: 1) {
+            let point = NSPoint(x: x, y: 27 + sin((x - 22) / 4 + CGFloat(phase)) * 1.6)
+            if x == 22 { liquid.move(to: point) } else { liquid.line(to: point) }
+        }
+        liquid.line(to: NSPoint(x: 38, y: 39)); liquid.line(to: NSPoint(x: 22, y: 39)); liquid.close()
+        NSGradient(starting: Pal.water, ending: Pal.waterDeep)?.draw(in: liquid, angle: -90)
         NSGraphicsContext.restoreGraphicsState()
-        Pal.accent.withAlphaComponent(0.75).setStroke(); drop.lineWidth = 1.25; drop.stroke()
+        Pal.water.withAlphaComponent(0.85).setStroke(); drop.lineWidth = 1.25; drop.stroke()
     }
 }

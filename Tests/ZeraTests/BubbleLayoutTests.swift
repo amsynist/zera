@@ -67,6 +67,17 @@ final class BubbleLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(BubbleView.size(for: String(repeating: "long-repository-name", count: 100), maxWidth: 240).width, 240)
     }
 
+    func testComicTailFacesZeraAndFitsTheTransparentMargin() {
+        let bubble = BubbleView(frame: NSRect(x: 0, y: 0, width: 140, height: 58))
+        for (point, side) in [(NSPoint(x: -30, y: 29), BubbleView.TailSide.left),
+                              (NSPoint(x: 170, y: 29), .right), (NSPoint(x: 70, y: -20), .top)] {
+            bubble.pointToward(point)
+            XCTAssertEqual(bubble.tailSide, side)
+            XCTAssertTrue(bubble.bounds.contains(bubble.speechPath.bounds))
+            XCTAssertTrue(bubble.speechPath.contains(NSPoint(x: 70, y: 29)))
+        }
+    }
+
     func testPanelLeavesRoomForTheShadow() {
         let tag = NSRect(x: 100, y: 100, width: 120, height: 30)
         XCTAssertEqual(BubbleView.panelFrame(for: tag), tag.insetBy(dx: -BubbleView.halo, dy: -BubbleView.halo))
