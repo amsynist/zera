@@ -357,6 +357,15 @@ final class ScreenRenderTests: XCTestCase {
         let counter = WaterGlassCounterView(frame: NSRect(origin: .zero, size: WaterGlassCounterView.size))
         counter.count = 4; counter.goal = 8
         panel(counter, "14b-water-glass")
+        let restButton = WaterDrankButton("Drank", style: .secondary, target: nil, action: #selector(WaterVisitView.drank))
+        restButton.frame = NSRect(x: 0, y: 0, width: 96, height: 32)
+        restButton.advance(at: 1, reduced: false)
+        panel(restButton, "14d-drank-rest")
+        let tapped = WaterDrankButton("Drank", style: .secondary, target: nil, action: #selector(WaterVisitView.drank))
+        tapped.frame = NSRect(x: 0, y: 0, width: 96, height: 32)
+        _ = tapped.sendAction(nil, to: nil)
+        for step in 0..<40 { tapped.advance(at: 1 + Double(step) * 0.03, reduced: false) }
+        panel(tapped, "14e-drank-filled")
         let card = WaterWeekCardView(frame: NSRect(x: 0, y: 0, width: 360, height: 450))
         card.week = (0..<7).map { WaterStats.Day(date: Date().addingTimeInterval(Double($0 - 6) * 86400), count: [8, 7, 8, 6, 8, 5, 8][$0]) }
         card.goal = 8; card.streak = 7
