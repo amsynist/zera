@@ -87,8 +87,63 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         }
     }
 
-    var buddyEnabled: Bool {
+    /// Settings › "Show Zera at the notch".
+    var buddySetting: Bool {
         UserDefaults.standard.object(forKey: Self.buddyDefaultsKey) as? Bool ?? true
+    }
+    /// Whether she's out right now: the setting, unless she's tucked away for a full-screen app.
+    var buddyEnabled: Bool { buddySetting && !fullScreenHidden }
+
+    // MARK: Full screen
+
+    private let fullScreen = FullScreenWatcher()
+    /// Tucked away while another app is full screen (Settings › In full-screen apps).
+    private var fullScreenHidden = false
+    /// Brought back from the menu bar during this full-screen stretch: stay out until it ends.
+    private var fullScreenKeep = false
+    private var fullScreenWork: DispatchWorkItem?
+
+    private func startFullScreenWatch() {
+        fullScreen.screen = { [weak self] in self?.geometry.screen }
+        fullScreen.onChange = { [weak self] _ in self?.fullScreenChanged() }
+        fullScreen.start()
+    }
+
+    /// Full screen came or went, or the setting changed: hide her after the chosen delay, or
+    /// bring her back.
+    func fullScreenChanged() {
+        fullScreenWork?.cancel()
+        fullScreenWork = nil
+        guard fullScreen.isFullScreen, FullScreenHide.enabled, !fullScreenKeep else {
+            if !fullScreen.isFullScreen { fullScreenKeep = false }
+            setFullScreenHidden(false)
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self, self.fullScreen.isFullScreen, !self.fullScreenKeep else { return }
+            self.setFullScreenHidden(true)
+        }
+        fullScreenWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(max(0, FullScreenHide.delay)), execute: work)
+    }
+
+    private func setFullScreenHidden(_ hidden: Bool) {
+        guard hidden != fullScreenHidden else { return }
+        fullScreenHidden = hidden
+        guard buddySetting else { return }
+        setBuddy(visible: !hidden, animated: true)
+        if hidden { hideBubble(); hidePill(); hideLive(); if cardVisible { hideCard() } }
+        else { updateLive() }
+    }
+
+    /// Menu bar › Hide Zera / Bring Zera Back.
+    func setZeraShowing(_ on: Bool) {
+        if on {
+            if fullScreenHidden { fullScreenKeep = true; fullScreenWork?.cancel(); setFullScreenHidden(false) }
+            if !buddySetting { setBuddyEnabled(true) }
+        } else {
+            setBuddyEnabled(false)
+        }
     }
 
     /// What a tap on her opens. A saved value of -1 means Nothing.
@@ -348,6 +403,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
         tasks.start()
         MainActor.assumeIsolated {
             GitHubService.shared.startPolling()
+            startFullScreenWatch()
             ClaudeHookService.shared.start()
             ClaudeActivityService.shared.start()
             ReminderService.shared.start()
@@ -393,7 +449,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     func setBuddyEnabled(_ on: Bool) {
         UserDefaults.standard.set(on, forKey: Self.buddyDefaultsKey)
-        setBuddy(visible: on, animated: true)
+        setBuddy(visible: buddyEnabled, animated: true)
         if !on { hideBubble(); hidePill(); hideLive(); if cardVisible { hideCard() } }
     }
 
@@ -1405,10 +1461,11 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             g.onSummarize = { [weak self] url, question in self?.assist(.ask(question), on: url) }
             c = g
         case .settings:
-            let s = SettingsCard(defaultKind: defaultCard, showingZera: buddyEnabled,
+            let s = SettingsCard(defaultKind: defaultCard, showingZera: buddySetting,
                                  loginEnabled: SMAppService.mainApp.status == .enabled)
             s.onDefaultChanged = { [weak self] k in self?.defaultCard = k }
             s.onShowZeraChanged = { [weak self] on in self?.setBuddyEnabled(on) }
+            s.onFullScreenHideChanged = { [weak self] in self?.fullScreenChanged() }
             s.clipboardShortcut = clipboardShortcut
             s.onClipboardShortcutChanged = { [weak self] c in self?.setClipboardShortcut(c) ?? false }
             // While you record, the current shortcut is paused so pressing it gets recorded.

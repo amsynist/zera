@@ -1,9 +1,10 @@
 import AppKit
 import ServiceManagement
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var controller: ZeraController!
     private var statusItem: NSStatusItem!
+    private var showItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Regular (not accessory) so files can still be dropped on the Dock icon.
@@ -31,6 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(withTitle: "Say Hi 👋", action: #selector(sayHi), keyEquivalent: "").target = self
+        // Hide her, or bring her back (say, after she tucked herself away for a full-screen app).
+        showItem = menu.addItem(withTitle: "Hide Zera", action: #selector(toggleZera), keyEquivalent: "")
+        showItem.target = self
+        menu.delegate = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Home", action: #selector(showHome), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Shelf", action: #selector(showShelf), keyEquivalent: "").target = self
@@ -43,6 +48,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func sayHi() { controller.greet() }
+    @objc private func toggleZera() { controller.setZeraShowing(!controller.buddyEnabled) }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        showItem?.title = controller.buddyEnabled ? "Hide Zera" : "Bring Zera Back"
+    }
     @objc private func showShelf() { controller.show(.shelf) }
     @objc private func showHome() { controller.show(.home) }
     @objc private func showGitHub() { controller.show(.github) }
