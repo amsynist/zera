@@ -170,3 +170,11 @@ Local review files stay under `.build/ui-review`; nothing is published to CI. Be
 - [x] Keep only the flowing liquid, crests, bubbles and droplet contents blue; inset the water using shared spacing so the card border retains its theme color.
 - [x] Inspect the local motion preview; all 11 water behavior and rendering checks passed. Layout, replies and reminder intervals are unchanged.
 - [x] Universal release build passed.
+
+### Follow-up — liquid reply button
+
+- [x] Replace the solid droplet on **Took a sip** with a light checkmark; use the shared button family and 32-point height for both replies, with equal widths and shared spacing.
+- [x] Add a diagonal blue liquid front inside the acknowledgement button, with travelling ripples and a smooth hover/focus fill and settle. Keep its themed rim and shared typography.
+- [x] Reuse the existing companion animation clock and freeze movement with Reduce Motion; introduce no new timers.
+- [x] Review idle and hover renders and the motion preview; all 11 water checks passed, and the updated preview verified the actual button click completes acknowledgement and return.
+- [x] Universal release build passed.

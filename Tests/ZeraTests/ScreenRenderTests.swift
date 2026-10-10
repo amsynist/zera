@@ -122,11 +122,18 @@ final class ScreenRenderTests: XCTestCase {
         window.contentView = scene; window.backgroundColor = desk; window.appearance = NSAppearance(named: .darkAqua)
         window.orderFrontRegardless(); water.layoutSubtreeIfNeeded(); water.begin()
         defer { window.orderOut(nil); window.contentView = nil }
+        let reply = try XCTUnwrap(water.subviews.flatMap { $0.subviews }.compactMap { $0 as? PRActionButton }.first)
         let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(out.appendingPathComponent("zera-water-visit.gif") as CFURL, "com.compuserve.gif" as CFString, 175, nil))
         CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
         let started = CACurrentMediaTime()
         for frame in 0..<175 {
-            if frame == 80 { water.acknowledge() }
+            if frame == 48 || frame == 74 {
+                let event = try XCTUnwrap(NSEvent.enterExitEvent(with: frame == 48 ? .mouseEntered : .mouseExited,
+                    location: .zero, modifierFlags: [], timestamp: CACurrentMediaTime(), windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+                if frame == 48 { reply.mouseEntered(with: event) } else { reply.mouseExited(with: event) }
+            }
+            if frame == 80 { reply.performClick(nil) }
             let now = CACurrentMediaTime()
             water.advanceAnimation(at: now); water.figure.advanceAnimation(at: now)
             scene.display(); CATransaction.flush()
@@ -134,6 +141,7 @@ final class ScreenRenderTests: XCTestCase {
             scene.cacheDisplay(in: scene.bounds, to: bitmap)
             CGImageDestinationAddImage(destination, try XCTUnwrap(bitmap.cgImage), [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.04]] as CFDictionary)
             if frame == 45, let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: out.appendingPathComponent("zera-water-waiting.png")) }
+            if frame == 70, let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: out.appendingPathComponent("zera-water-button-hover.png")) }
             if frame == 95, let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: out.appendingPathComponent("zera-water-thanks.png")) }
             let remaining = started + Double(frame + 1) * 0.04 - CACurrentMediaTime()
             if remaining > 0 { try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000)) }

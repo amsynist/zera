@@ -138,7 +138,7 @@ final class WaterVisitView: NSView, ZeraAnimating {
     private let heading = rlabel(Typo.paneTitle, Pal.text)
     private let badge = rlabel(Typo.sectionLabel, Pal.accent)
     private var okay: WaterReplyButton!
-    private var moment: CardButton!
+    private var moment: PRActionButton!
     private(set) var quietUntil: TimeInterval = 0
     private(set) var waitingExpression: ZeraExpression = .neutral
     private var lastPrompt = -1
@@ -152,12 +152,12 @@ final class WaterVisitView: NSView, ZeraAnimating {
         heading.stringValue = "A little water break?"
         badge.attributedStringValue = Typo.sectionText("WATER BREAK", color: Pal.accent)
         glass.addSubview(badge); glass.addSubview(heading); glass.addSubview(text)
-        okay = WaterReplyButton("Took a sip!", style: .primary, symbol: "drop.fill", target: self, action: #selector(acknowledge))
+        okay = WaterReplyButton("Took a sip", style: .primary, symbol: "checkmark", target: self, action: #selector(acknowledge))
         okay.onHover = { [weak self] hovered in
             guard let self, self.motion.stage == .waiting else { return }
             self.figure.expression = hovered ? .happy : self.waitingExpression
         }
-        moment = CardButton("One sec…", style: .secondary, symbol: "clock", target: self, action: #selector(oneMoment))
+        moment = PRActionButton("One sec…", style: .secondary, symbol: "clock", target: self, action: #selector(oneMoment))
         glass.addSubview(okay); glass.addSubview(moment)
         figure.animationPadding = Self.edge
         figure.pose = "boba"; addSubview(figure)
@@ -196,6 +196,7 @@ final class WaterVisitView: NSView, ZeraAnimating {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         motion.advance(at: now, reduced: reduced)
         glass.advance(at: now, reduced: reduced)
+        if !okay.isHidden { okay.advance(at: now, reduced: reduced) }
         let point = motion.position(at: now, from: departure, to: landing)
         figure.bodyMotion = reduced || (motion.stage == .waiting && now < quietUntil) ? .init() : motion.body(at: now, direction: bubbleOnLeft ? -1 : 1)
         if motion.stage == .arriving || motion.stage == .returning || oldStage != motion.stage { onPosition?(point) }
@@ -226,8 +227,9 @@ final class WaterVisitView: NSView, ZeraAnimating {
         badge.frame = NSRect(x: 44, y: Space.l, width: 284, height: 18)
         heading.frame = NSRect(x: Space.xxl, y: 48, width: 304, height: 24)
         text.frame = NSRect(x: Space.xxl, y: 80, width: 304, height: 36)
-        okay.frame = NSRect(x: Space.xxl, y: 128, width: 148, height: 36)
-        moment.frame = NSRect(x: okay.frame.maxX + Space.m, y: 128, width: 144, height: 36)
+        let replyWidth = (glass.bounds.width - Space.xxl * 2 - Space.m) / 2
+        okay.frame = NSRect(x: Space.xxl, y: 128, width: replyWidth, height: Metrics.button)
+        moment.frame = NSRect(x: okay.frame.maxX + Space.m, y: 128, width: replyWidth, height: Metrics.button)
     }
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point), hit !== self else { return nil }
@@ -246,8 +248,49 @@ final class WaterVisitView: NSView, ZeraAnimating {
 
 private final class WaterReplyButton: PRActionButton {
     var onHover: ((Bool) -> Void)?
-    override func mouseEntered(with event: NSEvent) { super.mouseEntered(with: event); onHover?(true) }
-    override func mouseExited(with event: NSEvent) { super.mouseExited(with: event); onHover?(false) }
+    private var waterHovered = false
+    private var fill: CGFloat = 0.12
+    private var phase: TimeInterval = 0
+    private var lastTime: TimeInterval?
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event); waterHovered = true; onHover?(true)
+    }
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event); waterHovered = false; onHover?(false)
+    }
+
+    func advance(at time: TimeInterval, reduced: Bool) {
+        let elapsed = min(0.1, max(0, time - (lastTime ?? time)))
+        lastTime = time
+        let target: CGFloat = isHighlighted ? 1 : (waterHovered || window?.firstResponder === self ? 0.85 : 0.12)
+        fill += (target - fill) * (reduced ? 1 : CGFloat(1 - exp(-elapsed * 8)))
+        phase = reduced ? 0 : time * 1.4
+        needsDisplay = true
+    }
+
+    override func drawContentBackground(in rect: NSRect) {
+        let radius = min(Radius.m - 1, rect.height / 2)
+        let clip = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+        NSGraphicsContext.saveGraphicsState(); clip.addClip()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        let water = NSBezierPath(), crest = NSBezierPath()
+        let flipped = NSGraphicsContext.current?.isFlipped ?? false
+        let bottom = flipped ? rect.maxY : rect.minY
+        for x in stride(from: rect.minX, through: rect.maxX + 2, by: 2) {
+            // An angled rising front, softened by two travelling ripples.
+            let level = rect.height * fill + (rect.midX - x) * 0.12
+                + sin(x / 17 + CGFloat(phase)) * 1.4 + sin(x / 9 - CGFloat(phase) * 0.7) * 0.6
+            let point = NSPoint(x: x, y: flipped ? rect.maxY - level : rect.minY + level)
+            if x == rect.minX { water.move(to: point); crest.move(to: point) }
+            else { water.line(to: point); crest.line(to: point) }
+        }
+        water.line(to: NSPoint(x: rect.maxX + 2, y: bottom))
+        water.line(to: NSPoint(x: rect.minX, y: bottom)); water.close()
+        NSGradient(starting: Pal.water.withAlphaComponent(0.32),
+                   ending: Pal.waterDeep.withAlphaComponent(0.18))?.draw(in: water, angle: flipped ? -90 : 90)
+        Pal.water.withAlphaComponent(0.48).setStroke(); crest.lineWidth = 0.8; crest.stroke()
+    }
 }
 
 private final class WaterSpeechGlass: NSView {
