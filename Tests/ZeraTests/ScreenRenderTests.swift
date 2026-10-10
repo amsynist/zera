@@ -142,6 +142,38 @@ final class ScreenRenderTests: XCTestCase {
         XCTAssertEqual(water.motion.stage, .finished)
     }
 
+    /// Accelerated local review of the six waiting lines; production timing stays 12s.
+    func testRenderWaterWaitingExpressions() async throws {
+        guard ProcessInfo.processInfo.environment["ZERA_RENDER_WATER"] != nil else { throw XCTSkip("set ZERA_RENDER_WATER") }
+        let scene = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 260))
+        let water = WaterVisitView(frame: NSRect(x: 65, y: 40, width: 390, height: 180))
+        scene.addSubview(water)
+        let window = NSWindow(contentRect: scene.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = scene; window.backgroundColor = desk; window.appearance = NSAppearance(named: .darkAqua)
+        window.orderFrontRegardless(); water.layoutSubtreeIfNeeded()
+        defer { window.orderOut(nil); window.contentView = nil }
+        let started = CACurrentMediaTime()
+        water.begin(at: started - WaterVisitMotion.arrivalDuration)
+        water.advanceAnimation(at: started)
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(out.appendingPathComponent("zera-water-patience.gif") as CFURL, "com.compuserve.gif" as CFString, 180, nil))
+        CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        for frame in 0..<180 {
+            let phrase = frame / 30, beat = Double(frame % 30) / 12.5
+            let now = started + Double(phrase) * 12 + beat
+            water.advanceAnimation(at: now); water.figure.speak(for: 120); water.figure.advanceAnimation(at: now)
+            scene.display(); CATransaction.flush()
+            let bitmap = try XCTUnwrap(scene.bitmapImageRepForCachingDisplay(in: scene.bounds))
+            scene.cacheDisplay(in: scene.bounds, to: bitmap)
+            CGImageDestinationAddImage(destination, try XCTUnwrap(bitmap.cgImage), [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.08]] as CFDictionary)
+            if frame % 30 == 15, let png = bitmap.representation(using: .png, properties: [:]) {
+                try png.write(to: out.appendingPathComponent("zera-water-expression-\(phrase).png"))
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        XCTAssertEqual(water.motion.stage, .waiting)
+    }
+
     /// On-demand preview of the hanging rig, stepping the production frame update.
     func testRenderZeraFace() async throws {
         guard ProcessInfo.processInfo.environment["ZERA_RENDER_FACE"] != nil else {

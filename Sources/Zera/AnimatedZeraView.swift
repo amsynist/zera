@@ -3,6 +3,12 @@ import AppKit
 /// Interactive replacement for decorative sprites. Every screen uses the
 /// same clock, pointer response, breathing, pose cross-fade and tap reaction.
 final class AnimatedZeraView: NSView, ZeraAnimating {
+    /// Optional acting layered around the feet; identity preserves every other screen.
+    struct BodyMotion {
+        var x: CGFloat = 0, y: CGFloat = 0, angle: CGFloat = 0
+        var sx: CGFloat = 1, sy: CGFloat = 1
+    }
+    var bodyMotion = BodyMotion()
     var alignRight = false
     var expression: ZeraExpression?
     private var speakingUntil: TimeInterval = -10
@@ -82,6 +88,12 @@ final class AnimatedZeraView: NSView, ZeraAnimating {
         let bounce = !reduced && elapsed >= 0 && elapsed < 0.5 ? CGFloat(sin(elapsed / 0.5 * .pi)) * min(5, bounds.height * 0.04) : 0
         let breathe = reduced ? 0 : CGFloat(sin(phase * 2.2)) * 0.008
         ctx.saveGState()
+        if !reduced {
+            ctx.translateBy(x: bounds.midX + bodyMotion.x, y: 3 + bodyMotion.y)
+            ctx.rotate(by: bodyMotion.angle * .pi / 180)
+            ctx.scaleBy(x: bodyMotion.sx, y: bodyMotion.sy)
+            ctx.translateBy(x: -bounds.midX, y: -3)
+        }
         ctx.translateBy(x: bounds.midX, y: bounds.midY + bounce + motion.dy)
         ctx.rotate(by: reduced ? 0 : (-gaze.x * 2 + motion.angle) * .pi / 180)
         ctx.scaleBy(x: motion.sx * (1 + breathe + hover * 0.018), y: motion.sy * (1 - breathe + hover * 0.018))
