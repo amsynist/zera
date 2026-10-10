@@ -53,6 +53,22 @@ The app opener is excluded from this change, as requested.
 - [x] Inspect waiting/thank-you renders and a seven-second local motion preview.
 - [ ] User review of the water visit in everyday use, including multiple displays.
 
+## Phase 5 — Website companion
+
+- [x] Hang Zera from the top-center notch, with a smaller perch while scrolling.
+- [x] Reuse the app's blank-face artwork and facial anchors; draw live glossy eyes and mouth as SVG layers.
+- [x] Smooth bounded cursor following, breathing, blinking, hover response and tap bounce.
+- [x] Four quick taps trigger a huff, then settle back; support touch and keyboard activation.
+- [x] Refine the hero, shared typography, quiet gradient buttons and glass surfaces.
+- [x] Slow the screen tour; add pause/play, arrow-key navigation and accessible tab selection.
+- [x] Pause the mascot clock in hidden tabs; stop idle motion for Reduce Motion.
+- [x] Check desktop and narrow mobile layouts, asset paths, script syntax and interaction lifecycle.
+- [ ] User review of the local website preview.
+- [ ] Public deployment after merging the website changes to `main` (the Pages workflow deploys from `main`).
+
+Website review: `python3 -m http.server 8768 --bind 127.0.0.1 --directory site`.
+Website checks: `node scripts/check-site.mjs`.
+
 ## Local review
 
 ```sh
@@ -86,3 +102,5 @@ Header base prompt (replace NAME with the sprite name):
 Water base prompt:
 
 > Prepare the attached friendly Zera character holding a boba cup for a layered facial animation. Make a clean blank face layer: replace the eye, eyebrow and mouth details with matching soft cream and pink skin shading. Keep the character, expression silhouette, tuft, cheeks, clothing, cup, straw, proportions, pose and transparent background exactly like the original. The drink and straw stay intact. No additional margins, text or pose changes.
+
+Website asset `site/assets/zera-hang-base.png` is a 528-pixel PNG derivative of the existing `hang_smile_base` artwork (168 KB); it uses the same provenance above. Website animation uses native SVG and browser APIs, with no new dependency.
