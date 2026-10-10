@@ -19,10 +19,10 @@ final class ScreenRenderTests: XCTestCase {
 
     // MARK: Capturing
 
-    private func shot(_ v: NSView, _ name: String, afterShown: (() -> Void)? = nil) {
+    private func shot(_ v: NSView, _ name: String, background: NSColor? = nil, afterShown: (() -> Void)? = nil) {
         if let only = ProcessInfo.processInfo.environment["ZERA_RENDER_ONLY"], !only.split(separator: ",").contains(Substring(name)) { return }
         let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 60, y: 60), size: v.frame.size), styleMask: .borderless, backing: .buffered, defer: false)
-        w.backgroundColor = desk
+        w.backgroundColor = background ?? desk
         w.appearance = NSAppearance(named: .darkAqua)
         w.contentView = v
         w.orderFrontRegardless()
@@ -303,8 +303,15 @@ final class ScreenRenderTests: XCTestCase {
                     safeFrame: NSRect(x: 8, y: 8, width: 884, height: 532 - band), obstacles: obstacles)
                 let panel = BubbleView.panelFrame(for: tag)
                 let bubble = BubbleView(frame: NSRect(x: panel.minX, y: 540 - panel.maxY, width: panel.width, height: panel.height))
-                bubble.text = "Yes? 👀"; iv.addSubview(bubble)
-                shot(iv, "hover-\(style.title.lowercased())-\(band == 34 ? "notched" : "notchless")")
+                bubble.text = "Yes? 👀"
+                bubble.pointToward(NSPoint(x: figure.midX - panel.minX, y: panel.maxY - (figure.minY + figure.height * 0.45)))
+                iv.addSubview(bubble)
+                let name = "hover-\(style.title.lowercased())-\(band == 34 ? "notched" : "notchless")"
+                shot(iv, name)
+                if style == .arc && band == 34 {
+                    shot(iv, "hover-arc-white", background: .white)
+                    shot(iv, "hover-arc-dark", background: ThemeStore.shared.current.glassBottom)
+                }
             }
         }
     }

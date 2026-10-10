@@ -145,7 +145,7 @@ final class BuddyView: NSView {
     }
 }
 
-/// A quiet, click-through speech capsule beside Zera. Its transparent margin
+/// A quiet, click-through comic speech bubble beside Zera. Its transparent margin
 /// reserves room for a soft shadow without adding a second outline.
 final class BubbleView: NSView {
     var text: String = "" {
@@ -165,7 +165,7 @@ final class BubbleView: NSView {
     static let vPad: CGFloat = 8
     static let dot: CGFloat = 5
     static let dotGap: CGFloat = Space.s
-    static let radius: CGFloat = 16
+    static let radius: CGFloat = Radius.m
     /// Widest the tag gets before it wraps to a second line.
     static let maxWidth: CGFloat = 280
     static let maxLines = 2
@@ -234,6 +234,55 @@ final class BubbleView: NSView {
     /// The panel around a tag frame, with room for the glow.
     static func panelFrame(for tag: NSRect) -> NSRect { tag.insetBy(dx: -halo, dy: -halo) }
 
+    enum TailSide { case left, right, top }
+    private(set) var tailSide: TailSide = .left
+    private var tailOffset: CGFloat = 0
+    static let tailLength: CGFloat = 7
+
+    /// Target in this view's flipped coordinates; the tail always faces Zera.
+    func pointToward(_ point: NSPoint) {
+        let b = body
+        tailSide = point.x < b.minX ? .left : (point.x > b.maxX ? .right : .top)
+        tailOffset = tailSide == .top ? point.x : point.y
+        needsDisplay = true
+    }
+
+    /// One continuous silhouette: no separate triangle outline or seam at its base.
+    var speechPath: NSBezierPath {
+        let b = body.insetBy(dx: 0.5, dy: 0.5)
+        let r = min(Self.radius, b.height / 2 - 5), k: CGFloat = 0.5523
+        let half: CGFloat = 4
+        let y = max(b.minY + r + half, min(b.maxY - r - half, tailOffset == 0 ? b.midY : tailOffset))
+        let x = max(b.minX + r + half, min(b.maxX - r - half, tailOffset == 0 ? b.midX : tailOffset))
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: b.minX + r, y: b.minY))
+        if tailSide == .top {
+            p.line(to: NSPoint(x: x - half, y: b.minY))
+            p.line(to: NSPoint(x: x, y: b.minY - Self.tailLength))
+            p.line(to: NSPoint(x: x + half, y: b.minY))
+        }
+        p.line(to: NSPoint(x: b.maxX - r, y: b.minY))
+        p.curve(to: NSPoint(x: b.maxX, y: b.minY + r), controlPoint1: NSPoint(x: b.maxX - r + k * r, y: b.minY), controlPoint2: NSPoint(x: b.maxX, y: b.minY + r - k * r))
+        if tailSide == .right {
+            p.line(to: NSPoint(x: b.maxX, y: y - half))
+            p.line(to: NSPoint(x: b.maxX + Self.tailLength, y: y))
+            p.line(to: NSPoint(x: b.maxX, y: y + half))
+        }
+        p.line(to: NSPoint(x: b.maxX, y: b.maxY - r))
+        p.curve(to: NSPoint(x: b.maxX - r, y: b.maxY), controlPoint1: NSPoint(x: b.maxX, y: b.maxY - r + k * r), controlPoint2: NSPoint(x: b.maxX - r + k * r, y: b.maxY))
+        p.line(to: NSPoint(x: b.minX + r, y: b.maxY))
+        p.curve(to: NSPoint(x: b.minX, y: b.maxY - r), controlPoint1: NSPoint(x: b.minX + r - k * r, y: b.maxY), controlPoint2: NSPoint(x: b.minX, y: b.maxY - r + k * r))
+        if tailSide == .left {
+            p.line(to: NSPoint(x: b.minX, y: y + half))
+            p.line(to: NSPoint(x: b.minX - Self.tailLength, y: y))
+            p.line(to: NSPoint(x: b.minX, y: y - half))
+        }
+        p.line(to: NSPoint(x: b.minX, y: b.minY + r))
+        p.curve(to: NSPoint(x: b.minX + r, y: b.minY), controlPoint1: NSPoint(x: b.minX, y: b.minY + r - k * r), controlPoint2: NSPoint(x: b.minX + r - k * r, y: b.minY))
+        p.close(); p.lineJoinStyle = .round
+        return p
+    }
+
     private var body: NSRect { bounds.insetBy(dx: Self.halo, dy: Self.halo) }
 
     override func layout() {
@@ -246,12 +295,12 @@ final class BubbleView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let b = body.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: b, xRadius: Self.radius, yRadius: Self.radius)
+        let path = speechPath
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.22)
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.12)
         shadow.shadowOffset = NSSize(width: 0, height: -2)
-        shadow.shadowBlurRadius = 6
+        shadow.shadowBlurRadius = 4
         shadow.set()
         Neon.fillBottom.setFill(); path.fill()
         NSGraphicsContext.restoreGraphicsState()

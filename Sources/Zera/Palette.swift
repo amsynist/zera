@@ -244,6 +244,9 @@ struct Palette {
     var accent: NSColor { isDark ? t.accent : rgb(0.447, 0.310, 0.980) }
     /// The accent washed into the surface: selected chips, tabs and rows.
     var accentSoft: NSColor { isDark ? (t.surface.blended(withFraction: 0.16, of: t.accent) ?? t.surface) : rgb(0.88, 0.84, 1.0) }
+    /// Water keeps its blue identity across themes; the surrounding glass remains themed.
+    var water: NSColor { rgb(0.24, 0.67, 0.98) }
+    var waterDeep: NSColor { rgb(0.08, 0.39, 0.82) }
     /// The far end of the accent gradient.
     var accentDeep: NSColor { isDark ? t.accentDeep : rgb(0.560, 0.300, 0.960) }
     /// Edge for selected / highlighted surfaces.

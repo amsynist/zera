@@ -738,6 +738,11 @@ final class IslandTab: NSView {
     init(kind: CardKind) {
         self.kind = kind
         super.init(frame: .zero)
+        wantsLayer = true
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowRadius = 7
+        layer?.shadowOffset = .zero
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(kind.title)
@@ -746,8 +751,8 @@ final class IslandTab: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// Bloomed around Zera: a larger node with its name under it.
-    var tiled = false { didSet { if tiled != oldValue { needsDisplay = true } } }
-    var bloomed = false { didSet { if bloomed != oldValue { needsDisplay = true } } }
+    var tiled = false { didSet { if tiled != oldValue { needsDisplay = true; needsLayout = true } } }
+    var bloomed = false { didSet { if bloomed != oldValue { needsDisplay = true; needsLayout = true } } }
     static let labelH: CGFloat = 20
 
     /// The node's circle inside its frame (the frame leaves room for the badge, and in the
@@ -762,6 +767,16 @@ final class IslandTab: NSView {
         return NSRect(x: (bounds.width - d) / 2, y: (h - d) / 2, width: d, height: d)
     }
 
+    override func layout() {
+        super.layout()
+        // Compositor shadow follows the disc, outside the view's drawing buffer.
+        // Drawing a blur in draw() clips it to the rectangular node backing.
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        layer?.shadowPath = CGPath(ellipseIn: disc, transform: nil)
+        layer?.shadowOpacity = bloomed && !tiled ? 0.22 : 0
+        CATransaction.commit()
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let c = disc
         guard c.width > 4 else { return }
@@ -773,13 +788,12 @@ final class IslandTab: NSView {
             NSGradient(starting: t.glassTop, ending: t.glassBottom)?.draw(in: card, angle: -90)
             (hovered ? t.accent.withAlphaComponent(0.6) : t.border).setStroke()
             card.lineWidth = 0.75; card.stroke()
-        } else if bloomed {
-            Neon.glowing(NSColor.black.withAlphaComponent(0.55), blur: 18) { t.glassBottom.setFill(); circle.fill() }
         }
         // A glass bead: lit a little from the top with the accent.
         let top = t.glassTop.blended(withFraction: hovered ? 0.24 : 0.14, of: t.accent) ?? t.glassTop
         NSGradient(starting: top, ending: t.glassBottom)?.draw(in: circle, angle: -90)
         (hovered && !isOn ? t.accent.withAlphaComponent(0.7) : t.border.withAlphaComponent(min(1, t.border.alphaComponent * 1.6))).setStroke()
+        if bloomed && !tiled { t.accent.withAlphaComponent(hovered ? 0.7 : 0.4).setStroke() }
         circle.lineWidth = 1; circle.stroke()
 
         let ink = isOn || hovered ? Neon.text : Neon.textDim
@@ -826,9 +840,16 @@ final class IslandTab: NSView {
         if bloomed {
             let name = kind == .github ? "Pull requests" : kind.title
             let a: [NSAttributedString.Key: Any] = [.font: Typo.control,
-                                                    .foregroundColor: hovered ? Neon.text : Neon.textDim]
+                                                    .foregroundColor: !tiled || hovered ? Neon.text : Neon.textDim]
             let sz = (name as NSString).size(withAttributes: a)
-            let y = tiled ? bounds.maxY - Space.s - sz.height : bounds.maxY - Self.labelH + 4
+            let y = tiled ? bounds.maxY - Space.s - sz.height : bounds.maxY - Self.labelH + (Self.labelH - sz.height) / 2
+            if !tiled {
+                let width = min(bounds.width - 1, ceil(sz.width) + Space.m)
+                let plate = NSBezierPath(roundedRect: NSRect(x: bounds.midX - width / 2,
+                    y: bounds.maxY - Self.labelH, width: width, height: Self.labelH), xRadius: Radius.s, yRadius: Radius.s)
+                NSGradient(starting: t.glassTop, ending: t.glassBottom)?.draw(in: plate, angle: -90)
+                t.border.setStroke(); plate.lineWidth = 0.75; plate.stroke()
+            }
             (name as NSString).draw(at: NSPoint(x: bounds.midX - sz.width / 2, y: y), withAttributes: a)
         }
     }
