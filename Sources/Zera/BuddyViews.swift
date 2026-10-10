@@ -145,9 +145,8 @@ final class BuddyView: NSView {
     }
 }
 
-/// Zera's caption: a small tag in the wings' navy glass that hangs under her feet, with a
-/// tail pointing up at her and a tone dot for her mood. Lives in its own click-through panel;
-/// the panel is `halo` larger than the tag on every side so the glow is not clipped.
+/// A quiet, click-through speech capsule beside Zera. Its transparent margin
+/// reserves room for a soft shadow without adding a second outline.
 final class BubbleView: NSView {
     var text: String = "" {
         didSet {
@@ -158,26 +157,22 @@ final class BubbleView: NSView {
     }
     /// Cyan for a neutral line, green when she's happy, amber while she's busy, red when upset.
     var tone: NSColor = Neon.cyan { didSet { needsDisplay = true } }
-    /// Where the tail points, in this view's x coordinates.
-    var tailX: CGFloat = 0 { didSet { needsDisplay = true } }
     private let label = NSTextField(wrappingLabelWithString: "")
 
-    // v2 (the design's whisper): a capsule, 14 pt sides, a 9 pt glowing dot, semibold text.
-    static let font = Theme.font(13.5, .semibold)
+    static let font = Typo.control
     static let leadPad: CGFloat = 13
     static let trailPad: CGFloat = 15
     static let vPad: CGFloat = 8
-    static let dot: CGFloat = 8
-    static let dotGap: CGFloat = 9
+    static let dot: CGFloat = 5
+    static let dotGap: CGFloat = Space.s
     static let radius: CGFloat = 16
-    static let tail: CGFloat = 6
     /// Widest the tag gets before it wraps to a second line.
     static let maxWidth: CGFloat = 280
     static let maxLines = 2
     /// Space between her (or the wings) and the tag.
     static let gap: CGFloat = 8
     /// Room around the tag for its halo and shadow.
-    static let halo: CGFloat = 20
+    static let halo: CGFloat = Space.m
     // NSTextField reserves two points at either side of its text cell.
     private static let cellInset: CGFloat = 4
     private static var textLead: CGFloat { leadPad + dot + dotGap }
@@ -212,22 +207,28 @@ final class BubbleView: NSView {
         return NSSize(width: ceil(textWidth + textLead + trailPad), height: lines * lineHeight + vPad * 2)
     }
 
-    /// Screen coordinates for the tag: centred under `bodyX`, `gap` below her feet and below any
-    /// obstacle it would touch (the wings, the island), clamped inside `safeFrame`, which already
-    /// leaves out the menu bar.
+    /// Prefer a capsule beside her face, below a hover rail when necessary.
+    /// Full-width wings fall back to the space below them; never cover another UI.
     static func frame(for size: NSSize, figure: NSRect, bodyX: CGFloat? = nil, safeFrame: NSRect,
                       obstacles: [NSRect] = []) -> NSRect {
         let cx = bodyX ?? figure.midX
-        let x = max(safeFrame.minX, min(safeFrame.maxX - size.width, cx - size.width / 2))
-        var top = min(figure.minY, safeFrame.maxY) - gap
-        // Push down past anything in the way; a few passes settle stacked obstacles.
-        for _ in 0..<3 {
-            let r = NSRect(x: x, y: top - size.height, width: size.width, height: size.height)
-            guard let hit = obstacles.first(where: { $0.intersects(r.insetBy(dx: 0, dy: -gap + 0.5)) }) else { break }
-            top = hit.minY - gap
+        func clearFrame(x: CGFloat, top: CGFloat) -> NSRect {
+            var y = min(top, safeFrame.maxY) - size.height
+            for _ in 0..<4 {
+                let candidate = NSRect(x: x, y: y, width: size.width, height: size.height)
+                guard let hit = obstacles.first(where: { $0.insetBy(dx: -gap, dy: -gap).intersects(candidate) }) else { break }
+                y = hit.minY - gap - size.height
+            }
+            return NSRect(x: x.rounded(), y: max(safeFrame.minY, y).rounded(), width: size.width, height: size.height)
         }
-        let y = max(safeFrame.minY, top - size.height)
-        return NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
+        let top = figure.minY + figure.height * 0.45 + size.height / 2
+        for x in [cx + figure.width / 2 + gap, cx - figure.width / 2 - gap - size.width] {
+            let candidate = clearFrame(x: x, top: top)
+            if safeFrame.contains(candidate), candidate.maxY >= figure.minY + gap,
+               !obstacles.contains(where: { $0.intersects(candidate) }) { return candidate }
+        }
+        let x = max(safeFrame.minX, min(safeFrame.maxX - size.width, cx - size.width / 2))
+        return clearFrame(x: x, top: min(figure.minY, safeFrame.maxY) - gap)
     }
 
     /// The panel around a tag frame, with room for the glow.
@@ -243,70 +244,23 @@ final class BubbleView: NSView {
                              height: b.height - Self.vPad * 2)
     }
 
-    /// One continuous outline: the capsule with the tail rising out of its top edge, so the
-    /// border runs round the tail instead of cutting across its base.
-    private func outline(_ b: NSRect, tailX tx: CGFloat) -> NSBezierPath {
-        let r = min(Self.radius, b.height / 2), t = Self.tail
-        let p = NSBezierPath()
-        p.move(to: NSPoint(x: b.minX + r, y: b.minY))
-        p.line(to: NSPoint(x: tx - t, y: b.minY))
-        p.line(to: NSPoint(x: tx, y: b.minY - t))
-        p.line(to: NSPoint(x: tx + t, y: b.minY))
-        p.line(to: NSPoint(x: b.maxX - r, y: b.minY))
-        p.appendArc(from: NSPoint(x: b.maxX, y: b.minY), to: NSPoint(x: b.maxX, y: b.minY + r), radius: r)
-        p.line(to: NSPoint(x: b.maxX, y: b.maxY - r))
-        p.appendArc(from: NSPoint(x: b.maxX, y: b.maxY), to: NSPoint(x: b.maxX - r, y: b.maxY), radius: r)
-        p.line(to: NSPoint(x: b.minX + r, y: b.maxY))
-        p.appendArc(from: NSPoint(x: b.minX, y: b.maxY), to: NSPoint(x: b.minX, y: b.maxY - r), radius: r)
-        p.line(to: NSPoint(x: b.minX, y: b.minY + r))
-        p.appendArc(from: NSPoint(x: b.minX, y: b.minY), to: NSPoint(x: b.minX + r, y: b.minY), radius: r)
-        p.close()
-        p.lineJoinStyle = .round
-        return p
-    }
-
     override func draw(_ dirtyRect: NSRect) {
         let b = body.insetBy(dx: 0.5, dy: 0.5)
-        let r = min(Self.radius, b.height / 2)
-        let tx = max(b.minX + r + Self.tail + 2, min(b.maxX - r - Self.tail - 2, tailX))
-        let path = outline(b, tailX: tx)
-
-        // A soft drop shadow, then the accent glow round it (the design's whisper).
+        let path = NSBezierPath(roundedRect: b, xRadius: Self.radius, yRadius: Self.radius)
         NSGraphicsContext.saveGraphicsState()
-        let shade = NSShadow()
-        shade.shadowColor = NSColor.black.withAlphaComponent(0.5)
-        shade.shadowOffset = NSSize(width: 0, height: -3)
-        shade.shadowBlurRadius = 10
-        shade.set()
-        Neon.fillBottom.withAlphaComponent(1).setFill()
-        path.fill()
-        let glow = NSShadow()
-        glow.shadowColor = Neon.accent.withAlphaComponent(0.3)
-        glow.shadowBlurRadius = 16
-        glow.set()
-        path.fill()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.22)
+        shadow.shadowOffset = NSSize(width: 0, height: -2)
+        shadow.shadowBlurRadius = 6
+        shadow.set()
+        Neon.fillBottom.setFill(); path.fill()
         NSGraphicsContext.restoreGraphicsState()
-
-        NSGradient(starting: Neon.fillTop.withAlphaComponent(1), ending: Neon.fillBottom.withAlphaComponent(1))?.draw(in: path, angle: 90)
-        // A hairline of black just outside the edge keeps it crisp on any wallpaper.
-        NSColor.black.withAlphaComponent(0.6).setStroke()
-        path.lineWidth = 2.5
-        path.stroke()
-        Neon.edge.setStroke()
-        path.lineWidth = 1
-        path.stroke()
-
-        // Mood dot, centred on the first line.
+        NSGradient(starting: Neon.fillTop, ending: Neon.fillBottom)?.draw(in: path, angle: 90)
+        Neon.edge.withAlphaComponent(0.45).setStroke(); path.lineWidth = 0.75; path.stroke()
         let d = Self.dot
         let dotRect = NSRect(x: b.minX + Self.leadPad, y: b.minY + Self.vPad + (Self.lineHeight - d) / 2, width: d, height: d)
-        NSGraphicsContext.saveGraphicsState()
-        let dotGlow = NSShadow()
-        dotGlow.shadowColor = tone.withAlphaComponent(0.9)
-        dotGlow.shadowBlurRadius = 8
-        dotGlow.set()
-        tone.setFill()
+        tone.withAlphaComponent(0.85).setFill()
         NSBezierPath(ovalIn: dotRect).fill()
-        NSGraphicsContext.restoreGraphicsState()
     }
 }
 

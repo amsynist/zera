@@ -65,6 +65,22 @@ final class SettingsLayoutTests: XCTestCase {
         menuChoice.onChange?(DropdownStyle.native.rawValue)
         XCTAssertEqual(DropdownStyle.current, .native)
     }
+    @MainActor
+    func testHoverMenuChoicePersistsAndUpdatesNavigation() throws {
+        let saved = UserDefaults.standard.object(forKey: "zera.hoverMenuStyle")
+        defer { UserDefaults.standard.set(saved, forKey: "zera.hoverMenuStyle") }
+        let settings = SettingsCard(defaultKind: .home, showingZera: true, loginEnabled: false)
+        var picked: HoverMenuStyle?
+        settings.onHoverMenuChanged = { picked = $0 }
+        let choice = try XCTUnwrap(descendants(settings).compactMap { $0 as? ZeraSelect }
+            .first { $0.accessibilityLabel() == "Hover menu" })
+        for style in HoverMenuStyle.allCases {
+            choice.select(style.rawValue); choice.onChange?(style.rawValue)
+            XCTAssertEqual(picked, style)
+            XCTAssertEqual(HoverMenuStyle.current, style)
+        }
+    }
+
     /// Every pane fits in the island; taller content scrolls inside it instead of being cut off.
     func testEveryPaneFitsTheIsland() {
         let s = SettingsCard(defaultKind: .shelf, showingZera: true, loginEnabled: false)

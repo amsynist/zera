@@ -28,7 +28,7 @@
 
 ## What it does
 
-- **Notch island** — hover Zera and eight tabs bloom out round her rope; pick one and the notch opens into it: Home, Claude, Shelf, Clipboard, Tasks, Pull requests, Reminders, Settings.
+- **Notch island** — hover Zera to open eight destinations as an **Arc** or a **Tiles** grid (Settings → General → Hover menu); pick one and the notch opens into it: Home, Claude, Shelf, Clipboard, Tasks, Pull requests, Reminders, Settings.
 - **Vitals** — CPU, memory, GPU, network and battery on Home; This Mac for the detail and a speed test.
 - **Claude Code, live** — wings beside the notch show what each session is doing; approve its commands and reply when it's done, without the terminal.
 - **Tasks and focus** — projects, a to-do list and a focus orb at the screen edge that times your work and opens into the focus card. Add with `Write docs #project 30m` or ⌥⌘T from anywhere.
