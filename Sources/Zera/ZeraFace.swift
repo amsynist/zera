@@ -1,6 +1,6 @@
 import AppKit
 
-enum ZeraExpression { case neutral, happy, thoughtful, surprised, sleepy }
+enum ZeraExpression { case neutral, happy, thoughtful, surprised, sleepy, pleading, unimpressed }
 
 /// Anchors in each original sprite's pixel coordinates, measured from the top.
 /// Original artwork remains the fallback if a blank-face base is unavailable.
@@ -70,12 +70,15 @@ struct ZeraFace {
             ctx.scaleBy(x: (1 - far * 0.10) * (1 + hover * 0.05), y: 1 + hover * 0.05)
             let brow = NSBezierPath()
             let inward: CGFloat = index == 0 ? -1 : 1
-            let browTilt = annoyance * radius * 0.45 * inward
+            let pleading = expression == .pleading
+            let unimpressed = expression == .unimpressed
+            let browTilt = (annoyance * 0.45 + (pleading ? -0.28 : 0) + (unimpressed ? 0.15 : 0)) * radius * inward
             brow.move(to: CGPoint(x: -radius * 0.5, y: radius * 1.8 - browTilt))
             brow.curve(to: CGPoint(x: radius * 0.5, y: radius * 1.8 + browTilt), controlPoint1: CGPoint(x: -radius * 0.2, y: radius * 2.0 - browTilt), controlPoint2: CGPoint(x: radius * 0.2, y: radius * 2.0 + browTilt))
             NSColor(srgbRed: 0.65, green: 0.40, blue: 0.38, alpha: 0.3 + annoyance * 0.4).setStroke()
             brow.lineWidth = radius * 0.25; brow.lineCapStyle = .round; brow.stroke()
-            ctx.scaleBy(x: 1, y: max(0.045, openness * (expression == .sleepy ? 0.6 : 1)))
+            let eyeSize: CGFloat = pleading ? 1.13 : (expression == .surprised ? 1.08 : 1)
+            ctx.scaleBy(x: eyeSize, y: max(0.045, openness * eyeSize * (expression == .sleepy ? 0.55 : 1)))
             if expression == .happy && annoyance < 0.05 && hover < 0.2 {
                 let arc = NSBezierPath()
                 arc.move(to: CGPoint(x: -radius * 0.8, y: -radius * 0.15))
@@ -84,9 +87,10 @@ struct ZeraFace {
             } else {
                 // Eyelids lower and tilt inward as she becomes annoyed; this changes
                 // continuously with the reaction, instead of replacing the entire pose.
+                let lidAnnoyance = max(annoyance, unimpressed ? 0.85 : 0)
                 let lid = NSBezierPath()
-                lid.move(to: CGPoint(x: -radius * 1.1, y: radius * (1.1 - annoyance * (index == 0 ? 0.15 : 0.7))))
-                lid.line(to: CGPoint(x: radius * 1.1, y: radius * (1.1 - annoyance * (index == 0 ? 0.7 : 0.15))))
+                lid.move(to: CGPoint(x: -radius * 1.1, y: radius * (1.1 - lidAnnoyance * (index == 0 ? 0.15 : 0.7))))
+                lid.line(to: CGPoint(x: radius * 1.1, y: radius * (1.1 - lidAnnoyance * (index == 0 ? 0.7 : 0.15))))
                 lid.line(to: CGPoint(x: radius * 1.1, y: -radius * 1.1)); lid.line(to: CGPoint(x: -radius * 1.1, y: -radius * 1.1)); lid.close(); lid.addClip()
                 let eye = NSBezierPath(ovalIn: NSRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2))
                 NSGradient(starting: NSColor(srgbRed: 0.13, green: 0.08, blue: 0.09, alpha: 1), ending: .black)?.draw(in: eye, angle: -90)
@@ -103,7 +107,15 @@ struct ZeraFace {
         if speaking { ctx.scaleBy(x: 1, y: 0.75 + 0.65 * CGFloat(pow(sin(time * 9), 2))) }
         let huff = annoyance * (0.65 + 0.35 * CGFloat(sin(time * 12) * sin(time * 12)))
         NSColor(srgbRed: 0.12, green: 0.045, blue: 0.055, alpha: 1).setFill()
-        if annoyance > 0.05 {
+        if expression == .unimpressed {
+            let smirk = NSBezierPath()
+            smirk.move(to: CGPoint(x: -radius * 0.35, y: 0))
+            smirk.curve(to: CGPoint(x: radius * 0.35, y: radius * 0.1), controlPoint1: CGPoint(x: 0, y: -radius * 0.05), controlPoint2: CGPoint(x: radius * 0.2, y: -radius * 0.1))
+            NSColor(srgbRed: 0.12, green: 0.045, blue: 0.055, alpha: 1).setStroke()
+            smirk.lineWidth = radius * 0.18; smirk.lineCapStyle = .round; smirk.stroke()
+        } else if expression == .surprised || expression == .pleading {
+            NSBezierPath(ovalIn: NSRect(x: -radius * 0.24, y: -radius * 0.3, width: radius * 0.48, height: radius * (expression == .surprised ? 0.65 : 0.35))).fill()
+        } else if annoyance > 0.05 {
             NSBezierPath(ovalIn: NSRect(x: -radius * 0.3, y: -radius * 0.22, width: radius * 0.6, height: radius * (0.3 + huff * 0.35))).fill()
         } else {
             let smile = NSBezierPath()

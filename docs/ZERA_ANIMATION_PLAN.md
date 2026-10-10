@@ -43,8 +43,8 @@ The app opener is excluded from this change, as requested.
 
 - [x] Route hydration alerts to a persistent nonactivating visit rather than an expiring banner.
 - [x] Jump from the perch to the cursor's display on a smooth arc; mirror the layout near the right edge.
-- [x] Point and tap three times, then hold the drink, blink, follow the cursor and animate speaking.
-- [x] Rotate playful prompts every 12 seconds until **Okay, drinking** is clicked.
+- [x] Keep the live boba rig throughout the visit; lean and tap with a ripple, blink, follow the cursor and animate speaking.
+- [x] Rotate six playful prompts and distinct facial/body reactions every 12 seconds until **Okay, drinking** is clicked.
 - [x] Mark waiting hydration occurrences done once, thank the user, and return to the perch.
 - [x] Coalesce reminders during a visit; preserve a new reminder arriving after acknowledgement.
 - [x] Use existing palette, typography, rounded button, backdrop blur and subtle surface gradient.
@@ -52,6 +52,18 @@ The app opener is excluded from this change, as requested.
 - [x] Verify persistence, acknowledgement, flight endpoints and display-edge placement.
 - [x] Inspect waiting/thank-you renders and a seven-second local motion preview.
 - [ ] User review of the water visit in everyday use, including multiple displays.
+
+### Water animation refinement — 10 October
+
+- [x] Crouch before takeoff; arc with a gentle tilt and stretch; squash, rebound and settle at the exact landing point.
+- [x] Keep one character pose through travel and waiting, avoiding pose-swap flashes.
+- [x] Add hopeful puppy eyes, skeptical eyelids and a smirk, a dramatic droop, a boba cheer and a thoughtful look while waiting.
+- [x] Brief acting at the start of each line, with quiet idle between lines; thank the user with a small happy bounce.
+- [x] Check arrival and return endpoints, repeated acknowledgement, waiting persistence and all six expressions.
+- [x] Inspect local flight and patience previews; 17 selected checks and release bundle build passed.
+- [ ] User review of the refined jump and waiting reactions in the running app.
+
+New local preview: `.build/ui-review/zera-water-patience.gif` compresses the six 12-second waiting beats for review. Production timing remains 12 seconds per line. The temporary one-minute test reminder remains active in local app data.
 
 ## Phase 5 — Website companion
 
@@ -75,7 +87,7 @@ Website checks: `node scripts/check-site.mjs`.
 env CFFIXED_USER_HOME="$PWD/.build/ui-review-home" \
   ZERA_RENDER_SCREENS="$PWD/.build/ui-review" \
   ZERA_RENDER_FACE=1 ZERA_RENDER_WATER=1 \
-  swift test --filter 'ZeraFaceTests|PokeReactionTests|WaterVisitTests|ScreenRenderTests/testRenderMascotPoses|ScreenRenderTests/testRenderWaterVisitMotion'
+  swift test --filter 'ZeraFaceTests|PokeReactionTests|WaterVisitTests|ScreenRenderTests/testRenderMascotPoses|ScreenRenderTests/testRenderWaterVisitMotion|ScreenRenderTests/testRenderWaterWaitingExpressions'
 ```
 
 Outputs include `zera-all-poses.png`, `zera-water-waiting.png`, `zera-water-thanks.png` and `zera-water-visit.gif` under `.build/ui-review`. Captures stay local; they are not published to CI or PRs. The original phase-one preview remains available with `ScreenRenderTests/testRenderZeraFace`.

@@ -3,15 +3,17 @@ import AppKit
 /// The visit only leaves the waiting state after an explicit acknowledgement.
 struct WaterVisitMotion {
     enum Stage { case arriving, waiting, thanking, returning, finished }
+    static let arrivalDuration: TimeInterval = 1.25
+    static let returnDuration: TimeInterval = 1.0
     private(set) var stage: Stage = .arriving
     private(set) var changedAt: TimeInterval
     init(at now: TimeInterval) { changedAt = now }
 
     mutating func advance(at now: TimeInterval, reduced: Bool) {
         switch stage {
-        case .arriving where reduced || now - changedAt >= 0.9: stage = .waiting; changedAt = now
+        case .arriving where reduced || now - changedAt >= Self.arrivalDuration: stage = .waiting; changedAt = now
         case .thanking where now - changedAt >= 2.1: stage = .returning; changedAt = now
-        case .returning where reduced || now - changedAt >= 0.8: stage = .finished; changedAt = now
+        case .returning where reduced || now - changedAt >= Self.returnDuration: stage = .finished; changedAt = now
         default: break
         }
     }
@@ -22,12 +24,55 @@ struct WaterVisitMotion {
     func position(at now: TimeInterval, from: CGPoint, to: CGPoint) -> CGPoint {
         guard stage == .arriving || stage == .returning else { return stage == .finished ? from : to }
         let returning = stage == .returning
-        let t = CGFloat(min(1, max(0, (now - changedAt) / (returning ? 0.8 : 0.9))))
+        let elapsed = max(0, now - changedAt)
+        // Crouch, fly, then absorb the landing. The window stays still while the
+        // body anticipates and settles, so there is no positional correction.
+        let t = CGFloat(min(1, max(0, (elapsed - 0.16) / (returning ? 0.72 : 0.78))))
         let ease = t * t * (3 - 2 * t)
         let start = returning ? to : from, end = returning ? from : to
-        // A continuous arc, with zero velocity at both ends: no forced shift after landing.
+        let distance = hypot(end.x - start.x, end.y - start.y)
+        let arc = 16 * t * t * (1 - t) * (1 - t) * min(145, max(65, distance * 0.16))
         return CGPoint(x: start.x + (end.x - start.x) * ease,
-                       y: start.y + (end.y - start.y) * ease + 16 * t * t * (1 - t) * (1 - t) * min(100, abs(end.y - start.y) * 0.2 + 35))
+                       y: start.y + (end.y - start.y) * ease + arc)
+    }
+    func body(at now: TimeInterval, direction: CGFloat = 1) -> AnimatedZeraView.BodyMotion {
+        let elapsed = max(0, now - changedAt)
+        switch stage {
+        case .arriving, .returning:
+            if elapsed < 0.16 {
+                let crouch = CGFloat(pow(sin(elapsed / 0.16 * .pi), 2))
+                return .init(angle: -direction * 5 * crouch, sx: 1 + 0.11 * crouch, sy: 1 - 0.17 * crouch)
+            }
+            let flight = stage == .returning ? 0.72 : 0.78
+            if elapsed < 0.16 + flight {
+                let t = CGFloat((elapsed - 0.16) / flight)
+                let stretch = pow(sin(t * .pi), 2)
+                return .init(angle: direction * 16 * sin(t * 2 * .pi) * stretch,
+                             sx: 1 - 0.07 * stretch, sy: 1 + 0.10 * stretch)
+            }
+            let duration = stage == .returning ? Self.returnDuration : Self.arrivalDuration
+            let settle = CGFloat(min(1, (elapsed - 0.16 - flight) / (duration - 0.16 - flight)))
+            let spring = sin(settle * 2 * .pi) * sin(settle * .pi)
+            return .init(y: max(0, -spring) * 8, angle: direction * 3 * spring,
+                         sx: 1 + 0.12 * spring, sy: 1 - 0.18 * spring)
+        case .waiting:
+            let beat = elapsed.truncatingRemainder(dividingBy: 12)
+            let phrase = Int(elapsed / 12) % WaterVisitView.prompts.count
+            // Brief acting at the start of a line, followed by a quiet idle.
+            let t = CGFloat(min(1, beat / 2.4)), envelope = pow(sin(t * .pi), 2)
+            switch phrase {
+            case 0: return .init(x: direction * 3 * sin(t * 6 * .pi) * envelope, angle: direction * 5 * envelope)
+            case 1: return .init(y: 5 * envelope, angle: -direction * 7 * envelope, sx: 1 + 0.025 * envelope, sy: 1 + 0.025 * envelope)
+            case 2: return .init(angle: 7 * sin(t * 4 * .pi) * envelope)
+            case 3: return .init(y: -3 * envelope, angle: direction * 9 * envelope, sx: 1 + 0.05 * envelope, sy: 1 - 0.07 * envelope)
+            case 4: return .init(y: 7 * pow(sin(t * 3 * .pi), 2) * envelope, angle: direction * 4 * envelope)
+            default: return .init(angle: -direction * 6 * envelope)
+            }
+        case .thanking:
+            let t = CGFloat(min(1, elapsed / 1.4)), joy = pow(sin(t * .pi), 2)
+            return .init(y: 8 * pow(sin(t * 2 * .pi), 2) * joy, angle: 5 * sin(t * 2 * .pi) * joy)
+        case .finished: return .init()
+        }
     }
     static func landing(cursor: CGPoint, visibleFrame: CGRect, size: CGSize) -> CGPoint {
         let proposedX = cursor.x + 28 + size.width <= visibleFrame.maxX ? cursor.x + 28 : cursor.x - size.width - 28
@@ -74,9 +119,11 @@ final class WaterVisitView: NSView, ZeraAnimating {
     static let size = CGSize(width: 390, height: 180)
     static let prompts = [
         "Tiny screen tap! Your water misses you. A sip? 💧",
-        "Your tabs are hydrated. Your human? Suspiciously dry.",
-        "I've brought emotional support boba. You bring the water.",
-        "One sip for you. One less dramatic screen tap for me."
+        "One tiny sip? Look, I'm doing my very best puppy eyes.",
+        "Another tab? Interesting. Is that tab a glass of water?",
+        "I've aged three business days waiting for this sip.",
+        "Emotional support boba is here. Your water is over there.",
+        "Plot twist: the main character drinks water. That's you. 💧"
     ]
     private(set) var motion = WaterVisitMotion(at: 0)
     var departure = CGPoint.zero, landing = CGPoint.zero
@@ -89,6 +136,7 @@ final class WaterVisitView: NSView, ZeraAnimating {
     private let text = rlabel(Typo.bodyMedium, Pal.text, lines: 3)
     private let heading = rlabel(Typo.detailTitle, Pal.text)
     private var okay: PRActionButton!
+    private(set) var waitingExpression: ZeraExpression = .neutral
     private var lastPrompt = -1
     private var lastTap: TimeInterval = -10
     private var time: TimeInterval = 0
@@ -112,7 +160,7 @@ final class WaterVisitView: NSView, ZeraAnimating {
     func begin(at now: TimeInterval = CACurrentMediaTime()) {
         motion = WaterVisitMotion(at: now); time = now; lastPrompt = -1; lastTap = -10
         heading.stringValue = "A little water break"; okay.isHidden = false
-        figure.pose = "pointing"; figure.expression = .neutral; glass.isHidden = true
+        figure.pose = "boba"; figure.expression = .surprised; figure.bodyMotion = .init(); glass.isHidden = true
         needsLayout = true
     }
     @objc func acknowledge() {
@@ -129,6 +177,7 @@ final class WaterVisitView: NSView, ZeraAnimating {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         motion.advance(at: now, reduced: reduced)
         let point = motion.position(at: now, from: departure, to: landing)
+        figure.bodyMotion = reduced ? .init() : motion.body(at: now, direction: bubbleOnLeft ? -1 : 1)
         if !reduced || oldStage != motion.stage { onPosition?(point) }
         glass.isHidden = motion.stage == .arriving || motion.stage == .returning || motion.stage == .finished
         glass.alphaValue = reduced || motion.stage != .waiting ? 1 : min(1, max(0, (now - motion.changedAt) / 0.18))
@@ -137,13 +186,13 @@ final class WaterVisitView: NSView, ZeraAnimating {
             let index = Int(elapsed / 12) % Self.prompts.count
             if index != lastPrompt {
                 lastPrompt = index; text.stringValue = Self.prompts[index]
-                figure.expression = index == 1 ? .thoughtful : .neutral
+                waitingExpression = [.neutral, .pleading, .unimpressed, .sleepy, .happy, .thoughtful][index]
+                figure.expression = waitingExpression
                 figure.speak()
             }
             // Three light taps, followed by a quiet pause; never interact with another app.
             let beat = elapsed.truncatingRemainder(dividingBy: 12)
-            figure.pose = beat < 1.2 ? "pointing" : "boba"
-            if beat < 1.1 && now - lastTap >= 0.36 { lastTap = now; figure.tap(at: now) }
+            if (index == 0 || index == 2) && beat < 1.1 && now - lastTap >= 0.36 { lastTap = now; figure.tap(at: now) }
         }
         if motion.stage == .finished && oldStage != .finished { onReturn?() }
         needsDisplay = true
