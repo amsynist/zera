@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 
 /// One cut-out pose of Zera, plus where her rope leaves the top of the picture (if she is
 /// hanging from one) so the app can extend the rope up into the notch.
@@ -47,11 +48,22 @@ final class SpriteLibrary {
         if let s = cache[name] { return s }
         guard let dir = directory, !missing.contains(name) else { return nil }
         let url = dir.appendingPathComponent(name + ".png")
-        guard let data = try? Data(contentsOf: url),
-              let rep = NSBitmapImageRep(data: data) else {
+        guard let data = try? Data(contentsOf: url) else {
             missing.insert(name)
             return nil
         }
+        // Rig artwork may be authored at high resolution. Keep only a sprite-sized
+        // decode, rather than retaining a multi-megabyte face base for a tiny buddy.
+        let rep: NSBitmapImageRep?
+        if name.hasSuffix("_base"), let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+               kCGImageSourceCreateThumbnailFromImageAlways: true,
+               kCGImageSourceThumbnailMaxPixelSize: 528,
+               kCGImageSourceShouldCacheImmediately: true
+           ] as CFDictionary) {
+            rep = NSBitmapImageRep(cgImage: image)
+        } else { rep = NSBitmapImageRep(data: data) }
+        guard let rep else { missing.insert(name); return nil }
         let img = NSImage(size: NSSize(width: rep.pixelsWide, height: rep.pixelsHigh))
         img.addRepresentation(rep)
         let (ropeX, color) = Self.findRope(in: rep)

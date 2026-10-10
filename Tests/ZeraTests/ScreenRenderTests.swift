@@ -90,6 +90,48 @@ final class ScreenRenderTests: XCTestCase {
 
     // MARK: Renders
 
+    /// On-demand preview of the hanging rig, stepping the production frame update.
+    func testRenderZeraFace() async throws {
+        guard ProcessInfo.processInfo.environment["ZERA_RENDER_FACE"] != nil else {
+            throw XCTSkip("set ZERA_RENDER_FACE for a local character preview")
+        }
+        let view = ZeraView(frame: NSRect(x: 0, y: 0, width: 220, height: 340))
+        view.style = .hanging; view.mood = .idle; view.bottomPad = 16
+        panel(view, "zera-face-idle")
+        view.lookTarget = CGPoint(x: -1, y: -0.5)
+        shot(view, "zera-face-left", afterShown: {
+            let now = CACurrentMediaTime()
+            for frame in 0..<30 { view.advanceAnimation(at: now + Double(frame) / 30) }
+        })
+        XCTAssertLessThan(view.look.x, -0.9)
+        view.lookTarget = CGPoint(x: 1, y: 0.6)
+        shot(view, "zera-face-right", afterShown: {
+            let now = CACurrentMediaTime()
+            for frame in 0..<30 { view.advanceAnimation(at: now + Double(frame) / 30) }
+        })
+        XCTAssertGreaterThan(view.look.x, 0.9)
+        let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = view; window.backgroundColor = desk; window.orderFrontRegardless()
+        defer { window.orderOut(nil); window.contentView = nil }
+        let url = out.appendingPathComponent("zera-face-motion.gif")
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "com.compuserve.gif" as CFString, 150, nil))
+        CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        let started = CACurrentMediaTime()
+        for frame in 0..<150 {
+            let angle = Double(frame) / 150 * .pi * 2
+            view.lookTarget = CGPoint(x: sin(angle), y: cos(angle) * 0.7)
+            view.advanceAnimation(at: CACurrentMediaTime())
+            view.display(); CATransaction.flush()
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            CGImageDestinationAddImage(destination, try XCTUnwrap(bitmap.cgImage),
+                [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.04]] as CFDictionary)
+            let remaining = started + Double(frame + 1) * 0.04 - CACurrentMediaTime()
+            if remaining > 0 { try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000)) }
+        }
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+    }
+
     /// Short local preview of the actual Core Animation transition; never runs in CI.
     func testRenderOpenerActionMotion() async throws {
         guard ProcessInfo.processInfo.environment["ZERA_RENDER_OPENER_MOTION"] != nil else {
