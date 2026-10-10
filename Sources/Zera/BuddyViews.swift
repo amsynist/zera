@@ -38,7 +38,6 @@ final class BuddyView: NSView {
         radar.frame = bounds
         layer?.addSublayer(radar)
         zera.style = .hanging
-        zera.framesPerSecond = 30
         addSubview(zera)
         registerForDraggedTypes([.fileURL, .png, .tiff, .pdf, .rtf, .string, .URL])
     }

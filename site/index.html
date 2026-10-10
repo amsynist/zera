@@ -6,6 +6,8 @@
 <title>Zera — your AI buddy in the notch</title>
 <meta name="description" content="A free, open-source macOS app that lives in your notch: approve Claude Code from the notch, drop files on it and drag them anywhere, ask Claude about them, a focus orb with quick add, timesheets from your commits, pull requests, your calendar, and ⌥Space to open any app.">
 <meta name="theme-color" content="#08070d">
+<script src="zera.js" defer></script>
+<script src="water.js" defer></script>
 <link rel="icon" type="image/png" href="assets/icon.png">
 <link rel="apple-touch-icon" href="assets/icon.png">
 <meta property="og:type" content="website">
@@ -18,6 +20,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap">
+<script>document.documentElement.classList.add("js")</script>
 <style>
 :root{
   --bg:#08070d;--bg2:#100e18;--ink:#f4f2fa;--dim:#a8a3b8;--faint:#6f6a82;
@@ -84,8 +87,8 @@ h1,h2,h3{margin:0;color:var(--ink)}
 .kin.in .w > span{transform:none;opacity:1}
 
 /* reveal on scroll */
-.rv{opacity:0;transform:translateY(34px);transition:opacity .9s var(--ease),transform .9s var(--ease)}
-.rv.in{opacity:1;transform:none}
+.js .rv{opacity:0;transform:translateY(34px);transition:opacity .9s var(--ease),transform .9s var(--ease)}
+.js .rv.in{opacity:1;transform:none}
 .rv.d1{transition-delay:.08s}.rv.d2{transition-delay:.16s}.rv.d3{transition-delay:.24s}.rv.d4{transition-delay:.32s}
 
 /* screenshots float, with their own glow */
@@ -264,6 +267,7 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
   .rv,.kin .w > span{opacity:1 !important;transform:none !important}
 }
 </style>
+<link rel="stylesheet" href="zera.css">
 </head>
 <body>
 <div class="backdrop" aria-hidden="true"><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div></div>
@@ -273,18 +277,44 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
     <a class="brand" href="#top"><img src="assets/zera-hang.png" alt="">Zera</a>
     <div class="navlinks">
       <a href="#film">Film</a>
-      <a href="#claude">Claude Code</a>
-      <a href="#shelf">Shelf</a>
-      <a href="#tasks">Focus</a>
-      <a href="#opener">Opener</a>
+      <a href="#claude">Features</a>
       <a href="#themes">Themes</a>
-      <a href="#faq">FAQ</a>
     </div>
     <div class="navcta">
       <a class="btn small" href="https://github.com/amsynist/zera">GitHub</a>
       <a class="btn small primary" href="https://github.com/amsynist/zera/releases/latest">Download</a>
     </div>
   </nav>
+  <div class="buddy-perch">
+    <span class="web-notch" aria-hidden="true"></span>
+    <button class="web-zera" id="web-zera" aria-label="Say hello to Zera. Four quick taps make her huff.">
+      <svg viewBox="0 0 153 264" aria-hidden="true">
+        <defs>
+          <radialGradient id="eye-gloss" cx="32%" cy="25%" r="80%"><stop stop-color="#392129"/><stop offset="1" stop-color="#080407"/></radialGradient>
+          <clipPath id="rope-front"><rect x="84.5" width="9" height="264"/></clipPath>
+        </defs>
+        <g id="buddy-body">
+          <image href="assets/zera-hang-base.png" width="153" height="264"/>
+          <g id="buddy-left" transform="translate(51 167) rotate(-25)">
+            <g class="eye-open"><circle r="11.8" fill="url(#eye-gloss)"/><ellipse cx="-3.3" cy="-5.5" rx="3" ry="3.5" fill="white"/><circle cx="4.2" cy="4.8" r="1.3" fill="white" opacity=".3"/></g>
+            <path class="eye-happy" d="M-9 1 Q0 -12 9 1"/>
+            <path class="eye-brow" d="M-6 -20 Q0 -22 6 -20"/>
+          </g>
+          <g id="buddy-right" transform="translate(109 140) rotate(-25)">
+            <g class="eye-open"><circle r="11.8" fill="url(#eye-gloss)"/><ellipse cx="-3.3" cy="-5.5" rx="3" ry="3.5" fill="white"/><circle cx="4.2" cy="4.8" r="1.3" fill="white" opacity=".3"/></g>
+            <path class="eye-happy" d="M-9 1 Q0 -12 9 1"/>
+            <path class="eye-brow" d="M-6 -20 Q0 -22 6 -20"/>
+          </g>
+          <g transform="translate(79 166) rotate(-25)">
+            <g class="buddy-smile"><path d="M-6 -1 Q-5 12 6 -1 Q0 1 -6 -1" fill="#210c12"/><ellipse cx="0" cy="4" rx="2.8" ry="1.3" fill="#f35a63"/></g>
+            <ellipse class="buddy-huff" cy="3" rx="3.5" ry="4" fill="#210c12"/>
+          </g>
+          <image href="assets/zera-hang-base.png" width="153" height="264" clip-path="url(#rope-front)"/>
+        </g>
+      </svg>
+    </button>
+    <span class="buddy-bubble" id="buddy-bubble" role="status">Hi! I'm Zera.</span>
+  </div>
 </header>
 
 <main>
@@ -294,7 +324,7 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
       <div class="hero-copy">
         <span class="eyebrow rv"><i></i>For macOS · free and open source</span>
         <h1 class="h1 kin" style="margin-top:22px">Your AI buddy<br><span class="grad">in the notch.</span></h1>
-        <p class="lead rv d2">Zera hangs from your Mac's notch and turns it into a place to work: approve Claude Code from the notch, drop files on it and drag them anywhere, ask Claude about them, plan your day with a focus orb, and open any app with ⌥Space.</p>
+        <p class="lead rv d2">A little company. A lot less switching. Approve Claude Code, catch your files, focus on a task, and keep your day together. All from your Mac’s notch.</p>
         <div class="ctas rv d3">
           <a class="btn primary" href="https://github.com/amsynist/zera/releases/latest">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
@@ -303,14 +333,16 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
           <a class="btn" href="#film">Watch the film</a>
         </div>
         <p class="meta rv d4">macOS 13+ · Apple silicon and Intel · no account, no API key</p>
+        <p class="buddy-hint rv d4">The little one up top? Move your cursor. Or say hello with a tap.</p>
       </div>
-      <div class="hero-demo">
+      <div class="hero-demo rv d2">
+        <div class="demo-heading"><span>One notch. Your whole day.</span><button class="demo-play" id="demo-play" aria-pressed="false">Pause tour</button></div>
+        <div class="tabs" id="tabs" role="tablist" aria-label="Screens in the notch"></div>
         <div class="stage">
           <div class="island" id="island">
-            <div class="screens" id="screens"></div>
+            <div class="screens" id="screens" role="tabpanel" tabindex="0"></div>
           </div>
         </div>
-        <div class="tabs" id="tabs" role="tablist" aria-label="Screens in the notch"></div>
         <div class="caption" id="caption" aria-live="polite"></div>
       </div>
     </div>
@@ -473,6 +505,49 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
     </div>
   </section>
 
+  <!-- Water: a live, user-triggered preview of the cursor-side visit. -->
+  <section id="water" class="feature">
+    <div class="wrap split rev">
+      <div class="copy">
+        <span class="eyebrow rv"><i></i>Water breaks, with company</span>
+        <h2 class="h2 kin">A tiny buddy.<br>A proper sip.</h2>
+        <p class="lead rv d1">Zera hops over to your cursor, gives the screen a little tap, and makes her best puppy eyes. Keep her waiting and the expressions get dramatic. Take a sip and she cheers you on, then jumps back to her perch.</p>
+        <div class="ticks rv d2">
+          <div class="tick"><span><b>Your rhythm.</b> Choose the interval and active hours in Reminders → Hydration.</span></div>
+          <div class="tick"><span><b>A little conversation.</b> “Took a sip!” earns a happy bounce. “One sec…” gives you a quiet moment.</span></div>
+          <div class="tick"><span><b>Gentle company.</b> She stays beside your cursor without taking focus or clicking your other apps.</span></div>
+        </div>
+      </div>
+      <div class="media rv d1">
+        <div class="water-demo" id="water-demo" data-state="idle" data-mood="neutral">
+          <div class="water-demo-label"><span>Try a water break</span><span class="water-live-dot" aria-hidden="true"></span></div>
+          <div class="water-scene">
+            <button class="water-character" id="water-character" aria-label="Say hello to Zera with her boba"><svg viewBox="0 0 183 206" aria-hidden="true">
+                <defs><radialGradient id="boba-gloss" cx="32%" cy="25%" r="80%"><stop stop-color="#392129"/><stop offset="1" stop-color="#080407"/></radialGradient><clipPath id="boba-straw"><path d="M107 124 L113 149" stroke="white" stroke-width="9"/></clipPath></defs>
+                <image href="assets/zera-boba-base.png" width="183" height="206"/>
+                <g class="water-gaze">
+                  <g transform="translate(72 119) rotate(-12)"><g class="water-eye-open"><circle r="13" fill="url(#boba-gloss)"/><ellipse cx="-3.6" cy="-6" rx="3.3" ry="3.8" fill="white"/><circle cx="4.6" cy="5.3" r="1.4" fill="white" opacity=".3"/></g><path class="water-eye-happy" d="M-10 1 Q0 -13 10 1"/><path class="water-brow" d="M-6 -23 Q0 -25 6 -23"/></g>
+                  <g transform="translate(135 106) rotate(-12)"><g class="water-eye-open"><circle r="13" fill="url(#boba-gloss)"/><ellipse cx="-3.6" cy="-6" rx="3.3" ry="3.8" fill="white"/><circle cx="4.6" cy="5.3" r="1.4" fill="white" opacity=".3"/></g><path class="water-eye-happy" d="M-10 1 Q0 -13 10 1"/><path class="water-brow" d="M-6 -23 Q0 -25 6 -23"/></g>
+                </g>
+                <g transform="translate(108 127) rotate(-12)"><path class="water-mouth-smile" d="M-6 -1 Q-5 12 6 -1 Q0 1 -6 -1" fill="#210c12"/><ellipse class="water-mouth-oh" cy="3" rx="3.5" ry="4" fill="#210c12"/><ellipse class="water-tongue" cy="4" rx="2.8" ry="1.3" fill="#f35a63"/></g>
+                <image href="assets/zera-boba-base.png" width="183" height="206" clip-path="url(#boba-straw)"/>
+              </svg></button>
+            <div class="water-speech" aria-live="polite">
+              <h3 id="water-heading">Your water has a tiny advocate.</h3>
+              <p id="water-line">Send her over. She has boba, puppy eyes, and a very convincing argument.</p>
+              <button class="water-send" id="water-send">Send Zera over <span aria-hidden="true">↗</span></button>
+              <div class="water-replies" id="water-replies" hidden>
+                <button class="water-sip" id="water-sip"><span aria-hidden="true">💧</span> Took a sip!</button>
+                <button class="water-moment" id="water-moment">One sec…</button>
+              </div>
+            </div>
+          </div>
+          <p class="water-demo-note">Interactive preview · set your reminders in the Mac app.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- App opener -->
   <section id="opener" class="feature">
     <div class="wrap split rev">
@@ -521,7 +596,7 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
         <div class="card rv d2"><img src="assets/shots/meeting-banner.webp" alt="A meeting heads-up" loading="lazy"><h3>Heads-ups</h3><p>Meetings with a Join button, water and breaks, new PRs, and a nudge before the battery runs out.</p></div>
         <div class="card rv"><img src="assets/shots/wings-approval.webp" alt="The Claude wings" loading="lazy"><h3>The wings</h3><p>Claude Code's progress beside the notch, with Approve and Reject when it needs you.</p></div>
         <div class="card rv d1"><img src="assets/shots/settings-appearance.webp" alt="Settings" loading="lazy"><h3>Yours to tune</h3><p>Themes, sounds, shortcuts, the Shelf's folders, and which tab opens when you tap her.</p></div>
-        <div class="card rv d2" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center"><img src="assets/zera-wave.png" alt="Zera waving" loading="lazy" style="width:150px;max-height:none"><h3>And her</h3><p>She reacts to what you do, dozes off when you're away, and cheers when the build goes green.</p></div>
+        <div class="card rv d2" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center"><img src="assets/zera-wave.png" alt="Zera waving" loading="lazy" style="width:150px;max-height:none"><h3>And her</h3><p>She follows your cursor, blinks, and has opinions about being poked. Even your water break comes with company.</p></div>
       </div>
     </div>
   </section>
@@ -658,7 +733,17 @@ open dist/Zera.app</div>
     tabs.append(b); return b;
   });
   let cur = -1, timer = null, held = false;
-  const DWELL = 3600;
+  const DWELL = 6500;
+  tabs.style.setProperty("--dwell", `${DWELL}ms`);
+  let tourPaused = reduce, tourVisible = false;
+  const tourPlay = $("#demo-play");
+  function tourState() {
+    tabs.classList.toggle("paused", held || tourPaused);
+    tourPlay.textContent = tourPaused ? "Play tour" : "Pause tour";
+    tourPlay.setAttribute("aria-pressed", String(tourPaused));
+  }
+  tourPlay.onclick = () => { tourPaused = !tourPaused; tourState(); };
+  new IntersectionObserver(([entry]) => { tourVisible = entry.isIntersecting; }, {threshold: .15}).observe(island);
   function go(i) {
     if (i === cur) return;
     const dir = cur < 0 ? 0 : (i > cur ? 1 : -1);
@@ -669,18 +754,27 @@ open dist/Zera.app</div>
         im.classList.add('on');
       }
     });
-    btns.forEach((b, k) => { b.classList.toggle('on', k === i); b.setAttribute('aria-selected', k === i); });
+    btns.forEach((b, k) => { b.classList.toggle('on', k === i); b.setAttribute('aria-selected', k === i); b.tabIndex = k === i ? 0 : -1; b.id = `screen-tab-${k}`; b.setAttribute('aria-controls', 'screens'); });
+    screens.setAttribute('aria-labelledby', btns[i].id);
+    imgs.forEach((im, k) => im.setAttribute('aria-hidden', String(k !== i)));
     // restart the progress bar on the active tab
     const bar = $('.bar', btns[i]); bar.style.animation = 'none'; void bar.offsetWidth; bar.style.animation = '';
     cap.innerHTML = `<span><b>${S[i][1]}</b> · ${S[i][2]}</span>`;
     cur = i;
   }
-  function next() { if (!held && !document.hidden) go((cur + 1) % S.length); }
-  function hold() { held = true; tabs.classList.add('paused'); clearTimeout(timer); timer = setTimeout(() => { held = false; tabs.classList.remove('paused'); }, 9000); }
-  go(0);
-  if (!reduce) setInterval(next, DWELL);
-  island.addEventListener('mouseenter', () => { held = true; tabs.classList.add('paused'); });
-  island.addEventListener('mouseleave', () => { held = false; tabs.classList.remove('paused'); });
+  function next() { if (!held && !tourPaused && tourVisible && !document.hidden) go((cur + 1) % S.length); }
+  function hold() { held = true; tourState(); clearTimeout(timer); timer = setTimeout(() => { held = false; tourState(); }, 9000); }
+  go(0); tourState();
+  setInterval(next, DWELL);
+  island.addEventListener('mouseenter', () => { held = true; tourState(); });
+  island.addEventListener('mouseleave', () => { held = false; tourState(); });
+  tabs.addEventListener('keydown', e => {
+    const directions = {ArrowRight: 1, ArrowLeft: -1};
+    const index = e.key === 'Home' ? 0 : e.key === 'End' ? S.length - 1 : e.key in directions ? (cur + directions[e.key] + S.length) % S.length : null;
+    if (index === null) return;
+    e.preventDefault(); go(index); btns[index].focus(); hold();
+  });
+  tabs.addEventListener('focusin', () => { tourPaused = true; tourState(); });
 
   // ---------- the film: plays while it's on screen ----------
   const film = $('#filmvid'), vbar = $('#vbar'), vplay = $('#vplay'), vsound = $('#vsound'), hint = $('#soundhint');

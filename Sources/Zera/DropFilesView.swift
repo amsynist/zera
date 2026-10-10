@@ -680,7 +680,7 @@ final class DropBin: NSView {
 
 /// Zera beside a bubble card: what she found, what she's doing, or what went wrong.
 final class ZeraFileReaction: NSView {
-    private let figure = NSImageView()
+    private let figure = AnimatedZeraView()
     private let bubble = FlippedView()
     private let title = dlabel(Typo.rowTitle, Pal.text)
     private let detail = dlabel(Typo.body, Pal.textSecondary, lines: 2)
@@ -689,8 +689,6 @@ final class ZeraFileReaction: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         let p = Pal
-        figure.imageScaling = .scaleProportionallyUpOrDown
-        figure.imageAlignment = .alignBottom
         bubble.wantsLayer = true
         bubble.layer?.cornerRadius = Radius.l + 2
         bubble.layer?.cornerCurve = .continuous
@@ -705,7 +703,7 @@ final class ZeraFileReaction: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func set(pose: String, title t: String, detail d: String) {
-        figure.image = SpriteLibrary.shared.sprite(pose)?.image ?? SpriteLibrary.shared.sprite("idle")?.image
+        figure.pose = pose
         title.stringValue = t
         detail.stringValue = d
         setAccessibilityLabel("Zera: \(t). \(d)")
@@ -881,7 +879,7 @@ final class DropFilesView: NSView, CardContent {
     private let docTile = ScreenIconTile.dropFiles()
     private let leftTitle = dlabel(Typo.screenTitle, Pal.text)
     private let leftSub = dlabel(Typo.screenSubtitle, Pal.textSecondary)
-    private let peek = NSImageView()
+    private let peek = AnimatedZeraView()
     private let bubble = ZeraGitHubBubble()
     private let zone = FileDropZone()
     private var actionTiles: [FileActionTile] = []
@@ -1081,8 +1079,6 @@ final class DropFilesView: NSView, CardContent {
         left.addSubview(leftTitle)
         left.addSubview(leftSub)
         left.addSubview(zone)
-        peek.imageScaling = .scaleProportionallyUpOrDown
-        peek.imageAlignment = .alignBottom
         left.addSubview(peek)                    // over the zone: she leans on its top edge
         left.addSubview(bubble)
         let specs: [(String, String, NSColor, Selector)] = [
@@ -1362,8 +1358,7 @@ final class DropFilesView: NSView, CardContent {
         freshEmpty.isHidden = !fresh || !freshOrder.isEmpty
 
         // Zera over the zone: excited when files are on the Shelf, peeking when it's empty.
-        peek.image = SpriteLibrary.shared.sprite(zone.isTargeted ? "card_catch_pdf" : "card_peek_down")?.image
-            ?? SpriteLibrary.shared.sprite("peek")?.image
+        peek.pose = zone.isTargeted ? "card_catch_pdf" : "card_peek_down"
         bubble.text = zone.isTargeted ? "Drop it here! ✨" : (store.items.isEmpty ? "Drop a file here\nand I'll take a look! ✨" : "Tap a file to copy it,\nor drag it out 👇")
         let n = store.items.count
         if freshTab {

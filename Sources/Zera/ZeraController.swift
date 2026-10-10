@@ -13,6 +13,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     private let buddy = BuddyView()
     private let bubblePanel: FloatingPanel
     private let bubble = BubbleView()
+    private var waterVisit: WaterReminderVisit?
     /// Claude Code's live readout: two wings hanging off her on either side of the rope.
     private let livePanel: FloatingPanel
     private let live = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
@@ -454,12 +455,13 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     private func setBuddy(visible: Bool, animated: Bool) {
+        let visible = visible && !(waterVisit?.isActive ?? false)
         if visible {
             if buddyPanel.alphaValue < 0.05 { buddyPanel.orderFrontRegardless() }
-            NSAnimationContext.runAnimationGroup { ctx in
+            NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = animated ? 0.3 : 0
                 buddyPanel.animator().alphaValue = 1
-            }
+            }, completionHandler: { ZeraAnimationClock.shared.refresh() })
         } else {
             NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = animated ? 0.2 : 0
@@ -708,9 +710,9 @@ final class ZeraController: NSObject, ShelfViewDelegate {
 
     private func updateLook(_ mouse: NSPoint) {
         let head = headPoint
-        let f = geometry.screen.frame
-        let x = max(-1, min(1, (mouse.x - head.x) / (f.width * 0.45)))
-        let y = max(-1, min(1, (mouse.y - head.y) / (f.height * 0.7)))
+        // Respond near the face and ease towards a bounded gaze farther away.
+        let x = tanh((mouse.x - head.x) / 260)
+        let y = tanh((mouse.y - head.y) / 200)
         zera.lookTarget = CGPoint(x: x, y: y)
     }
 
@@ -1226,6 +1228,35 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
     @objc private func reminderFired(_ note: Notification) {
         guard let a = note.userInfo?["alert"] as? ReminderAlert else { return }
+        if a.hydration {
+            if waterVisit == nil {
+                let visit = WaterReminderVisit()
+                visit.onAcknowledge = {
+                    // A newer occurrence can replace one already visiting; acknowledge all
+                    // currently waiting water nudges together, without creating a second Zera.
+                    MainActor.assumeIsolated {
+                        for alert in ReminderService.shared.pendingAlerts.filter(\.hydration) {
+                            ReminderService.shared.complete(alert)
+                        }
+                    }
+                }
+                visit.onReturn = { [weak self] in
+                    guard let self else { return }
+                    if MainActor.assumeIsolated({ ReminderService.shared.pendingAlerts.contains(where: \.hydration) }) {
+                        self.waterVisit?.show(from: self.headPoint)
+                    }
+                    self.setBuddy(visible: self.buddyEnabled, animated: true)
+                    self.settle()
+                }
+                waterVisit = visit
+            }
+            if waterVisit?.isActive != true {
+                sound(.water); hideBubble()
+                waterVisit?.show(from: headPoint)
+                setBuddy(visible: false, animated: true)
+            }
+            return
+        }
         let mood: ZeraMood
         switch a.kind {
         case .breakTime: mood = .cozy
@@ -1245,6 +1276,9 @@ final class ZeraController: NSObject, ShelfViewDelegate {
     }
 
     @objc private func remindersChanged() {
+        if waterVisit?.isActive == true && MainActor.assumeIsolated({ !ReminderService.shared.pendingAlerts.contains(where: \.hydration) }) {
+            waterVisit?.acknowledge()
+        }
         refreshBadges()
         if cardVisible, currentCard == .reminderAlert { (cards[.reminderAlert] as? ReminderAlertCard)?.reload() }
         if cardVisible, currentCard == .reminders { (cards[.reminders] as? RemindersView)?.reload() }
