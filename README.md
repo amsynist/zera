@@ -16,7 +16,7 @@
 
 ## What's new
 
-- **Claude plan usage:** compact liquid capsules on Home show your 5-hour and weekly limits. The liquid drains as usage rises; percentages and reset times stay visible. A gauge badge keeps the same readings in Claude sessions.
+- **Claude plan usage:** one compact card on Home shows your 5-hour and weekly limits, with slim fluid bars that fill as usage rises and change color near the limit. Percentages and reset times stay visible. A gauge badge keeps the same readings in Claude sessions.
 - **Agent timelines:** follow each Claude Code agent's task, live steps and result from its session's **Agents** tab. Background agents keep their own lifecycle when the main reply finishes.
 - **Optional Dock icon:** turn off **Settings → General → Show in the Dock** to keep Zera at the notch and in the menu bar.
 
@@ -68,9 +68,9 @@ Everything is in **Settings → Integrations**:
 
 Enable **Settings → Integrations → Claude → Track usage**. Claude Code supplies the 5-hour and weekly plan readings after a reply; Zera displays them without making an extra API request.
 
-- **Home:** two compact capsules show **percentage used** and **time until reset**. The liquid represents **remaining capacity**, so it drains as you use your plan and fills again when the window resets. Motion respects macOS Reduce Motion.
+- **Home:** one card matches the Mac vitals and shows **5 hours** and **This week**, each with **percentage used**, a slim fluid bar, and **time until reset**. Each bar fills with usage and clears when its window resets; its color changes as you approach the limit. Motion respects macOS Reduce Motion.
 - **Claude sessions:** a gauge badge shows the same plan readings inside the header, without changing the session list's spacing. This is plan usage, not a session's task progress.
-- **Freshness:** hover the capsules or gauge badge for the last reading time. Readings update after Claude replies, not continuously; an empty capsule label waits for the first reading.
+- **Freshness:** hover the usage card or gauge badge for the last reading time. Readings update after Claude replies, not continuously; the card shows a waiting label until the first reading arrives.
 
 Tracking installs a status-line wrapper in `~/.claude/settings.json`. Your existing status-line command continues to run and is restored by **Stop tracking usage**. Zera keeps the percentages and reset times locally and leaves your Claude login alone. A project that overrides the status line won't send readings to Zera.
 

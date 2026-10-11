@@ -357,6 +357,14 @@ final class ScreenRenderTests: XCTestCase {
         let counter = WaterGlassCounterView(frame: NSRect(origin: .zero, size: WaterGlassCounterView.size))
         counter.count = 4; counter.goal = 8
         panel(counter, "14b-water-glass")
+        // Claude plan usage on Home: calm, getting busy, nearly out.
+        for (name, five, week) in [("low", 0.08, 0.03), ("mid", 0.55, 0.42), ("high", 0.93, 0.78)] {
+            ClaudeUsageService.shared.preview(ClaudeUsage(fiveHour: .init(used: five, resetsAt: Date().addingTimeInterval(4 * 3600 + 240)),
+                                                          week: .init(used: week, resetsAt: Date().addingTimeInterval(4 * 86400 + 61200)), readAt: Date()))
+            let strip = ClaudeUsageStrip(frame: NSRect(x: 0, y: 0, width: 816, height: ClaudeUsageStrip.height))
+            panel(strip, "14f-claude-usage-\(name)")
+        }
+        ClaudeUsageService.shared.preview(nil)
         let restButton = WaterDrankButton("Drank", style: .secondary, target: nil, action: #selector(WaterVisitView.drank))
         restButton.frame = NSRect(x: 0, y: 0, width: 96, height: 32)
         restButton.advance(at: 1, reduced: false)
