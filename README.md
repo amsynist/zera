@@ -131,20 +131,21 @@ Needs macOS 13+ and the Xcode Command Line Tools. No Xcode project, no dependenc
 
 ## Contributing
 
-Issues and pull requests are welcome — integrations, expressions, sounds, accessibility improvements and bug fixes. See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security issues privately through [SECURITY.md](SECURITY.md).
+Found something that could work better? Tell us what happened in an issue, or send a focused pull request. The [contribution guide](CONTRIBUTING.md) covers setup and checks. For security concerns, follow the private reporting instructions in [SECURITY.md](SECURITY.md).
 
 ## Credits
 
-Created by [amsynist](https://github.com/amsynist). Thanks to everyone who has contributed — see [contributors](https://github.com/amsynist/zera/graphs/contributors).
+[amsynist](https://github.com/amsynist) builds and maintains Zera. Community contributions help shape each release; the [project history](https://github.com/amsynist/zera/graphs/contributors) recognizes the people behind those changes.
 
 Zera is independent and not affiliated with Anthropic, GitHub or Apple. Claude and Claude Code are
 trademarks of Anthropic, PBC; GitHub of GitHub, Inc.; Apple, Mac and macOS of Apple Inc.
 
 ## License
 
-- **Code:** [MIT](LICENSE) — use it, fork it, learn from it; keep the copyright and license notices.
-- **Zera name, character, icons, original artwork, sounds and media:** © 2026 amsynist, all rights reserved — see [LICENSE-ASSETS.md](LICENSE-ASSETS.md). Shipping your own fork? Give it your own name and creative assets.
+Zera's code is available under the [MIT License](LICENSE). You can build on it and share your changes, provided you include the original copyright and license notices.
 
-**If Zera makes your day easier, a ⭐ helps.**
+The Zera identity and original creative work — her character, icons, artwork, sounds and media — belong to amsynist, © 2026. Their permitted uses are explained in [LICENSE-ASSETS.md](LICENSE-ASSETS.md).
 
-[Website](https://zera.pravincodes.in/) · [Privacy](docs/PRIVACY_DATA_MAP.md) · [Support](https://github.com/amsynist/zera/issues)
+**Like Zera? Star the repository ⭐ — it motivates me to keep building and improving her.**
+
+Get Zera from [zera.pravincodes.in](https://zera.pravincodes.in/). Need help? [Open an issue](https://github.com/amsynist/zera/issues). Our [data guide](docs/PRIVACY_DATA_MAP.md) explains what stays on your Mac and what optional integrations send.
