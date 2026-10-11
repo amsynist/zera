@@ -63,7 +63,8 @@ final class VitalsTween {
 
 // MARK: - Drawing
 
-private enum VDraw {
+/// Drawing helpers shared by the vitals and Claude usage.
+enum VDraw {
     static func text(_ s: String, _ font: NSFont, _ color: NSColor, at p: NSPoint) {
         NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color]).draw(at: p)
     }

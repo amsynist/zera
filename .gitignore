@@ -5,6 +5,6 @@ dist/
 Claude outputs/
 # Private audit notes and backups — never publish
 audit/
-
+.env
 # Local Claude Code preview config and screenshots
 .claude/
