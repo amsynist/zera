@@ -1,14 +1,34 @@
 import AppKit
 import ServiceManagement
 
+/// Whether Zera keeps a Dock icon. On by default, so files can be dropped on it; off, she lives
+/// only in the menu bar and at the notch. The bundle starts without one (LSUIElement), so there's
+/// no icon flashing up at launch when it's off.
+enum DockIcon {
+    private static let key = "zera.showDockIcon"
+    static var shown: Bool {
+        get { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: key); apply() }
+    }
+    static func apply() {
+        let policy: NSApplication.ActivationPolicy = shown ? .regular : .accessory
+        guard NSApp.activationPolicy() != policy else { return }
+        let wasActive = NSApp.isActive
+        NSApp.setActivationPolicy(policy)
+        // Changing it deactivates the app; keep Settings in front if that's where you were.
+        if wasActive { DispatchQueue.main.async { NSApp.activate(ignoringOtherApps: true) } }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var controller: ZeraController!
     private var statusItem: NSStatusItem!
     private var showItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Regular (not accessory) so files can still be dropped on the Dock icon.
-        NSApp.setActivationPolicy(.regular)
+        // Regular (not accessory) so files can still be dropped on the Dock icon — unless you
+        // turned the Dock icon off (Settings → General): then she lives in the menu bar and at the notch.
+        DockIcon.apply()
         controller = ZeraController()
         BatteryAlerts.shared.start()
         buildStatusItem()

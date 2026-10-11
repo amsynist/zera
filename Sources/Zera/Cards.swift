@@ -1087,6 +1087,8 @@ final class SettingsCard: CardBase, CardContent {
             do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
             catch { NSSound.beep() }
         }
+        toggleRow("Show in the Dock", on: DockIcon.shown, &s) { on in DockIcon.shown = on }
+        hint("With it off, she lives in the menu bar and at the notch — drop files on Zera instead of the Dock icon.", &s)
         let rs = ReminderService.shared
         breakPopup = popupRow("Break reminder", items: ["Off", "Every 30 min", "Every 45 min", "Every hour", "Every 90 min", "Every 2 hours"],
                               selected: Self.breakChoices.firstIndex(of: rs.breakInterval) ?? 0, &s, action: #selector(breakChanged))
