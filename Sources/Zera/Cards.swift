@@ -1501,6 +1501,10 @@ final class SettingsCard: CardBase, CardContent {
             pop.toolTip = "A finished session waits this long for a reply from the wings; typing one pauses the countdown"
             hint("When Claude finishes, the wings show Reply for a few seconds: type a follow-up and Claude carries on in the "
                  + "same session. Sessions the wings aren't showing are never held.", &s)
+            toggleRow("Follow each agent on its own", on: act.showAgents, &s) { on in ClaudeActivityService.shared.showAgents = on }
+            hint("When Claude hands work to agents, each gets its own timeline on the session's Agents tab: what it was asked, "
+                 + "what it's doing now, what it reported back. Off, their steps join the session's. Sessions started before "
+                 + "this was installed pick up agents once restarted.", &s)
         }
 
         sectionLabel("Usage · Claude Code plan limits", &s)
