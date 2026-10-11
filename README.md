@@ -131,12 +131,20 @@ Needs macOS 13+ and the Xcode Command Line Tools. No Xcode project, no dependenc
 
 ## Contributing
 
-Issues and PRs welcome. Keep her cute, keep it local, and never require an API key. Please report
-security issues privately — see [SECURITY.md](SECURITY.md).
+Issues and pull requests are welcome — integrations, expressions, sounds, accessibility improvements and bug fixes. See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security issues privately through [SECURITY.md](SECURITY.md).
 
-## License and trademarks
+## Credits
 
-Licensed under the [MIT License](LICENSE). Copyright © 2026 amsynist.
+Created by [amsynist](https://github.com/amsynist). Thanks to everyone who has contributed — see [contributors](https://github.com/amsynist/zera/graphs/contributors).
 
 Zera is independent and not affiliated with Anthropic, GitHub or Apple. Claude and Claude Code are
 trademarks of Anthropic, PBC; GitHub of GitHub, Inc.; Apple, Mac and macOS of Apple Inc.
+
+## License
+
+- **Code:** [MIT](LICENSE) — use it, fork it, learn from it; keep the copyright and license notices.
+- **Zera name, character, icons, original artwork, sounds and media:** © 2026 amsynist, all rights reserved — see [LICENSE-ASSETS.md](LICENSE-ASSETS.md). Shipping your own fork? Give it your own name and creative assets.
+
+**If Zera makes your day easier, a ⭐ helps.**
+
+[Website](https://zera.pravincodes.in/) · [Privacy](docs/PRIVACY_DATA_MAP.md) · [Support](https://github.com/amsynist/zera/issues)
