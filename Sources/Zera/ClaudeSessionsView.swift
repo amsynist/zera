@@ -45,7 +45,7 @@ private func sessionTitle(_ s: ClaudeSession) -> String {
 
 private func sessionMeta(_ s: ClaudeSession, agents: Bool = false) -> String {
     let n = agents ? s.runningAgents : 0
-    return shortPath(s.cwd) + (s.branch.map { "  ·  \($0)" } ?? "") + (n > 0 ? "  ·  \(n) agent\(n == 1 ? "" : "s") working" : "")
+    return shortPath(s.cwd) + (n > 0 ? "  ·  \(n) agent\(n == 1 ? "" : "s") working" : "")
 }
 
 /// The status pill for a session, in the screen's semantic colours.
@@ -851,7 +851,15 @@ final class ClaudeFollowUpInput: NSView {
 
 final class SessionInfoRow: NSView {
     /// Rows you can open (an agent) answer a tap.
-    var onTap: (() -> Void)? { didSet { window?.invalidateCursorRects(for: self) } }
+    var onTap: (() -> Void)? {
+        didSet {
+            setAccessibilityElement(onTap != nil)
+            setAccessibilityRole(onTap == nil ? .staticText : .button)
+            setAccessibilityLabel(title)
+            setAccessibilityValue(subtitle)
+            window?.invalidateCursorRects(for: self)
+        }
+    }
     private let symbol: String
     private let tint: NSColor
     private let title: String
@@ -867,8 +875,17 @@ final class SessionInfoRow: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    override var acceptsFirstResponder: Bool { onTap != nil }
+    override func accessibilityPerformPress() -> Bool {
+        guard let tap = onTap else { return false }; tap(); return true
+    }
+    override func keyDown(with event: NSEvent) {
+        if onTap != nil, [36, 49, 76].contains(event.keyCode) { onTap?() } else { super.keyDown(with: event) }
+    }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { onTap != nil }
-    override func mouseDown(with event: NSEvent) { if onTap == nil { super.mouseDown(with: event) } }
+    override func mouseDown(with event: NSEvent) {
+        if onTap != nil { window?.makeFirstResponder(self) } else { super.mouseDown(with: event) }
+    }
     override func mouseUp(with event: NSEvent) {
         if let tap = onTap, bounds.contains(convert(event.locationInWindow, from: nil)) { tap() } else { super.mouseUp(with: event) }
     }
@@ -922,6 +939,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     private let claudeTile = ScreenIconTile.claude()
     private let leftTitle = label(Typo.screenTitle, Pal.text)
     private let leftSub = label(Typo.screenSubtitle, Pal.textSecondary)
+    private let usageBadge = PRStatusChip()
     private let peek = AnimatedZeraView()
     private let bubble = ZeraGitHubBubble()
     private var newSession: PRActionButton!
@@ -997,7 +1015,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         // List: header, filters, up to four sessions (more scroll).
         let rows = CGFloat(max(1, min(4, order.count)))
         let list = order.isEmpty ? 190 : rows * (S.rowH + S.rowGap) - S.rowGap
-        return Isle.headerHeight + 40 + 12 + list + 18
+        let toolbar = SearchToolbarLayout(width: cardWidth - S.pad * 2, filtersWidth: filters.preferredWidth, top: Isle.headerHeight)
+        return toolbar.bottom + Space.m + list + 18
     }
     /// In the island the session always replaces the list (with a back button).
     private var singlePane: Bool { true }
@@ -1033,6 +1052,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         leftTitle.stringValue = "Claude sessions"
         left.addSubview(leftTitle)
         left.addSubview(leftSub)
+        left.addSubview(usageBadge)
         peek.pose = "card_peek_down"
         left.addSubview(peek)                // behind the button: she peeks over it
         bubble.tailRight = true
@@ -1208,7 +1228,10 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         if waiting > 0 { parts.append("\(waiting) waiting on you") }
         if parts.isEmpty { parts.append(all.isEmpty ? "No sessions yet" : "\(completed) done") }
         // Your plan's limits, when usage tracking is on (Settings → Claude).
-        if let usage = ClaudeUsageService.shared.sessionsSummary { parts.append(usage) }
+        let usage = ClaudeUsageService.shared
+        usageBadge.isHidden = !usage.isInstalled || !usage.showInSessions
+        usageBadge.set(symbol: "gauge.with.dots.needle.50percent", text: "Usage · " + (usage.sessionsSummary ?? "awaiting reply"), color: p.accent)
+        usageBadge.toolTip = usage.freshnessLabel
         leftSub.stringValue = parts.joined(separator: " · ")
 
         // Rows, reused by session id so hover and animation survive the 1-second tick.
@@ -1480,6 +1503,10 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         let bw = newSession.fittedWidth + 8
         newSession.frame = NSRect(x: w - x - bw, y: ScreenHeader.controlY(Metrics.button), width: bw, height: Metrics.button)
 
+        // Usage occupies the existing trailing subtitle slot, never an extra list row.
+        let usageLeft = w / 2 + Isle.zeraGap / 2
+        let usageWidth = min(max(0, w - x - usageLeft), usageBadge.fittedWidth)
+        usageBadge.frame = NSRect(x: w - x - usageWidth, y: ScreenHeader.subtitleTop, width: usageWidth, height: 24)
         let toolbar = SearchToolbarLayout(width: iw, filtersWidth: filters.preferredWidth, top: Isle.headerHeight)
         filters.frame = toolbar.filters.offsetBy(dx: x, dy: 0)
         search.isHidden = false

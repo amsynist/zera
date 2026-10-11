@@ -1,15 +1,8 @@
 import AppKit
 
-// Claude Code's plan usage on Home: one slim row under the Mac's vitals — the 5-hour and the
-// weekly limit, each a number that glides to its reading over a bar, and when it resets. Tap
-// it to open Claude sessions. Readings come from `ClaudeUsageService`.
+// Compact plan windows: the liquid represents remaining capacity. Tap for Claude sessions.
 
-/// How full a limit looks: Claude's own colour, then amber, then red near the end.
-private extension Palette {
-    func claudeUsage(_ used: Double) -> NSColor { used >= 0.9 ? danger : (used >= 0.75 ? warning : tileClaude) }
-}
-
-final class ClaudeUsageStrip: NSView {
+final class ClaudeUsageStrip: NSView, ZeraAnimating {
     static let height: CGFloat = 44
     var onOpen: (() -> Void)?
     private let tween = VitalsTween()
@@ -17,6 +10,7 @@ final class ClaudeUsageStrip: NSView {
     private var pressed = false { didSet { needsDisplay = true } }
     /// Reset times read in minutes: redrawn when the minute changes, not on every reading.
     private var drawnMinute = 0
+    private var flowPhase: Double = 0
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -38,7 +32,9 @@ final class ClaudeUsageStrip: NSView {
     @objc private func changed() {
         let u = ClaudeUsageService.shared.usage
         tween.set([u?.fiveHour?.used ?? 0, u?.week?.used ?? 0], animated: window?.isVisible == true && !isHiddenOrHasHiddenAncestor)
-        setAccessibilityValue(u.map(\.spoken) ?? "No reading yet")
+        setAccessibilityValue((u.map(\.spoken) ?? "No reading yet") + ". Liquid shows remaining capacity.")
+        toolTip = "Liquid shows remaining capacity. " + ClaudeUsageService.shared.freshnessLabel
+        updateFlow()
         needsDisplay = true
     }
 
@@ -49,55 +45,98 @@ final class ClaudeUsageStrip: NSView {
         changed()   // a window that just reset drops to 0%
     }
 
-    private static let valueFont = TaskFont.clock(14)
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateFlow()
+    }
+    private func updateFlow() {
+        if window == nil || Motion.reduced || ClaudeUsageService.shared.usage == nil { ZeraAnimationClock.shared.remove(self) }
+        else { ZeraAnimationClock.shared.add(self) }
+    }
+    override func viewDidHide() { super.viewDidHide(); ZeraAnimationClock.shared.refresh() }
+    override func viewDidUnhide() { super.viewDidUnhide(); ZeraAnimationClock.shared.refresh() }
+    func advanceAnimation(at now: TimeInterval) {
+        guard !Motion.reduced, ClaudeUsageService.shared.usage != nil else { return }
+        flowPhase = now * 1.5
+        needsDisplay = true
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l, yRadius: Radius.l)
-        (pressed ? p.surfacePressed : (hovering ? p.surfaceHover : p.surfaceRow)).setFill(); shape.fill()
-        (hovering ? p.border.withAlphaComponent(min(1, p.border.alphaComponent * 2)) : NSColor.clear).setStroke()
-        shape.lineWidth = 1; shape.stroke()
-
-        // Who it's about: Claude's sparkles and name.
-        let mid = bounds.midY
-        var x = Space.l
-        Neon.symbol("sparkles", in: NSRect(x: x, y: mid - 9, width: 18, height: 18), size: 14, color: p.tileClaude)
-        x += 18 + Space.s
-        VDraw.label("Claude", at: NSPoint(x: x, y: mid - 7))
-        x += Typo.sectionText("Claude").size().width + Space.xl
-
-        let u = ClaudeUsageService.shared.usage
-        let v = tween.values.count == 2 ? tween.values : [0, 0]
-        // Bars glide; the numbers show where they're going.
-        let target = tween.to.count == 2 ? tween.to : v
-        let windows: [(label: String, window: ClaudeUsage.Window?)] = [("5-hour", u?.fiveHour), ("Weekly", u?.week)]
-        let gap = Space.xl
-        let segW = max(0, (bounds.width - x - Space.l - gap) / 2)
+        let service = ClaudeUsageService.shared
+        let u = service.usage
+        Neon.symbol("gauge.with.dots.needle.50percent", in: NSRect(x: 0, y: 13, width: 18, height: 18), size: 15, color: p.tileClaude)
+        let labelWidth: CGFloat = bounds.width >= 500 ? 84 : 28
+        if labelWidth > 28 { VDraw.text("Claude", Typo.control, p.textSecondary, at: NSPoint(x: 26, y: 14)) }
+        let values = tween.values.count == 2 ? tween.values : [0, 0]
+        let windows: [(String, ClaudeUsage.Window?)] = [("5h", u?.fiveHour), ("Week", u?.week)]
+        let width = max(0, (bounds.width - labelWidth - Space.s) / 2)
         for (i, item) in windows.enumerated() {
-            let r = NSRect(x: x + CGFloat(i) * (segW + gap), y: 0, width: segW, height: bounds.height)
-            let w = item.window
-            // Line: name and number on the left, when it resets on the right.
-            VDraw.label(item.label, at: NSPoint(x: r.minX, y: 9))
-            let nx = r.minX + Typo.sectionText(item.label).size().width + 6
-            let big = w == nil ? "—" : "\(Int((target[i] * 100).rounded()))%"
-            VDraw.text(big, Self.valueFont, p.text, at: NSPoint(x: nx, y: 5))
-            let note: String
-            if let w = w { note = w.hasReset() ? "fresh window" : "resets in \(w.resetsIn())" }
-            else { note = u == nil ? "on Claude's next reply" : "not reported" }
-            let noteW = VDraw.width(note, Typo.caption)
-            if noteW <= r.maxX - (nx + VDraw.width(big, Self.valueFont) + Space.s) {
-                VDraw.text(note, Typo.caption, p.textTertiary, at: NSPoint(x: r.maxX - noteW, y: 8))
+            let r = NSRect(x: labelWidth + CGFloat(i) * (width + Space.s), y: 2, width: width, height: 40)
+            let shape = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 20, yRadius: 20)
+            (pressed ? p.surfacePressed : (hovering ? p.surfaceHover : p.surfaceRow)).setFill(); shape.fill()
+            NSGraphicsContext.saveGraphicsState()
+            shape.addClip()
+            if let window = item.1 {
+                let remaining = max(0, min(1, 1 - values[i]))
+                let edge = r.minX + r.width * CGFloat(remaining)
+                let tint = p.accent
+                // Two offset surfaces give the liquid depth without obscuring its level.
+                for layer in 0...1 {
+                    let liquid = NSBezierPath()
+                    let surface = NSBezierPath()
+                    let amplitude = 2.8 * sin(.pi * remaining)
+                    func point(_ step: Int) -> NSPoint {
+                        let y = r.height * CGFloat(step) / 24
+                        let wave = sin(Double(y) * 0.13 + flowPhase + Double(layer) * 1.8) * amplitude
+                        return NSPoint(x: edge + CGFloat(wave) + (layer == 0 ? 3 : 0), y: r.minY + y)
+                    }
+                    liquid.move(to: NSPoint(x: r.minX, y: r.minY))
+                    liquid.line(to: point(0)); surface.move(to: point(0))
+                    for step in 1...24 { liquid.line(to: point(step)); surface.line(to: point(step)) }
+                    liquid.line(to: NSPoint(x: r.minX, y: r.maxY)); liquid.close()
+                    if remaining > 0 {
+                        NSGradient(starting: tint.withAlphaComponent(layer == 0 ? 0.035 : 0.14), ending: p.accentDeep.withAlphaComponent(layer == 0 ? 0.025 : 0.08))?.draw(in: liquid, angle: 90)
+                        if remaining < 1 {
+                            tint.withAlphaComponent(layer == 0 ? 0.08 : 0.25).setStroke()
+                            surface.lineWidth = layer == 0 ? 0.7 : 0.9; surface.stroke()
+                        }
+                    }
+                }
+                // Sparse rising bubbles stay in the liquid and away from the copy.
+                if r.width > 230 && remaining > 0.15 {
+                    for bubble in 0..<3 {
+                        let progress = (flowPhase * 0.09 + Double(bubble) / 3).truncatingRemainder(dividingBy: 1)
+                        let x = r.minX + r.width * CGFloat(remaining) * CGFloat(0.73 + Double(bubble) * 0.07)
+                        let y = r.maxY - CGFloat(progress) * r.height
+                        let diameter: CGFloat = bubble == 1 ? 3 : 2
+                        p.text.withAlphaComponent(0.065 * sin(.pi * progress)).setStroke()
+                        let bead = NSBezierPath(ovalIn: NSRect(x: x, y: y, width: diameter, height: diameter))
+                        bead.lineWidth = 0.7; bead.stroke()
+                    }
+                }
             }
-            // Bar.
-            let bar = NSRect(x: r.minX, y: bounds.height - 16, width: r.width, height: 6)
-            let track = NSBezierPath(roundedRect: bar, xRadius: 3, yRadius: 3)
-            p.text.withAlphaComponent(0.08).setFill(); track.fill()
-            let fillW = bar.width * CGFloat(max(0, min(1, w == nil ? 0 : v[i])))
-            if fillW > 0.5 {
-                p.claudeUsage(target[i]).setFill()
-                NSBezierPath(roundedRect: NSRect(x: bar.minX, y: bar.minY, width: max(6, fillW), height: bar.height), xRadius: 3, yRadius: 3).fill()
-            }
+            // A restrained upper reflection makes the container read as curved glass.
+            let reflection = NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height * 0.45)
+            NSGradient(starting: p.text.withAlphaComponent(hovering ? 0.035 : 0.018), ending: p.text.withAlphaComponent(0))?.draw(in: reflection, angle: 90)
+            NSGraphicsContext.restoreGraphicsState()
+            let rim = NSBezierPath()
+            rim.move(to: NSPoint(x: r.minX + 20, y: r.minY + 1))
+            rim.line(to: NSPoint(x: r.maxX - 20, y: r.minY + 1))
+            p.text.withAlphaComponent(0.045).setStroke(); rim.lineWidth = 0.7; rim.stroke()
+            (pressed ? p.accentBorder : p.border).setStroke(); shape.lineWidth = 1; shape.stroke()
+            let title = item.1.map { "\(item.0) · \($0.percent)% used" } ?? "\(item.0) · —"
+            let reset = item.1.map { "Resets in \($0.resetsIn())" } ?? "Awaiting reply"
+            let textX = r.minX + Space.l
+            VDraw.text(title, Typo.control, p.textSecondary, at: NSPoint(x: textX, y: r.minY + 4))
+            let paragraph = NSMutableParagraphStyle(); paragraph.lineBreakMode = .byTruncatingTail
+            (reset as NSString).draw(in: NSRect(x: textX, y: r.minY + 21, width: max(0, width - Space.l * 2), height: 14), withAttributes: [.font: Typo.caption, .foregroundColor: p.textSecondary, .paragraphStyle: paragraph])
         }
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+    override func keyDown(with event: NSEvent) {
+        if [36, 49, 76].contains(event.keyCode) { onOpen?() } else { super.keyDown(with: event) }
     }
 
     override func updateTrackingAreas() {

@@ -103,9 +103,6 @@ final class ClaudeUsageService {
         fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Zera", isDirectory: true)
     }
     private var usageDir: URL { base.appendingPathComponent("hooks/usage", isDirectory: true) }
-    /// What the script dropped last (claimed, read, then deleted).
-    private var latestURL: URL { usageDir.appendingPathComponent("latest.json") }
-    private var claimedURL: URL { usageDir.appendingPathComponent("latest.reading.json") }
     /// Your own status line command, which the script runs after handing Zera the numbers.
     private var nextCommandURL: URL { usageDir.appendingPathComponent("next-command") }
     /// Your whole status line setting, put back as it was when you stop tracking.
@@ -149,22 +146,33 @@ final class ClaudeUsageService {
         poll()
     }
 
-    /// Claims what the script wrote (rename → read → delete, so a newer drop is never deleted
-    /// unread) and keeps only the numbers. The screens hear about it when a number moves.
-    private func poll() {
-        guard fm.fileExists(atPath: latestURL.path) else { return }
-        try? fm.removeItem(at: claimedURL)
-        guard (try? fm.moveItem(at: latestURL, to: claimedURL)) != nil else { return }
-        let data = try? Data(contentsOf: claimedURL)
-        try? fm.removeItem(at: claimedURL)
-        guard let new = data.flatMap({ ClaudeUsage.parse(statusLine: $0) }) else { return }
-        let before = stored?.current()
-        let u = stored.map { $0.current().merged(with: new) } ?? new
-        stored = u
-        if let encoded = try? JSONEncoder().encode(u) { UserDefaults.standard.set(encoded, forKey: Self.storeKey) }
-        if u.fiveHour != before?.fiveHour || u.week != before?.week {
-            NotificationCenter.default.post(name: Self.changed, object: nil)
+    /// Each status-line invocation publishes its own atomic file. Drain the queue before
+    /// notifying views, so an idle session cannot overwrite a busier session's reading.
+    nonisolated static func drainReadings(in directory: URL) -> [ClaudeUsage] {
+        let fm = FileManager.default
+        let files = (try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        return files.filter { ($0.lastPathComponent.hasPrefix("reading-") && $0.pathExtension == "json") || $0.lastPathComponent == "latest.json" }.compactMap { file in
+            let data = try? Data(contentsOf: file)
+            try? fm.removeItem(at: file)
+            return data.flatMap { ClaudeUsage.parse(statusLine: $0) }
         }
+    }
+
+    private func poll() {
+        let readings = Self.drainReadings(in: usageDir)
+        guard !readings.isEmpty else { return }
+        var merged = stored?.current()
+        for reading in readings { merged = merged.map { $0.merged(with: reading) } ?? reading }
+        stored = merged
+        if let encoded = merged.flatMap({ try? JSONEncoder().encode($0) }) {
+            UserDefaults.standard.set(encoded, forKey: Self.storeKey)
+        }
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+
+    var freshnessLabel: String {
+        guard let u = usage else { return "Waiting for Claude's next reply" }
+        return "\(Date().timeIntervalSince(u.readAt) > 900 ? "Last reading" : "Updated") \(relativeTime(u.readAt))"
     }
 
     private var previewing = false
@@ -192,7 +200,9 @@ final class ClaudeUsageService {
       *'"rate_limits"'*)
         if pgrep -x Zera >/dev/null 2>&1; then
           mkdir -p -m 700 "$BASE"
-          printf '%s' "$INPUT" > "$BASE/latest.json.tmp" && mv -f "$BASE/latest.json.tmp" "$BASE/latest.json"
+          if PENDING="$(mktemp "$BASE/reading-XXXXXX")"; then
+            printf '%s' "$INPUT" > "$PENDING" && mv -f "$PENDING" "$PENDING.json"
+          fi
         fi ;;
     esac
     NEXT="$(cat "$BASE/next-command" 2>/dev/null)"
@@ -279,7 +289,7 @@ final class ClaudeUsageService {
         try? fm.removeItem(at: scriptURL)
         try? fm.removeItem(at: previousURL)
         try? fm.removeItem(at: nextCommandURL)
-        try? fm.removeItem(at: latestURL)
+        _ = Self.drainReadings(in: usageDir)
         stored = nil
         UserDefaults.standard.removeObject(forKey: Self.storeKey)
         installedCheckedAt = .distantPast

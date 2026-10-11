@@ -108,4 +108,61 @@ final class ClaudeUsageTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: usage.appendingPathComponent("latest.json").path),
                        "no plan usage in it: nothing is written")
     }
+    func testConcurrentStatusLinesPublishEveryReadingAndDrainKeepsTheFullest() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("zera-usage-concurrent-\(UUID().uuidString)")
+        let queue = root.appendingPathComponent("Library/Application Support/Zera/hooks/usage")
+        let bin = root.appendingPathComponent("bin")
+        try FileManager.default.createDirectory(at: queue, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pgrep = bin.appendingPathComponent("pgrep")
+        try "#!/bin/sh\nexit 0\n".write(to: pgrep, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: pgrep.path)
+        let script = root.appendingPathComponent("statusline.sh")
+        try ClaudeUsageService.script.write(to: script, atomically: true, encoding: .utf8)
+        var children: [(Process, Pipe)] = []
+        let reset = Date().addingTimeInterval(3600).timeIntervalSince1970
+        for i in 0..<24 {
+            let child = Process(), input = Pipe(), error = Pipe()
+            child.executableURL = URL(fileURLWithPath: "/bin/bash")
+            child.arguments = [script.path]
+            child.environment = ["HOME": root.path, "PATH": bin.path + ":/usr/bin:/bin"]
+            child.standardInput = input; child.standardError = error
+            try child.run()
+            input.fileHandleForWriting.write(try statusLine(["five_hour": ["used_percentage": i * 4, "resets_at": reset]]))
+            try input.fileHandleForWriting.close()
+            children.append((child, error))
+        }
+        for (child, error) in children {
+            child.waitUntilExit()
+            XCTAssertEqual(child.terminationStatus, 0)
+            XCTAssertTrue(error.fileHandleForReading.readDataToEndOfFile().isEmpty)
+        }
+        let sentinel = queue.appendingPathComponent("previous-statusline.json")
+        try Data("{}".utf8).write(to: sentinel)
+        let readings = ClaudeUsageService.drainReadings(in: queue)
+        XCTAssertEqual(readings.count, 24)
+        let merged = try XCTUnwrap(readings.first).merged(with: readings.dropFirst().reduce(readings[0]) { $0.merged(with: $1) })
+        XCTAssertEqual(merged.fiveHour?.percent, 92)
+        XCTAssertTrue(ClaudeUsageService.drainReadings(in: queue).isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sentinel.path))
+    }
+
+    func testSettingsFileRoundTripRestoresExistingStatusLine() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("zera-settings-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("settings.json")
+        let original: [String: Any] = ["statusLine": ["type": "command", "command": "echo hello", "padding": 2], "model": "opus"]
+        try ClaudeSettingsFile.write(original, to: file)
+        let install = ClaudeUsageService.installing(into: try XCTUnwrap(ClaudeSettingsFile.read(file)), script: dir.appendingPathComponent("zera-statusline.sh"))
+        try ClaudeSettingsFile.write(install.json, to: file)
+        let restored = ClaudeUsageService.removing(from: try XCTUnwrap(ClaudeSettingsFile.read(file)), restoring: install.previous)
+        try ClaudeSettingsFile.write(restored, to: file)
+        let read = try XCTUnwrap(ClaudeSettingsFile.read(file))
+        XCTAssertEqual(read["model"] as? String, "opus")
+        XCTAssertEqual((read["statusLine"] as? [String: Any])?["command"] as? String, "echo hello")
+        XCTAssertEqual((read["statusLine"] as? [String: Any])?["padding"] as? Int, 2)
+    }
+
 }

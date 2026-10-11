@@ -196,6 +196,20 @@ h1,h2,h3{margin:0;color:var(--ink)}
 .soundhint:hover{transform:translateY(-1px);border-color:rgba(var(--accent-rgb),.6)}
 .soundhint.gone{opacity:0;pointer-events:none}
 
+/* Compact Claude plan preview: sample readings, styled like the app's quiet capsules. */
+.usage-preview{margin-top:24px;max-width:560px}
+.usage-capsules{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.usage-capsule{position:relative;isolation:isolate;overflow:hidden;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.035);padding:9px 18px}
+.usage-capsule strong,.usage-capsule small{position:relative;z-index:1;display:block;color:var(--dim)}
+.usage-capsule strong{font-size:13px;font-weight:500;line-height:1.4}
+.usage-capsule small{font-size:11px;line-height:1.5;color:var(--faint)}
+.usage-liquid{position:absolute;inset:0 auto 0 0;width:var(--fill);background:linear-gradient(180deg,rgba(var(--accent-rgb),.14),rgba(var(--accent-rgb),.08));border-right:1px solid rgba(var(--accent-rgb),.2)}
+.usage-liquid::after{content:"";position:absolute;right:-4px;top:-20%;width:8px;height:140%;border-radius:45%;background:rgba(var(--accent-rgb),.06);animation:usage-flow 6s ease-in-out infinite alternate}
+.usage-note{font-size:12px;line-height:1.6;color:var(--faint);margin:10px 0 0}
+@keyframes usage-flow{to{transform:translateX(-4px) rotate(8deg)}}
+@media (max-width:420px){.usage-capsule{padding:9px 12px}}
+@media (prefers-reduced-motion:reduce){.usage-liquid::after{animation:none}}
+
 /* battery demo */
 .drain{display:flex;align-items:center;gap:14px;margin-top:22px;font:600 15px/1 "Geist Mono",monospace;color:var(--ink)}
 .drain .batt{width:54px;height:26px;border-radius:7px}
@@ -376,6 +390,15 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
           <div class="tick"><span><b>Every session at a glance</b>: running, waiting on you, done.</span></div>
           <div class="tick"><span><b>Approve or reject</b> commands from the notch, only when the terminal would have asked.</span></div>
           <div class="tick"><span><b>Reply when it's done</b> and the same session keeps going.</span></div>
+          <div class="tick"><span><b>Follow each agent</b>: its task, live steps and result, in its own timeline.</span></div>
+          <div class="tick"><span><b>Know your plan limits</b>: 5-hour and weekly usage on Home and in Claude sessions, with reset times.</span></div>
+        </div>
+        <div class="usage-preview rv d2" aria-label="Example Claude plan readings: 23 percent of the 5-hour limit used, 41 percent of the weekly limit used">
+          <div class="usage-capsules">
+            <div class="usage-capsule"><i class="usage-liquid" style="--fill:77%" aria-hidden="true"></i><strong>5h · 23% used</strong><small>Resets in 59m</small></div>
+            <div class="usage-capsule"><i class="usage-liquid" style="--fill:59%" aria-hidden="true"></i><strong>Week · 41% used</strong><small>Resets in 2d 6h</small></div>
+          </div>
+          <p class="usage-note">Example readings. The liquid shows what's left and drains as usage rises. Enable Track usage in Settings → Integrations → Claude.</p>
         </div>
       </div>
       <div class="media">
@@ -657,6 +680,8 @@ open dist/Zera.app</div>
       <details><summary>Why does macOS ask about Downloads and Desktop?</summary><p>The Shelf's Fresh tab lists new files there. Zera only asks the first time you open Fresh, and only reads names, sizes and dates.</p></details>
       <details><summary>Will it slow my Mac down?</summary><p>No. It's a native Swift app with no web views. Vitals are read once a second only while they're on screen; tab switches take a few milliseconds.</p></details>
       <details><summary>How does Ask Claude work?</summary><p>When you click Summarize, Explain, Extract or ask a question, Zera sends that one file to Claude through the Claude Code CLI you're already signed in to, and streams the answer onto the file's page. Nothing is sent until you click.</p></details>
+      <details><summary>How do Claude plan usage readings work?</summary><p>Enable Track usage in Settings → Integrations → Claude for Claude Code Pro or Max. After a reply, Claude Code supplies the 5-hour and weekly readings; Zera shows percentage used and reset times. The capsule liquid represents remaining capacity, and hovering shows the last reading time. Your existing status line continues to run and is restored when you stop tracking. No extra API request is made.</p></details>
+      <details><summary>Can I hide the Dock icon?</summary><p>Yes. Turn off Show in the Dock in Settings → General. Zera stays at the notch and in the menu bar; you can still drop files on her.</p></details>
       <details><summary>Can I open apps from the keyboard?</summary><p>Yes. ⌥Space brings down your usual apps on an arc; the arrow keys move along it and Return opens one. Typing searches every app, command and action, and ⌘1–⌘6 open the first six.</p></details>
       <details><summary>Is it really free?</summary><p>Yes, and open source on GitHub. Issues and pull requests are welcome.</p></details>
     </div>

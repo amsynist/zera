@@ -421,7 +421,7 @@ final class ClaudeActivityService {
         let ownTimeline = !agentID.isEmpty && showAgents
 
         // Anything new from the session means it moved on: no reply is pending any more.
-        if !["Stop", "Notification", "SubagentStart", "SubagentStop"].contains(event), s.replyUntil != nil || s.replyHeld { clearReply(s) }
+        if agentID.isEmpty, !["Stop", "Notification", "SubagentStart", "SubagentStop"].contains(event), s.replyUntil != nil || s.replyHeld { clearReply(s) }
         switch event {
         case "SessionStart":
             s.status = .idle
@@ -484,7 +484,7 @@ final class ClaudeActivityService {
                 s.steps.append(step)
                 if s.steps.count > 60 { s.steps.removeFirst(s.steps.count - 60) }
             }
-            s.status = .running
+            if agentID.isEmpty { s.status = .running }
         case "PostToolUse":
             if !agentID.isEmpty, let a = s.agents.first(where: { $0.id == agentID }) {
                 Self.finishStep(in: &a.steps, useID: useID, tool: tool, response: e["tool_response"], at: now)
@@ -496,7 +496,7 @@ final class ClaudeActivityService {
                let a = s.agents.first(where: { $0.callID == useID && $0.isRunning && !$0.background }) {
                 a.finish(at: now)
             }
-            s.status = .running
+            if agentID.isEmpty { s.status = .running }
         case "Notification":
             // Two different notifications arrive here: a permission prompt (Claude is blocked
             // on you) and the idle nudge "Claude is waiting for your input" (its turn is over).
