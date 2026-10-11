@@ -5,7 +5,8 @@
 #   ZERA_VERSION        e.g. 0.3.0 (required — CI sets it from the tag)
 #   APPLE_ID            Apple ID email           ┐
 #   APPLE_TEAM_ID       10-character team id     ├ all three → notarize + staple
-#   APPLE_APP_PASSWORD  app-specific password    ┘ (missing → unsigned/ad-hoc release)
+#   APPLE_APP_PASSWORD  app-specific password    ┘ (missing → unnotarized release)
+#   CODESIGN_IDENTITY   Developer ID Application identity (required for notarization)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -22,6 +23,7 @@ notarize() {  # $1 = file to submit
 
 can_notarize=false
 if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
+  [ -n "${CODESIGN_IDENTITY:-}" ] || { echo "error: notarization requires a Developer ID-signed build (set CODESIGN_IDENTITY)" >&2; exit 1; }
   can_notarize=true
 fi
 
@@ -32,7 +34,7 @@ if $can_notarize; then
   rm -f dist/notarize.zip
   xcrun stapler staple "$APP"
 else
-  echo "==> Skipping notarization (no Apple credentials) — users will right-click → Open once"
+  echo "==> Skipping notarization — first launch may need System Settings → Privacy & Security → Open Anyway"
 fi
 
 echo "==> Zipping"
@@ -43,6 +45,7 @@ echo "==> Building the disk image"
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
+cp docs/INSTALL.txt "$STAGE/Install Zera.txt"
 rm -f "$DMG"
 hdiutil create -volname "Zera $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
@@ -58,3 +61,7 @@ fi
 echo "==> Checksums"
 (cd dist && shasum -a 256 "Zera-$VERSION.dmg" "Zera-$VERSION.zip" > SHA256SUMS.txt && cat SHA256SUMS.txt)
 echo "==> Ready: $DMG, $ZIP"
+# A successful staple, rather than signing alone, determines the release message.
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  echo "notarized=$can_notarize" >> "$GITHUB_OUTPUT"
+fi

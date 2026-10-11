@@ -4,7 +4,7 @@ name: Release
 # Zera.app, signs and notarizes it when the Apple secrets are set, and publishes Zera-<v>.dmg,
 # Zera-<v>.zip and SHA256SUMS.txt on the repository's Releases page.
 #
-# Optional secrets (without them the release is ad-hoc signed; users right-click → Open once):
+# Optional secrets (without them, first launch may need Privacy & Security → Open Anyway):
 #   MACOS_CERTIFICATE          base64 of your "Developer ID Application" .p12
 #   MACOS_CERTIFICATE_PASSWORD password of that .p12
 #   CODESIGN_IDENTITY          e.g. "Developer ID Application: Your Name (TEAMID)"
@@ -83,6 +83,7 @@ jobs:
           ./build.sh
 
       - name: Package (notarize when configured)
+        id: package
         run: |
           chmod +x scripts/package.sh
           ./scripts/package.sh
@@ -113,7 +114,9 @@ jobs:
             **Download:** `Zera-${{ steps.v.outputs.version }}.dmg` — open it and drag Zera to Applications.
             Requires macOS 13 or newer (Apple silicon and Intel).
 
-            ${{ env.CODESIGN_IDENTITY == '' && 'This build is not notarized yet: the first time, right-click Zera in Applications → **Open** → **Open**.' || 'Signed and notarized by Apple.' }}
+            ${{ steps.package.outputs.notarized == 'true' && 'Signed with Developer ID and notarized by Apple.' || 'This build is not notarized yet. Try opening Zera from Applications, then go to **System Settings → Privacy & Security → Open Anyway**, authenticate if asked, and confirm **Open**.' }}
+
+            [Install, update and uninstall guide](https://github.com/amsynist/zera/blob/main/docs/INSTALL.txt)
 
             Verify: `shasum -a 256 -c SHA256SUMS.txt`
 

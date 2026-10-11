@@ -30,6 +30,7 @@ mkdir -p "$APP/Contents/Resources/Sprites"
 cp Resources/Sprites/*.png "$APP/Contents/Resources/Sprites/"
 mkdir -p "$APP/Contents/Resources/Sounds"
 cp Resources/Sounds/*.wav "$APP/Contents/Resources/Sounds/"
+cp LICENSE THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
 # Optional: GitHub's mark for the PR screen (download it yourself from github.com/logos).
 if [ -f Resources/github-mark.png ]; then cp Resources/github-mark.png "$APP/Contents/Resources/"; fi
 
