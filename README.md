@@ -48,11 +48,30 @@ No account and no API key: Claude runs through your existing Claude Code login.
 ## Download
 
 1. Grab **`Zera-<version>.dmg`** from [zera.pravincodes.in](https://zera.pravincodes.in/) or the [latest release](https://github.com/amsynist/zera/releases/latest).
-2. Open it and drag **Zera** into **Applications**.
-3. Launch Zera. She appears under the notch (or in the middle of the menu bar on Macs without one).
+2. Open the DMG and drag **Zera** onto the **Applications** shortcut. This installs it at `/Applications/Zera.app`.
+3. Open **Finder → Applications → Zera**, then eject the DMG. She appears under the notch (or in the middle of the menu bar on Macs without one).
 
-Requires macOS 13 or newer, Apple silicon or Intel. If macOS says an unnotarized build is from an
-unidentified developer, right-click Zera → **Open** → **Open** once.
+Requires macOS 13 or newer, Apple silicon or Intel. Claude Code is optional for installation; connect it later for Claude features.
+
+### If macOS blocks the first launch
+
+The current release is not notarized. After trying to open Zera, go to **System Settings → Privacy & Security**, scroll to **Security**, and choose **Open Anyway** beside Zera. Authenticate if asked, then confirm **Open**. macOS remembers this exception for that copy. See [Apple's first-launch guide](https://support.apple.com/en-us/102445).
+
+<details>
+<summary>Optional Terminal method for the official download</summary>
+
+After moving Zera to Applications, open **Terminal** and paste:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/Zera.app"
+open "/Applications/Zera.app"
+```
+
+This removes quarantine from **Zera only**; it does not sign or notarize the app. Use it only for a copy downloaded from this repository or the official site. If macOS reports malware or a damaged app, download a fresh copy and report the issue rather than bypassing that warning.
+
+</details>
+
+[Full install, update and uninstall guide](docs/INSTALL.txt).
 
 ## Setup
 
@@ -117,6 +136,7 @@ security issues privately — see [SECURITY.md](SECURITY.md).
 
 ## License and trademarks
 
-A license will be added before the first official release; until then no license is granted beyond
-viewing the source. Zera is independent and not affiliated with Anthropic, GitHub or Apple. Claude and
-Claude Code are trademarks of Anthropic, PBC; GitHub of GitHub, Inc.; Apple, Mac and macOS of Apple Inc.
+Licensed under the [MIT License](LICENSE). Copyright © 2026 amsynist.
+
+Zera is independent and not affiliated with Anthropic, GitHub or Apple. Claude and Claude Code are
+trademarks of Anthropic, PBC; GitHub of GitHub, Inc.; Apple, Mac and macOS of Apple Inc.

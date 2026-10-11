@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#08070d">
 <script src="zera.js" defer></script>
 <script src="water.js" defer></script>
+<script src="install.js" defer></script>
 <link rel="icon" type="image/png" href="assets/icon.png">
 <link rel="apple-touch-icon" href="assets/icon.png">
 <meta property="og:type" content="website">
@@ -266,6 +267,15 @@ h1,h2,h3{margin:0;color:var(--ink)}
 .step{display:flex;gap:16px;align-items:baseline;color:#cfcade}
 .step b{color:var(--ink)}
 .step .num{font:700 22px/1 "Geist Mono",monospace;color:var(--accent);width:28px}
+.install-meta{color:var(--dim);font-size:14px;margin:14px 0}
+.install-help{border-top:1px solid var(--line)}
+.install-help ol{color:var(--dim);padding-left:22px;margin:14px 0;line-height:1.7}
+.install-help li+li{margin-top:8px}
+.install-help b{color:var(--ink);font-weight:600}
+.install-help .code{margin-top:16px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+.install-copy{margin-top:12px;cursor:pointer}
+.install-status{font-size:13px;color:var(--dim);min-height:1.6em}
+#install{scroll-margin-top:100px}
 details{border-bottom:1px solid var(--line);padding:20px 0}
 summary{cursor:pointer;list-style:none;font:600 17px/1.4 Geist,sans-serif;color:var(--ink);display:flex;justify-content:space-between;gap:20px}
 summary::after{content:"+";color:var(--accent);font-weight:400;transition:transform .3s var(--ease)}
@@ -304,7 +314,7 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
     </div>
     <div class="navcta">
       <a class="btn small" href="https://github.com/amsynist/zera">GitHub</a>
-      <a class="btn small primary" href="https://github.com/amsynist/zera/releases/latest">Download</a>
+      <a class="btn small primary" data-download href="https://github.com/amsynist/zera/releases/latest">Download</a>
     </div>
   </nav>
   <div class="buddy-perch">
@@ -348,13 +358,14 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
         <h1 class="h1 kin" style="margin-top:22px">Your AI buddy<br><span class="grad">in the notch.</span></h1>
         <p class="lead rv d2">A little company. A lot less switching. Approve Claude Code, catch your files, focus on a task, and keep your day together. All from your Mac’s notch.</p>
         <div class="ctas rv d3">
-          <a class="btn primary" href="https://github.com/amsynist/zera/releases/latest">
+          <a class="btn primary" data-download href="https://github.com/amsynist/zera/releases/latest">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>
             Download for Mac
           </a>
           <a class="btn" href="#film">Watch the film</a>
         </div>
         <p class="meta rv d4">macOS 13+ · Apple silicon and Intel · no account, no API key</p>
+        <p class="install-meta rv d4"><a href="#install">First time installing? Follow the quick guide →</a></p>
         <p class="buddy-hint rv d4">The little one up top? Move your cursor. Or say hello with a tap.</p>
       </div>
       <div class="hero-demo rv d2">
@@ -667,19 +678,48 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
         <span class="eyebrow rv"><i></i>Get Zera</span>
         <h2 class="h2 kin">Three steps.</h2>
         <div class="rv d1" style="display:flex;flex-direction:column;gap:18px;margin-top:28px">
-          <div class="step"><span class="num">1</span><span>Download <b>Zera.dmg</b> from the latest release.</span></div>
-          <div class="step"><span class="num">2</span><span>Drag Zera into <b>Applications</b> and open it.</span></div>
-          <div class="step"><span class="num">3</span><span>Sign in to <b>Claude Code</b> once. Zera finds it on its own.</span></div>
+          <div class="step"><span class="num">1</span><span>Download and open the <b>Zera DMG</b>.</span></div>
+          <div class="step"><span class="num">2</span><span>Drag <b>Zera</b> onto the <b>Applications</b> shortcut.</span></div>
+          <div class="step"><span class="num">3</span><span>Open <b>Finder → Applications → Zera</b>. Then eject the disk image.</span></div>
         </div>
-        <div class="rv d2" style="margin-top:30px"><a class="btn primary" href="https://github.com/amsynist/zera/releases/latest">Download for Mac</a></div>
+        <div class="rv d2" style="margin-top:30px"><a class="btn primary" data-download href="https://github.com/amsynist/zera/releases/latest">Download for Mac</a></div>
+        <p class="install-meta" id="download-version">Latest release · macOS 13+ · Apple silicon and Intel</p>
+        <p class="install-meta">Zera appears at the top of your screen. Hover her to explore; connect Claude Code later if you want Claude features.</p>
       </div>
       <div class="media rv d2">
-        <p style="font-weight:600;margin:6px 0 14px">Or build it yourself</p>
-        <div class="code">git clone https://github.com/amsynist/zera.git
+        <div class="install-help">
+          <details open>
+            <summary>macOS blocked Zera?</summary>
+            <p>For a release that hasn't been notarized, approve the official download once:</p>
+            <ol>
+              <li>Try opening <b>Zera from Applications</b> first.</li>
+              <li>Open <b>System Settings → Privacy &amp; Security</b> and scroll to <b>Security</b>.</li>
+              <li>Choose <b>Open Anyway</b> beside Zera. Authenticate if asked, then confirm <b>Open</b>.</li>
+            </ol>
+            <p>Your Mac remembers the exception for that copy. <a href="https://support.apple.com/en-us/102445">Apple's guide ↗</a></p>
+          </details>
+          <details>
+            <summary>Prefer Terminal?</summary>
+            <p>After moving the official download to Applications, open Terminal and paste:</p>
+            <pre class="code" id="install-command">xattr -dr com.apple.quarantine "/Applications/Zera.app"
+open "/Applications/Zera.app"</pre>
+            <button class="btn small install-copy" id="copy-install" type="button">Copy commands</button>
+            <p class="install-status" id="copy-status" role="status"></p>
+            <p>This removes quarantine from Zera only; it doesn't sign or notarize the app. Use it only for our official download. If macOS reports malware or a damaged app, download a fresh copy and <a href="https://github.com/amsynist/zera/issues">report the issue</a> instead of bypassing that warning.</p>
+          </details>
+          <details>
+            <summary>How do I update?</summary>
+            <p>Quit Zera using its own menu, download the latest DMG, and drag the new Zera into Applications. Choose <b>Replace</b>, then reopen it. Your settings stay on your Mac; an unnotarized update may need first-launch approval again.</p>
+          </details>
+          <details>
+            <summary>Build from source</summary>
+            <pre class="code">git clone https://github.com/amsynist/zera.git
 cd zera
 ./build.sh
-open dist/Zera.app</div>
-        <p style="color:var(--faint);font-size:14px;margin-top:14px">No Xcode project and no dependencies: just Swift and the Command Line Tools.</p>
+open dist/Zera.app</pre>
+            <p>No Xcode project and no dependencies: just Swift and the Command Line Tools.</p>
+          </details>
+        </div>
       </div>
     </div>
   </section>
@@ -698,7 +738,7 @@ open dist/Zera.app</div>
       <details><summary>How do Claude plan usage readings work?</summary><p>Enable Track usage in Settings → Integrations → Claude for Claude Code Pro or Max. After a reply, Claude Code supplies the 5-hour and weekly readings; Zera shows percentage used and reset times. A compact card shows slim bars that fill with usage and change color near the limit; hovering shows the last reading time. Your existing status line continues to run and is restored when you stop tracking. No extra API request is made.</p></details>
       <details><summary>Can I hide the Dock icon?</summary><p>Yes. Turn off Show in the Dock in Settings → General. Zera stays at the notch and in the menu bar; you can still drop files on her.</p></details>
       <details><summary>Can I open apps from the keyboard?</summary><p>Yes. ⌥Space brings down your usual apps on an arc; the arrow keys move along it and Return opens one. Typing searches every app, command and action, and ⌘1–⌘6 open the first six.</p></details>
-      <details><summary>Is it really free?</summary><p>Yes, and open source on GitHub. Issues and pull requests are welcome.</p></details>
+      <details><summary>Is it really free?</summary><p>Yes, and open source under the <a href="https://github.com/amsynist/zera/blob/main/LICENSE">MIT License</a>. Issues and pull requests are welcome.</p></details>
     </div>
   </section>
 </main>
@@ -710,6 +750,7 @@ open dist/Zera.app</div>
     <div style="margin-left:auto;display:flex;gap:22px;font-size:14px;font-weight:500">
       <a href="https://github.com/amsynist/zera">GitHub</a>
       <a href="https://github.com/amsynist/zera/releases">Releases</a>
+      <a href="https://github.com/amsynist/zera/blob/main/LICENSE">License</a>
       <a href="https://github.com/amsynist/zera/blob/main/SECURITY.md">Security</a>
     </div>
   </div>

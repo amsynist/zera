@@ -1,0 +1,51 @@
+INSTALL ZERA
+
+Works on macOS 13 or newer, with Apple silicon or Intel.
+You do not need Terminal, Xcode, a Zera account or Claude Code to install.
+
+1. Download the DMG from https://zera.pravincodes.in/
+   Official releases: https://github.com/amsynist/zera/releases/latest
+2. Open Zera-<version>.dmg. Drag Zera onto the Applications shortcut.
+3. In Finder, open Applications and double-click Zera.
+4. Eject the Zera disk image in Finder. You can delete the downloaded DMG.
+
+Zera lives at /Applications/Zera.app. She appears at the top of your screen,
+under the notch or in the middle of the menu bar on Macs without a notch.
+Hover Zera to open her menu. Connect optional integrations in Settings later.
+
+IF MACOS BLOCKS THE FIRST LAUNCH
+
+For a release that has not been notarized:
+1. Try opening Zera from Applications first.
+2. Open System Settings > Privacy & Security and scroll to Security.
+3. Choose Open Anyway beside Zera. Authenticate if asked, then confirm Open.
+macOS remembers the exception for that copy.
+
+Only approve a copy you downloaded from the official site or repository.
+Apple's guide: https://support.apple.com/en-us/102445
+
+OPTIONAL TERMINAL METHOD
+
+After moving the official download to Applications, open Terminal and paste:
+
+xattr -dr com.apple.quarantine "/Applications/Zera.app"
+open "/Applications/Zera.app"
+
+This removes quarantine from Zera only. It does not sign or notarize the app.
+If macOS reports malware or a damaged app, download a fresh copy and report
+the issue instead of bypassing that warning. On a managed Mac, ask your IT
+administrator if installation is restricted.
+
+UPDATING
+
+Quit Zera using its own menu, download the new DMG, and drag the new Zera
+into Applications. Choose Replace when Finder asks, then reopen Zera.
+Your settings stay on your Mac. A new unnotarized copy may need approval.
+
+UNINSTALLING
+
+In Settings > Integrations, remove any installed hooks and stop usage
+tracking first. Turn off Open at login in Settings > General, quit Zera,
+and move /Applications/Zera.app to Trash.
+
+Help: https://github.com/amsynist/zera/issues
