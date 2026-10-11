@@ -1080,7 +1080,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         }
         right.addSubview(rightState)
 
-        for name in [ClaudeActivityService.changed, ClaudeHookService.changed] {
+        for name in [ClaudeActivityService.changed, ClaudeHookService.changed, ClaudeUsageService.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: name, object: nil)
         }
         reload()
@@ -1173,6 +1173,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         if running > 0 { parts.append("\(running) running") }
         if waiting > 0 { parts.append("\(waiting) waiting on you") }
         if parts.isEmpty { parts.append(all.isEmpty ? "No sessions yet" : "\(completed) done") }
+        // Your plan's limits, when usage tracking is on (Settings → Claude).
+        if let usage = ClaudeUsageService.shared.sessionsSummary { parts.append(usage) }
         leftSub.stringValue = parts.joined(separator: " · ")
 
         // Rows, reused by session id so hover and animation survive the 1-second tick.

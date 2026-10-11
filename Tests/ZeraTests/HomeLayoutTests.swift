@@ -39,6 +39,28 @@ final class HomeLayoutTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testClaudeUsageSitsUnderTheVitalsAndKeepsQuickActionsInView() throws {
+        ClaudeUsageService.shared.preview(ClaudeUsage(fiveHour: .init(used: 0.23, resetsAt: Date().addingTimeInterval(3600)),
+                                                      week: .init(used: 0.91, resetsAt: Date().addingTimeInterval(86_400)), readAt: Date()))
+        defer { ClaudeUsageService.shared.preview(nil) }
+        let home = HomeCard()
+        home.setFrameSize(NSSize(width: home.cardWidth, height: Isle.maxContentHeight))
+        home.refresh()
+        home.layoutSubtreeIfNeeded()
+        let strip = try XCTUnwrap(descendants(home).compactMap { $0 as? ClaudeUsageStrip }.first)
+        let vitals = try XCTUnwrap(descendants(home).compactMap { $0 as? VitalsOrgans }.first)
+        XCTAssertFalse(strip.isHidden)
+        XCTAssertEqual(strip.frame.minY - vitals.frame.maxY, Space.m, accuracy: 0.5)
+        let scroll = try XCTUnwrap(home.subviews.compactMap { $0 as? NSScrollView }.first)
+        // With at most one thing needing you, the quick actions stay in view without scrolling.
+        if descendants(home).filter({ $0 is ListRow && !$0.isHidden }).count <= 1 {
+            for action in descendants(home).compactMap({ $0 as? ActionTile }) {
+                XCTAssertLessThanOrEqual(action.frame.maxY, scroll.contentView.bounds.height + 0.5)
+            }
+        }
+    }
+
     func testThisMacAndBackRestoreHomeContent() throws {
         let home = HomeCard()
         home.setFrameSize(NSSize(width: home.cardWidth, height: Isle.maxContentHeight))

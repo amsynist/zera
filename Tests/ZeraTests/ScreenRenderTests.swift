@@ -449,12 +449,16 @@ final class ScreenRenderTests: XCTestCase {
         treeActions.previewActions()
         panel(treeActions, "20e-app-opener-classic-actions")
 
-        // Every theme on two busy screens.
+        // Every theme on two busy screens (Home with Claude usage: one calm limit, one near the end).
+        let now = Date()
+        ClaudeUsageService.shared.preview(ClaudeUsage(fiveHour: .init(used: 0.23, resetsAt: now.addingTimeInterval(72 * 60)),
+                                                      week: .init(used: 0.91, resetsAt: now.addingTimeInterval(3 * 86_400 + 4 * 3600)), readAt: now))
         for t in ThemeStore.shared.builtIns {
             ThemeStore.shared.select(t)
             island(HomeCard(), tab: .home, "theme-\(t.id)-home")
             island(TasksCard(store: tasks), tab: .tasks, "theme-\(t.id)-tasks")
         }
+        ClaudeUsageService.shared.preview(nil)
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
     }
 
