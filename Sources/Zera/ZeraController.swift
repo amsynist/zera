@@ -415,6 +415,7 @@ final class ZeraController: NSObject, ShelfViewDelegate {
             startFullScreenWatch()
             ClaudeHookService.shared.start()
             ClaudeActivityService.shared.start()
+            ClaudeUsageService.shared.start()
             ReminderService.shared.start()
         }
 

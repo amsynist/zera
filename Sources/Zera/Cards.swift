@@ -452,6 +452,10 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     private var query = ""
     /// The Mac's vitals (v2): five tiles under "This Mac"; any of them opens the This Mac page.
     private let vitalsStrip = VitalsOrgans()
+    /// Claude Code's 5-hour and weekly limits under the vitals, once usage tracking is on
+    /// (Settings → Claude); tap it for Claude sessions.
+    private let usageStrip = ClaudeUsageStrip()
+    private var showsUsage = false
     private let macHeader = SectionHeader("This Mac")
     private let macHint = NSTextField(labelWithString: "tap a vital to open it")
     private let vitalsPage = VitalsPage()
@@ -471,6 +475,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         addSubview(bodyScroll)
         vitalsStrip.onOpen = { [weak self] in self?.setVitals(true) }
         body.addSubview(vitalsStrip)
+        usageStrip.onOpen = { [weak self] in self?.onOpen?(.claude) }
+        body.addSubview(usageStrip)
         body.addSubview(macHeader)
         macHint.font = Typo.secondary; macHint.textColor = p.textTertiary; macHint.alignment = .right
         body.addSubview(macHint)
@@ -493,7 +499,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             body.addSubview(t)
             tiles.append(t)
         }
-        for name in [ShelfStore.changed, GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ClaudeActivityService.changed] {
+        for name in [ShelfStore.changed, GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ClaudeActivityService.changed,
+                     ClaudeUsageService.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(refreshIfVisible), name: name, object: nil)
         }
         refresh()
@@ -516,7 +523,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         guard on != showingVitals else { return }
         showingVitals = on
         bodyScroll.isHidden = on
-        [search, vitalsStrip, macHeader, macHint, attentionHeader, allClear, quickHeader].forEach { $0.isHidden = on }
+        [search, vitalsStrip, macHeader, macHint, attentionHeader, allClear, quickHeader, usageStrip].forEach { $0.isHidden = on }
         (attentionRows + recentRows + tiles).forEach { $0.isHidden = on }
         vitalsPage.isHidden = !on
         backButton.isHidden = !on
@@ -555,8 +562,9 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     }
 
     private var bodyHeight: CGFloat {
-        18 + Space.m + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.xxl
-        + 18 + Space.m + VitalsOrgans.height + Space.xxl
+        let usage: CGFloat = showsUsage ? Space.m + ClaudeUsageStrip.height : 0
+        return 18 + Space.m + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.xxl
+        + 18 + Space.m + VitalsOrgans.height + usage + Space.xxl
         + 18 + Space.m + (actionFrames.last?.maxY ?? 0)
     }
 
@@ -570,6 +578,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 
     @objc func refresh() {
         let p = Pal
+        showsUsage = ClaudeUsageService.shared.homeStripVisible
         let hour = Calendar.current.component(.hour, from: Date())
         titleLabel.stringValue = showingVitals ? "This Mac" : (hour < 12 ? "Good morning" : (hour < 17 ? "Good afternoon" : "Good evening"))
 
@@ -728,7 +737,14 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         macHint.frame = NSRect(x: max(100, w - 220), y: y + 1, width: min(220, w - 100), height: 16)
         y += 18 + Space.m
         vitalsStrip.frame = NSRect(x: 0, y: y, width: w, height: VitalsOrgans.height)
-        y += VitalsOrgans.height + Space.xxl
+        y += VitalsOrgans.height
+        usageStrip.isHidden = !showsUsage
+        if showsUsage {
+            y += Space.m
+            usageStrip.frame = NSRect(x: 0, y: y, width: w, height: ClaudeUsageStrip.height)
+            y += ClaudeUsageStrip.height
+        }
+        y += Space.xxl
 
         quickHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
         for (t, frame) in zip(tiles, actionFrames) {
@@ -878,7 +894,7 @@ final class SettingsCard: CardBase, CardContent {
         paneScroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(updateScrollHint), name: NSView.boundsDidChangeNotification, object: paneScroll.contentView)
         for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed,
-                     ClaudeActivityService.changed, AnthropicAPIClient.configuredChanged] {
+                     ClaudeActivityService.changed, ClaudeUsageService.changed, AnthropicAPIClient.configuredChanged] {
             NotificationCenter.default.addObserver(self, selector: #selector(serviceChanged), name: name, object: nil)
         }
         rebuildPane()
@@ -1087,6 +1103,8 @@ final class SettingsCard: CardBase, CardContent {
             do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
             catch { NSSound.beep() }
         }
+        toggleRow("Show in the Dock", on: DockIcon.shown, &s) { on in DockIcon.shown = on }
+        hint("With it off, she lives in the menu bar and at the notch — drop files on Zera instead of the Dock icon.", &s)
         let rs = ReminderService.shared
         breakPopup = popupRow("Break reminder", items: ["Off", "Every 30 min", "Every 45 min", "Every hour", "Every 90 min", "Every 2 hours"],
                               selected: Self.breakChoices.firstIndex(of: rs.breakInterval) ?? 0, &s, action: #selector(breakChanged))
@@ -1327,8 +1345,12 @@ final class SettingsCard: CardBase, CardContent {
     private func buildIntegrations(_ s: inout Stack) {
         let hook = ClaudeHookService.shared, gh = GitHubService.shared, rs = ReminderService.shared, p = Pal
         let (claudeState, claudeDetail) = Self.claudeSummary()
+        var claudeExtras = ""
+        if hook.isInstalled { claudeExtras += " · approvals" }
+        if ClaudeActivityService.shared.isInstalled { claudeExtras += " · live progress" }
+        if ClaudeUsageService.shared.isInstalled { claudeExtras += " · usage" }
         integrationRow(symbol: "sparkles", color: p.tileClaude, title: "Claude",
-                       state: claudeState, detail: claudeDetail + (hook.isInstalled ? " · approvals" : "") + (ClaudeActivityService.shared.isInstalled ? " · live progress" : ""),
+                       state: claudeState, detail: claudeDetail + claudeExtras,
                        on: false, enabled: false, toggle: false, &s, pane: .claude) { _ in }
         let ghState: ConnectionState = gh.isConnected ? ((gh.lastError?.contains("401") ?? false) ? .error : .connected) : .disconnected
         integrationRow(symbol: "arrow.triangle.pull", color: p.tileGitHub, title: "GitHub",
@@ -1479,7 +1501,26 @@ final class SettingsCard: CardBase, CardContent {
             pop.toolTip = "A finished session waits this long for a reply from the wings; typing one pauses the countdown"
             hint("When Claude finishes, the wings show Reply for a few seconds: type a follow-up and Claude carries on in the "
                  + "same session. Sessions the wings aren't showing are never held.", &s)
+            toggleRow("Follow each agent on its own", on: act.showAgents, &s) { on in ClaudeActivityService.shared.showAgents = on }
+            hint("When Claude hands work to agents, each gets its own timeline on the session's Agents tab: what it was asked, "
+                 + "what it's doing now, what it reported back. Off, their steps join the session's. Sessions started before "
+                 + "this was installed pick up agents once restarted.", &s)
         }
+
+        sectionLabel("Usage · Claude Code plan limits", &s)
+        let use = ClaudeUsageService.shared
+        statusLine(use.isInstalled ? .connected : .disconnected,
+                   detail: use.isInstalled ? (use.usage.map { "\($0.summary) · \(relativeTime($0.readAt))" } ?? "after Claude's next reply")
+                                           : "your 5-hour and weekly limits, as /usage shows them", &s)
+        buttonRow(use.isInstalled ? "Stop tracking usage" : "Track usage", style: use.isInstalled ? .secondary : .primary,
+                  status: use.isInstalled ? "Your own status line is put back as it was" : "Sets a status line in ~/.claude/settings.json; yours keeps running", &s, action: #selector(usageTapped))
+        if use.isInstalled {
+            toggleRow("Show on Home", on: use.showOnHome, &s) { on in ClaudeUsageService.shared.showOnHome = on }
+            toggleRow("Show in Claude sessions", on: use.showInSessions, &s) { on in ClaudeUsageService.shared.showInSessions = on }
+        }
+        hint("Claude Code hands its status line the same numbers as /usage after each reply (Pro and Max plans). Zera keeps "
+             + "only the percentages and reset times, and never touches your Claude login. A project with a status line of its "
+             + "own sends Zera nothing.", &s)
 
         sectionLabel("Approvals · Claude Code hook", &s)
         statusLine(hook.isInstalled ? .connected : .disconnected,
@@ -1729,6 +1770,15 @@ final class SettingsCard: CardBase, CardContent {
         do {
             if act.isInstalled { try act.uninstall(); say?("okay, I'll stop following Claude", .idle) }
             else { try act.install(); say?("I'll show Claude's progress live 💜 Restart open sessions.", .approved) }
+        } catch { say?("couldn't edit ~/.claude/settings.json 😬", .worried) }
+        rebuildPane()
+    }
+
+    @objc private func usageTapped() {
+        let use = ClaudeUsageService.shared
+        do {
+            if use.isInstalled { try use.uninstall(); say?("okay, I'll stop watching your Claude limits", .idle) }
+            else { try use.install(); say?("I'll keep an eye on your Claude limits 📊", .approved) }
         } catch { say?("couldn't edit ~/.claude/settings.json 😬", .worried) }
         rebuildPane()
     }

@@ -66,6 +66,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <!-- Starts without a Dock icon; Zera adds it at launch unless it's turned off in Settings → General. -->
+  <key>LSUIElement</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
   <key>NSCalendarsUsageDescription</key><string>Zera shows your events for the next two weeks next to your reminders, warns you before meetings, and adds events to a calendar only when you choose one. Calendar data stays on your Mac.</string>
   <key>NSAppleEventsUsageDescription</key><string>Only for the explicit “Open Claude” action when the Claude app is not installed: Zera opens a Terminal window running claude. Summarize, Explain and Ask never use this.</string>

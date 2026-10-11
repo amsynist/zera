@@ -43,8 +43,9 @@ private func sessionTitle(_ s: ClaudeSession) -> String {
     s.title.isEmpty ? "New session in \(s.folderName)" : s.title
 }
 
-private func sessionMeta(_ s: ClaudeSession) -> String {
-    shortPath(s.cwd) + (s.branch.map { "  ·  \($0)" } ?? "")
+private func sessionMeta(_ s: ClaudeSession, agents: Bool = false) -> String {
+    let n = agents ? s.runningAgents : 0
+    return shortPath(s.cwd) + (n > 0 ? "  ·  \(n) agent\(n == 1 ? "" : "s") working" : "")
 }
 
 /// The status pill for a session, in the screen's semantic colours.
@@ -297,7 +298,7 @@ final class ClaudeSessionRow: NSView {
         title.stringValue = sessionTitle(s)
         title.toolTip = s.fullPrompt.isEmpty ? nil : s.fullPrompt
         title.textColor = kind == .completed && !selected ? p.text(0.85) : p.text
-        meta.stringValue = sessionMeta(s)
+        meta.stringValue = sessionMeta(s, agents: ClaudeActivityService.shared.showAgents)
         let c = sessionChip(s)
         chip.set(symbol: c.symbol, text: c.text, color: c.color)
         switch kind {
@@ -445,7 +446,8 @@ final class ClaudeSessionProgress: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func update(_ s: ClaudeSession) {
+    /// `stage`: what to say instead (an agent whose start Zera didn't see).
+    func update(_ s: ClaudeSession, stage override: String? = nil) {
         let p = Pal
         let real = s.hasRealProgress
         big.isHidden = !real
@@ -472,6 +474,7 @@ final class ClaudeSessionProgress: NSView {
             case .ended: stage.stringValue = "Session ended"
             }
         }
+        if let o = override { stage.stringValue = o }
         stage.toolTip = stage.stringValue
         let tone: NSColor? = s.status == .waiting || s.stopRequested ? p.warning : (s.status == .done ? p.success : nil)
         var value: Double? = s.progress
@@ -607,7 +610,8 @@ final class ZeraSessionReaction: NSView {
 /// Dark monospace log of Claude's steps: done lines get a green ✓, the current one a soft
 /// highlight and a live timer. Copy, clear (hides what's there now) and expand.
 final class ClaudeActivityConsole: NSView {
-    struct Line { let verb: String; let target: String; let fileLike: Bool; let state: State; let duration: TimeInterval? }
+    /// `says`: something the agent said (⏺), not a step: no ✓, no timer.
+    struct Line { let verb: String; let target: String; let fileLike: Bool; let state: State; let duration: TimeInterval?; var says = false }
     enum State { case done, active, waiting }
     var onExpand: (() -> Void)?
     private(set) var lines: [Line] = []
@@ -631,12 +635,16 @@ final class ClaudeActivityConsole: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func update(_ s: ClaudeSession) {
-        let steps = s.steps.filter { st in st.kind != .prompt && clearedAt.map { st.at > $0 } ?? true }
+    func update(_ s: ClaudeSession) { update(steps: s.steps) }
+
+    /// An agent's own steps (Claude sessions › Agents) use the same console.
+    func update(steps all: [ActivityStep]) {
+        let steps = all.filter { st in st.kind != .prompt && clearedAt.map { st.at > $0 } ?? true }
         lines = steps.map { st in
             let state: State = st.kind == .waiting && !st.finished ? .waiting : (st.finished ? .done : .active)
             let dur = st.duration ?? (st.finished ? nil : Date().timeIntervalSince(st.at))
-            return Line(verb: st.verb, target: st.target, fileLike: st.kind == .read || st.kind == .edit, state: state, duration: dur)
+            return Line(verb: st.verb, target: st.target, fileLike: st.kind == .read || st.kind == .edit, state: state, duration: dur,
+                        says: st.verb == ClaudeAgent.says)
         }
         needsDisplay = true
     }
@@ -686,7 +694,8 @@ final class ClaudeActivityConsole: NSView {
                 (l.state == .waiting ? p.warning : p.accent).withAlphaComponent(0.16).setFill()
                 NSBezierPath(roundedRect: band, xRadius: 6, yRadius: 6).fill()
             }
-            let lineColor: NSColor = l.state == .active ? (p.accent.blended(withFraction: 0.35, of: .white) ?? p.accent) : (l.state == .waiting ? p.warning : textColor)
+            let lineColor: NSColor = l.says ? textColor.withAlphaComponent(0.75)
+                : (l.state == .active ? (p.accent.blended(withFraction: 0.35, of: .white) ?? p.accent) : (l.state == .waiting ? p.warning : textColor))
             let s = NSMutableAttributedString(string: "> ", attributes: [.font: Self.font, .foregroundColor: dim])
             s.append(NSAttributedString(string: l.verb + (l.target.isEmpty ? "" : " "), attributes: [.font: Self.font, .foregroundColor: lineColor]))
             s.append(NSAttributedString(string: l.target, attributes: [.font: Self.font, .foregroundColor: l.fileLike && l.state == .done ? fileColor : lineColor]))
@@ -702,10 +711,11 @@ final class ClaudeActivityConsole: NSView {
             }
             let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
             s.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: s.length))
-            let checkW: CGFloat = l.state == .done ? 18 : 0
+            let checked = l.state == .done && !l.says
+            let checkW: CGFloat = checked ? 18 : 0
             let textW = min(ceil(s.size().width) + 2, maxX - x0 - trailingW - checkW)
             s.draw(in: NSRect(x: x0, y: y, width: max(0, textW), height: Self.lineH))
-            if l.state == .done { drawIcon(icon("checkmark", 10, .bold, p.success), centeredIn: NSRect(x: x0 + textW + 2, y: y, width: 14, height: 16)) }
+            if checked { drawIcon(icon("checkmark", 10, .bold, p.success), centeredIn: NSRect(x: x0 + textW + 2, y: y, width: 14, height: 16)) }
             y += Self.lineH
         }
     }
@@ -840,6 +850,16 @@ final class ClaudeFollowUpInput: NSView {
 // MARK: - Info row (Files / Changes / Tools / Timeline)
 
 final class SessionInfoRow: NSView {
+    /// Rows you can open (an agent) answer a tap.
+    var onTap: (() -> Void)? {
+        didSet {
+            setAccessibilityElement(onTap != nil)
+            setAccessibilityRole(onTap == nil ? .staticText : .button)
+            setAccessibilityLabel(title)
+            setAccessibilityValue(subtitle)
+            window?.invalidateCursorRects(for: self)
+        }
+    }
     private let symbol: String
     private let tint: NSColor
     private let title: String
@@ -854,6 +874,22 @@ final class SessionInfoRow: NSView {
         toolTip = subtitle.isEmpty ? title : "\(title)\n\(subtitle)"
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    override var acceptsFirstResponder: Bool { onTap != nil }
+    override func accessibilityPerformPress() -> Bool {
+        guard let tap = onTap else { return false }; tap(); return true
+    }
+    override func keyDown(with event: NSEvent) {
+        if onTap != nil, [36, 49, 76].contains(event.keyCode) { onTap?() } else { super.keyDown(with: event) }
+    }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { onTap != nil }
+    override func mouseDown(with event: NSEvent) {
+        if onTap != nil { window?.makeFirstResponder(self) } else { super.mouseDown(with: event) }
+    }
+    override func mouseUp(with event: NSEvent) {
+        if let tap = onTap, bounds.contains(convert(event.locationInWindow, from: nil)) { tap() } else { super.mouseUp(with: event) }
+    }
+    override func resetCursorRects() { if onTap != nil { addCursorRect(bounds, cursor: .pointingHand) } }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
@@ -903,6 +939,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     private let claudeTile = ScreenIconTile.claude()
     private let leftTitle = label(Typo.screenTitle, Pal.text)
     private let leftSub = label(Typo.screenSubtitle, Pal.textSecondary)
+    private let usageBadge = PRStatusChip()
     private let peek = AnimatedZeraView()
     private let bubble = ZeraGitHubBubble()
     private var newSession: PRActionButton!
@@ -927,6 +964,18 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     private var collapse: GHSquareButton!
     private let tabs = GitHubSegmentedControl(items: [])
     private var tab = 0
+    /// What each tab shows; Agents only while agents get their own timelines (Settings → Claude).
+    private enum Page { case live, agents, files, changes, tools, timeline }
+    private var pages: [Page] { svc.showAgents ? [.live, .agents, .files, .changes, .tools, .timeline] : [.live, .files, .changes, .tools, .timeline] }
+    private var page: Page { pages[min(tab, pages.count - 1)] }
+    /// The agent opened on the Agents tab; nil lists them all. Open, it gets the Live view:
+    /// back and its name, its progress, and its own console.
+    private var agentID: String?
+    private var agentBack: GHSquareButton!
+    private let agentTitle = label(Typo.rowTitleStrong, Pal.text)
+    private let agentMeta = label(Typo.meta, Pal.textSecondary)
+    private let agentProgress = ClaudeSessionProgress()
+    private let agentConsole = ClaudeActivityConsole()
     private let progressCard = ClaudeSessionProgress()
     private let reaction = ZeraSessionReaction()
     private let console = ClaudeActivityConsole()
@@ -966,7 +1015,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         // List: header, filters, up to four sessions (more scroll).
         let rows = CGFloat(max(1, min(4, order.count)))
         let list = order.isEmpty ? 190 : rows * (S.rowH + S.rowGap) - S.rowGap
-        return Isle.headerHeight + 40 + 12 + list + 18
+        let toolbar = SearchToolbarLayout(width: cardWidth - S.pad * 2, filtersWidth: filters.preferredWidth, top: Isle.headerHeight)
+        return toolbar.bottom + Space.m + list + 18
     }
     /// In the island the session always replaces the list (with a back button).
     private var singlePane: Bool { true }
@@ -1002,6 +1052,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         leftTitle.stringValue = "Claude sessions"
         left.addSubview(leftTitle)
         left.addSubview(leftSub)
+        left.addSubview(usageBadge)
         peek.pose = "card_peek_down"
         left.addSubview(peek)                // behind the button: she peeks over it
         bubble.tailRight = true
@@ -1045,7 +1096,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         right.addSubview(sessionMore)
         collapse = GHSquareButton(symbol: "xmark", label: "Close session view", target: self, action: #selector(collapseTapped))
         right.addSubview(collapse)
-        tabs.onSelect = { [weak self] i in self?.tab = i; self?.infoSignature = ""; self?.reload() }
+        tabs.onSelect = { [weak self] i in self?.tab = i; self?.agentID = nil; self?.infoSignature = ""; self?.reload() }
         tabs.switches = { [weak self] in self.map { [$0.console, $0.infoScroll, $0.details] } ?? [] }
         right.addSubview(tabs)
         right.addSubview(progressCard)
@@ -1064,6 +1115,9 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         infoScroll.documentView = infoList
         right.addSubview(infoScroll)
         right.addSubview(details)
+        agentBack = GHSquareButton(symbol: "chevron.left", label: "All agents", target: self, action: #selector(agentBackTapped))
+        agentConsole.onExpand = console.onExpand
+        [agentBack!, agentTitle, agentMeta, agentProgress, agentConsole].forEach { right.addSubview($0) }
         input.onSend = { [weak self] q in self?.ask(q) }
         input.onMenu = { [weak self] v in self?.showSuggestions(from: v) }
         right.addSubview(input)
@@ -1080,7 +1134,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         }
         right.addSubview(rightState)
 
-        for name in [ClaudeActivityService.changed, ClaudeHookService.changed] {
+        for name in [ClaudeActivityService.changed, ClaudeHookService.changed, ClaudeUsageService.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(reloadIfVisible), name: name, object: nil)
         }
         reload()
@@ -1173,6 +1227,11 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         if running > 0 { parts.append("\(running) running") }
         if waiting > 0 { parts.append("\(waiting) waiting on you") }
         if parts.isEmpty { parts.append(all.isEmpty ? "No sessions yet" : "\(completed) done") }
+        // Your plan's limits, when usage tracking is on (Settings → Claude).
+        let usage = ClaudeUsageService.shared
+        usageBadge.isHidden = !usage.isInstalled || !usage.showInSessions
+        usageBadge.set(symbol: "gauge.with.dots.needle.50percent", text: "Usage · " + (usage.sessionsSummary ?? "awaiting reply"), color: p.accent)
+        usageBadge.toolTip = usage.freshnessLabel
         leftSub.stringValue = parts.joined(separator: " · ")
 
         // Rows, reused by session id so hover and animation survive the 1-second tick.
@@ -1223,7 +1282,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         let p = Pal
         guard svc.isInstalled, let s = selected else {
             [sessionTile, sessionTitleLabel, sessionChipView, sessionElapsed, sessionMetaLabel, primary, sessionMore, tabs,
-             progressCard, reaction, console, infoScroll, details, input].forEach { $0.isHidden = true }
+             progressCard, reaction, console, infoScroll, details, input, agentBack, agentTitle, agentMeta, agentProgress, agentConsole].forEach { $0.isHidden = true }
             quick.forEach { $0.isHidden = true }
             rightState.isHidden = false
             let rkey = svc.isInstalled ? "none" : "off"
@@ -1253,7 +1312,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         let c = sessionChip(s)
         sessionChipView.set(symbol: c.symbol, text: s.status == .waiting && !s.stopRequested ? "Waiting for approval" : c.text, color: c.color)
         sessionElapsed.stringValue = s.promptAt == nil ? "" : ClaudeActivityCard.clock(s.elapsed)
-        sessionMetaLabel.stringValue = sessionMeta(s)
+        sessionMetaLabel.stringValue = sessionMeta(s, agents: svc.showAgents)
 
         let kind: Int
         if s.stopRequested { kind = -1 }
@@ -1277,24 +1336,47 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         primary.isHidden = kind == -1
 
         // Tabs with real counts.
-        tabs.items = [
-            .init(symbol: "dot.radiowaves.left.and.right", title: "Live", count: 0, tint: nil),
-            .init(symbol: "", title: "Files", count: s.filesTouched.count, tint: nil),
-            .init(symbol: "", title: "Changes", count: s.filesChanged.count, tint: nil),
-            .init(symbol: "", title: "Tools", count: s.toolUse.count, tint: nil),
-            .init(symbol: "", title: "Timeline", count: 0, tint: nil)
-        ]
+        tabs.items = pages.map { pg -> GitHubSegmentedControl.Item in
+            switch pg {
+            case .live: return .init(symbol: "dot.radiowaves.left.and.right", title: "Live", count: 0, tint: nil)
+            case .agents: return .init(symbol: "", title: "Agents", count: s.agents.count, tint: nil)
+            case .files: return .init(symbol: "", title: "Files", count: s.filesTouched.count, tint: nil)
+            case .changes: return .init(symbol: "", title: "Changes", count: s.filesChanged.count, tint: nil)
+            case .tools: return .init(symbol: "", title: "Tools", count: s.toolUse.count, tint: nil)
+            case .timeline: return .init(symbol: "", title: "Timeline", count: 0, tint: nil)
+            }
+        }
+        if tab >= pages.count { tab = 0 }
         tabs.selected = tab
 
-        let live = tab == 0
+        let live = page == .live
+        // Agents: Zera reads what each one says and does while you look at them.
+        if page == .agents { s.agents.forEach { svc.follow($0, in: s) } }
+        let agent = page == .agents ? agentID.flatMap { id in s.agents.first { $0.id == id } } : nil
+        if page == .agents, agent == nil { agentID = nil }
         progressCard.isHidden = !live
         reaction.isHidden = !live
         console.isHidden = !live
-        infoScroll.isHidden = live
+        infoScroll.isHidden = live || agent != nil
+        [agentBack!, agentTitle, agentMeta, agentProgress, agentConsole].forEach { $0.isHidden = agent == nil }
         if live {
             progressCard.update(s)
             reaction.update(s, pendingCommand: pendingCommand(for: s))
             console.update(s)
+        } else if let a = agent {
+            agentTitle.stringValue = a.title
+            agentTitle.toolTip = a.title
+            let n = a.toolsUsed
+            agentMeta.stringValue = "\(a.type) · \(n) tool\(n == 1 ? "" : "s")" + (a.isRunning ? "" : (a.result.map { " · \($0)" } ?? ""))
+            agentMeta.toolTip = a.result
+            agentProgress.update(agentSession(a, in: s), stage: a.startKnown || a.isRunning ? nil : "Finished")
+            var steps = a.shownSteps
+            // What it reported back closes its log when the transcript hasn't been read.
+            if a.transcriptSteps == nil, !a.isRunning, let said = a.result, !said.isEmpty {
+                let at = a.endedAt ?? Date()
+                steps.append(ActivityStep(id: "said-\(a.id)", kind: .other, verb: ClaudeAgent.says, target: said, detail: nil, at: at, finished: true, endedAt: at))
+            }
+            agentConsole.update(steps: steps)
         } else {
             rebuildInfo(for: s)
         }
@@ -1307,7 +1389,13 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         let toolCalls: Int = s.toolUse.values.reduce(0, +)
         let lastDone: Bool = s.steps.last?.finished ?? true
         let counts: String = "\(s.filesTouched.count)|\(s.filesChanged.count)|\(toolCalls)|\(s.steps.count)|\(lastDone)"
-        let sig = s.id + "|\(tab)|" + counts
+        var sig = s.id + "|\(tab)|" + counts
+        if page == .agents {
+            // Agents move on their own; while one runs, its time and step refresh every few seconds.
+            let agents: String = s.agents.map { "\($0.id):\($0.shownSteps.count):\($0.isRunning):\($0.startKnown)" }.joined(separator: ",")
+            let clock: Int = s.runningAgents > 0 ? Int(Date().timeIntervalSince1970 / 3) : 0
+            sig += "|\(agents)|\(clock)"
+        }
         guard sig != infoSignature else { return }
         infoSignature = sig
         infoList.subviews.forEach { $0.removeFromSuperview() }
@@ -1317,35 +1405,54 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
             return shortPath(dir)
         }
         var made: [SessionInfoRow] = []
-        switch tab {
-        case 1:
+        let clockFormat = DateFormatter(); clockFormat.dateFormat = "HH:mm:ss"
+        func stepRow(_ st: ActivityStep) -> SessionInfoRow {
+            let d = st.duration.map { " · \(ClaudeActivityCard.clock($0))" } ?? (st.finished ? "" : " · running")
+            let tint: NSColor = st.kind == .waiting ? p.warning : (st.finished ? p.success : p.accent)
+            return SessionInfoRow(symbol: st.symbol, tint: tint, title: st.text, subtitle: st.result ?? "", trailing: clockFormat.string(from: st.at) + d)
+        }
+        switch page {
+        case .agents:
+            // Working agents on top, so you see them without scrolling.
+            for a in s.agentsByActivity {
+                let now = a.currentStep.map { "\($0.text)…" } ?? (a.isRunning ? "Starting…" : (a.result ?? "Finished"))
+                let n = a.toolsUsed
+                let r = SessionInfoRow(symbol: a.isRunning ? "person.fill" : "checkmark", tint: a.isRunning ? p.accent : p.success,
+                                       title: a.title, subtitle: "\(a.type) · \(now)",
+                                       trailing: "\(a.startKnown ? ClaudeActivityCard.clock(a.elapsed) : "—") · \(n) tool\(n == 1 ? "" : "s")  ›")
+                let id = a.id
+                r.onTap = { [weak self] in self?.agentID = id; self?.reload() }
+                made.append(r)
+            }
+        case .files:
             for f in s.filesTouched.reversed() {
                 let edited = s.filesChanged.contains(f)
                 made.append(SessionInfoRow(symbol: edited ? "pencil" : "doc.text", tint: edited ? p.accent : p.info,
                                            title: (f as NSString).lastPathComponent, subtitle: rel(f), trailing: edited ? "Edited" : "Read"))
             }
-        case 2:
+        case .changes:
             for f in s.filesChanged.reversed() {
                 made.append(SessionInfoRow(symbol: "pencil", tint: p.accent, title: (f as NSString).lastPathComponent, subtitle: rel(f), trailing: "Changed"))
             }
-        case 3:
+        case .tools:
             for (tool, n) in s.toolUse.sorted(by: { $0.value > $1.value }) {
                 let kind = ClaudeActivityService.describe(tool: tool, input: [:]).0
                 let sym = ActivityStep(id: "", kind: kind, verb: "", target: "", detail: nil, at: Date(), finished: true).symbol
                 made.append(SessionInfoRow(symbol: sym, tint: p.accent, title: tool.hasPrefix("mcp__") ? tool.replacingOccurrences(of: "mcp__", with: "") : tool,
                                            subtitle: "", trailing: "×\(n)"))
             }
-        default:
-            let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
-            for st in s.steps.reversed() where st.kind != .prompt {
-                let d = st.duration.map { " · \(ClaudeActivityCard.clock($0))" } ?? (st.finished ? "" : " · running")
-                let tint: NSColor = st.kind == .waiting ? p.warning : (st.finished ? p.success : p.accent)
-                made.append(SessionInfoRow(symbol: st.symbol, tint: tint, title: st.text, subtitle: st.result ?? "", trailing: f.string(from: st.at) + d))
-            }
+        case .timeline, .live:
+            made += s.steps.reversed().filter { $0.kind != .prompt }.map(stepRow)
         }
         if made.isEmpty {
             let empty = label(Typo.screenSubtitle, p.textSecondary)
-            empty.stringValue = ["", "No files yet.", "No changes yet.", "No tools used yet.", "Nothing on the timeline yet."][tab]
+            switch page {
+            case .agents: empty.stringValue = "No agents for this task — Claude hasn't handed anything off."
+            case .files: empty.stringValue = "No files yet."
+            case .changes: empty.stringValue = "No changes yet."
+            case .tools: empty.stringValue = "No tools used yet."
+            case .timeline, .live: empty.stringValue = "Nothing on the timeline yet."
+            }
             empty.alignment = .center
             empty.frame = NSRect(x: 0, y: 24, width: 400, height: 18)
             empty.autoresizingMask = [.width]
@@ -1396,6 +1503,10 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         let bw = newSession.fittedWidth + 8
         newSession.frame = NSRect(x: w - x - bw, y: ScreenHeader.controlY(Metrics.button), width: bw, height: Metrics.button)
 
+        // Usage occupies the existing trailing subtitle slot, never an extra list row.
+        let usageLeft = w / 2 + Isle.zeraGap / 2
+        let usageWidth = min(max(0, w - x - usageLeft), usageBadge.fittedWidth)
+        usageBadge.frame = NSRect(x: w - x - usageWidth, y: ScreenHeader.subtitleTop, width: usageWidth, height: 24)
         let toolbar = SearchToolbarLayout(width: iw, filtersWidth: filters.preferredWidth, top: Isle.headerHeight)
         filters.frame = toolbar.filters.offsetBy(dx: x, dy: 0)
         search.isHidden = false
@@ -1473,13 +1584,43 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         progressCard.frame = NSRect(x: x, y: bodyTop, width: iw, height: progH)
         let cy = bodyTop + progH + 8
         console.frame = NSRect(x: x, y: cy, width: iw, height: max(50, bodyBottom - cy))
+
+        // An open agent: back and its name, then the same Live view for it.
+        let hb = Metrics.headerButton
+        agentBack.frame = NSRect(x: x, y: bodyTop, width: hb, height: hb)
+        let tx = x + hb + Space.m
+        agentTitle.frame = NSRect(x: tx, y: bodyTop + (hb - 36) / 2, width: max(0, iw - hb - Space.m), height: 19)
+        agentMeta.frame = NSRect(x: tx, y: agentTitle.frame.maxY + 1, width: max(0, iw - hb - Space.m), height: 16)
+        let ay = bodyTop + max(hb, 36) + Space.s
+        agentProgress.frame = NSRect(x: x, y: ay, width: iw, height: progH)
+        let acy = ay + progH + 8
+        agentConsole.frame = NSRect(x: x, y: acy, width: iw, height: max(50, bodyBottom - acy))
     }
 
     // MARK: Actions
 
+    @objc private func agentBackTapped() {
+        agentID = nil
+        infoSignature = ""
+        reload()
+    }
+
+    /// An agent seen as a session, so the Live tab's progress card can show it.
+    private func agentSession(_ a: ClaudeAgent, in s: ClaudeSession) -> ClaudeSession {
+        let v = ClaudeSession(id: a.id, cwd: s.cwd, at: a.startedAt)
+        v.title = a.title
+        v.steps = a.shownSteps
+        v.status = a.isRunning ? .running : .done
+        v.promptAt = a.startKnown ? a.startedAt : nil
+        v.lastEventAt = a.endedAt ?? Date()
+        v.stepsThisPrompt = a.toolsUsed
+        return v
+    }
+
     private func select(_ id: String) {
         selectedID = id
         console.resetClear()
+        agentID = nil
         infoSignature = ""
         if singlePane { showingDetail = true }
         if !expanded { setExpanded(true); return }

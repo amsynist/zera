@@ -196,6 +196,28 @@ h1,h2,h3{margin:0;color:var(--ink)}
 .soundhint:hover{transform:translateY(-1px);border-color:rgba(var(--accent-rgb),.6)}
 .soundhint.gone{opacity:0;pointer-events:none}
 
+/* Compact Claude plan card: sample readings, with slim bars filled to usage. */
+.usage-preview{margin-top:24px;max-width:560px}
+.usage-plan{display:grid;grid-template-columns:84px repeat(2,minmax(0,1fr));align-items:center;gap:20px;border-radius:16px;background:rgba(255,255,255,.04);padding:14px 16px}
+.usage-brand{display:flex;align-items:center;gap:10px}
+.usage-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;flex-shrink:0;background:rgba(255,170,133,.12);color:var(--peach)}
+.usage-brand strong,.usage-brand small{display:block;white-space:nowrap}
+.usage-brand strong{font-size:12px;font-weight:500}
+.usage-brand small{font-size:10px;color:var(--faint)}
+.usage-window{min-width:0}
+.usage-heading{display:flex;align-items:baseline;justify-content:space-between;gap:6px;font-size:11px;line-height:1.4}
+.usage-heading span{color:var(--dim);white-space:nowrap}
+.usage-heading strong{font:600 12px/1.4 "Geist Mono",monospace;white-space:nowrap}
+.usage-heading em{font:400 10px/1.4 Geist,sans-serif;color:var(--faint)}
+.usage-window small{display:block;font-size:10px;line-height:1.5;color:var(--faint);margin-top:5px}
+.usage-track{position:relative;height:6px;margin-top:6px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.usage-liquid{position:absolute;inset:0 auto 0 0;width:var(--fill);border-radius:999px;background:linear-gradient(90deg,color-mix(in srgb,var(--tone) 65%,transparent),var(--tone))}
+.usage-liquid::after{content:"";position:absolute;inset:0 auto 0 0;width:20px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);animation:usage-flow 6s ease-in-out infinite}
+.usage-note{font-size:12px;line-height:1.6;color:var(--faint);margin:10px 0 0}
+@keyframes usage-flow{from{left:-20px}to{left:100%}}
+@media (max-width:440px){.usage-plan{grid-template-columns:30px repeat(2,minmax(0,1fr));padding:12px;gap:12px}.usage-brand div,.usage-heading em{display:none}.usage-heading{font-size:10px}}
+@media (prefers-reduced-motion:reduce){.usage-liquid::after{animation:none;display:none}}
+
 /* battery demo */
 .drain{display:flex;align-items:center;gap:14px;margin-top:22px;font:600 15px/1 "Geist Mono",monospace;color:var(--ink)}
 .drain .batt{width:54px;height:26px;border-radius:7px}
@@ -376,6 +398,22 @@ footer{border-top:1px solid var(--line);padding:38px 0 48px;margin-top:100px}
           <div class="tick"><span><b>Every session at a glance</b>: running, waiting on you, done.</span></div>
           <div class="tick"><span><b>Approve or reject</b> commands from the notch, only when the terminal would have asked.</span></div>
           <div class="tick"><span><b>Reply when it's done</b> and the same session keeps going.</span></div>
+          <div class="tick"><span><b>Follow each agent</b>: its task, live steps and result, in its own timeline.</span></div>
+          <div class="tick"><span><b>Know your plan limits</b>: 5-hour and weekly usage on Home and in Claude sessions, with reset times.</span></div>
+        </div>
+        <div class="usage-preview rv d2" aria-label="Example Claude plan readings: 23 percent of the 5-hour limit used, 41 percent of the weekly limit used">
+          <div class="usage-plan">
+            <div class="usage-brand"><span class="usage-icon" aria-hidden="true">✦</span><div><strong>Claude</strong><small>Plan usage</small></div></div>
+            <div class="usage-window">
+              <div class="usage-heading"><span>5 hours</span><strong>23%<em> used</em></strong></div>
+              <div class="usage-track" aria-hidden="true"><i class="usage-liquid" style="--fill:23%;--tone:var(--teal)"></i></div><small>Resets in 59m</small>
+            </div>
+            <div class="usage-window">
+              <div class="usage-heading"><span>This week</span><strong>41%<em> used</em></strong></div>
+              <div class="usage-track" aria-hidden="true"><i class="usage-liquid" style="--fill:41%;--tone:var(--accent)"></i></div><small>Resets in 2d 6h</small>
+            </div>
+          </div>
+          <p class="usage-note">Example readings. Bars fill as usage rises and change color near the limit. Enable Track usage in Settings → Integrations → Claude.</p>
         </div>
       </div>
       <div class="media">
@@ -657,6 +695,8 @@ open dist/Zera.app</div>
       <details><summary>Why does macOS ask about Downloads and Desktop?</summary><p>The Shelf's Fresh tab lists new files there. Zera only asks the first time you open Fresh, and only reads names, sizes and dates.</p></details>
       <details><summary>Will it slow my Mac down?</summary><p>No. It's a native Swift app with no web views. Vitals are read once a second only while they're on screen; tab switches take a few milliseconds.</p></details>
       <details><summary>How does Ask Claude work?</summary><p>When you click Summarize, Explain, Extract or ask a question, Zera sends that one file to Claude through the Claude Code CLI you're already signed in to, and streams the answer onto the file's page. Nothing is sent until you click.</p></details>
+      <details><summary>How do Claude plan usage readings work?</summary><p>Enable Track usage in Settings → Integrations → Claude for Claude Code Pro or Max. After a reply, Claude Code supplies the 5-hour and weekly readings; Zera shows percentage used and reset times. A compact card shows slim bars that fill with usage and change color near the limit; hovering shows the last reading time. Your existing status line continues to run and is restored when you stop tracking. No extra API request is made.</p></details>
+      <details><summary>Can I hide the Dock icon?</summary><p>Yes. Turn off Show in the Dock in Settings → General. Zera stays at the notch and in the menu bar; you can still drop files on her.</p></details>
       <details><summary>Can I open apps from the keyboard?</summary><p>Yes. ⌥Space brings down your usual apps on an arc; the arrow keys move along it and Return opens one. Typing searches every app, command and action, and ⌘1–⌘6 open the first six.</p></details>
       <details><summary>Is it really free?</summary><p>Yes, and open source on GitHub. Issues and pull requests are welcome.</p></details>
     </div>

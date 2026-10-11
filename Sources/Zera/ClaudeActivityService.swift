@@ -74,6 +74,58 @@ struct ActivityHistoryItem: Equatable {
     let steps: Int
 }
 
+/// A helper Claude handed part of the work to (the Agent tool), followed on its own: what it
+/// was asked to do, its own steps, and what it reported back.
+final class ClaudeAgent {
+    let id: String
+    /// "general-purpose", "Explore", "code-reviewer" …
+    let type: String
+    /// What it was asked to do (the Agent call's description), when Zera saw the call.
+    var task: String
+    var steps: [ActivityStep] = []
+    var startedAt: Date
+    /// False when Zera first heard of it as it finished (Zera was relaunched while it ran, or the
+    /// session's hooks predate agents): its real start comes from its transcript, if there is one.
+    var startKnown = true
+    var endedAt: Date?
+    var toolCount = 0
+    /// One line of what it reported back.
+    var result: String?
+    /// The Agent call that started it, and whether that call returns before it's done.
+    var callID: String?
+    var background = false
+    var lastEventAt: Date
+    /// Its own transcript (Claude Code keeps one per agent), and what Zera read from it while you
+    /// looked: everything it said and every tool it ran, as the terminal shows them.
+    var transcriptPath: String?
+    var transcriptSteps: [ActivityStep]?
+    var transcriptSize: UInt64 = 0
+
+    /// The verb on the lines where the agent says something (the terminal's ⏺).
+    static let says = "⏺"
+    var isRunning: Bool { endedAt == nil }
+    var title: String { task.isEmpty ? type : task }
+    /// Its transcript when Zera has read it, else what the hooks reported.
+    var shownSteps: [ActivityStep] { transcriptSteps ?? steps }
+    var currentStep: ActivityStep? { shownSteps.last { !$0.finished } }
+    var toolsUsed: Int { max(toolCount, transcriptSteps?.filter { $0.verb != Self.says }.count ?? 0) }
+    var elapsed: TimeInterval { (endedAt ?? Date()).timeIntervalSince(startedAt) }
+
+    init(id: String, type: String, task: String, at: Date) {
+        self.id = id; self.type = type; self.task = task; self.startedAt = at; self.lastEventAt = at
+    }
+
+    func finish(at now: Date, result: String? = nil) {
+        for i in steps.indices where !steps[i].finished {
+            steps[i].finished = true
+            steps[i].endedAt = now
+            if steps[i].result == nil { steps[i].result = "Done" }
+        }
+        if endedAt == nil { endedAt = now }
+        if let r = result, !r.isEmpty { self.result = r }
+    }
+}
+
 final class ClaudeSession {
     enum Status: Equatable { case running, waiting, idle, done, ended }
     let id: String
@@ -112,6 +164,29 @@ final class ClaudeSession {
     var filesChanged: [String] = []
     /// Tool name → calls for the current prompt.
     var toolUse: [String: Int] = [:]
+    /// Agents Claude started for the current prompt, in the order they started.
+    var agents: [ClaudeAgent] = []
+    var runningAgents: Int { agents.filter(\.isRunning).count }
+    /// Working ones first (in the order they started), then finished ones, latest first.
+    var agentsByActivity: [ClaudeAgent] {
+        agents.filter(\.isRunning) + agents.filter { !$0.isRunning }.sorted { ($0.endedAt ?? .distantPast) > ($1.endedAt ?? .distantPast) }
+    }
+    /// Agent calls whose agent hasn't shown up yet (they start in the order they're called).
+    var pendingAgentCalls: [(id: String, type: String, task: String, background: Bool)] = []
+
+    /// The agent behind `id`, started now if it's new: it takes the oldest waiting Agent call of
+    /// its type (several start at once, in order), for what it was asked to do.
+    func agent(_ id: String, type: String, at now: Date) -> ClaudeAgent {
+        if let a = agents.first(where: { $0.id == id }) { return a }
+        let i = pendingAgentCalls.firstIndex { $0.type == type } ?? pendingAgentCalls.indices.first
+        let call = i.map { pendingAgentCalls.remove(at: $0) }
+        let a = ClaudeAgent(id: id, type: type.isEmpty ? "agent" : type, task: call?.task ?? "", at: now)
+        a.callID = call?.id
+        a.background = call?.background ?? false
+        agents.append(a)
+        if agents.count > 24 { agents.removeFirst(agents.count - 24) }
+        return a
+    }
 
     /// The percentage is only real when Claude keeps a plan (or the task is finished).
     var hasRealProgress: Bool { status == .done || !plan.isEmpty }
@@ -214,6 +289,7 @@ final class ClaudeActivityService {
         try? fm.createDirectory(at: repliesDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         writeReplyWindow()
         ensureStopTimeout()
+        ensureEvents()
         // History before launch is not "current" activity — and hook payloads can contain prompts,
         // code and command output, so nothing is kept: drop whatever is left from earlier runs.
         try? fm.removeItem(at: logURL)
@@ -305,6 +381,11 @@ final class ClaudeActivityService {
                 s.status = .idle
                 changed = true
             }
+            // An agent whose Stop never came (Claude Code killed, or hooks from before agents were followed).
+            for a in s.agents where a.isRunning && now.timeIntervalSince(a.lastEventAt) > Self.runningSilence {
+                a.finish(at: a.lastEventAt)
+                changed = true
+            }
         }
         return changed
     }
@@ -317,7 +398,8 @@ final class ClaudeActivityService {
 
     // MARK: Events → steps
 
-    private func apply(_ e: [String: Any]) {
+    /// One hook event (internal so the tests can hand it events).
+    func apply(_ e: [String: Any]) {
         guard let sid = e["session_id"] as? String, !sid.isEmpty else { return }
         let now = Date()
         let isNew = sessions[sid] == nil
@@ -332,9 +414,14 @@ final class ClaudeActivityService {
         let tool = e["tool_name"] as? String ?? ""
         let input = e["tool_input"] as? [String: Any] ?? [:]
         let useID = (e["tool_use_id"] as? String) ?? ""
+        // A tool call from inside an agent carries its id: it goes on that agent's own timeline
+        // (and, with agents shown together, on the session's as before).
+        let agentID = (e["agent_id"] as? String) ?? ""
+        let agentType = (e["agent_type"] as? String) ?? ""
+        let ownTimeline = !agentID.isEmpty && showAgents
 
         // Anything new from the session means it moved on: no reply is pending any more.
-        if event != "Stop", event != "Notification", s.replyUntil != nil || s.replyHeld { clearReply(s) }
+        if agentID.isEmpty, !["Stop", "Notification", "SubagentStart", "SubagentStop"].contains(event), s.replyUntil != nil || s.replyHeld { clearReply(s) }
         switch event {
         case "SessionStart":
             s.status = .idle
@@ -350,6 +437,8 @@ final class ClaudeActivityService {
             s.filesTouched.removeAll()
             s.filesChanged.removeAll()
             s.toolUse.removeAll()
+            s.agents.removeAll { !$0.isRunning }
+            s.pendingAgentCalls.removeAll()
             clearStop(s)
             if s.model == nil { lookupModel(for: s) }
             // A new task starts a fresh timeline.
@@ -357,13 +446,20 @@ final class ClaudeActivityService {
             s.status = .running
             post(milestone: "prompt", s)
         case "PreToolUse":
-            if tool == "TodoWrite", let todos = input["todos"] as? [[String: Any]] {
+            // An agent's own to-do list isn't the session's plan.
+            if tool == "TodoWrite", !ownTimeline, let todos = input["todos"] as? [[String: Any]] {
                 s.plan = todos.compactMap { t in
                     guard let title = t["content"] as? String else { return nil }
                     let st = (t["status"] as? String ?? "pending").lowercased()
                     return PlanItem(title: Self.oneLine(title, max: 28), state: st == "completed" ? .done : (st == "in_progress" ? .active : .pending))
                 }
                 if s.planStartedAt == nil, !s.plan.isEmpty { s.planStartedAt = now }
+            }
+            if tool == "Task" || tool == "Agent" {
+                s.pendingAgentCalls.append((id: useID, type: input["subagent_type"] as? String ?? "general-purpose",
+                                            task: Self.oneLine(input["description"] as? String ?? "", max: 60),
+                                            background: input["run_in_background"] as? Bool ?? false))
+                if s.pendingAgentCalls.count > 24 { s.pendingAgentCalls.removeFirst(s.pendingAgentCalls.count - 24) }
             }
             if !tool.isEmpty { s.toolUse[tool, default: 0] += 1 }
             if let path = (input["file_path"] as? String) ?? (input["notebook_path"] as? String), !path.isEmpty {
@@ -376,19 +472,31 @@ final class ClaudeActivityService {
             if s.promptAt == nil { s.promptAt = now }
             // A step the user answered ("waiting") is over once Claude moves on.
             for i in s.steps.indices where s.steps[i].kind == .waiting && !s.steps[i].finished { s.steps[i].finished = true; s.steps[i].endedAt = now }
-            s.steps.append(ActivityStep(id: useID.isEmpty ? "t-\(now.timeIntervalSince1970)-\(tool)" : useID, kind: kind, verb: verb, target: target, detail: detail, at: now, finished: false))
-            if s.steps.count > 60 { s.steps.removeFirst(s.steps.count - 60) }
-            s.status = .running
-        case "PostToolUse":
-            // Finish the matching step (by id when the CLI provides one, else the last open one of that tool).
-            let idx = s.steps.lastIndex(where: { !$0.finished && (!useID.isEmpty ? $0.id == useID : Self.toolName(for: $0.kind) == tool) })
-                ?? s.steps.lastIndex(where: { !$0.finished && $0.kind != .prompt })
-            if let i = idx {
-                s.steps[i].finished = true
-                s.steps[i].endedAt = now
-                s.steps[i].result = Self.outcome(kind: s.steps[i].kind, response: e["tool_response"])
+            let step = ActivityStep(id: useID.isEmpty ? "t-\(now.timeIntervalSince1970)-\(tool)" : useID, kind: kind, verb: verb, target: target, detail: detail, at: now, finished: false)
+            if !agentID.isEmpty {
+                let a = s.agent(agentID, type: agentType, at: now)
+                a.steps.append(step)
+                if a.steps.count > 60 { a.steps.removeFirst(a.steps.count - 60) }
+                a.toolCount += 1
+                a.lastEventAt = now
             }
-            s.status = .running
+            if !ownTimeline {
+                s.steps.append(step)
+                if s.steps.count > 60 { s.steps.removeFirst(s.steps.count - 60) }
+            }
+            if agentID.isEmpty { s.status = .running }
+        case "PostToolUse":
+            if !agentID.isEmpty, let a = s.agents.first(where: { $0.id == agentID }) {
+                Self.finishStep(in: &a.steps, useID: useID, tool: tool, response: e["tool_response"], at: now)
+                a.lastEventAt = now
+            }
+            if !ownTimeline { Self.finishStep(in: &s.steps, useID: useID, tool: tool, response: e["tool_response"], at: now) }
+            // An Agent call that returns brings its agent's answer, unless it runs in the background.
+            if tool == "Task" || tool == "Agent", !useID.isEmpty,
+               let a = s.agents.first(where: { $0.callID == useID && $0.isRunning && !$0.background }) {
+                a.finish(at: now)
+            }
+            if agentID.isEmpty { s.status = .running }
         case "Notification":
             // Two different notifications arrive here: a permission prompt (Claude is blocked
             // on you) and the idle nudge "Claude is waiting for your input" (its turn is over).
@@ -407,9 +515,21 @@ final class ClaudeActivityService {
                 finishOpenSteps(s, at: now)
                 s.status = s.promptAt == nil ? .idle : .done
             }
-        case "Stop", "SubagentStop":
-            guard event == "Stop" else { break }
+        case "SubagentStart":
+            if !agentID.isEmpty { s.agent(agentID, type: agentType, at: now).lastEventAt = now }
+        case "SubagentStop":
+            if !agentID.isEmpty {
+                let said = Self.oneLine(e["last_assistant_message"] as? String ?? "", max: 120)
+                let seen = s.agents.contains { $0.id == agentID }
+                let a = s.agent(agentID, type: agentType, at: now)
+                if !seen { a.startKnown = false }
+                if let path = e["agent_transcript_path"] as? String, !path.isEmpty { a.transcriptPath = path }
+                a.finish(at: now, result: said)
+            }
+        case "Stop":
             finishOpenSteps(s, at: now)
+            // Agents Claude waited for are done when its turn is; background ones carry on.
+            for a in s.agents where a.isRunning && !a.background { a.finish(at: now) }
             let stoppedByYou = s.stopRequested
             if s.stopRequested {
                 s.steps.append(ActivityStep(id: "stop-\(now.timeIntervalSince1970)", kind: .done, verb: "Stopped", target: "from Zera",
@@ -438,11 +558,121 @@ final class ClaudeActivityService {
             // Nothing can be waiting in a session that no longer exists.
             s.steps.removeAll { $0.kind == .waiting && !$0.finished }
             finishOpenSteps(s, at: now)
+            for a in s.agents where a.isRunning { a.finish(at: now) }
             clearStop(s)
             s.status = .ended
         default:
             break
         }
+    }
+
+    // MARK: Agent transcripts
+    //
+    // Claude Code writes each agent's conversation next to the session's transcript. While you
+    // look at a session's agents, Zera reads the end of each one (in the background, and only
+    // when it has grown) to show what the agent says and does, as the terminal would. Nothing is
+    // kept once the session is gone.
+
+    private var readingAgents: Set<String> = []
+
+    /// `~/.claude/projects/<dir>/<session>/subagents/agent-<id>.jsonl`, beside `<session>.jsonl`.
+    nonisolated static func agentTranscriptPath(session: String, agent: String) -> String {
+        (session as NSString).deletingPathExtension + "/subagents/agent-\(agent).jsonl"
+    }
+
+    func follow(_ a: ClaudeAgent, in s: ClaudeSession) {
+        guard let path = a.transcriptPath ?? s.transcriptPath.map({ Self.agentTranscriptPath(session: $0, agent: a.id) }),
+              !readingAgents.contains(a.id) else { return }
+        let size = ((try? fm.attributesOfItem(atPath: path))?[.size] as? NSNumber)?.uint64Value ?? 0
+        guard size > 0, size != a.transcriptSize else { return }
+        readingAgents.insert(a.id)
+        DispatchQueue.global(qos: .utility).async {
+            let steps = Self.transcriptSteps(atPath: path)
+            let start = Self.transcriptStart(atPath: path)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self.readingAgents.remove(a.id)
+                    a.transcriptPath = path
+                    a.transcriptSize = size
+                    if let steps = steps { a.transcriptSteps = steps }
+                    // Its first line is when it really started.
+                    if let start = start, !a.startKnown || start < a.startedAt { a.startedAt = start; a.startKnown = true }
+                    NotificationCenter.default.post(name: Self.changed, object: nil)
+                }
+            }
+        }
+    }
+
+    /// When the transcript begins: the first line's timestamp (its first 64 KB are enough).
+    nonisolated static func transcriptStart(atPath path: String) -> Date? {
+        guard let fh = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? fh.close() }
+        return transcriptStart((try? fh.read(upToCount: 65_536)) ?? Data())
+    }
+
+    nonisolated static func transcriptStart(_ data: Data) -> Date? {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var found: Date?
+        _ = consumeLines(data) { line in
+            guard found == nil, let obj = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
+                  let t = obj["timestamp"] as? String else { return }
+            found = iso.date(from: t)
+        }
+        return found
+    }
+
+    /// The last 256 KB of an agent's transcript as steps.
+    nonisolated static func transcriptSteps(atPath path: String) -> [ActivityStep]? {
+        guard let fh = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? fh.close() }
+        let size = (try? fh.seekToEnd()) ?? 0
+        try? fh.seek(toOffset: size > 262_144 ? size - 262_144 : 0)
+        return transcriptSteps((try? fh.readToEnd()) ?? Data(), cutAtStart: size > 262_144)
+    }
+
+    /// Each tool the agent ran (finished once its result came back) and each thing it said, in
+    /// order. `cutAtStart`: the first line is a fragment of an earlier one.
+    nonisolated static func transcriptSteps(_ data: Data, cutAtStart: Bool = false) -> [ActivityStep] {
+        var steps: [ActivityStep] = []
+        var open: [String: Int] = [:]
+        var skip = cutAtStart
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        _ = consumeLines(data + Data("\n".utf8)) { line in
+            if skip { skip = false; return }
+            guard let obj = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
+                  let message = obj["message"] as? [String: Any],
+                  let content = message["content"] as? [[String: Any]] else { return }
+            let at = (obj["timestamp"] as? String).flatMap { iso.date(from: $0) } ?? Date()
+            switch obj["type"] as? String {
+            case "assistant":
+                for c in content {
+                    switch c["type"] as? String {
+                    case "text":
+                        let text = oneLine(c["text"] as? String ?? "", max: 160)
+                        if text.isEmpty { continue }
+                        steps.append(ActivityStep(id: "say-\(steps.count)", kind: .other, verb: ClaudeAgent.says, target: text,
+                                                  detail: nil, at: at, finished: true, endedAt: at))
+                    case "tool_use":
+                        let (kind, verb, target, detail) = describe(tool: c["name"] as? String ?? "", input: c["input"] as? [String: Any] ?? [:])
+                        let id = c["id"] as? String ?? "tool-\(steps.count)"
+                        open[id] = steps.count
+                        steps.append(ActivityStep(id: id, kind: kind, verb: verb, target: target, detail: detail, at: at, finished: false))
+                    default: break
+                    }
+                }
+            case "user":
+                for c in content where c["type"] as? String == "tool_result" {
+                    guard let id = c["tool_use_id"] as? String, let i = open.removeValue(forKey: id) else { continue }
+                    steps[i].finished = true
+                    steps[i].endedAt = at
+                    steps[i].result = (c["is_error"] as? Bool ?? false) ? "Failed" : "Done"
+                }
+            default: break
+            }
+        }
+        return Array(steps.suffix(120))
     }
 
     // MARK: Replies
@@ -456,6 +686,14 @@ final class ClaudeActivityService {
 
     private static let replyWindowKey = "claude.replyWindow"
     /// Seconds a finished session waits for a reply from the wings; 0 turns replies off.
+    private static let agentsKey = "claude.agents"
+    /// Each agent Claude starts gets its own timeline (the session's Agents tab); off, its steps
+    /// join the session's, as they always did.
+    var showAgents: Bool {
+        get { UserDefaults.standard.object(forKey: Self.agentsKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Self.agentsKey); NotificationCenter.default.post(name: Self.changed, object: nil) }
+    }
+
     var replyWindow: Int {
         get { UserDefaults.standard.object(forKey: Self.replyWindowKey) as? Int ?? 20 }
         set {
@@ -696,6 +934,17 @@ final class ClaudeActivityService {
         }
     }
 
+    /// Finishes the matching step (by id when the CLI provides one, else the last open one of that tool).
+    private static func finishStep(in steps: inout [ActivityStep], useID: String, tool: String, response: Any?, at now: Date) {
+        let idx = steps.lastIndex(where: { !$0.finished && (!useID.isEmpty ? $0.id == useID : toolName(for: $0.kind) == tool) })
+            ?? steps.lastIndex(where: { !$0.finished && $0.kind != .prompt })
+        if let i = idx {
+            steps[i].finished = true
+            steps[i].endedAt = now
+            steps[i].result = outcome(kind: steps[i].kind, response: response)
+        }
+    }
+
     private func finishOpenSteps(_ s: ClaudeSession, at now: Date) {
         for i in s.steps.indices where !s.steps[i].finished {
             s.steps[i].finished = true
@@ -855,7 +1104,29 @@ final class ClaudeActivityService {
     exit 0
     """
 
-    static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd"]
+    static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd",
+                         "SubagentStart", "SubagentStop"]
+
+    /// Our hook entry for one event: every tool for the tool events, more time for Stop.
+    private func entry(for ev: String) -> [String: Any] {
+        var entry: [String: Any] = ["hooks": [["type": "command", "command": "\"\(scriptURL.path)\"", "timeout": ev == "Stop" ? Self.stopTimeout : 5]]]
+        if ev == "PreToolUse" || ev == "PostToolUse" { entry["matcher"] = "*" }
+        return entry
+    }
+
+    /// Installs from before agents were followed lack SubagentStart and SubagentStop; add them once.
+    private func ensureEvents() {
+        guard settingsHasEntry, var json = (try? ClaudeSettingsFile.read(settingsURL)) ?? nil else { return }
+        var hooks = json["hooks"] as? [String: Any] ?? [:]
+        var changed = false
+        for ev in Self.events where !((hooks[ev] as? [[String: Any]]) ?? []).contains(where: Self.entryIsOurs) {
+            hooks[ev] = ((hooks[ev] as? [[String: Any]]) ?? []) + [entry(for: ev)]
+            changed = true
+        }
+        guard changed else { return }
+        json["hooks"] = hooks
+        try? ClaudeSettingsFile.write(json, to: settingsURL)
+    }
 
     private static func entryIsOurs(_ entry: [String: Any]) -> Bool {
         let inner = entry["hooks"] as? [[String: Any]] ?? []
@@ -919,9 +1190,7 @@ final class ClaudeActivityService {
         for ev in Self.events {
             var list = hooks[ev] as? [[String: Any]] ?? []
             list.removeAll { Self.entryIsOurs($0) }
-            var entry: [String: Any] = ["hooks": [["type": "command", "command": "\"\(scriptURL.path)\"", "timeout": ev == "Stop" ? Self.stopTimeout : 5]]]
-            if ev == "PreToolUse" || ev == "PostToolUse" { entry["matcher"] = "*" }
-            list.append(entry)
+            list.append(entry(for: ev))
             hooks[ev] = list
         }
         json["hooks"] = hooks
