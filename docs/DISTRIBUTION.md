@@ -8,7 +8,7 @@
 - [x] Include an offline install guide in future DMGs.
 - [x] Make future release notes distinguish signing from successful notarization.
 - [ ] Commit and deploy the installation updates. Existing v0.1.8 artifacts are unchanged.
-- [x] Add the MIT License.
+- [x] Add MIT licensing for code and written documentation, with separate terms for Zera's identity and original creative assets in `LICENSE-ASSETS.md`.
 
 ## 2. Remove the unsigned-app installation barrier
 
