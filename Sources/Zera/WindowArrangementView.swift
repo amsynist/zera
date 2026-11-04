@@ -40,7 +40,7 @@ final class ArrangePreview: NSButton {
 @MainActor
 final class WindowArrangementView: NSView, @preconcurrency CardContent {
     private let service: WindowArrangementService
-    private let heading = NSTextField(labelWithString: "Arrange")
+    private let heading = NSTextField(labelWithString: "Arrange (Beta)")
     private let subtitle = NSTextField(labelWithString: "")
     private let status = NSTextField(wrappingLabelWithString: "")
     private let enabled = Toggle()
@@ -104,10 +104,10 @@ final class WindowArrangementView: NSView, @preconcurrency CardContent {
         body.subviews.forEach { $0.removeFromSuperview() }; footer.subviews.forEach { $0.removeFromSuperview() }; actions.removeAll(); recorders = []; previews = []
         let width = max(240, contentWidth > 0 ? contentWidth : cardWidth - Metrics.sidePad * 2)
         var y: CGFloat = 0
-        func text(_ value: String, height: CGFloat = 36, strong: Bool = false) {
+        func text(_ value: String, height: CGFloat = 36, strong: Bool = false, trailing: CGFloat = 0) {
             let label = NSTextField(wrappingLabelWithString: value); label.font = strong ? Typo.rowTitleStrong : Typo.secondary
             label.textColor = strong ? Pal.text : Pal.textSecondary
-            label.frame = CGRect(x: 0, y: y, width: width, height: height); body.addSubview(label); y += height + Space.s
+            label.frame = CGRect(x: 0, y: y, width: max(0, width - trailing), height: height); body.addSubview(label); y += height + Space.s
         }
         if !service.enabled {
             text("Switch window groups together without sending windows through the Dock. Windows return when you switch back or turn this off. Your ⌘W, ⌘M and ⌘1–9 bindings override the usual app shortcuts while enabled.", height: 52)
@@ -137,8 +137,12 @@ final class WindowArrangementView: NSView, @preconcurrency CardContent {
             if #available(macOS 14.0, *) {} else { visual.isEnabled = false }
             visual.onChange = { [weak self] yes in self?.service.setVisualTransitions(yes) }
             visual.frame = CGRect(x: width - 44, y: y, width: 44, height: 28); body.addSubview(visual)
-            text("Visual transitions", height: 28, strong: true)
-            text("Animate temporary window images for smoother movement. Live content pauses briefly; images stay in memory.", height: 40)
+            text("Visual transitions", height: 28, strong: true, trailing: 44 + Space.m)
+            if #available(macOS 14.0, *) {
+                text("Animate temporary window images for smoother movement. Live content pauses briefly; images stay in memory.", height: 40)
+            } else {
+                text("Requires macOS 14 or later. Native window positioning works without visual transitions.", height: 40)
+            }
             if visual.isOn && !service.hasVisualAccess {
                 let access = button("Permissions & Diagnostics…") { [weak self] in self?.onOpenPermissions?() }
                 access.frame = CGRect(x: 0, y: y, width: 232, height: Metrics.control); y += Metrics.control + Space.m
@@ -218,11 +222,11 @@ final class WindowArrangementView: NSView, @preconcurrency CardContent {
             let automatic = Toggle(); automatic.isOn = service.settings.automatic; automatic.setAccessibilityLabel("Automatically arrange new windows")
             automatic.onChange = { [weak self] value in self?.service.setAutomatic(value) }
             automatic.frame = CGRect(x: width - 44, y: y, width: 44, height: 28); body.addSubview(automatic)
-            text("Automatically arrange new windows", height: 28)
+            text("Automatically arrange new windows", height: 28, trailing: 44 + Space.m)
             let limit = ZeraSelect(["2 windows", "3 windows", "4 windows", "5 windows", "6 windows"]); limit.selectedIndex = service.settings.capacity - 2
             limit.setAccessibilityLabel("Windows per workspace"); limit.onChange = { [weak self] value in self?.service.setCapacity(value + 2) }
             limit.frame = CGRect(x: width - 180, y: y, width: 180, height: Metrics.control); body.addSubview(limit)
-            text("Distribution limit", height: Metrics.control)
+            text("Distribution limit", height: Metrics.control, trailing: 180 + Space.m)
         default:
             text("⌥Arrows focus · ⌥⇧Arrows resize the shared edge. Click a keycap to change it; Delete turns it off. A conflicting key leaves the previous binding in place.", height: 44)
             text("Open apps", height: 24, strong: true)

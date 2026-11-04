@@ -91,6 +91,24 @@ final class ScreenRenderTests: XCTestCase {
 
     // MARK: Renders
 
+    func testRenderLiveIslandOutlineStyles() throws {
+        guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else { throw XCTSkip("use a disposable home") }
+        let saved = NotchLightStyle.current
+        defer { NotchLightStyle.current = saved }
+        for style in NotchLightStyle.allCases {
+            let view = IslandView(frame: NSRect(x: 0, y: 0, width: 1000, height: 620))
+            view.centerX = 500; view.band = band; view.notchWidth = 190; view.hoverStyle = .bar
+            view.peek()
+            NotchLightStyle.current = style
+            shot(view, "outline-\(style)-hover")
+            let card = CardBase(width: 720, title: "Notch border preview")
+            card.setSubtitle("The selected style follows the live island")
+            view.present(card, size: NSSize(width: 720, height: 400), direction: 0, animated: false)
+            shot(view, "outline-\(style)-open")
+            view.close(animated: false)
+        }
+    }
+
     func testRenderProductionSetupAndExport() throws {
         guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else { throw XCTSkip("use a disposable home") }
         let done = OnboardingState.done, step = OnboardingState.step

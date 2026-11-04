@@ -1346,7 +1346,7 @@ final class SettingsCard: CardBase, CardContent {
                  + "Health: once when it drops below your mark.", &s)
         }
 
-        buttonRow("Window arrangements…", style: .secondary, status: "Optional layouts, workspaces and app shortcuts", &s, action: #selector(openArrangementTapped))
+        buttonRow("Window arrangements (Beta)…", style: .secondary, status: "Optional layouts, workspaces and app shortcuts", &s, action: #selector(openArrangementTapped))
         // The app opener has no tab: Zera brings it down from the notch when you press its shortcut.
         toggleRow("App opener", on: AppOpenerSettings.enabled, &s) { [weak self] on in
             AppOpenerSettings.enabled = on
@@ -1503,14 +1503,14 @@ final class SettingsCard: CardBase, CardContent {
 
     private func buildAppearance(_ s: inout Stack) {
         let store = ThemeStore.shared
-        sectionLabel("Island outline", &s)
+        sectionLabel("Notch border & glow", &s)
         let picker = NotchLightPicker()
         picker.onChange = { NotchLightStyle.current = $0 }
         picker.onIntensityChange = { NotchLightStyle.intensity = $0 }
         picker.onReactionsChange = { NotchLightStyle.reactionsEnabled = $0 }
         pane.addSubview(picker)
         s.place(picker, height: picker.preferredHeight, gap: Space.xs)
-        hint("These styles control the island outline. Event lights use the flowing treatments below; Glow adjusts both.", &s)
+        hint("Visible while hovering or using a notch screen. Event lights use the treatments below; Glow adjusts both.", &s)
         sectionLabel("Event light", &s)
         popupRow("Light style", items: EdgeLightStyle.allCases.map(\.title), selected: EdgeLight.shared.style.rawValue,
                  &s, action: #selector(edgeStyleChanged(_:)))

@@ -1,4 +1,4 @@
-# Zera v2 window manager
+# Zera v2 window manager (Beta)
 
 Open Arrange from Zera and explicitly enable window arrangements. Accessibility access lets Zera read, move and resize native app windows. Use Window scope to include all apps, one app or selected apps. Full-screen windows and apps that refuse resizing may not fit a requested layout.
 
@@ -8,7 +8,7 @@ Workspaces are Zera window groups numbered 1–9, not macOS Spaces. Choose the d
 
 Configure Shortcuts and app scope before enabling. While enabled, the configured bindings (including defaults for ⌘W, ⌘M and ⌘1–9) replace those same app shortcuts. Automatic arrangements and workspace capacities are optional. Quit competing window managers before enabling Zera’s manager.
 
-Visual transitions are a separate opt-in. Screen Recording lets Zera animate temporary window images; they stay in memory and live content pauses briefly. Native frame movement works without that visual layer. Reduce Motion is respected.
+Visual transitions are a separate opt-in requiring macOS 14 or later. After enabling them, use Settings → Permissions & Diagnostics to repair Screen Recording access if needed. Screen Recording lets Zera animate temporary window images; they stay in memory and live content pauses briefly. Native frame movement works without that visual layer. Reduce Motion is respected.
 
 ## Native release demonstration
 

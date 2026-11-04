@@ -407,7 +407,7 @@ enum CardKind: Int, CaseIterable {
         case .teleprompter: return "Teleprompter"
         case .focus: return "Focus"
         case .phoneTransfer: return "From your phone"
-        case .arrange: return "Arrange"
+        case .arrange: return "Arrange (Beta)"
         case .taskExport: return "Timesheet export"
         }
     }
