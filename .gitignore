@@ -6,8 +6,10 @@ Claude outputs/
 # Private audit notes and backups — never publish
 audit/
 .env
-# Local Claude Code preview config and screenshots
+# Local assistant skills, configuration and screenshots
 .claude/
+.agents/
+.codex/
 .desloppify/
 
 # Private local tooling, self-test desktops and generated media workspaces
