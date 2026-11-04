@@ -92,6 +92,8 @@ final class AgentsView: NSView, @preconcurrency CardContent {
     func willShow(expanded: Bool) {
         if expanded, let session = ClaudeActivityService.shared.current {
             showDetail(claude); claude.openSession(session.id)
+        } else if NotchNavigation.shared.remembersScreen, detail != nil {
+            needsLayout = true
         } else { providerID = nil; showDashboard() }
     }
     func beginClaudeSession() { showDetail(managedClaude); managedClaude.beginNewSession() }

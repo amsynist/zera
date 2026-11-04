@@ -209,7 +209,7 @@ final class ZeraController: NSObject {
             if self.cardVisible {
                 self.dismissCardByUser()
             } else {
-                guard let defaultCard = self.defaultCard else { return }
+                guard let defaultCard = NotchNavigation.shared.destination(fallback: self.defaultCard) else { return }
                 self.suppressUntil = .distantPast
                 let answerWaiting = self.userHidResult && MainActor.assumeIsolated { !ZeraAssistant.shared.isBusy && ZeraAssistant.shared.session != nil }
                 self.userHidResult = false
@@ -286,6 +286,7 @@ final class ZeraController: NSObject {
         bubblePanel.hasShadow = false // the capsule draws its own subtle edge; no second black ring
         bubblePanel.alphaValue = 0
 
+        tasks.onOpenExport = { [weak self] in self?.show(.taskExport) }
         island.onClose = { [weak self] in self?.dismissCardByUser() }
         island.onSettings = { [weak self] in
             guard let self = self else { return }
@@ -943,13 +944,18 @@ final class ZeraController: NSObject {
         if cardVisible { hideCard() }
         navigationPinned = ControlFocusVisibility.keyboard
         navigationPinOrigin = navigationPinned ? NSEvent.mouseLocation : nil
-        showPill()
+        showPill(restore: false)
         cardPanel.makeKey()
         cardPanel.recalculateKeyViewLoop()
         cardPanel.selectNextKeyView(nil)
     }
 
-    private func showPill() {
+    private func showPill(restore: Bool = true) {
+        if restore, !cardVisible, Date() >= suppressUntil,
+           let remembered = NotchNavigation.shared.destination(fallback: nil) {
+            show(remembered)
+            return
+        }
         pillVisible = true
         refreshWaterGlass()
         railVitals(true)
@@ -1547,6 +1553,11 @@ final class ZeraController: NSObject {
         notificationObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main, using: handler))
     }
 
+    func prepareForTermination() {
+        if let kind = currentCard, let c = currentContent { NotchNavigation.shared.captureScroll(in: c, screen: kind) }
+        (cards[.teleprompter] as? TeleprompterView)?.willHide()
+    }
+
     deinit {
         eventMonitors.forEach { NSEvent.removeMonitor($0) }
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
@@ -1609,7 +1620,7 @@ final class ZeraController: NSObject {
         let time = DateFormatter.localizedString(from: h.time, dateStyle: .none, timeStyle: .short)
         reactLight(.notification)
         MainActor.assumeIsolated {
-            CommandEcho.shared.present(EchoContent(symbol: "cloud.rain.fill", keys: "", text: "Rain soon",
+            _ = CommandEcho.shared.present(EchoContent(symbol: "cloud.rain.fill", keys: "", text: "Rain soon",
                                                    detail: "around \(time) · \(h.precipitationChance ?? 0)%", tint: Pal.accent), hold: 4)
         }
         if buddyEnabled, !cardVisible { say("rain around \(time) ☔", mood: .worried, for: 3) }
@@ -1926,6 +1937,7 @@ final class ZeraController: NSObject {
     /// Light ↔ dark: throw the cards away and rebuild the visible one in the new colours.
     @objc private func paletteChanged() {
         let showing = cardVisible ? currentCard : nil
+        if let kind = currentCard, let c = currentContent { NotchNavigation.shared.captureScroll(in: c, screen: kind) }
         let settingsPane = (cards[.settings] as? SettingsCard)?.current
         cards.removeAll()
         currentContent?.removeFromSuperview()
@@ -2191,6 +2203,13 @@ final class ZeraController: NSObject {
             s.onSettle = { [weak self] in self?.settle() }
             s.onRunInPlace = { [weak self] action, item in self?.shelfRunsInPlace(action, on: item) }
             c = s
+        case .taskExport:
+            let export = tasks.exportView
+            let screen = TaskExportCard(view: export)
+            screen.onBack = { [weak self] in self?.show(.tasks) }
+            export.onClose = { [weak self] in self?.show(.tasks) }
+            export.onExport = { [weak self] span, format, project in self?.tasks.export(span, format, project) }
+            c = screen
         case .home:
             let h = HomeCard()
             h.onOpen = { [weak self] k in self?.show(k) }
@@ -2210,6 +2229,10 @@ final class ZeraController: NSObject {
         case .settings:
             let s = SettingsCard(defaultKind: defaultCard, showingZera: buddySetting,
                                  loginEnabled: SMAppService.mainApp.status == .enabled)
+            s.onReturn = { [weak self] in
+                let saved = CardKind(rawValue: NotchNavigation.shared.integer("settings.return", fallback: CardKind.home.rawValue)) ?? .home
+                self?.show(NotchNavigation.isDestination(saved) && saved != .settings ? saved : .home)
+            }
             s.onOpenArrangement = { [weak self] in self?.show(.arrange) }
             s.onOpenAgents = { [weak self] in self?.show(.claude) }
             s.onDefaultChanged = { [weak self] k in self?.defaultCard = k }
@@ -2242,10 +2265,7 @@ final class ZeraController: NSObject {
                 self?.tasks.toggleOrbSetting()
                 t?.orbShown = TasksSettings.orb
             }
-            t.onExport = { [weak self] in
-                self?.dismissCardByUser()
-                self?.tasks.openExport()
-            }
+            t.onExport = { [weak self] in self?.show(.taskExport) }
             t.onLinkFolder = { [weak self] p in
                 self?.dismissCardByUser()
                 self?.tasks.linkFolder(for: p)
@@ -2270,7 +2290,14 @@ final class ZeraController: NSObject {
             let t = TeleprompterView()
             c = t
         case .arrange:
-            c = MainActor.assumeIsolated { WindowArrangementView() }
+            c = MainActor.assumeIsolated {
+                let view = WindowArrangementView()
+                view.onOpenPermissions = { [weak self] in
+                    self?.show(.settings)
+                    (self?.cards[.settings] as? SettingsCard)?.select(.permissions)
+                }
+                return view
+            }
         case .focus:
             let f = FocusView(store: tasks.store)
             f.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 2.5) }
@@ -2378,7 +2405,7 @@ final class ZeraController: NSObject {
         return c
     }
 
-    func toggleDefaultCard() { cardVisible ? dismissCardByUser() : show(defaultCard ?? .shelf) }
+    func toggleDefaultCard() { cardVisible ? dismissCardByUser() : show(NotchNavigation.shared.destination(fallback: defaultCard) ?? .shelf) }
 
     /// Set when you put the result card away while Zera was still working, so the answer
     /// does not jump back in front of you — her bubble says when it is ready instead.
@@ -2407,6 +2434,11 @@ final class ZeraController: NSObject {
             liveDismissed = false
             finishedLiveHidden = false
         }
+        if let previous = currentCard, let view = currentContent { NotchNavigation.shared.captureScroll(in: view, screen: previous) }
+        if kind == .settings, let previous = currentCard, previous != .settings, NotchNavigation.isDestination(previous) {
+            NotchNavigation.shared.set(previous.rawValue, for: "settings.return")
+        }
+        NotchNavigation.shared.record(kind)
         if swapping {
             (currentContent as? TeleprompterView)?.willHide()
             let c = content(for: kind)
@@ -2434,7 +2466,14 @@ final class ZeraController: NSObject {
         case .claude:
             MainActor.assumeIsolated { (cards[.claude] as? AgentsView)?.willShow(expanded: claudeOpenExpanded) }
             claudeOpenExpanded = false
-        case .settings: break
+        case .taskExport:
+            if !NotchNavigation.shared.remembersScreen {
+                tasks.exportView.project = tasks.store.shownProject
+                tasks.exportView.span = .today
+            }
+            tasks.exportView.refresh()
+            tasks.syncCommits(quiet: true) { [weak self] in self?.tasks.exportView.refresh() }
+        case .settings: (cards[.settings] as? SettingsCard)?.willShow()
         case .phoneTransfer:
             if let receipt = AndroidTransfer.shared.transfer { (cards[.phoneTransfer] as? AndroidTransferCard)?.update(receipt); island.setPhoneTransfer(receipt) }
         case .clipboard: (cards[.clipboard] as? ClipboardView)?.willShow()
@@ -2464,6 +2503,7 @@ final class ZeraController: NSObject {
             direction = j == i ? 1 : (j > i ? 1 : -1)
         }
         presentCurrent(direction: direction, animated: !instant)
+        if let c = currentContent { NotchNavigation.shared.restoreScroll(in: c, screen: kind) }
         island.activeTab = Isle.tab(for: kind)
         zera.islandPose = Isle.pose(for: kind)
         routeCaption()
@@ -2484,6 +2524,10 @@ final class ZeraController: NSObject {
             cardPanel.makeKey()
             cardPanel.makeFirstResponder(f.field)
         }
+        if kind == .taskExport {
+            cardPanel.makeKey()
+            cardPanel.makeFirstResponder(tasks.exportView)
+        }
         if kind == .teleprompter {
             // Space, ↑↓ and ←→ drive the roll straight away.
             cardPanel.makeKey()
@@ -2501,8 +2545,8 @@ final class ZeraController: NSObject {
     private func presentCurrent(direction: CGFloat, animated: Bool) {
         guard let c = currentContent else { return }
         let w = min(c.cardWidth, Isle.maxWidth, geometry.screen.frame.width - 24)
-        c.setFrameSize(NSSize(width: w, height: max(c.frame.height, 100)))
         isPresenting = true
+        c.setFrameSize(NSSize(width: w, height: max(c.frame.height, 100)))
         c.needsLayout = true
         c.layoutSubtreeIfNeeded()
         isPresenting = false
@@ -2513,6 +2557,7 @@ final class ZeraController: NSObject {
     func hideCard() {
         island.companion.activityOverride = nil
         guard cardVisible else { return }
+        if let kind = currentCard, let c = currentContent { NotchNavigation.shared.captureScroll(in: c, screen: kind) }
         sound(.islandClose)
         (currentContent as? TeleprompterView)?.willHide()
         MainActor.assumeIsolated { ZeraDropdown.shared.dismiss() }
@@ -2797,7 +2842,7 @@ extension ZeraController {
         }
         add("27-rain-soon", wait: 0.6) {
             Dictation.shared.onTranscript?(nil)
-            present(EchoContent(symbol: "cloud.rain.fill", keys: "", text: "Rain soon", detail: "around 4:30 PM · 70%", tint: Pal.accent))
+            _ = present(EchoContent(symbol: "cloud.rain.fill", keys: "", text: "Rain soon", detail: "around 4:30 PM · 70%", tint: Pal.accent))
         }
         add("28-home-open", wait: 1.3, tall: true) {
             MainActor.assumeIsolated { CommandEcho.shared.dismissPresented() }

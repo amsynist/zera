@@ -5,7 +5,9 @@ final class Delegate: NSObject, NSApplicationDelegate {
     var windows: [NSWindow] = []
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        let titles = ["Release notes", "AppTheme.swift", "Coast.png"]
+        let titles = CommandLine.arguments.contains("--four-windows")
+            ? ["Release notes", "AppTheme.swift", "Coast.png", "Daily plan"]
+            : ["Release notes", "AppTheme.swift", "Coast.png"]
         let screen = NSScreen.main!.visibleFrame
         for (index, title) in titles.enumerated() {
             let window = NSWindow(contentRect: CGRect(x: screen.minX + 150 + CGFloat(index) * 220,

@@ -5,8 +5,8 @@ import AppKit
 @MainActor
 final class CodexAgentService {
     static let shared = CodexAgentService()
-    static let changed = Notification.Name("ZeraCodexManagedChanged")
-    static let created = Notification.Name("ZeraCodexManagedCreated")
+    nonisolated static let changed = Notification.Name("ZeraCodexManagedChanged")
+    nonisolated static let created = Notification.Name("ZeraCodexManagedCreated")
     struct Thread: Codable, Identifiable {
         let id: String
         var title: String

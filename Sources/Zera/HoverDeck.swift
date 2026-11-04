@@ -63,7 +63,7 @@ final class HoverDeck: NSView {
         let centerSpace: CGFloat = 112
         let width = max(0, (bounds.width - centerSpace) / 2)
         hero.frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
-        now.frame = NSRect(x: width + centerSpace, y: 0, width: width, height: bounds.height)
+        now.frame = NSRect(x: width + centerSpace, y: 0, width: max(0, width - 32), height: bounds.height)
     }
 }
 

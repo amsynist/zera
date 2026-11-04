@@ -58,11 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         refreshBadge()
         if let welcome = OnboardingWindowController.presentIfNeeded() {
-            welcome.onOpenSettings = { [weak self] in self?.controller.show(.settings) }
-            // Murmur's intro follows the welcome window.
-            welcome.onFinish = { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { MurmurIntroController.presentIfNeeded() } }
-        } else if ProcessInfo.processInfo.environment["ZERA_TOUR"] == nil {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { MurmurIntroController.presentIfNeeded() }
+            welcome.onFinish = { [weak self] in self?.controller.show(.home) }
         }
         NotificationCenter.default.addObserver(self, selector: #selector(refreshBadge),
                                                name: ShelfStore.changed, object: nil)
@@ -216,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showFocus() { controller.show(.focus) }
     @objc private func showTeleprompter() { controller.show(.teleprompter) }
     @objc private func showTasks() { controller.show(.tasks) }
-    @objc private func showWelcome() { OnboardingWindowController.present().onOpenSettings = { [weak self] in self?.controller.show(.settings) } }
+    @objc private func showWelcome() { OnboardingWindowController.present() }
     @objc private func showNavigation() { controller.showNavigation() }
     @objc private func showOpener() { controller.toggleOpener() }
     @objc private func showHome() { controller.show(.home) }
@@ -268,6 +264,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// No orphaned `claude` processes: stop any in-flight file analysis before quitting. A
     /// clipboard change still waiting for its debounced save is written now.
     func applicationWillTerminate(_ notification: Notification) {
+        controller.prepareForTermination()
+        TeleprompterStore.shared.flush()
+        Dictation.shared.cancel(resumeApprovals: false)
         AndroidTransfer.shared.stop()
         CodexAgentService.shared.disconnect()
         ClaudeAgentService.shared.disconnectAll()

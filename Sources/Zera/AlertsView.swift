@@ -469,7 +469,7 @@ final class AlertsView: CardBase, CardContent {
         center.markAllSeen()
         reloading = false
         reload()
-        scroll.contentView.scroll(to: .zero)
+        if !NotchNavigation.shared.remembersScreen { scroll.contentView.scroll(to: .zero) }
     }
 
     @objc private func centerChanged() {

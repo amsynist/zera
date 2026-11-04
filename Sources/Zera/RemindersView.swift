@@ -125,8 +125,12 @@ final class RemindersView: NSView, CardContent {
     private var formReturn: Side = .none
 
     // Survive rebuilds (theme change).
-    private static var tab = 0
-    private static var filter: AgendaFilter = .all
+    private static var tab = min(2, max(0, NotchNavigation.shared.integer("reminders.tab"))) {
+        didSet { NotchNavigation.shared.set(tab, for: "reminders.tab") }
+    }
+    private static var filter: AgendaFilter = AgendaFilter(rawValue: NotchNavigation.shared.integer("reminders.filter")) ?? .all {
+        didSet { NotchNavigation.shared.set(filter.rawValue, for: "reminders.filter") }
+    }
     private static let calendarTipKey = "zera.reminders.calendarTipDismissed"
 
     private let main = GlassPanel()
@@ -203,6 +207,7 @@ final class RemindersView: NSView, CardContent {
         ZeraDropdown.shared.dismiss()
         // A form is work in progress; list filters are temporary navigation.
         if form != nil, focusOnShow == nil { reload(); return }
+        if NotchNavigation.shared.remembersScreen, focusOnShow == nil { reload(); return }
         Self.tab = 0
         Self.filter = .all
         side = .none

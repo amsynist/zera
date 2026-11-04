@@ -5,6 +5,7 @@ import XCTest
 final class SettingsLayoutTests: XCTestCase {
     func testScrollCueStaysOutsideContentAndHidesAtBottom() throws {
         let settings = SettingsCard(defaultKind: .shelf, showingZera: true, loginEnabled: false)
+        settings.select(.general)
         settings.setFrameSize(NSSize(width: settings.cardWidth, height: Isle.maxContentHeight))
         settings.select(.appearance)
         settings.layoutSubtreeIfNeeded()
@@ -29,6 +30,7 @@ final class SettingsLayoutTests: XCTestCase {
 
     func testEveryPaneUsesSharedSelectsWithinItsRows() {
         let settings = SettingsCard(defaultKind: .shelf, showingZera: true, loginEnabled: false)
+        settings.select(.general)
         settings.setFrameSize(NSSize(width: settings.cardWidth, height: Isle.maxContentHeight))
         for pane in SettingsCard.Pane.allCases {
             settings.select(pane)
@@ -51,6 +53,7 @@ final class SettingsLayoutTests: XCTestCase {
         let saved = UserDefaults.standard.object(forKey: "appearance.dropdownStyle")
         defer { UserDefaults.standard.set(saved, forKey: "appearance.dropdownStyle") }
         let settings = SettingsCard(defaultKind: .shelf, showingZera: true, loginEnabled: false)
+        settings.select(.general)
         var picked: CardKind?
         settings.onDefaultChanged = { picked = $0 }
         let defaultChoice = try XCTUnwrap(descendants(settings).compactMap { $0 as? ZeraSelect }
@@ -70,6 +73,7 @@ final class SettingsLayoutTests: XCTestCase {
         let saved = UserDefaults.standard.object(forKey: "zera.hoverMenuStyle")
         defer { UserDefaults.standard.set(saved, forKey: "zera.hoverMenuStyle") }
         let settings = SettingsCard(defaultKind: .home, showingZera: true, loginEnabled: false)
+        settings.select(.general)
         var picked: HoverMenuStyle?
         settings.onHoverMenuChanged = { picked = $0 }
         let choice = try XCTUnwrap(descendants(settings).compactMap { $0 as? ZeraSelect }

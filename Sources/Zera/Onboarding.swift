@@ -1,11 +1,16 @@
 import AppKit
 import QuartzCore
+import ApplicationServices
 
 // MARK: - State
 
 enum OnboardingState {
     private static let key = "zera.onboarded"
-    /// True once the first-run window was finished or skipped.
+    static var step: Int {
+        get { min(4, max(0, UserDefaults.standard.integer(forKey: "zera.onboarding.step"))) }
+        set { UserDefaults.standard.set(min(4, max(0, newValue)), forKey: "zera.onboarding.step") }
+    }
+    /// True once the first-run window was finished or explicitly skipped.
     static var done: Bool {
         get { UserDefaults.standard.bool(forKey: key) }
         set { UserDefaults.standard.set(newValue, forKey: key) }
@@ -14,22 +19,20 @@ enum OnboardingState {
 
 // MARK: - Window controller
 
-/// The first-run window: Welcome → Pick your light → Connect → Shortcuts → Done.
+/// First-run setup: Welcome → Accessibility → optional capture → speech → Done.
 /// `presentIfNeeded()` at launch shows it once; `present()` shows it again from Settings/Help.
-/// Esc or the close button skips (and marks onboarding done, so it never nags).
+/// Explicit Skip finishes setup; closing preserves the current step for next launch.
 final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     static let size = NSSize(width: 720, height: 520)
     /// The one on screen, if any.
     private(set) static var current: OnboardingWindowController?
 
-    /// Open Settings → Integrations (GitHub). Provided by the integrator.
-    var onOpenSettings: (() -> Void)?
     /// Finished or skipped; the window is already closing.
     var onFinish: (() -> Void)?
 
     private let root: OnboardingView
 
-    /// Shows the window on a first run; returns it so the caller can set `onOpenSettings` / `onFinish`.
+    /// Shows the window on a first run; returns it so the caller can set `onFinish`.
     @discardableResult
     static func presentIfNeeded() -> OnboardingWindowController? {
         guard !OnboardingState.done else { return nil }
@@ -80,7 +83,6 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         w.onKey = { [weak self] event in self?.root.handle(key: event) ?? false }
         root.onFinish = { [weak self] in self?.finish() }
         root.onSkip = { [weak self] in self?.skip() }
-        root.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -97,7 +99,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
         onFinish?()
     }
 
-    /// Esc / close: also counts as done so the window never comes back uninvited.
+    /// Esc / explicit Skip completes setup without requiring optional permissions.
     private func skip() {
         guard !finishing else { return }
         finishing = true
@@ -108,12 +110,7 @@ final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         root.willClose()
-        if !finishing {
-            // Closed with the red button: same as skipping.
-            finishing = true
-            OnboardingState.done = true
-            onFinish?()
-        }
+        // Closing mid-setup keeps progress; only Open Zera or explicit Skip completes it.
         if Self.current === self { Self.current = nil }
     }
 }
@@ -140,9 +137,7 @@ private final class OnboardingWindow: NSWindow {
 private final class OnboardingView: NSView {
     var onFinish: (() -> Void)?
     var onSkip: (() -> Void)?
-    var onOpenSettings: (() -> Void)?
 
-    private let blur = NSVisualEffectView()
     private let tint = CAGradientLayer()
     private let rim = CALayer()
     private let pageHost = FlippedView()
@@ -170,16 +165,13 @@ private final class OnboardingView: NSView {
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
 
-        blur.material = .hudWindow
-        blur.blendingMode = .behindWindow
-        blur.state = .active
-        addSubview(blur)
-        tint.colors = [Neon.fillTop.withAlphaComponent(0.9).cgColor, Neon.fillBottom.withAlphaComponent(0.94).cgColor]
+        layer?.backgroundColor = Pal.cardBottom.cgColor
+        tint.colors = [Pal.cardBottom.cgColor, Pal.cardBottom.cgColor]
         tint.startPoint = CGPoint(x: 0.5, y: 0)
         tint.endPoint = CGPoint(x: 0.5, y: 1)
         layer?.addSublayer(tint)
         rim.borderWidth = 1
-        rim.borderColor = Neon.edge.withAlphaComponent(0.5).cgColor
+        rim.borderColor = Pal.border.cgColor
         rim.cornerRadius = 14
         rim.cornerCurve = .continuous
         layer?.addSublayer(rim)
@@ -194,7 +186,7 @@ private final class OnboardingView: NSView {
         addSubview(back)
         addSubview(next)
         addSubview(skipButton)
-        show(0, direction: 0, animated: false)
+        show(OnboardingState.done ? 0 : OnboardingState.step, direction: 0, animated: false)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -204,16 +196,11 @@ private final class OnboardingView: NSView {
         let p: OnboardingPage
         switch i {
         case 0: p = WelcomePage()
-        case 1: p = LightPage()
-        case 2:
-            let c = ConnectPage()
-            c.onOpenSettings = { [weak self] in self?.onOpenSettings?() }
-            p = c
-        case 3: p = ShortcutsPage()
+        case 1: p = AccessPage(kind: .accessibility)
+        case 2: p = AccessPage(kind: .screen)
+        case 3: p = AccessPage(kind: .speech)
         default:
-            let d = DonePage()
-            d.onOpen = { [weak self] in self?.onFinish?() }
-            p = d
+            p = DonePage()
         }
         pages[i] = p
         return p
@@ -226,10 +213,11 @@ private final class OnboardingView: NSView {
         let old = current
         let new = page(i)
         index = i
+        if !OnboardingState.done { OnboardingState.step = i }
         current = new
         dots.selected = i
         back.isHidden = i == 0
-        next.setTitleText(i == pages.count - 1 ? "Open Zera" : "Next")
+        next.setTitleText(i == pages.count - 1 ? "Open Zera" : i == 0 ? "Get Started" : "Continue")
         skipButton.isHidden = i == pages.count - 1
         needsLayout = true
 
@@ -276,13 +264,17 @@ private final class OnboardingView: NSView {
 
     @objc private func backTapped() {
         SoundService.shared.play(.tab)
-        show(index - 1, direction: -1, animated: true)
+        let previous = index == 3 && !PermissionAccess.screenNeeded ? 1 : index - 1
+        show(previous, direction: -1, animated: true)
     }
 
     @objc private func nextTapped() {
         if index == pages.count - 1 { onFinish?(); return }
         SoundService.shared.play(.tab)
-        show(index + 1, direction: 1, animated: true)
+        var nextStep = index + 1
+        if nextStep == 1, AXIsProcessTrusted() { nextStep += 1 }
+        if nextStep == 2, !PermissionAccess.screenNeeded || CGPreflightScreenCaptureAccess() { nextStep += 1 }
+        show(nextStep, direction: 1, animated: true)
     }
 
     @objc private func skipTapped() { onSkip?() }
@@ -305,7 +297,6 @@ private final class OnboardingView: NSView {
         super.layout()
         let b = bounds
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        blur.frame = b
         tint.frame = b
         rim.frame = b
         CATransaction.commit()
@@ -407,7 +398,7 @@ private final class WelcomePage: OnboardingPage {
 
     override init() {
         super.init()
-        heading.stringValue = "Meet Zera, your buddy in the notch."
+        heading.stringValue = "Welcome to Zera"
         lede.stringValue = "She lives at the top of your screen and keeps the useful things one hover away."
         zera.line = "hi! 👋"
         addSubview(zera)
@@ -464,309 +455,39 @@ private final class PropRow: NSView {
     }
 }
 
-// MARK: Light
+// MARK: Permission steps
 
-private final class LightPage: OnboardingPage {
-    private let picker = NotchLightPicker()
-
-    override init() {
+private final class AccessPage: OnboardingPage {
+    private let setup: PermissionSetupView
+    init(kind: PermissionAccess.Kind) {
+        setup = PermissionSetupView(kind: kind)
         super.init()
-        heading.stringValue = "Pick your light."
-        lede.stringValue = "How the island's edge glows. You can change it any time in Settings → Appearance."
-        picker.onChange = { s in NotchLightStyle.current = s }
-        picker.onIntensityChange = { v in NotchLightStyle.intensity = v }
-        addSubview(picker)
+        heading.stringValue = kind == .speech ? "Choose how you speak to Zera" : "Set up access, at your pace"
+        lede.stringValue = "Each step is optional. Continue when you're ready, or repair access later in Settings → Permissions & Diagnostics."
+        addSubview(setup)
     }
     required init?(coder: NSCoder) { fatalError() }
-
-    override func didShow() { picker.resumePreviews() }
-    override func willHide() { picker.pausePreviews() }
-
+    override func didShow() { setup.refresh() }
     override func layout() {
         super.layout()
-        let y0 = layoutHeader()
-        let w = bounds.width - Self.inset * 2
-        let h = picker.preferredHeight
-        picker.frame = NSRect(x: Self.inset, y: y0 + Space.m, width: w, height: h)
-    }
-}
-
-// MARK: Connect
-
-private final class ConnectPage: OnboardingPage {
-    var onOpenSettings: (() -> Void)?
-
-    private let claudeRow = ListRow(symbol: "sparkles", color: Pal.tileClaude, title: "Claude Code hooks", subtitle: "Live progress and approvals")
-    private let githubRow = ListRow(symbol: "arrow.triangle.pull", color: Pal.tileGitHub, title: "GitHub", subtitle: "Pull requests, checks and runs to approve")
-    private let calendarRow = ListRow(symbol: "calendar", color: Pal.tileCalendar, title: "Calendar & Reminders", subtitle: "Next up on Home, meeting alerts")
-    private let weatherRow = ListRow(symbol: "location.fill", color: Pal.info, title: "Weather location", subtitle: "Local forecast on Home (Open-Meteo, no account)")
-    private let claudeToggle = Toggle()
-    private let githubButton: CardButton
-    private let calendarToggle = Toggle()
-    private let weatherToggle = Toggle()
-    private let note = NSTextField(wrappingLabelWithString: "")
-    private var observers: [NSObjectProtocol] = []
-
-    override init() {
-        githubButton = CardButton("Connect…", style: .secondary, target: nil, action: #selector(ConnectPage.githubTapped))
-        super.init()
-        heading.stringValue = "Connect what you use."
-        lede.stringValue = "Everything is optional and stays on this Mac. Each one can be changed later in Settings → Integrations."
-
-        claudeToggle.onChange = { [weak self] on in self?.setClaude(on) }
-        claudeRow.accessory = claudeToggle
-        githubButton.target = self
-        githubRow.accessory = githubButton
-        calendarToggle.onChange = { [weak self] on in self?.setCalendar(on) }
-        calendarRow.accessory = calendarToggle
-        weatherToggle.onChange = { [weak self] on in self?.setWeather(on) }
-        weatherRow.accessory = weatherToggle
-        [claudeRow, githubRow, calendarRow, weatherRow].forEach(addSubview)
-
-        note.font = Typo.caption
-        note.textColor = Pal.textTertiary
-        note.isSelectable = false
-        note.stringValue = "Hooks are added to ~/.claude/settings.json and removed the same way. Zera never sends your data anywhere but the service you connect."
-        addSubview(note)
-
-        let nc = NotificationCenter.default
-        for name in [ClaudeHookService.changed, ClaudeActivityService.changed, GitHubService.changed, ReminderService.changed] {
-            observers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.refresh() }
-            })
-        }
-        refresh()
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    deinit { observers.forEach { NotificationCenter.default.removeObserver($0) } }
-
-    override func didShow() { refresh() }
-
-    private func refresh() {
-        let hook = ClaudeHookService.shared, act = ClaudeActivityService.shared
-        let hooksOn = hook.isInstalled && act.isInstalled
-        claudeToggle.isOn = hooksOn
-        claudeRow.set(subtitle: hooksOn ? "Installed · live progress and approvals" : "Live progress and approvals")
-
-        let gh = GitHubService.shared
-        if gh.isConnected, let login = gh.login {
-            githubRow.set(subtitle: "Connected as \(login)")
-            githubButton.setTitleText("Settings…")
-        } else {
-            githubRow.set(subtitle: "Pull requests, checks and runs to approve")
-            githubButton.setTitleText("Connect…")
-        }
-
-        weatherToggle.isOn = WeatherService.shared.mode == .location
-
-        let rs = ReminderService.shared
-        calendarToggle.isOn = rs.calendarAuthorized
-        if rs.calendarAuthorized {
-            calendarRow.set(subtitle: "Allowed · next up on Home, meeting alerts")
-        } else if rs.calendarDenied {
-            calendarRow.set(subtitle: "Denied — allow Zera in System Settings → Privacy → Calendars")
-        } else {
-            calendarRow.set(subtitle: "Next up on Home, meeting alerts")
-        }
-        needsLayout = true
-    }
-
-    private func setClaude(_ on: Bool) {
-        let hook = ClaudeHookService.shared, act = ClaudeActivityService.shared
-        do {
-            if on {
-                if !hook.isInstalled { try hook.install() }
-                if !act.isInstalled { try act.install() }
-            } else {
-                if hook.isInstalled { try hook.uninstall() }
-                if act.isInstalled { try act.uninstall() }
-            }
-        } catch {
-            claudeRow.set(subtitle: "Couldn't edit ~/.claude/settings.json")
-        }
-        refresh()
-    }
-
-    @objc private func githubTapped() { onOpenSettings?() }
-
-    private func setCalendar(_ on: Bool) {
-        let rs = ReminderService.shared
-        if on {
-            calendarRow.set(subtitle: "Asking macOS…")
-            Task { @MainActor [weak self] in
-                await rs.connectCalendar()
-                self?.refresh()
-            }
-        } else {
-            rs.disconnectCalendar()
-            refresh()
-        }
-    }
-
-    private func setWeather(_ on: Bool) {
-        // `WeatherService.shared.setMode(_:city:)`; location access is asked for by the service.
-        WeatherService.shared.setMode(on ? .location : .off)
-        weatherRow.set(subtitle: on ? "Using your location · local forecast on Home" : "Local forecast on Home (Open-Meteo, no account)")
-    }
-
-    override func layout() {
-        super.layout()
-        let y0 = layoutHeader()
-        let w = bounds.width - Self.inset * 2
-        var y = y0
-        let rh = Metrics.settingRow
-        for r in [claudeRow, githubRow, calendarRow, weatherRow] {
-            r.frame = NSRect(x: Self.inset, y: y, width: w, height: rh)
-            y += rh + Metrics.rowGap
-        }
-        let nh = (note.stringValue as NSString).boundingRect(with: NSSize(width: w, height: 60), options: [.usesLineFragmentOrigin],
-                                                             attributes: [.font: Typo.caption]).height
-        note.frame = NSRect(x: Self.inset + 4, y: y + Space.xs, width: w - 8, height: ceil(nh) + 2)
-    }
-}
-
-// MARK: Shortcuts
-
-private final class ShortcutsPage: OnboardingPage {
-    private var rows: [ShortcutRow] = []
-    private let echoRow = ListRow(symbol: "keyboard", color: Pal.accent, title: "Command Echo", subtitle: "Shows what you press under the notch")
-    private let echoToggle = Toggle()
-
-    override init() {
-        super.init()
-        heading.stringValue = "A few things to try."
-        lede.stringValue = "Hover her for the tabs; the rest are shortcuts you can change in Settings → Shortcuts."
-
-        let opener = HotKeyShortcut.load("appOpener.shortcut", default: AppOpenerSettings.defaultShortcut)
-        let tasks = HotKeyShortcut.load("tasks.shortcut", default: TasksSettings.defaultShortcut)
-        let clip = HotKeyShortcut.load("clipboard.shortcut", default: .default)
-        rows = [
-            ShortcutRow(title: "Hover Zera", detail: "The tabs bloom around the notch", keys: ["Hover"]),
-            ShortcutRow(title: "Open an app", detail: "Type a few letters, ⏎ to launch", keys: Self.keys(opener, off: "Off")),
-            ShortcutRow(title: "Add a task", detail: "Quick add, from anywhere", keys: Self.keys(tasks, off: "Off")),
-            ShortcutRow(title: "Clipboard", detail: "Your recent copies, searchable", keys: Self.keys(clip, off: "Off"))
-        ]
-        rows.forEach(addSubview)
-
-        // `CommandEcho.shared.isEnabled` owns the `zera.echo.enabled` default and installs or
-        // removes its event monitors as it changes.
-        echoToggle.isOn = CommandEcho.shared.isEnabled
-        echoToggle.onChange = { on in CommandEcho.shared.isEnabled = on }
-        echoRow.accessory = echoToggle
-        addSubview(echoRow)
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    /// "⌥⌘T" → ["⌥", "⌘", "T"]; nil → one "Off" cap.
-    private static func keys(_ s: HotKeyShortcut?, off: String) -> [String] {
-        guard let s = s else { return [off] }
-        var out: [String] = []
-        var rest = Substring(s.label)
-        while let c = rest.first, "⌃⌥⇧⌘".contains(c) {
-            out.append(String(c))
-            rest = rest.dropFirst()
-        }
-        out.append(rest.isEmpty ? s.key : String(rest))
-        return out
-    }
-
-    override func layout() {
-        super.layout()
-        let y0 = layoutHeader()
-        let w = bounds.width - Self.inset * 2
-        var y = y0
-        let rh: CGFloat = 46
-        for r in rows {
-            r.frame = NSRect(x: Self.inset, y: y, width: w, height: rh)
-            y += rh + Space.xs
-        }
-        y += Space.s
-        echoRow.frame = NSRect(x: Self.inset, y: y, width: w, height: RowTier.standard.height)
-    }
-}
-
-/// Title + detail on the left, keycaps on the right.
-private final class ShortcutRow: NSView {
-    private let title = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
-    private let keys: [String]
-    override var isFlipped: Bool { true }
-
-    init(title t: String, detail d: String, keys k: [String]) {
-        keys = k
-        super.init(frame: .zero)
-        title.stringValue = t
-        title.font = Typo.rowTitle
-        title.textColor = Pal.text
-        addSubview(title)
-        detail.stringValue = d
-        detail.font = Typo.meta
-        detail.textColor = Pal.textSecondary
-        detail.lineBreakMode = .byTruncatingTail
-        addSubview(detail)
-        setAccessibilityLabel("\(t): \(k.joined()) — \(d)")
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    private static let capFont = Typo.bodyStrong
-    private static let capH: CGFloat = 26
-    private static let capGap: CGFloat = 6
-
-    private var capWidths: [CGFloat] {
-        keys.map { max(Self.capH, ceil(($0 as NSString).size(withAttributes: [.font: Self.capFont]).width) + 16) }
-    }
-
-    override func layout() {
-        super.layout()
-        let h = bounds.height
-        let capsW = capWidths.reduce(0, +) + CGFloat(max(0, keys.count - 1)) * Self.capGap
-        let textW = max(60, bounds.width - capsW - Space.l)
-        title.frame = NSRect(x: 0, y: (h / 2 - 18).rounded(), width: textW, height: 18)
-        detail.frame = NSRect(x: 0, y: (h / 2 + 1).rounded(), width: textW, height: 16)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let p = Pal
-        let widths = capWidths
-        let total = widths.reduce(0, +) + CGFloat(max(0, keys.count - 1)) * Self.capGap
-        var x = bounds.width - total
-        let y = (bounds.height - Self.capH) / 2
-        // Hairline under the row.
-        p.divider.setFill()
-        NSBezierPath(rect: NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1)).fill()
-        for (i, k) in keys.enumerated() {
-            let r = NSRect(x: x, y: y, width: widths[i], height: Self.capH)
-            let cap = NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7)
-            p.surfaceStrong.setFill(); cap.fill()
-            p.accentBorder.withAlphaComponent(0.35).setStroke(); cap.lineWidth = 1; cap.stroke()
-            let para = NSMutableParagraphStyle(); para.alignment = .center
-            let attrs: [NSAttributedString.Key: Any] = [.font: Self.capFont, .foregroundColor: p.text, .paragraphStyle: para]
-            let th = Self.capFont.ascender - Self.capFont.descender
-            (k as NSString).draw(in: NSRect(x: r.minX, y: r.midY - th / 2, width: r.width, height: th + 2), withAttributes: attrs)
-            x += widths[i] + Self.capGap
-        }
+        let top = layoutHeader()
+        setup.frame = NSRect(x: Self.inset, y: top, width: bounds.width - Self.inset * 2, height: setup.preferredHeight)
     }
 }
 
 // MARK: Done
 
 private final class DonePage: OnboardingPage {
-    var onOpen: (() -> Void)?
     private let zera = ZeraCompanion(pose: "card_cheer", size: 150, side: .bubbleRight)
-    private let open: CardButton
     private let hint = NSTextField(wrappingLabelWithString: "")
 
     override init() {
-        open = CardButton("Open Zera", style: .primary, symbol: "sparkles", target: nil, action: #selector(DonePage.openTapped))
         super.init()
-        heading.stringValue = "You're set."
-        lede.stringValue = "Zera is up at the notch. Hover her to open the tabs; ⌘, opens Settings from her menu bar icon."
+        heading.stringValue = "You're ready"
+        lede.stringValue = "Hover Zera at the notch to return to your work. Home and Settings are always in reach. Hold your dictation key to speak into an editable field."
         zera.line = "see you up top ✨"
         addSubview(zera)
-        open.target = self
-        addSubview(open)
-        hint.stringValue = "You can run this welcome again from Settings → About."
+        hint.stringValue = "Repair access in Settings → Permissions & Diagnostics. Run this welcome again from About."
         hint.font = Typo.caption
         hint.textColor = Pal.textTertiary
         hint.isSelectable = false
@@ -775,20 +496,15 @@ private final class DonePage: OnboardingPage {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    @objc private func openTapped() { onOpen?() }
-
     override func layout() {
         super.layout()
         let y0 = layoutHeader()
         let avail = bounds.height - y0 - Space.l
         let figH: CGFloat = 170
-        let bw = max(140, open.fittedWidth + 16), bh: CGFloat = 36
-        let block = figH + Space.l + bh + Space.s + 16
+        let block = figH + Space.l + 36
         var y = y0 + max(0, (avail - block) / 2)
         zera.frame = NSRect(x: (bounds.width - 300) / 2, y: y, width: 300, height: figH)
         y += figH + Space.l
-        open.frame = NSRect(x: (bounds.width - bw) / 2, y: y, width: bw, height: bh)
-        y += bh + Space.s
-        hint.frame = NSRect(x: Self.inset, y: y, width: bounds.width - Self.inset * 2, height: 16)
+        hint.frame = NSRect(x: Self.inset, y: y, width: bounds.width - Self.inset * 2, height: 36)
     }
 }

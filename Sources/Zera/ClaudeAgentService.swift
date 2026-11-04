@@ -5,8 +5,8 @@ import AppKit
 @MainActor
 final class ClaudeAgentService {
     static let shared = ClaudeAgentService()
-    static let changed = Notification.Name("ZeraClaudeManagedChanged")
-    static let created = Notification.Name("ZeraClaudeManagedCreated")
+    nonisolated static let changed = Notification.Name("ZeraClaudeManagedChanged")
+    nonisolated static let created = Notification.Name("ZeraClaudeManagedCreated")
     struct Thread: Codable, Identifiable {
         let id: String
         var title: String

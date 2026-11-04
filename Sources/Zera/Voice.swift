@@ -12,6 +12,7 @@ final class SpeechListener {
     static let shared = SpeechListener()
 
     private let engine = AVAudioEngine()
+    private var tapInstalled = false
     private var recognizer: SFSpeechRecognizer?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
@@ -65,7 +66,7 @@ final class SpeechListener {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { return false }
-        input.removeTap(onBus: 0)
+        if tapInstalled { input.removeTap(onBus: 0); tapInstalled = false }
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             req.append(buffer)
             guard let samples = buffer.floatChannelData?[0] else { return }
@@ -83,8 +84,9 @@ final class SpeechListener {
                 self.onLevel?(level)
             }
         }
+        tapInstalled = true
         engine.prepare()
-        do { try engine.start() } catch { input.removeTap(onBus: 0); return false }
+        do { try engine.start() } catch { input.removeTap(onBus: 0); tapInstalled = false; return false }
 
         generation += 1
         let gen = generation
@@ -96,11 +98,11 @@ final class SpeechListener {
             let final = result?.isFinal ?? false
             DispatchQueue.main.async {
                 guard let self = self, gen == self.generation else { return }
+                // Tear down this take before callbacks can start the next microphone
+                // owner (for example voice approvals resuming after dictation).
+                if final || error != nil { self.teardown() }
                 if let t = text { onText(t, final) }
-                if final || error != nil {
-                    self.teardown()
-                    onEnd?()
-                }
+                if final || error != nil { onEnd?() }
             }
         }
         return true
@@ -118,12 +120,12 @@ final class SpeechListener {
         guard isRunning else { return }
         request?.endAudio()
         if engine.isRunning { engine.stop() }
-        engine.inputNode.removeTap(onBus: 0)
+        if tapInstalled { engine.inputNode.removeTap(onBus: 0); tapInstalled = false }
     }
 
     private func teardown() {
         if engine.isRunning { engine.stop() }
-        engine.inputNode.removeTap(onBus: 0)
+        if tapInstalled { engine.inputNode.removeTap(onBus: 0); tapInstalled = false }
         request?.endAudio()
         request = nil
         task = nil
@@ -172,8 +174,16 @@ final class VoiceApproval {
 
     private var firstPending: HookRequest? { MainActor.assumeIsolated { ClaudeHookService.shared.pending.first } }
 
+    func resumeAfterDictation() { listeningFor = nil; sync() }
+    func pauseForDictation() {
+        listeningFor = nil
+        SpeechListener.shared.stop()
+        onListening?(false)
+    }
+
     private func sync() {
-        guard enabled, !Dictation.shared.isActive, let req = firstPending else {
+        guard !Dictation.shared.isActive, !Dictation.shared.isProcessing else { return }
+        guard enabled, let req = firstPending else {
             if listeningFor != nil { listeningFor = nil; SpeechListener.shared.stop(); onListening?(false) }
             return
         }
@@ -289,6 +299,10 @@ final class Dictation {
     private var liveTimer: Timer?
     private var liveBusy = false
     private var session = 0
+    private(set) var isProcessing = false
+    private(set) var lastUninsertedText: String?
+    private var transcriptionJob: Task<Void, Never>?
+    private var liveTranscriptionJob: Task<Void, Never>?
     // MARK: Typing as you speak
     private static let liveKey = "zera.dictation.live"
     /// Words go into the field you're in while you talk (off: all at once when you let go).
@@ -371,7 +385,7 @@ final class Dictation {
         get { UserDefaults.standard.object(forKey: Self.key) as? Bool ?? true }
         set {
             UserDefaults.standard.set(newValue, forKey: Self.key)
-            if newValue { SpeechListener.authorize { _ in }; install() } else { uninstall() }
+            if newValue { install() } else { uninstall() }
         }
     }
 
@@ -386,7 +400,7 @@ final class Dictation {
         monitors.compactMap { $0 as? Int }.forEach { GlobalKeys.shared.unsubscribe($0) }
         monitors.removeAll()
         holdWork?.cancel(); holdWork = nil
-        if isActive { cancel() }
+        if isActive || isProcessing { cancel() }
     }
 
     private func handle(_ e: NSEvent) {
@@ -394,7 +408,7 @@ final class Dictation {
             // Another key while holding: a shortcut or a capital letter, not dictation.
             holdWork?.cancel(); holdWork = nil
             if !isActive { heldKey = nil }
-            if isActive, e.keyCode == 53 { cancel() }
+            if (isActive || isProcessing), e.keyCode == 53 { cancel() }
             return
         }
         let flags = e.modifierFlags.intersection([.command, .control, .shift, .option, .function])
@@ -462,9 +476,15 @@ final class Dictation {
 
     private func begin() {
         insertionTestWork?.cancel(); insertionTestWork = nil
+        guard !isProcessing else { onDone?("Finishing dictation · Esc cancels"); return }
+        session += 1
         typingTarget = DictationInsertionTarget.capture()
         sentTypingEvents = false
-        if Murmur.shared.isReady, Murmur.shared.useForDictation {
+        if Murmur.shared.useForDictation {
+            guard Murmur.shared.isReady else {
+                onDone?("Murmur isn’t ready · set up speech in Settings → Permissions & Diagnostics")
+                return
+            }
             Diag.log("dictation: starting with Murmur")
             beginMurmur()
             return
@@ -476,6 +496,7 @@ final class Dictation {
             onDone?("Allow Microphone and Speech Recognition for Zera")
             return
         }
+        VoiceApproval.shared.pauseForDictation()
         isActive = true
         cancelled = false
         transcript = ""
@@ -487,15 +508,16 @@ final class Dictation {
             self.onTranscript?(self.transcript)
         }
         onTranscript?("")
+        let take = session
         let ok = SpeechListener.shared.start(hint: .dictation,
             onText: { [weak self] text, final in
-                guard let self = self else { return }
+                guard let self = self, self.session == take else { return }
                 self.transcript = text
                 if self.isActive { self.onTranscript?(text); self.liveUpdate(text) }
                 if final { self.deliver() }
             },
-            onEnd: { [weak self] in self?.deliver() })
-        if !ok { isActive = false; onTranscript?(nil); onDone?("The microphone isn't available"); Diag.log("dictation: Apple speech failed to start") }
+            onEnd: { [weak self] in guard let self, self.session == take else { return }; self.deliver() })
+        if !ok { isActive = false; VoiceApproval.shared.resumeAfterDictation(); onTranscript?(nil); onDone?("The microphone isn't available"); Diag.log("dictation: Apple speech failed to start") }
     }
 
     // MARK: Murmur takes
@@ -508,6 +530,7 @@ final class Dictation {
             return
         }
         session += 1
+        VoiceApproval.shared.pauseForDictation()
         isActive = true
         usingMurmur = true
         cancelled = false
@@ -522,6 +545,7 @@ final class Dictation {
         guard MurmurRecorder.shared.start() else {
             Diag.log("dictation: Murmur recorder failed to start")
             isActive = false; usingMurmur = false
+            VoiceApproval.shared.resumeAfterDictation()
             onTranscript?(nil); onDone?("The microphone isn't available")
             return
         }
@@ -534,14 +558,18 @@ final class Dictation {
 
     private func liveRead() {
         guard isActive, usingMurmur, !liveBusy else { return }
-        let audio = MurmurRecorder.shared.snapshot(lastSeconds: 28)
+        // Keep the transcript anchored at the start; a sliding 28-second suffix
+        // cannot be reconciled with words already inserted into the original field.
+        guard MurmurRecorder.shared.duration <= 28 else { return }
+        let audio = MurmurRecorder.shared.snapshot()
         guard audio.count > Int(MurmurRecorder.rate * 0.6) else { return }
         liveBusy = true
         let s = session
-        Murmur.shared.transcribe(audio) { [weak self] text in
+        liveTranscriptionJob = Murmur.shared.transcribe(audio) { [weak self] text in
             guard let self = self else { return }
+            guard s == self.session else { return }
             self.liveBusy = false
-            guard s == self.session, self.isActive, let t = text, !t.isEmpty else { return }
+            guard self.isActive, let t = text, !t.isEmpty else { return }
             self.transcript = t
             self.onTranscript?(t)
             self.liveUpdate(t)
@@ -550,34 +578,56 @@ final class Dictation {
 
     private func endMurmur() {
         isActive = false
+        isProcessing = true
         liveTimer?.invalidate(); liveTimer = nil
+        liveTranscriptionJob?.cancel(); liveTranscriptionJob = nil
         let audio = MurmurRecorder.shared.stop()
         let s = session
         onTranscript?(transcript.isEmpty ? "…" : transcript)
         // A long take is read in 30-second pieces by the model itself.
-        Murmur.shared.transcribe(audio) { [weak self] text in
+        transcriptionJob = Murmur.shared.transcribe(audio) { [weak self] text in
             guard let self = self, s == self.session else { return }
-            if let t = text, !t.isEmpty { self.transcript = t }
+            guard let text else {
+                self.lastUninsertedText = self.transcript.isEmpty ? nil : self.transcript
+                self.cancel()
+                self.onDone?("Couldn’t finish transcription · check speech setup in Permissions & Diagnostics")
+                return
+            }
+            self.transcript = text
             self.deliver()
         }
+        guard isProcessing, session == s else { return }
         finishWork?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.deliver() }
+        let take = session
+        let w = DispatchWorkItem { [weak self] in
+            guard let self, self.session == take, self.isProcessing else { return }
+            self.lastUninsertedText = self.transcript.isEmpty ? nil : self.transcript
+            self.cancel()
+            self.onDone?("Transcription timed out · partial text is in Permissions & Diagnostics")
+        }
         finishWork = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: w)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: w)
     }
 
     /// Key released: stop the microphone and wait (≤ 1.5 s) for the final words.
     private func end() {
         if usingMurmur { endMurmur(); return }
         isActive = false
+        isProcessing = true
         SpeechListener.shared.finish()
         finishWork?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.deliver() }
+        let take = session
+        let w = DispatchWorkItem { [weak self] in guard let self, self.session == take else { return }; self.deliver() }
         finishWork = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: w)
     }
 
-    private func cancel() {
+    func cancel(resumeApprovals: Bool = true) {
+        session += 1
+        transcriptionJob?.cancel(); transcriptionJob = nil
+        liveTranscriptionJob?.cancel(); liveTranscriptionJob = nil
+        liveBusy = false
+        isProcessing = false
         cancelled = true
         isActive = false
         finishWork?.cancel(); finishWork = nil
@@ -591,12 +641,18 @@ final class Dictation {
         onTranscript?(nil)
         typingTarget = nil
         onDone?(typed.isEmpty ? "Dictation cancelled" : "Stopped · kept what was typed")
+        if resumeApprovals { VoiceApproval.shared.resumeAfterDictation() }
     }
 
     private func deliver() {
         finishWork?.cancel(); finishWork = nil
         guard !cancelled else { return }
+        defer { VoiceApproval.shared.resumeAfterDictation() }
         cancelled = true            // once per session
+        isProcessing = false
+        transcriptionJob?.cancel(); transcriptionJob = nil
+        liveTranscriptionJob?.cancel(); liveTranscriptionJob = nil
+        liveBusy = false
         isActive = false
         if usingMurmur {
             usingMurmur = false
@@ -620,11 +676,12 @@ final class Dictation {
         }
         typingTarget = nil
         guard result else {
-            Self.putOnClipboard(text)
-            Diag.log("dictation: insertion unavailable or focus changed — text copied")
-            onDone?("Couldn’t insert into the original field — copied; press ⌘V")
+            lastUninsertedText = text
+            Diag.log("dictation: original field unavailable; transcript retained without changing clipboard")
+            onDone?("Original field changed · recover text in Settings → Permissions & Diagnostics")
             return
         }
+        lastUninsertedText = nil
         let count = text.split(separator: " ").count
         onDone?(sentTypingEvents ? "Sent \(count) words to the field" : "Typed \(count) words")
     }
@@ -639,10 +696,9 @@ final class Dictation {
 
     // MARK: Recovering text when insertion is unavailable
 
-    private static func putOnClipboard(_ text: String) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
+    func copyUninsertedText() {
+        guard let text = lastUninsertedText else { return }
+        NSPasteboard.general.setPlainText(text)
     }
 
 }

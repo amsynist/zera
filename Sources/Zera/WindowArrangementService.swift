@@ -31,8 +31,10 @@ final class WindowArrangementService {
     private var notices: [NSObjectProtocol] = []
     private var debounce: DispatchWorkItem?, resizeExit: DispatchWorkItem?
     private var generation = 0
+    private let operationEpoch = ArrangeOperationEpoch()
     private var refreshRequests = ArrangeRefreshRequests()
     private var activatingPID: pid_t?
+    private var nativeDesktopChanged = false
     private var pendingShortcut = ArrangePendingShortcut()
     private var focusTicket = UUID()
     private var lastFailure: String?
@@ -74,7 +76,7 @@ final class WindowArrangementService {
     }
     private func post() {
         NotificationCenter.default.post(name: Self.changed, object: nil)
-        if let action = pendingShortcut.take(ready: enabled && !busy) { DispatchQueue.main.async(execute: action) }
+        if let action = pendingShortcut.take(ready: enabled && !busy) { DispatchQueue.main.async { action() } }
     }
     func startIfEnabled() {
         if access.hasRecovery, AXIsProcessTrusted() {
@@ -86,9 +88,13 @@ final class WindowArrangementService {
         }
         if enabled { setEnabled(true) }
     }
-    func requestAccess() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
+    private func accessRevoked() {
+        // Release global bindings immediately instead of swallowing app shortcuts while
+        // AX denies every operation. Keep the recovery journal for a later repaired grant.
+        settings.enabled = false; settings.save()
+        stopListeners(); generation += 1; busy = false
+        message = "Accessibility was revoked. Repair access in Settings → Permissions & Diagnostics, then enable arrangements again."
+        post()
     }
     var hasVisualAccess: Bool { CGPreflightScreenCaptureAccess() }
     func setVisualTransitions(_ yes: Bool) {
@@ -97,7 +103,6 @@ final class WindowArrangementService {
         message = yes && !hasVisualAccess ? "Visual transitions need Screen Recording access. Preview works without it." : "Window motion updated"
         post()
     }
-    func requestVisualAccess() { _ = CGRequestScreenCaptureAccess(); post() }
     func previewVisualMotion() {
         motionPreview?.cancel(); motionPreview = ArrangeVisualTransition.preview()
         motionPreview?.onClose = { [weak self] in self?.motionPreview = nil }
@@ -162,22 +167,34 @@ final class WindowArrangementService {
             })
         }
         notices.append(NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.cancelVisualForDisplayChange(); self?.refresh(adopt: true) }
+            MainActor.assumeIsolated {
+                self?.operationEpoch.invalidate()
+                self?.cancelVisualForDisplayChange()
+                self?.refresh(adopt: false)
+            }
         })
         notices.append(nc.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.cancelVisualForDisplayChange(); self?.scheduleRefresh()
+                guard let self else { return }
+                self.operationEpoch.invalidate()
+                self.nativeDesktopChanged = true
+                self.cancelVisualForDisplayChange()
+                self.pendingShortcut.cancel()
+                self.activatingPID = nil
+                self.scheduleRefresh()
             }
         })
     }
     private func cancelVisualForDisplayChange() {
+        generation += 1
+        busy = false
         if visualTicket != nil {
             visualTicket = nil; visualDeadline?.cancel(); visualDeadline = nil
-            generation += 1; busy = false
         }
         visualScene?.cancel(); visualScene = nil
     }
     private func stopListeners() {
+        operationEpoch.invalidate()
         pendingShortcut.cancel()
         refreshRequests = .init()
         activatingPID = nil
@@ -217,9 +234,14 @@ final class WindowArrangementService {
             let candidate = (1...9).first { targetDisplay($0) == d.id && !active.values.contains($0) } ?? (1...9).first { !active.values.contains($0) } ?? 1
             active[d.id] = candidate; displayRules[candidate] = d.id
         }
-        guard AXIsProcessTrusted() else { message = "Accessibility is needed to read and arrange windows"; post(); return }
+        guard AXIsProcessTrusted() else {
+            if enabled { accessRevoked() } else { message = "Accessibility is needed to read and arrange windows"; post() }
+            return
+        }
         let apps = appList(), front = NSWorkspace.shared.frontmostApplication?.processIdentifier, epoch = generation, watch = enabled, access = access
         let screens = displays.map(\.frame), activation = activatingPID; activatingPID = nil
+        let desktopChanged = nativeDesktopChanged
+        nativeDesktopChanged = false
         busy = true; post()
         queue.async { [weak self] in let result = access.scan(apps: apps, frontPID: front, affectedPIDs: affectedPIDs, displays: screens, activatingPID: activation); if watch { access.watch(apps: apps) }
             let hidden = access.hidden.count
@@ -234,22 +256,28 @@ final class WindowArrangementService {
                     var w = value
                     let screen = self.displays.max { $0.frame.intersection(w.frame).width * $0.frame.intersection(w.frame).height < $1.frame.intersection(w.frame).width * $1.frame.intersection(w.frame).height }
                     let rule = self.settings.rules.first { $0.bundle == w.bundle }?.workspace
-                    w.workspace = self.assignments[w.id] ?? (self.enabled ? rule : nil) ?? self.active[screen?.id ?? self.selectedDisplay] ?? 1
+                    if desktopChanged, !w.minimized {
+                        // Native Spaces are user-owned. Seeing a moved window on this
+                        // desktop adopts its current position/group without a layout write.
+                        w.workspace = self.active[screen?.id ?? self.selectedDisplay] ?? 1
+                    } else {
+                        w.workspace = self.assignments[w.id] ?? (self.enabled ? rule : nil) ?? self.active[screen?.id ?? self.selectedDisplay] ?? 1
+                    }
                     self.assignments[w.id] = w.workspace; w.floating = self.floating.contains(w.id)
                     return w
                 }
                 self.order = self.order.filter { id in self.windows.contains { $0.id == id } }
                 self.order += self.windows.map(\.id).filter { !self.order.contains($0) }
                 self.windows.sort { (self.order.firstIndex(of: $0.id) ?? 0) < (self.order.firstIndex(of: $1.id) ?? 0) }
-                self.assignments = self.assignments.filter { id, _ in self.windows.contains { $0.id == id } }
+                self.assignments = self.assignments.filter { id, _ in result.knownIDs.contains(id) }
                 self.focused = ArrangeGeometry.resolvedFocus(observed: result.focused, previous: self.focused, windows: self.windows, active: Set(self.active.values))
-                if self.enabled, let id = result.focused, let focus = self.windows.first(where: { $0.id == id }), !self.active.values.contains(focus.workspace) {
+                if self.enabled, !desktopChanged, let id = result.focused, let focus = self.windows.first(where: { $0.id == id }), !self.active.values.contains(focus.workspace) {
                     self.switchWorkspace(focus.workspace); return
                 }
                 self.message = self.lastFailure ?? (self.enabled ? "\(self.windows.count) windows · notifications only, no polling" : "Off · previews available; enable to apply layouts")
                 self.post()
-                if self.enabled, self.settings.automatic, adopt || oldIDs != Set(self.windows.map(\.id)) { self.arrangeAll() }
-                else if self.enabled, adopt { self.commit(self.windows, active: self.active) }
+                if self.enabled, !desktopChanged, self.settings.automatic, adopt || oldIDs != Set(self.windows.map(\.id)) { self.arrangeAll() }
+                else if self.enabled, !desktopChanged, adopt { self.commit(self.windows, active: self.active) }
                 else { self.schedulePendingRefresh() }
             }
         }
@@ -271,10 +299,12 @@ final class WindowArrangementService {
     }
     private func commit(_ target: [ArrangeWindow], active next: [String: Int], frames override: [String: CGRect]? = nil, saveUndo: Bool = true, allowMotion: Bool = true, completion: (() -> Void)? = nil) {
         guard enabled, !busy else { return }
+        guard AXIsProcessTrusted() else { accessRevoked(); return }
         guard let frames = override ?? plannedFrames(target, active: next) else { return }
         let before = (windows: windows, active: active, displays: displayRules, manualLayouts: manualLayouts)
         lastFailure = nil; busy = true; message = "Arranging windows…"; post()
         let epoch = generation, access = access
+        let operations = operationEpoch, operationTicket = operationEpoch.ticket()
         let assistive = NSWorkspace.shared.isVoiceOverEnabled || NSWorkspace.shared.isSwitchControlEnabled
         let switching = next != active
         let animated = allowMotion && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -297,8 +327,8 @@ final class WindowArrangementService {
             guard let self, self.generation == epoch, self.enabled else { scene?.cancel(); return }
             self.visualScene = scene; scene?.present()
             let nativeMotion = animated && !switching && scene == nil
-            self.queue.async {
-                let error = access.apply(windows: target, active: Set(next.values), frames: frames, assistiveTechnologyActive: assistive, animated: nativeMotion)
+            self.queue.async { [weak self] in
+                let error = access.apply(windows: target, active: Set(next.values), frames: frames, assistiveTechnologyActive: assistive, animated: nativeMotion, isCurrent: { operations.matches(operationTicket) })
                 let hidden = access.hidden.count
                 DispatchQueue.main.async { [weak self] in
                     if error == nil, let scene, switching, #available(macOS 14.0, *) {
@@ -466,6 +496,7 @@ final class WindowArrangementService {
     func perform(_ id: String) {
         Diag.log("arrange shortcut: \(id), busy \(busy)")
         guard enabled else { return }
+        guard AXIsProcessTrusted() else { accessRevoked(); return }
         if busy { pendingShortcut.replace { [weak self] in self?.perform(id) }; return }
         let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let epoch = generation, access = access
@@ -546,21 +577,12 @@ final class WindowArrangementService {
             }
         }
         if NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid { selectWindow() }
-        else if let url = app.bundleURL {
-            // Use the same LaunchServices activation as the app opener. A successful
-            // activate() request alone does not mean the app has become foreground.
-            let config = NSWorkspace.OpenConfiguration(); config.activates = true; config.addsToRecentItems = false
-            NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
-                DispatchQueue.main.async { [weak self] in
-                    guard let self, self.generation == epoch, self.focusTicket == ticket else { return }
-                    if let error { self.message = error.localizedDescription; self.post() }
-                    else { selectWindow() }
-                }
-            }
-        } else { _ = app.activate(options: [.activateIgnoringOtherApps]); selectWindow() }
+        else if ApplicationActivation.activate(app) { selectWindow() }
+        else { message = "The app refused activation"; post() }
     }
     func launch(_ index: Int) {
         guard enabled, settings.rules.indices.contains(index) else { return }
+        guard AXIsProcessTrusted() else { accessRevoked(); return }
         if busy { pendingShortcut.replace { [weak self] in self?.launch(index) }; return }
         followFocusedDisplay()
         let rule = settings.rules[index], url = URL(fileURLWithPath: settings.rules[index].path)
@@ -570,6 +592,14 @@ final class WindowArrangementService {
             // existing window out of the workspace the user explicitly chose.
             if active.values.contains(window.workspace) { focus(window.id) }
             else { switchWorkspace(window.workspace, focusing: window.id) }
+            return
+        }
+        // No visible managed window does not mean the app isn't running. Its windows
+        // can be minimized, hidden, full screen or on another native Space. In that case
+        // never apply a launch-time group or reopen its documents on the current Space.
+        if let running = ApplicationActivation.running(at: url, bundle: rule.bundle) {
+            if !ApplicationActivation.activate(running) { message = "The app refused activation"; post() }
+            scheduleRefresh()
             return
         }
         guard FileManager.default.fileExists(atPath: url.path) else { message = "\(rule.name) isn’t installed at \(rule.path)"; post(); return }

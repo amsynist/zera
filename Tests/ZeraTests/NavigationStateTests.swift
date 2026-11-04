@@ -124,6 +124,9 @@ final class NavigationStateTests: XCTestCase {
     }
 
     func testClipboardReturnsToAllWithSearchCleared() throws {
+        let remembers = NotchNavigation.shared.remembersScreen
+        NotchNavigation.shared.remembersScreen = false
+        defer { NotchNavigation.shared.remembersScreen = remembers }
         let view = ClipboardView()
         let filters = try XCTUnwrap(descendants(view).compactMap { $0 as? GitHubSegmentedControl }.first)
         let search = try XCTUnwrap(descendants(view).compactMap { $0 as? SearchBox }.first)
@@ -136,6 +139,9 @@ final class NavigationStateTests: XCTestCase {
     }
 
     func testRemindersReturnToTodayAndAllSourcesButKeepAnUnfinishedForm() throws {
+        let remembers = NotchNavigation.shared.remembersScreen
+        NotchNavigation.shared.remembersScreen = false
+        defer { NotchNavigation.shared.remembersScreen = remembers }
         let view = RemindersView()
         let tabs = try XCTUnwrap(descendants(view).compactMap { $0 as? GitHubSegmentedControl }.first)
         let sources = try XCTUnwrap(descendants(view).compactMap { $0 as? ChoiceChips }.first)

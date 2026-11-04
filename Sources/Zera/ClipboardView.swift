@@ -34,7 +34,9 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
     private enum Mode: Equatable { case intro, list, detail(UUID) }
     private var mode: Mode = .list
     private let store = ClipboardStore.shared
-    private var filter: ClipboardStore.Filter = .all
+    private var filter: ClipboardStore.Filter = ClipboardStore.Filter(rawValue: NotchNavigation.shared.integer("clipboard.filter")) ?? .all {
+        didSet { NotchNavigation.shared.set(filter.rawValue, for: "clipboard.filter") }
+    }
     private var shown: [ClipItem] = []
     /// Keyboard selection in `shown`.
     private var cursor = 0
@@ -185,6 +187,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
 
     /// Each time the island opens: back to the list, search cleared, first item ready for ⏎.
     func willShow() {
+        if NotchNavigation.shared.remembersScreen { reload(); return }
         filter = .all
         search.field.stringValue = ""
         if case .detail = mode { mode = .list }

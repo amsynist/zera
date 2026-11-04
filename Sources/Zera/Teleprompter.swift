@@ -246,6 +246,9 @@ final class TeleprompterStore {
         if let data = try? enc.encode(saved) { try? data.write(to: url, options: .atomic) }
     }
 
+    /// Drain queued edits on application shutdown, just like TaskStore and ClipboardStore.
+    func flush() { save(); saveQueue.sync {} }
+
     private func saveAndPost() {
         save()
         NotificationCenter.default.post(name: Self.changed, object: self)

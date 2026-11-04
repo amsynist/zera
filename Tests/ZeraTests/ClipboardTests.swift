@@ -5,6 +5,16 @@ import XCTest
 
 /// Pure parts of clipboard history only: these never touch the real clipboard or the history file.
 final class ClipboardTests: XCTestCase {
+    private var savedRemember: Bool = true
+    override func setUp() {
+        super.setUp()
+        savedRemember = NotchNavigation.shared.remembersScreen
+        NotchNavigation.shared.remembersScreen = false
+    }
+    override func tearDown() {
+        NotchNavigation.shared.remembersScreen = savedRemember
+        super.tearDown()
+    }
     @MainActor
     func testSwitchingImageGridAndListReleasesTheInactiveViews() throws {
         _ = NSApplication.shared

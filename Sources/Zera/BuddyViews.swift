@@ -387,6 +387,7 @@ enum CardKind: Int, CaseIterable {
     case arrange
     /// In-flight Android original, inside the existing notch island.
     case phoneTransfer
+    case taskExport
 
     var title: String {
         switch self {
@@ -407,6 +408,7 @@ enum CardKind: Int, CaseIterable {
         case .focus: return "Focus"
         case .phoneTransfer: return "From your phone"
         case .arrange: return "Arrange"
+        case .taskExport: return "Timesheet export"
         }
     }
 
@@ -427,6 +429,7 @@ enum CardKind: Int, CaseIterable {
         case .focus: return "scope"
         case .phoneTransfer: return "iphone.and.arrow.forward"
         case .arrange: return "rectangle.3.group"
+        case .taskExport: return "tablecells"
         }
     }
 }

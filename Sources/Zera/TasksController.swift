@@ -1,7 +1,7 @@
 import AppKit
 
 /// Owns what Tasks puts on screen outside the notch: the orb on the screen edge, the focus card
-/// it opens into, quick add (⌥⌘T) and the export window. The list itself is the notch's Tasks tab.
+/// it opens into, quick add (⌥⌘T) and the shared export view. The list itself is the notch's Tasks tab.
 final class TasksController: NSObject, NSWindowDelegate {
     let store: TaskStore
     /// Something for Zera to say ("done ✨ Ship the menu in 24m").
@@ -26,14 +26,15 @@ final class TasksController: NSObject, NSWindowDelegate {
     private var doneCount = 0
     private let quickPanel: FloatingPanel
     private let quickView = QuickAddView()
-    private let exportPanel: FloatingPanel
-    private let exportView: TaskExportView
+    let exportView: TaskExportView
+    var onOpenExport: (() -> Void)?
     private var hotKey: GlobalHotKey?
     private var syncTimer: Timer?
+    private var terminationObserver: NSObjectProtocol?
+    private var started = false
 
     init(store: TaskStore = .shared) {
         self.store = store
-        let top = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
         orbView = FocusOrbView(store: store)
         orbPanel = FloatingPanel.make(size: orbView.frame.size, level: .floating, keyable: false)
         cardView = FocusCardView(store: store)
@@ -41,14 +42,13 @@ final class TasksController: NSObject, NSWindowDelegate {
         plusPanel = FloatingPanel.make(size: NSSize(width: 200, height: OrbPlusView.size), level: .floating, keyable: false)
         quickPanel = FloatingPanel.make(size: QuickAddView.size, level: NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1), keyable: true)
         exportView = TaskExportView(store: store)
-        exportPanel = FloatingPanel.make(size: TaskExportView.size, level: top, keyable: true)
         super.init()
         cardHost.frame = NSRect(origin: .zero, size: cardView.frame.size)
         cardHost.wantsLayer = true
         cardHost.addSubview(cardView)
         orbView.wantsLayer = true
         plusView.wantsLayer = true
-        for (p, v) in [(orbPanel, orbView as NSView), (cardPanel, cardHost), (plusPanel, plusView), (quickPanel, quickView), (exportPanel, exportView)] {
+        for (p, v) in [(orbPanel, orbView as NSView), (cardPanel, cardHost), (plusPanel, plusView), (quickPanel, quickView)] {
             p.contentView = v
             p.hasShadow = false
             p.appearance = NSAppearance(named: .darkAqua)
@@ -57,11 +57,19 @@ final class TasksController: NSObject, NSWindowDelegate {
         wire()
     }
 
+    deinit {
+        syncTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
+        if let terminationObserver { NotificationCenter.default.removeObserver(terminationObserver) }
+    }
+
     func start() {
+        guard !started else { return }
+        started = true
         NotificationCenter.default.addObserver(self, selector: #selector(changed), name: TaskStore.changed, object: store)
         NotificationCenter.default.addObserver(self, selector: #selector(ticked), name: TaskStore.ticked, object: store)
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
-        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+        terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             self?.store.flush()
         }
         store.onIdlePause = { [weak self] t in self?.onSay?("paused “\(t.title)” while you were away ⏸") }
@@ -173,7 +181,7 @@ final class TasksController: NSObject, NSWindowDelegate {
 
     @objc private func changed() {
         if cardOpen { cardView.reload(); placeCard() }
-        if exportPanel.isVisible { exportView.refresh() }
+        if exportView.window?.isVisible == true { exportView.refresh() }
         orbView.refresh()
         updateOrb()
         // Something got ticked off: the orb gives a little bounce.
@@ -430,23 +438,10 @@ final class TasksController: NSObject, NSWindowDelegate {
 
     func openExport() {
         closeCard(); closeQuick()
-        // Starts on the project you're looking at in the Tasks screen, and on today: what you did
-        // today is the usual copy. Week and month are one click (or ↓) away.
-        exportView.project = store.shownProject
-        exportView.span = .today
-        // A timesheet wants everything: linked folders catch up first, then the preview refreshes.
-        syncCommits(quiet: true) { [weak self] in
-            self?.exportView.refresh()
-            self?.exportView.showNewest()
-        }
-        let vf = screen.visibleFrame, s = TaskExportView.size
-        exportPanel.setFrame(NSRect(x: vf.midX - s.width / 2, y: vf.midY - s.height / 2, width: s.width, height: s.height), display: true)
-        exportPanel.makeKeyAndOrderFront(nil)
-        exportPanel.makeFirstResponder(exportView)
-        exportView.showNewest()
+        onOpenExport?()
     }
 
-    private func export(_ span: TaskExport.Span, _ format: TaskExport.Format, _ project: String?) {
+    func export(_ span: TaskExport.Span, _ format: TaskExport.Format, _ project: String?) {
         do {
             let n = TaskExport.rows(store, span: span, project: project).count
             if let url = try TaskExport.export(store, span: span, format: format, project: project) {
@@ -457,7 +452,6 @@ final class TasksController: NSObject, NSWindowDelegate {
                 onSay?("copied \(days) day\(days == 1 ? "" : "s") of tasks (\(n)) 📋 paste away")
             }
             SoundService.shared.play(.clipCopy)
-            exportPanel.orderOut(nil)
         } catch {
             onSay?("couldn't save to Downloads 😬")
         }
@@ -491,7 +485,7 @@ final class TasksController: NSObject, NSWindowDelegate {
             let p = self.store.projects.count > 1 ? " to \(self.store.project(of: t))" : ""
             self.onSay?(focus ? "focusing on “\(t.title)” ✨" : "added “\(t.title)”\(p)" + (t.estimate > 0 ? " · \(t.estimate)m" : ""))
         }
-        exportView.onClose = { [weak self] in self?.exportPanel.orderOut(nil) }
+        exportView.onClose = { [weak self] in self?.onShowList?() }
         exportView.onExport = { [weak self] span, format, project in self?.export(span, format, project) }
     }
 
@@ -500,6 +494,5 @@ final class TasksController: NSObject, NSWindowDelegate {
         guard let w = notification.object as? NSWindow else { return }
         if w === cardPanel { closeCard() }
         else if w === quickPanel { closeQuick() }
-        else if w === exportPanel { exportPanel.orderOut(nil) }
     }
 }
