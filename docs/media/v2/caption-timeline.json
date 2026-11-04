@@ -1,0 +1,248 @@
+{
+  "duration": 20,
+  "fps": 60,
+  "source_status": "FINAL \u2014 photographic grid take2, native animated wallpaper",
+  "phrases": [
+    {
+      "id": "intro",
+      "text": "Android \u2192 MacBook",
+      "start": 0.18,
+      "end": 1.65,
+      "settled_by": 0.73,
+      "minimum_complete_hold": 0.64,
+      "words": [
+        {
+          "text": "Android",
+          "selector": "#intro-word-0",
+          "start": 0.18,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "from_y": 72,
+          "to_y": 0
+        },
+        {
+          "text": "\u2192",
+          "selector": "#intro-word-1",
+          "start": 0.258,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        },
+        {
+          "text": "MacBook",
+          "selector": "#intro-word-2",
+          "start": 0.336,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        }
+      ]
+    },
+    {
+      "id": "pick",
+      "text": "Pick a photo.",
+      "start": 1.65,
+      "end": 3.8069999694824217,
+      "settled_by": 2.2,
+      "minimum_complete_hold": 1.3269999694824217,
+      "words": [
+        {
+          "text": "Pick",
+          "selector": "#pick-word-0",
+          "start": 1.65,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "from_y": 72,
+          "to_y": 0
+        },
+        {
+          "text": "a",
+          "selector": "#pick-word-1",
+          "start": 1.728,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        },
+        {
+          "text": "photo.",
+          "selector": "#pick-word-2",
+          "start": 1.806,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        }
+      ]
+    },
+    {
+      "id": "glide",
+      "text": "Glide it across.",
+      "start": 3.8069999694824217,
+      "end": 6.156999969482422,
+      "settled_by": 4.3569999694824215,
+      "minimum_complete_hold": 1.5200000000000005,
+      "words": [
+        {
+          "text": "Glide",
+          "selector": "#glide-word-0",
+          "start": 3.807,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "from_y": 72,
+          "to_y": 0
+        },
+        {
+          "text": "it",
+          "selector": "#glide-word-1",
+          "start": 3.885,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        },
+        {
+          "text": "across.",
+          "selector": "#glide-word-2",
+          "start": 3.963,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        }
+      ]
+    },
+    {
+      "id": "arrival",
+      "text": "Arrives on your MacBook.",
+      "start": 6.156999969482422,
+      "end": 8.406999969482422,
+      "settled_by": 6.706999969482422,
+      "minimum_complete_hold": 1.42,
+      "words": [
+        {
+          "text": "Arrives",
+          "selector": "#arrival-word-0",
+          "start": 6.157,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "from_y": 72,
+          "to_y": 0
+        },
+        {
+          "text": "on",
+          "selector": "#arrival-word-1",
+          "start": 6.235,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        },
+        {
+          "text": "your",
+          "selector": "#arrival-word-2",
+          "start": 6.313,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        },
+        {
+          "text": "MacBook.",
+          "selector": "#arrival-word-3",
+          "start": 6.391,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        }
+      ]
+    },
+    {
+      "id": "saved",
+      "text": "Your original. Saved.",
+      "start": 8.406999969482422,
+      "end": 15.2,
+      "settled_by": 8.956999969482423,
+      "minimum_complete_hold": 5.963000030517577,
+      "words": [
+        {
+          "text": "Your",
+          "selector": "#saved-word-0",
+          "start": 8.407,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "from_y": 72,
+          "to_y": 0
+        },
+        {
+          "text": "original.",
+          "selector": "#saved-word-1",
+          "start": 8.485,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        },
+        {
+          "text": "Saved.",
+          "selector": "#saved-word-2",
+          "start": 8.563,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        }
+      ]
+    },
+    {
+      "id": "benefit",
+      "text": "No internet. Just Wi\u2011Fi.",
+      "start": 15.2,
+      "end": 20,
+      "settled_by": 15.75,
+      "minimum_complete_hold": 3.9700000000000006,
+      "words": [
+        {
+          "text": "No",
+          "selector": "#benefit-word-0",
+          "start": 15.2,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "from_y": 72,
+          "to_y": 0
+        },
+        {
+          "text": "internet.",
+          "selector": "#benefit-word-1",
+          "start": 15.278,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        },
+        {
+          "text": "Just",
+          "selector": "#benefit-word-2",
+          "start": 15.356,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        },
+        {
+          "text": "Wi\u2011Fi.",
+          "selector": "#benefit-word-3",
+          "start": 15.434,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "from_y": 58,
+          "to_y": 0
+        }
+      ]
+    }
+  ],
+  "mechanism": "Masked per-word transform reveals,complete-line reading holds,transform-only camera poses; no per-frame callback."
+}

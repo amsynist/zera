@@ -142,7 +142,7 @@ final class IslandView: NSView {
         return Int(ceil(Double(tabs.count + 1) / Double(rows)))
     }
     private var barRows: Int { Int(ceil(Double(tabs.count + 1) / Double(barColumns))) }
-    /// Zera 2: the deck (Zera, the busiest agent, music) sits above the row of screens.
+    /// Zera v2: the deck (Zera, the busiest agent, music) sits above the row of screens.
     let deck = HoverDeck()
     private var deckSpace: CGFloat { HoverDeck.height + 14 }
     private var barHeight: CGFloat { band + deckSpace + Self.barTop + CGFloat(barRows) * (Isle.bloomNode + IslandTab.labelH) + CGFloat(barRows - 1) * Space.s + 12 }
@@ -978,7 +978,7 @@ final class IslandTab: NSButton {
             card.lineWidth = 0.75; card.stroke()
         }
         _ = circle
-        // Zera 2: a rounded key. Quiet in the rail, a graphite tile in the deck, white when open.
+        // Zera v2: a rounded key. Quiet in the rail, a graphite tile in the deck, white when open.
         let key = NSBezierPath(roundedRect: c, xRadius: c.width * 0.32, yRadius: c.width * 0.32)
         if isOn {
             // Selection belongs to the moving surface behind the rail, not a second static key.

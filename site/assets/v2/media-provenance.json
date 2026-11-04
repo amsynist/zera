@@ -2,31 +2,129 @@
   "version": "2.0.0",
   "recorded": "2026-11-04",
   "film": {
-    "duration_seconds": 24,
+    "duration_seconds": 20,
     "width": 1920,
     "height": 1080,
-    "fps": 30,
+    "fps": 60,
     "real_app_surfaces": true,
     "device_framing": "Motion design; phone left, Mac right",
     "source_speed_up": false,
     "photo_bridge": "Exact original crosses only the gap between device frames",
-    "voiceover": false
+    "voiceover": false,
+    "sharing_only": true,
+    "burned_in_captions": true,
+    "caption_sidecars": [
+      "sharing.srt",
+      "sharing.vtt"
+    ],
+    "camera": "Continuous phone selection push-in, two-device handoff, Mac arrival push-in and settled two-device close",
+    "source_interpolation": false,
+    "sha256": "c6e754d3bbfe9b811bf32ebc436acf134e4a4243d45e8663dabe0b0d66a1090b",
+    "bytes": 8510990,
+    "poster_source_seconds": 18.5,
+    "poster_baked_frames": [
+      0
+    ],
+    "hex_grid_background": true,
+    "device_labels": [
+      "Android",
+      "MacBook"
+    ],
+    "continuous_native_source_seconds": 20,
+    "wallpaper_freeze": false,
+    "photo_artwork": "Original photorealistic generated gallery assets; prompts retained in docs/media/v2/photo-prompts.md"
   },
   "transfer": {
     "source": "Disposable Android emulator; real Androp gallery and edge gesture",
     "receiver": "Isolated native Zera receiver; original opened by macOS Preview after verified save",
     "internet": "Emulator mobile data disabled; local connection",
-    "original_bytes": 28379,
-    "original_sha256": "e21711b14f8501fcbc79d86801126450ac9102c6160331050457c5283328ae84",
-    "received_sha256": "e21711b14f8501fcbc79d86801126450ac9102c6160331050457c5283328ae84",
+    "original_bytes": 3285000,
+    "original_sha256": "d8f6b3fab11ecfbeca489c0497a210b50977ce640a9cf46fc2dcc23347134e6b",
+    "received_sha256": "d8f6b3fab11ecfbeca489c0497a210b50977ce640a9cf46fc2dcc23347134e6b",
     "identical": true,
     "benchmark": false,
-    "physical_samsung_test": false
+    "physical_samsung_test": false,
+    "capture": "Both actual native recordings run for the full film; generated photographic original, animated native fixture wallpaper, no personal desktop capture"
   },
   "walkthrough": {
-    "duration_seconds": 62.42,
+    "duration_seconds": 80.03333333333333,
     "screens": 19,
-    "data": "Fictional fixture tasks, PRs, files, clipboard and vitals"
+    "data": "Fictional fixture tasks, PRs, files, clipboard and vitals",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "video_frames": 4802,
+    "caption_chapters": 27,
+    "burned_in_kinetic_captions": true,
+    "caption_sidecars": [
+      "walkthrough.srt",
+      "walkthrough.vtt"
+    ],
+    "window_manager_demonstration": {
+      "native_windows": 3,
+      "engine": "Production ArrangeLayout and ArrangeWindowAccess; actual Accessibility frame writes",
+      "states": [
+        "overlapping",
+        "main-left",
+        "columns",
+        "restored-main-left"
+      ],
+      "invocation": "Direct native engine fixture; not a recording of clicking every Arrange control",
+      "isolated": true,
+      "settled_frames_verified": true
+    },
+    "water_demonstration": "Separately recorded native view; fixture ticks the animation when the capture window is occluded",
+    "source_speedup": false,
+    "optical_flow": false,
+    "source_summary": {
+      "tour": {
+        "duration": 63.858333,
+        "frames": 3681,
+        "capture": "ScreenCaptureKit exact fixture window only",
+        "source_frames": 3681,
+        "average_actual_frames_per_second": 57.64322097164672,
+        "median_frame_interval_seconds": 0.016666999999999987,
+        "max_frame_interval_seconds": 0.031667
+      },
+      "windows": {
+        "duration": 13.383333,
+        "frames": 763,
+        "capture": "ScreenCaptureKit native wallpaper and new disposable fixture process only",
+        "engine": "Production ArrangeWindowAccess and ArrangeLayout; real AX writes verified",
+        "source_frames": 763,
+        "average_actual_frames_per_second": 57.01120939006748,
+        "median_frame_interval_seconds": 0.016666999999999987,
+        "max_frame_interval_seconds": 0.15
+      },
+      "source_speed": 1,
+      "optical_flow": false,
+      "output_duration": 80.03333333333333,
+      "scenes": 27,
+      "water": {
+        "duration": 3.701667,
+        "source_frames": 210,
+        "average_actual_frames_per_second": 56.731197052571176,
+        "median_frame_interval_seconds": 0.016666999999999987,
+        "max_frame_interval_seconds": 0.068333,
+        "capture": "Same native fixture window; animation explicitly ticked while occluded; replaced blank water scene without changing chapter timing"
+      }
+    },
+    "sha256": "4db0d7368d43174f1c4cb8786fa0f402e211c3003becf7dcfd1b30d710159b9d",
+    "bytes": 20319714,
+    "poster_source_seconds": 45.8,
+    "poster_baked_frames": [
+      0
+    ],
+    "checks": {
+      "errors": 0,
+      "warnings": 0,
+      "contrast_passed": 51,
+      "caption_cues": 27,
+      "full_decode": true,
+      "faststart": true,
+      "audio_peak_dbfs": -11.2,
+      "audio_mean_dbfs": -30.4
+    }
   },
   "apk": {
     "name": "Androp.apk",
@@ -39,7 +137,12 @@
   "checks": {
     "hyperframes_errors": 0,
     "hyperframes_warnings": 0,
-    "contrast_checks_passed": 21
+    "contrast_checks_passed": 38,
+    "caption_cues": 6,
+    "audio_peak_dbfs": -6.8,
+    "audio_mean_dbfs": -30.6,
+    "faststart": true,
+    "video_frames": 1200
   },
   "music": {
     "title": "Happy Beats / Business Moves Vol. 12",
@@ -48,5 +151,157 @@
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
     "changes": "Edited and mixed for this film"
+  },
+  "source_cadence": {
+    "mechanism": "Original recorded presentation timestamps counted without interpolation. Static Android screens emit few frames.",
+    "common_crop_global_epoch": [
+      1793763878.815374,
+      1793763898.815374
+    ],
+    "source_speed": 1,
+    "sources": {
+      "mac": {
+        "recorded_frames_total": 1527,
+        "windows": {
+          "common_full_film": {
+            "global_epoch": [
+              1793763878.815374,
+              1793763898.815374
+            ],
+            "seconds": 20.0,
+            "real_frames": 1148,
+            "cadence_fps": 57.4,
+            "median_frame_delta_seconds": 0.016666999999999987,
+            "max_frame_delta_seconds": 0.04999999999999716
+          },
+          "gesture_only": {
+            "global_epoch": [
+              1793763884.206374,
+              1793763885.3223739
+            ],
+            "seconds": 1.1159999370574951,
+            "real_frames": 65,
+            "cadence_fps": 58.243730883518204,
+            "median_frame_delta_seconds": 0.016666999999999987,
+            "max_frame_delta_seconds": 0.03333300000000072
+          },
+          "gesture_to_preview": {
+            "global_epoch": [
+              1793763884.206374,
+              1793763886.7132201
+            ],
+            "seconds": 2.5068461894989014,
+            "real_frames": 143,
+            "cadence_fps": 57.04378696986773,
+            "median_frame_delta_seconds": 0.016666999999999987,
+            "max_frame_delta_seconds": 0.033333999999999975
+          }
+        }
+      },
+      "phone": {
+        "recorded_frames_total": 145,
+        "windows": {
+          "common_full_film": {
+            "global_epoch": [
+              1793763878.815374,
+              1793763898.815374
+            ],
+            "seconds": 20.0,
+            "real_frames": 96,
+            "cadence_fps": 4.8,
+            "median_frame_delta_seconds": 0.017110999999999876,
+            "max_frame_delta_seconds": 2.4502889999999997
+          },
+          "gesture_only": {
+            "global_epoch": [
+              1793763884.206374,
+              1793763885.3223739
+            ],
+            "seconds": 1.1159999370574951,
+            "real_frames": 59,
+            "cadence_fps": 52.86738649427037,
+            "median_frame_delta_seconds": 0.016672499999999424,
+            "max_frame_delta_seconds": 0.053033000000000996
+          },
+          "gesture_to_preview": {
+            "global_epoch": [
+              1793763884.206374,
+              1793763886.7132201
+            ],
+            "seconds": 2.5068461894989014,
+            "real_frames": 84,
+            "cadence_fps": 33.50823849978244,
+            "median_frame_delta_seconds": 0.017110999999999876,
+            "max_frame_delta_seconds": 0.1857779999999991
+          }
+        }
+      }
+    }
+  },
+  "wallpaper": {
+    "name": "Zera Tidal",
+    "dimensions": [
+      5120,
+      3200
+    ],
+    "source": "Native fixture gradient/vector layers",
+    "files": [
+      "wallpaper/zera-tidal-5k.jpg",
+      "wallpaper/zera-tidal-5k.png"
+    ],
+    "includes_app_ui": false
+  },
+  "release_name": "Zera v2",
+  "wallpaper_continuity": {
+    "native_video_span": [
+      0,
+      20
+    ],
+    "authored_freeze_or_loop": false,
+    "source": "Actual native ScreenCaptureKit wallpaper video; no composited replacement inside display.",
+    "sample_region_pixels": {
+      "x": 40,
+      "y": 100,
+      "width": 160,
+      "height": 160
+    },
+    "comparisons": [
+      {
+        "film_times": [
+          0.5,
+          1.5
+        ],
+        "mean_absolute_channel_delta_0_255": 1.917578125,
+        "channel_fraction_changed_over_2": 0.16423177083333335,
+        "frame_hashes": [
+          "f31d5e0fb2cb3dd6832bef3aaf15c7b3f1b044d266d895da999c187b641ef9d5",
+          "08d54fa9542ef102b11320eb8cee94393c834e08306deb36477b4c704cbeca5f"
+        ]
+      },
+      {
+        "film_times": [
+          12,
+          13
+        ],
+        "mean_absolute_channel_delta_0_255": 2.9548828125,
+        "channel_fraction_changed_over_2": 0.4819921875,
+        "frame_hashes": [
+          "d48d034f192033b670fb5cc61afa3505248e74f2967d9d88e64e5eef1c70cf24",
+          "fc1d9f1b77ce4ea1607909c0ff28318182dc55a46f8c934e97459922fa827555"
+        ]
+      },
+      {
+        "film_times": [
+          17.5,
+          19
+        ],
+        "mean_absolute_channel_delta_0_255": 1.5079166666666666,
+        "channel_fraction_changed_over_2": 0.12412760416666667,
+        "frame_hashes": [
+          "6942af0ca52737e1fb4a1652dad40bb7468a9a330cca5ea89d1298be95d00a28",
+          "cd95a61f4350e7040765f5f70ebe2bcf87a326d9116736c17a27ac70fca6c9a1"
+        ]
+      }
+    ]
   }
 }

@@ -47,7 +47,7 @@ cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 cp docs/INSTALL.txt "$STAGE/Install Zera.txt"
 rm -f "$DMG"
-hdiutil create -volname "Zera $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "Zera v$VERSION" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 if [ -n "${CODESIGN_IDENTITY:-}" ]; then
   codesign --force --timestamp --sign "$CODESIGN_IDENTITY" "$DMG"
