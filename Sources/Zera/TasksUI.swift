@@ -510,10 +510,10 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     var desiredHeight: CGFloat { listTop + min(listHeight, maxList) + 6 + footH }
 
     func willShow() {
-        field.stringValue = ""
+        if !NotchNavigation.shared.remembersScreen { field.stringValue = "" }
         onSync?(nil)   // linked folders catch up (quietly: at most every 10 minutes)
         reload()
-        scroll.contentView.scroll(to: .zero)
+        if !NotchNavigation.shared.remembersScreen { scroll.contentView.scroll(to: .zero) }
     }
 
     @objc private func storeChanged() {
@@ -1202,7 +1202,7 @@ final class QuickAddView: NSView, NSTextFieldDelegate {
 
 // MARK: - Export
 
-/// A choice in the export window: a range chip or a format tile.
+/// A choice in the export view: a range chip or a format tile.
 final class TaskChoice: NSButton {
     var subtitle: String?
     var selected = false { didSet { needsDisplay = true; setAccessibilityValue(selected ? "selected" : "") } }
@@ -1277,14 +1277,17 @@ private func drawTrackIndicator(_ ind: SlidingIndicator, under segment: TaskChoi
 final class TaskExportView: NSView {
     static let size = NSSize(width: 660 + TaskGlow.margin * 2, height: 600 + TaskGlow.margin * 2)
     private let store: TaskStore
-    var span: TaskExport.Span = .today {
-        didSet { refresh(); showNewest(); switched(Self.index(oldValue), Self.index(span)) }
+    var embedded = false
+    var span: TaskExport.Span = TaskExport.Span(rawValue: NotchNavigation.shared.integer("export.span")) ?? .today {
+        didSet { NotchNavigation.shared.set(span.rawValue, for: "export.span"); refresh(); showNewest(); switched(Self.index(oldValue), Self.index(span)) }
     }
-    var format: TaskExport.Format = .timesheet {
-        didSet { refresh(); showNewest(); formatWash.glide(); switched(Self.index(oldValue), Self.index(format)) }
+    var format: TaskExport.Format = TaskExport.Format(rawValue: NotchNavigation.shared.integer("export.format", fallback: TaskExport.Format.timesheet.rawValue)) ?? .timesheet {
+        didSet { NotchNavigation.shared.set(format.rawValue, for: "export.format"); refresh(); showNewest(); formatWash.glide(); switched(Self.index(oldValue), Self.index(format)) }
     }
     /// nil: every project. (The project bar pages the preview itself.)
-    var project: String? { didSet { refresh(); showNewest() } }
+    var project: String? = NotchNavigation.shared.string("export.project") {
+        didSet { NotchNavigation.shared.set(project, for: "export.project"); refresh(); showNewest() }
+    }
     private let formatWash = GlideWash()
     private static func index<T: CaseIterable & Equatable>(_ v: T) -> Int { Array(T.allCases).firstIndex(of: v) ?? 0 }
     /// A range, a format or a project changed: the preview comes in from that side.
@@ -1421,6 +1424,7 @@ final class TaskExportView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func refresh() {
+        if let project, !store.projects.contains(project) { self.project = nil; return }
         rows = TaskExport.rows(store, span: span, project: project)
         projectBar.projects = store.projects
         projectBar.selected = project
@@ -1472,6 +1476,13 @@ final class TaskExportView: NSView {
 
     override func layout() {
         super.layout()
+        if embedded {
+            wantsLayer = true
+            layer?.masksToBounds = true
+            glass.frame = NSRect(x: 0, y: -84, width: bounds.width, height: bounds.height + 84)
+            glass.fill = .clear; glass.edge = .clear; glass.glow = 0
+            cancelButton.title = "Back to Tasks"
+        }
         let w = glass.bounds.width, pad: CGFloat = 24
         paint.frame = glass.bounds
         let n = CGFloat(spanChips.count), inset = Metrics.segmentInset
@@ -1567,8 +1578,8 @@ final class TaskExportView: NSView {
         case 53: onClose?()
         case 123: format = TaskExport.Format(rawValue: (format.rawValue + 3) % 4) ?? format
         case 124: format = TaskExport.Format(rawValue: (format.rawValue + 1) % 4) ?? format
-        case 125: span = TaskExport.Span(rawValue: min(TaskExport.Span.allCases.count - 1, span.rawValue + 1)) ?? span
-        case 126: span = TaskExport.Span(rawValue: max(0, span.rawValue - 1)) ?? span
+        case 125: span = TaskExport.Span.allCases[min(TaskExport.Span.allCases.count - 1, Self.index(span) + 1)]
+        case 126: span = TaskExport.Span.allCases[max(0, Self.index(span) - 1)]
         default: super.keyDown(with: event)
         }
     }

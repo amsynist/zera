@@ -390,9 +390,9 @@ final class FocusView: CardBase, CardContent, NSTextFieldDelegate {
     var desiredHeight: CGFloat { min(Isle.maxContentHeight, headerBottom + Self.content) }
 
     func willShow() {
-        field.stringValue = ""
+        if !NotchNavigation.shared.remembersScreen { field.stringValue = "" }
         reload()
-        scroll.contentView.scroll(to: .zero)
+        if !NotchNavigation.shared.remembersScreen { scroll.contentView.scroll(to: .zero) }
         refreshRing(animated: false)
     }
 

@@ -900,6 +900,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
 final class SettingsCard: CardBase, CardContent {
     var cardWidth: CGFloat { Isle.lensWidth }
     var onDefaultChanged: ((CardKind?) -> Void)?
+    var onReturn: (() -> Void)?
     /// Settings › In full-screen apps changed.
     var onFullScreenHideChanged: (() -> Void)?
     var onShowZeraChanged: ((Bool) -> Void)?
@@ -928,6 +929,7 @@ final class SettingsCard: CardBase, CardContent {
         case claude, github, calendar, shelf   // detail panes, reached from Integrations
         case diagnostics                        // detail of Claude
         case codex                              // appended to preserve existing pane IDs
+        case permissions
         var title: String {
             switch self {
             case .general: return "General"
@@ -944,6 +946,7 @@ final class SettingsCard: CardBase, CardContent {
             case .shelf: return "Shelf"
             case .diagnostics: return "Claude diagnostics"
             case .codex: return "Codex"
+            case .permissions: return "Permissions & Diagnostics"
             }
         }
         var symbol: String {
@@ -962,24 +965,26 @@ final class SettingsCard: CardBase, CardContent {
             case .shelf: return "tray.full.fill"
             case .diagnostics: return "stethoscope"
             case .codex: return "terminal"
+            case .permissions: return "hand.raised"
             }
         }
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
-        var isDetail: Bool { rawValue >= Pane.claude.rawValue && self != .shelf }
-        static let nav: [Pane] = [.general, .appearance, .notch, .sounds, .clipboard, .shelf, .integrations, .shortcuts, .about]
+        var isDetail: Bool { rawValue >= Pane.claude.rawValue && self != .shelf && self != .permissions }
+        static let nav: [Pane] = [.general, .appearance, .notch, .sounds, .clipboard, .shelf, .integrations, .permissions, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
     private let paneTitle = NSTextField(labelWithString: "")
     private let closeButton: IconButton
+    private let returnButton: CardButton
     private let backButton: CardButton
     private let pane = FlippedView()
     /// Panes taller than the island scroll instead of being cut off.
     private let paneScroll = NSScrollView()
     private let scrollHint = NSTextField(labelWithString: "Scroll for more")
     private let scrollArrow = NSTextField(labelWithString: "↓")
-    private(set) var current: Pane = .general
+    private(set) var current: Pane = Pane(rawValue: NotchNavigation.shared.integer("settings.pane")) ?? .general
     private var defaultKind: CardKind?
     private let showingZera: Bool
     private let sidebarW: CGFloat = 180
@@ -991,6 +996,7 @@ final class SettingsCard: CardBase, CardContent {
     init(defaultKind: CardKind?, showingZera: Bool, loginEnabled: Bool) {
         self.defaultKind = defaultKind
         self.showingZera = showingZera
+        returnButton = CardButton("Back", style: .tertiary, symbol: "chevron.left", target: nil, action: #selector(SettingsCard.returnTapped))
         backButton = CardButton("Integrations", style: .tertiary, symbol: "chevron.left", target: nil, action: #selector(SettingsCard.backTapped))
         closeButton = IconButton(symbol: "xmark", label: "Close", target: nil, action: #selector(SettingsCard.closeTapped))
         super.init(width: Isle.lensWidth, title: "Settings")
@@ -998,10 +1004,12 @@ final class SettingsCard: CardBase, CardContent {
         backButton.target = self
         closeButton.target = self
         addSubview(closeButton)
+        returnButton.target = self
+        addSubview(returnButton)
         backButton.isHidden = true
         addSubview(backButton)
         for pn in Pane.nav {
-            let row = NavRow(symbol: pn.symbol, title: pn.title)
+            let row = NavRow(symbol: pn.symbol, title: pn == .permissions ? "Permissions" : pn.title)
             row.selected = pn == current
             row.onTap = { [weak self] in self?.select(pn) }
             row.washManaged = true
@@ -1046,6 +1054,12 @@ final class SettingsCard: CardBase, CardContent {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = abs(newSize.width - frame.width) > 0.5
+        super.setFrameSize(newSize)
+        if changed, !pane.subviews.isEmpty { rebuildPane() }
+    }
+
     var desiredHeight: CGFloat {
         let nav = headerBottom + CGFloat(Pane.nav.count) * (38 + Space.xs) + Metrics.cardPad
         return max(nav, headerBottom + 40 + visiblePaneHeight + Metrics.cardPad)
@@ -1068,6 +1082,7 @@ final class SettingsCard: CardBase, CardContent {
             }
         }
         current = p
+        NotchNavigation.shared.set(p.rawValue, for: "settings.pane")
         paneScroll.contentView.scroll(to: .zero)
         let highlight: Pane = p.isDetail ? .integrations : p
         for (i, row) in navRows.enumerated() { row.selected = Pane.nav[i] == highlight }
@@ -1075,6 +1090,12 @@ final class SettingsCard: CardBase, CardContent {
         rebuildPane()
     }
 
+    func willShow() {
+        // A failed take may have arrived while this cached pane was detached.
+        if current == .permissions { rebuildPane() }
+    }
+
+    @objc private func returnTapped() { onReturn?() }
     @objc private func backTapped() { select(current.parent) }
     @objc private func closeTapped() { onEscape?() }
 
@@ -1132,7 +1153,7 @@ final class SettingsCard: CardBase, CardContent {
         paneTitle.stringValue = current.title
         backButton.isHidden = !current.isDetail
         backButton.setTitleText(current.parent.title)
-        var s = Stack(width: cardWidth - sidebarW - Metrics.cardPad * 2 - Space.xxl)
+        var s = Stack(width: max(240, bounds.width - sidebarW - Metrics.cardPad * 2 - Space.xxl))
         switch current {
         case .general: buildGeneral(&s)
         case .sounds: buildSounds(&s)
@@ -1148,6 +1169,7 @@ final class SettingsCard: CardBase, CardContent {
         case .calendar: buildCalendar(&s)
         case .shelf: buildShelf(&s)
         case .diagnostics: buildDiagnostics(&s)
+        case .permissions: buildPermissions(&s)
         }
         paneHeight = max(120, s.y)
         needsLayout = true
@@ -1158,7 +1180,7 @@ final class SettingsCard: CardBase, CardContent {
     private func hint(_ text: String, _ s: inout Stack) {
         let f = Typo.body
         let l = label(text, font: f, color: Pal.textTertiary, in: pane, wraps: true)
-        let w = min(s.width, 520)
+        let w = max(0, min(s.width - 8, 520))
         let h = (text as NSString).boundingRect(with: NSSize(width: w, height: 200), options: [.usesLineFragmentOrigin], attributes: [.font: f]).height
         s.y += Space.m
         l.frame = NSRect(x: 4, y: s.y, width: w, height: ceil(h) + 2)
@@ -1169,12 +1191,14 @@ final class SettingsCard: CardBase, CardContent {
     private static let rowH = Metrics.settingRow
     private func settingRow(_ title: String, _ s: inout Stack, control: NSView, controlWidth: CGFloat) {
         let row = FlippedView()
-        let h = Self.rowH
-        let l = label(title, font: Typo.settingLabel, in: row)
-        l.frame = NSRect(x: 4, y: (h - 18) / 2, width: max(0, s.width - min(controlWidth, s.width * 0.48) - Space.m - Space.xs), height: 18)
         let toggle = control is Toggle
         let ch: CGFloat = toggle ? 24 : Metrics.button
         let cw = toggle ? 44 : min(controlWidth, s.width * 0.48)
+        let textWidth = max(0, s.width - cw - Space.m - Space.xs)
+        let textHeight = ceil((title as NSString).boundingRect(with: NSSize(width: textWidth, height: 160), options: [.usesLineFragmentOrigin], attributes: [.font: Typo.settingLabel]).height) + 2
+        let h = max(Self.rowH, ceil((textHeight + Space.l) / 4) * 4)
+        let l = label(title, font: Typo.settingLabel, in: row, wraps: true)
+        l.frame = NSRect(x: 4, y: (h - textHeight) / 2, width: textWidth, height: textHeight)
         control.frame = NSRect(x: s.width - cw, y: ((h - ch) / 2).rounded(), width: cw, height: ch)
         row.addSubview(control)
         let rule = NSView(frame: NSRect(x: 0, y: h - 1, width: s.width, height: 1))
@@ -1212,13 +1236,18 @@ final class SettingsCard: CardBase, CardContent {
     private func buttonRow(_ title: String, style: CardButton.Style, status: String, _ s: inout Stack, action: Selector) {
         let row = FlippedView()
         let b = CardButton(title, style: style, target: self, action: action)
-        let bw = max(110, b.fittedWidth)
+        let bw = min(s.width, max(110, b.fittedWidth))
         b.frame = NSRect(x: 0, y: 0, width: bw, height: Metrics.control)
         row.addSubview(b)
-        let l = label(status, font: Typo.caption, color: Pal.textSecondary, in: row)
-        l.frame = NSRect(x: bw + Space.m, y: 6, width: s.width - bw - Space.m, height: 16)
+        let stacked = s.width - bw - Space.m < 160
+        let textWidth = stacked ? s.width : s.width - bw - Space.m
+        let textHeight = ceil((status as NSString).boundingRect(with: NSSize(width: textWidth, height: 160), options: [.usesLineFragmentOrigin], attributes: [.font: Typo.caption]).height) + 2
+        let rowHeight = stacked ? Metrics.control + Space.s + textHeight : max(Metrics.control, textHeight)
+        let l = label(status, font: Typo.caption, color: Pal.textSecondary, in: row, wraps: true)
+        l.frame = NSRect(x: stacked ? 0 : bw + Space.m, y: stacked ? Metrics.control + Space.s : (rowHeight - textHeight) / 2, width: textWidth, height: textHeight)
+        b.frame.origin.y = stacked ? 0 : (rowHeight - Metrics.control) / 2
         pane.addSubview(row)
-        s.place(row, height: Metrics.control, gap: Space.m)
+        s.place(row, height: rowHeight, gap: Space.m)
     }
 
     private func statusLine(_ state: ConnectionState, detail: String, _ s: inout Stack) {
@@ -1252,9 +1281,32 @@ final class SettingsCard: CardBase, CardContent {
     private static let defaultChoices: [CardKind?] = [.shelf, .home, .claude, .alerts, .reminders, .focus, .github, nil]
     private static let breakChoices = [0, 30, 45, 60, 90, 120]
 
+    private func buildPermissions(_ s: inout Stack) {
+        hint("Access is optional and checked live. If macOS asks you to restart Zera, quit and reopen the same signed app. Revoking access never deletes your data.", &s)
+        buttonRow("Keyboard monitoring…", style: .secondary, status: GlobalKeys.keysAllowed ? "Allowed · global dictation and feedback shortcuts are available" : "Optional · monitor global keys for dictation and Command Echo", &s, action: #selector(keyboardAccessTapped))
+        for kind in [PermissionAccess.Kind.accessibility, .screen, .speech] {
+            let view = PermissionSetupView(kind: kind)
+            pane.addSubview(view)
+            s.place(view, height: view.preferredHeight, gap: Space.xl)
+        }
+        buttonRow("Test text insertion", style: .secondary, status: "Focus a blank field within 8 seconds", &s, action: #selector(testDictationInsertionTapped))
+        if Dictation.shared.lastUninsertedText != nil {
+            buttonRow("Copy recovered transcript", style: .secondary, status: "Explicitly replaces the clipboard with the last uninserted take", &s, action: #selector(copyTranscriptTapped))
+        }
+        if Murmur.shared.installedFolder != nil {
+            buttonRow("Manage speech model…", style: .tertiary, status: Murmur.shared.state.summary, &s, action: #selector(murmurTapped))
+            buttonRow("Remove speech model", style: .tertiary, status: "Frees the downloaded model; choose Apple speech if you want to keep dictating", &s, action: #selector(murmurRemoveTapped))
+        }
+    }
+    @objc private func permissionsTapped() { select(.permissions) }
+    @objc private func keyboardAccessTapped() { GlobalKeys.requestListen() }
+    @objc private func copyTranscriptTapped() { Dictation.shared.copyUninsertedText() }
+
     private func buildGeneral(_ s: inout Stack) {
         defaultPopup = popupRow("Tap on Zera opens", items: Self.defaultChoices.map { $0?.title ?? "Nothing" },
                                 selected: Self.defaultChoices.firstIndex(of: defaultKind) ?? 0, &s, action: #selector(defaultChanged))
+        toggleRow("Remember Last Screen", on: NotchNavigation.shared.remembersScreen, &s) { on in NotchNavigation.shared.remembersScreen = on }
+        hint("Return to the same screen, filters and timesheet range when you hover or reopen Zera. Off uses your default landing screen.", &s)
         toggleRow("Show Zera at the notch", on: showingZera, &s) { [weak self] on in self?.onShowZeraChanged?(on) }
         popupRow("Hover menu", items: HoverMenuStyle.allCases.map(\.title), selected: HoverMenuStyle.current.rawValue,
                  &s, action: #selector(hoverMenuChanged(_:)))
@@ -1511,7 +1563,7 @@ final class SettingsCard: CardBase, CardContent {
             hint("Secure Keyboard Entry is active in another app. macOS pauses keyboard feedback until that app releases it.", &s)
         }
         if echo.needsKeyboardAccess {
-            buttonRow("Enable keyboard feedback", style: .primary, status: "Input Monitoring lets Zera recognize shortcuts in other apps", &s, action: #selector(echoAccessTapped))
+            buttonRow("Set up keyboard access", style: .secondary, status: "Repair access in Permissions & Diagnostics", &s, action: #selector(permissionsTapped))
         } else {
             hint("⌘C Copy, ⌘V Paste, ⌘Z Undo, Caps Lock, Shift held, volume and brightness show brief feedback beside the notch. Copy a colour to see it in the light. Private copies show as Hidden.", &s)
         }
@@ -1535,31 +1587,16 @@ final class SettingsCard: CardBase, CardContent {
         toggleRow("Answer Claude's permission cards by voice (\u{201C}approve\u{201D}, \u{201C}deny\u{201D}, \u{201C}open\u{201D})", on: VoiceApproval.shared.enabled, &s) { on in
             VoiceApproval.shared.enabled = on
         }
-        toggleRow("Hold a key to dictate, release to type it (on-device)", on: Dictation.shared.enabled, &s) { on in
+        toggleRow("Hold a key to dictate, release to type it", on: Dictation.shared.enabled, &s) { on in
             Dictation.shared.enabled = on
         }
-        buttonRow("Test text insertion", style: .tertiary, status: "Focus a blank field within 8 seconds; inserts ‘Zera dictation test.’ without opening the microphone", &s, action: #selector(testDictationInsertionTapped))
-        if !Dictation.typingAccessConfirmed {
-            buttonRow("Allow typing into other apps…", style: .secondary, status: "macOS hasn’t confirmed typing access for this running app. Permission is requested only when you click here.", &s, action: #selector(dictationTypingAccessTapped))
-        }
+        buttonRow("Permissions & Diagnostics", style: .secondary, status: "Set up access, choose a speech provider and repair dictation", &s, action: #selector(permissionsTapped))
         popupRow("Dictation key", items: DictationKey.allCases.map(\.title), selected: Dictation.shared.trigger.rawValue,
                  &s, action: #selector(dictationKeyChanged(_:)))
         toggleRow("Type words into the field as you speak (off: all at once when you let go)", on: Dictation.shared.typesLive, &s) { on in
             Dictation.shared.typesLive = on
         }
         hint("Editors that don’t support live text insertion receive the full transcript when you release the dictation key.", &s)
-        if Murmur.isAvailable {
-            let m = Murmur.shared
-            buttonRow(m.installedFolder == nil ? "Download Murmur…" : "Murmur speech model…", style: .secondary,
-                      status: "Murmur: \(m.state.summary)\(m.installedFolder != nil ? " · \(m.model.title)" : "")", &s,
-                      action: #selector(murmurTapped))
-            if m.installedFolder != nil {
-                toggleRow("Dictate with Murmur (off: Apple's recogniser)", on: m.useForDictation, &s) { on in Murmur.shared.useForDictation = on }
-                buttonRow("Remove the model", style: .tertiary, status: "Frees the disk space; dictation goes back to Apple's recogniser", &s,
-                          action: #selector(murmurRemoveTapped))
-            }
-        }
-        hint("The microphone opens only while a permission card waits, or while you hold the dictation key. Speech is recognised on this Mac when it supports it.", &s)
         sectionLabel("Other agents", &s)
         toggleRow("Follow Codex and Cursor in the notch", on: AgentWatch.shared.enabled, &s) { on in AgentWatch.shared.enabled = on }
         if AgentWatch.cursorConnected {
@@ -1620,7 +1657,6 @@ final class SettingsCard: CardBase, CardContent {
     private static let teleprompterSpeeds: [Double] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
     private static let teleprompterSizes: [CGFloat] = [20, 24, 30, 36, 44, 56]
 
-    @objc private func echoAccessTapped() { CommandEcho.shared.requestKeyboardAccess(); rebuildPane() }
     @objc private func echoPreviewTapped(_ sender: NSView) {
         ZeraDropdown.shared.show(CommandEcho.Preview.allCases.map { kind in
             DropdownItem(title: kind.rawValue) { CommandEcho.shared.preview(kind) }
@@ -2156,7 +2192,6 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     @objc private func testDictationInsertionTapped() { Dictation.shared.testInsertion() }
-    @objc private func dictationTypingAccessTapped() { Dictation.requestTypingAccess() }
 
     @objc private func dictationKeyChanged(_ pop: ZeraSelect) {
         Dictation.shared.trigger = DictationKey(rawValue: pop.selectedIndex) ?? .rightOptionOrShift
@@ -2387,6 +2422,8 @@ final class SettingsCard: CardBase, CardContent {
         super.layout()
         layoutHeader()
         let x = Metrics.cardPad
+        let trailing = headerTrailingRect
+        returnButton.frame = NSRect(x: trailing.maxX - 96, y: trailing.minY, width: 96, height: Metrics.button)
         // v2: the island's own ✕ at notch level closes the lens.
         closeButton.isHidden = true
         var y = headerBottom

@@ -16,9 +16,12 @@ import AppKit
 enum TaskExport {
     enum Span: Int, CaseIterable {
         case today, week, month, lastMonth, all
+        case yesterday // appended: existing exported range preferences retain their IDs
+        static let allCases: [Self] = [.today, .yesterday, .week, .month, .lastMonth, .all]
         var title: String {
             switch self {
             case .today: return "Today"
+            case .yesterday: return "Yesterday"
             case .week: return "Last 7 days"
             case .month: return "This month"
             case .lastMonth: return "Last month"
@@ -33,6 +36,7 @@ enum TaskExport {
             let thisMonth = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? today
             switch self {
             case .today: return (today, tomorrow)
+            case .yesterday: return (cal.date(byAdding: .day, value: -1, to: today) ?? today, today)
             case .week: return (cal.date(byAdding: .day, value: -6, to: today) ?? today, tomorrow)
             case .month: return (thisMonth, tomorrow)
             case .lastMonth: return (cal.date(byAdding: .month, value: -1, to: thisMonth) ?? thisMonth, thisMonth)
@@ -227,11 +231,13 @@ enum TaskExport {
     static func fileName(_ span: Span, _ format: Format, project: String? = nil, now: Date, calendar: Calendar = .current) -> String {
         let f = DateFormatter()
         f.calendar = calendar
+        f.timeZone = calendar.timeZone
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         let tag: String
         switch span {
         case .today: tag = f.string(from: now)
+        case .yesterday: tag = f.string(from: calendar.date(byAdding: .day, value: -1, to: now) ?? now)
         case .week: tag = f.string(from: calendar.date(byAdding: .day, value: -6, to: now) ?? now) + " to " + f.string(from: now)
         case .month: f.dateFormat = "yyyy-MM"; tag = f.string(from: now)
         case .lastMonth: f.dateFormat = "yyyy-MM"; tag = f.string(from: calendar.date(byAdding: .month, value: -1, to: now) ?? now)

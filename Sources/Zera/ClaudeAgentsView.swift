@@ -22,7 +22,8 @@ final class ClaudeAgentsView: NSView, @preconcurrency CardContent {
     private var ids: [String] = []
     private var approval: ClaudeAgentService.Approval?
     override var isFlipped: Bool { true }
-    init(service: ClaudeAgentService = .shared) {
+    convenience init() { self.init(service: .shared) }
+    init(service: ClaudeAgentService) {
         self.service = service
         super.init(frame: .zero)
         heading.font = Typo.screenTitle; heading.textColor = Pal.text

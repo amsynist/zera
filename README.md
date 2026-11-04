@@ -37,6 +37,12 @@ Window arrangements are opt-in and need **Accessibility** access. Optional visua
 
 <img src="site/assets/v2/screens/window-manager.webp" alt="Three disposable native demo windows arranged by Zera’s production layout engine" width="100%">
 
+### Settle back into your work
+
+Settings is one click from the notch hover controls. **Remember Last Screen** is enabled by default: returning to the notch restores your screen, filters and timesheet range, including Yesterday. Turn it off in Settings → General to use the default landing behavior. Timesheet export now stays inside the shared island, with Back to Tasks.
+
+First-run setup guides optional Accessibility, speech and model access. **Settings → Permissions & Diagnostics** is the single repair area; Screen Recording is needed only for optional window image transitions. Murmur and Apple speech are explicit provider choices. Dictation stays bound to the original editable field and avoids secure input; unsupported or changed fields leave a recoverable transcript in Diagnostics without replacing your clipboard.
+
 ### Voice, focus and everyday tools
 
 Hold right **⌥ or ⇧** to dictate with the configured provider. Optional **Murmur** uses an on-device Whisper model after its one-time download. The first use asks for the relevant microphone/speech permissions. Tasks, the focus orb, commit-based timesheets, reminders, water breaks, clipboard history, now playing, weather and optional window layouts round out the day. Some integrations require separate access or setup.

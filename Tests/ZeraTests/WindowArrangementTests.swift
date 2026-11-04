@@ -150,12 +150,12 @@ final class WindowArrangementTests: XCTestCase {
     }
     func testUsableAreaRespectsNotchDockAndNegativeExternalOrigins() {
         let screen = ArrangeDisplay(id: "main", name: "Main", frame: CGRect(x: 0, y: 0, width: 1512, height: 982), visible: CGRect(x: 0, y: 38, width: 1512, height: 880), main: true)
-        XCTAssertEqual(screen.area, CGRect(x: 20, y: 55, width: 1472, height: 863))
+        XCTAssertEqual(screen.area, CGRect(x: 8, y: 46, width: 1496, height: 864))
         let external = ArrangeDisplay(id: "ext", name: "External", frame: CGRect(x: -1920, y: -100, width: 1920, height: 1080), visible: CGRect(x: -1880, y: -75, width: 1880, height: 1055), main: false)
-        XCTAssertEqual(external.area.minX, -1880)
-        XCTAssertEqual(external.area.minY, -45)
-        XCTAssertEqual(external.area.maxX, -20)
-        XCTAssertEqual(external.area.maxY, 970)
+        XCTAssertEqual(external.area.minX, -1872)
+        XCTAssertEqual(external.area.minY, -67)
+        XCTAssertEqual(external.area.maxX, -8)
+        XCTAssertEqual(external.area.maxY, 972)
     }
     func testMinimumSizesRejectOvercrowdingWithoutOverlapping() {
         let area = CGRect(x: 0, y: 0, width: 1200, height: 800)

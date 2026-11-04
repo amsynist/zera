@@ -223,7 +223,13 @@ final class AppOpener: NSObject, NSWindowDelegate {
         let id = presentationID
         view?.toss(app) { [weak self] in
             guard let self = self, self.isOpen, self.presentationID == id else { return }
-            NSWorkspace.shared.openApplication(at: app.url, configuration: NSWorkspace.OpenConfiguration())
+            if let running = ApplicationActivation.running(at: app.url) {
+                if !ApplicationActivation.activate(running) { self.onNotice?("The app couldn’t be activated") }
+            } else {
+                NSWorkspace.shared.openApplication(at: app.url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+                    if error != nil { DispatchQueue.main.async { self?.onNotice?("The app couldn’t be opened") } }
+                }
+            }
             self.close()
             self.onLaunched?(app)
         }

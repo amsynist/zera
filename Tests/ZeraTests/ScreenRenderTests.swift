@@ -91,6 +91,42 @@ final class ScreenRenderTests: XCTestCase {
 
     // MARK: Renders
 
+    func testRenderProductionSetupAndExport() throws {
+        guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else { throw XCTSkip("use a disposable home") }
+        let done = OnboardingState.done, step = OnboardingState.step
+        defer { OnboardingState.done = done; OnboardingState.step = step }
+        for i in 0...4 {
+            OnboardingState.done = false; OnboardingState.step = i
+            let controller = OnboardingWindowController()
+            let view = try XCTUnwrap(controller.window?.contentView)
+            controller.window?.contentView = nil
+            shot(view, "production-onboarding-\(i)")
+        }
+        let store = sampleTasks()
+        let export = TaskExportView(store: store)
+        export.span = .yesterday
+        island(TaskExportCard(view: export), tab: .tasks, "production-export-yesterday")
+        export.span = .week
+        island(TaskExportCard(view: export), tab: .tasks, "production-export-week")
+        for style in HoverMenuStyle.allCases {
+            let hover = IslandView(frame: NSRect(x: 0, y: 0, width: 1000, height: 620))
+            hover.centerX = 500; hover.band = 34; hover.notchWidth = 190; hover.hoverStyle = style
+            hover.peek()
+            shot(hover, "production-hover-\(style)")
+        }
+        let speechModel = MurmurIntroController()
+        let modelView = try XCTUnwrap(speechModel.window?.contentView)
+        speechModel.window?.contentView = nil
+        shot(modelView, "production-speech-model")
+        let arrangements = WindowArrangementView()
+        func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + descendants($0) } }
+        let pages = try XCTUnwrap(descendants(arrangements).compactMap { $0 as? PillTabs }.first)
+        for page in 0...2 {
+            pages.onSelect?(page)
+            island(arrangements, tab: .home, "production-arrange-\(page)")
+        }
+    }
+
     /// Opt-in native audit of newer destinations and every settings pane. Uses a disposable
     /// home like the existing screen renders; no captures are produced by ordinary test runs.
     func testRenderRedesignInventory() throws {

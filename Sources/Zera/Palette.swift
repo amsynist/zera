@@ -350,6 +350,11 @@ extension Palette {
     /// The sliding pill inside a segmented control: one step up from the track, with a soft
     /// accent edge and a little depth.
     func drawSegmentIndicator(_ path: NSBezierPath) {
+        // A segment can redraw between removal and its next layout pass. AppKit's
+        // `bounds` raises an Objective-C exception for an empty path (not CGRect.zero).
+        guard path.elementCount > 0 else { return }
+        let b = path.bounds
+        guard b.width > 0, b.height > 0, b.width.isFinite, b.height.isFinite else { return }
         // v2: one step up from the track, with a hairline of light along its top edge.
         NSGraphicsContext.saveGraphicsState()
         let depth = NSShadow()
@@ -361,7 +366,6 @@ extension Palette {
         NSGraphicsContext.restoreGraphicsState()
         NSGraphicsContext.saveGraphicsState()
         path.addClip()
-        let b = path.bounds
         let flipped = NSGraphicsContext.current?.isFlipped ?? false
         NSColor.white.withAlphaComponent(0.08).setFill()
         NSRect(x: b.minX, y: flipped ? b.minY : b.maxY - 1, width: b.width, height: 1).fill()

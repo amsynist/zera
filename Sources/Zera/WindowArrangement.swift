@@ -8,7 +8,9 @@ struct ArrangeDisplay: Equatable {
     var frame: CGRect
     var visible: CGRect
     var main: Bool
-    var area: CGRect { frame.insetBy(dx: 20, dy: 0).intersection(visible).intersection(CGRect(x: frame.minX, y: frame.minY + 55, width: frame.width, height: max(0, frame.height - 65))) }
+    /// `visible` already excludes the menu bar and Dock in global AX points. Never
+    /// subtract guessed title-bar, notch or backing-pixel dimensions a second time.
+    var area: CGRect { frame.intersection(visible).insetBy(dx: 8, dy: 8) }
     static func current() -> [Self] {
         let top = NSScreen.screens.first?.frame.maxY ?? 0
         return NSScreen.screens.enumerated().map { index, screen in
@@ -294,24 +296,30 @@ enum ArrangeTransaction {
     static func apply(windows: [ArrangeWindow], active: Set<Int>, frames: [String: CGRect],
                       read: (String) -> (CGRect, Bool)?, setFrame: (String, CGRect) -> CGRect?,
                       setMinimized: (String, Bool) -> Bool,
-                      animate: (([String: CGRect]) -> String?)? = nil) -> String? {
+                      animate: (([String: CGRect]) -> String?)? = nil,
+                      isCurrent: () -> Bool = { true }) -> String? {
+        let changedDesktop = "Desktop or access changed. Refresh before arranging again."
         var before: [(String, CGRect, Bool)] = []
         for window in windows {
+            guard isCurrent() else { return changedDesktop }
             guard let (frame, minimized) = read(window.id) else { return "A window closed. Refresh and try again." }
             before.append((window.id, frame, minimized))
         }
         var failure: String?
         for window in windows {
+            guard isCurrent() else { return changedDesktop }
             let hide = !active.contains(window.workspace)
             guard let (_, minimized) = read(window.id) else { failure = "A window closed during the arrangement."; break }
             if hide != minimized, !setMinimized(window.id, hide) { failure = "\(window.app) refused to switch workspace."; break }
         }
         if failure == nil, let animate {
+            guard isCurrent() else { return changedDesktop }
             let visible = Set(windows.filter { active.contains($0.workspace) }.map(\.id))
             failure = animate(frames.filter { visible.contains($0.key) })
         }
         if failure == nil {
             for window in windows where active.contains(window.workspace) {
+                guard isCurrent() else { return changedDesktop }
                 guard let target = frames[window.id] else { continue }
                 guard let actual = setFrame(window.id, target), ArrangeGeometry.near(actual, target) else {
                     failure = "\(window.app) needs a larger tile or refused resizing. Try fewer windows or distribute them."; break
@@ -320,6 +328,7 @@ enum ArrangeTransaction {
         }
         if failure == nil {
             for window in windows where active.contains(window.workspace) {
+                guard isCurrent() else { return changedDesktop }
                 guard let target = frames[window.id] else { continue }
                 guard let (actual, _) = read(window.id), ArrangeGeometry.near(actual, target) else {
                     failure = "\(window.app) changed size while arranging."; break
@@ -329,6 +338,9 @@ enum ArrangeTransaction {
         guard let failure else { return nil }
         var restored = true
         for (id, frame, minimized) in before {
+            // Restoring coordinates on a different native desktop would itself be an
+            // unsolicited move. The recovery journal retains parked-window ownership.
+            guard isCurrent() else { return changedDesktop }
             if !setMinimized(id, false) { restored = false }
             if let actual = setFrame(id, frame) { if !ArrangeGeometry.near(actual, frame) { restored = false } }
             else { restored = false }
@@ -336,6 +348,16 @@ enum ArrangeTransaction {
         }
         return failure + (restored ? " Previous positions restored." : " Some windows could not be restored; check their app.")
     }
+}
+
+/// A command must stop writing as soon as a native Space or display changes, including
+/// while its serial AX queue is blocked inside another application's messaging timeout.
+final class ArrangeOperationEpoch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    func invalidate() { lock.lock(); value += 1; lock.unlock() }
+    func ticket() -> Int { lock.lock(); defer { lock.unlock() }; return value }
+    func matches(_ ticket: Int) -> Bool { lock.lock(); defer { lock.unlock() }; return value == ticket }
 }
 
 /// One deferred user action, never an unbounded backlog of window mutations.

@@ -48,7 +48,7 @@ final class WindowArrangementView: NSView, @preconcurrency CardContent {
     private let pages = PillTabs(titles: ["Layouts", "Workspaces", "Shortcuts"])
     private let scroll = NSScrollView(), body = FlippedView(), footer = FlippedView()
     private var actions: [ObjectIdentifier: () -> Void] = [:]
-    private var page = 0, selected: ArrangeLayout = .grid
+    private var page = min(2, max(0, NotchNavigation.shared.integer("arrange.page"))), selected: ArrangeLayout = .grid
     private var lastEngineLayout: ArrangeLayout = .grid
     private var bodyHeight: CGFloat = 0
     private var contentWidth: CGFloat = 0
@@ -56,6 +56,7 @@ final class WindowArrangementView: NSView, @preconcurrency CardContent {
     private var lastSettings: Data?
     private var lastState = ""
     private var observer: NSObjectProtocol?
+    var onOpenPermissions: (() -> Void)?
     private var recorders: [ShortcutRecorder] = []
     private var previews: [ArrangePreview] = []
     var onHeightChange: (() -> Void)?
@@ -76,7 +77,7 @@ final class WindowArrangementView: NSView, @preconcurrency CardContent {
         pages.onSelect = { [weak self] index in
             guard let self else { return }
             self.recorders.forEach { $0.cancelRecording() }
-            self.page = index; self.lastState = ""
+            self.page = index; NotchNavigation.shared.set(index, for: "arrange.page"); self.lastState = ""
             self.scroll.contentView.scroll(to: .zero); self.reload()
         }
         scroll.documentView = body; scroll.drawsBackground = false; scroll.hasVerticalScroller = true
@@ -112,7 +113,7 @@ final class WindowArrangementView: NSView, @preconcurrency CardContent {
             text("Switch window groups together without sending windows through the Dock. Windows return when you switch back or turn this off. Your ⌘W, ⌘M and ⌘1–9 bindings override the usual app shortcuts while enabled.", height: 52)
         }
         if !AXIsProcessTrusted() {
-            let b = button("Allow Accessibility…") { [weak self] in self?.service.requestAccess() }
+            let b = button("Permissions & Diagnostics…") { [weak self] in self?.onOpenPermissions?() }
             b.frame = CGRect(x: 0, y: y, width: 200, height: Metrics.control); y += Metrics.control + Space.m
         }
         switch page {
@@ -139,7 +140,7 @@ final class WindowArrangementView: NSView, @preconcurrency CardContent {
             text("Visual transitions", height: 28, strong: true)
             text("Animate temporary window images for smoother movement. Live content pauses briefly; images stay in memory.", height: 40)
             if visual.isOn && !service.hasVisualAccess {
-                let access = button("Allow Screen Recording…") { [weak self] in self?.service.requestVisualAccess() }
+                let access = button("Permissions & Diagnostics…") { [weak self] in self?.onOpenPermissions?() }
                 access.frame = CGRect(x: 0, y: y, width: 232, height: Metrics.control); y += Metrics.control + Space.m
             }
             let count = service.currentWindows.count, members = service.currentWindows

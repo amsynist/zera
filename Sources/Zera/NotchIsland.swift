@@ -49,6 +49,7 @@ enum Isle {
     /// Which tab lights up for a screen that has none of its own.
     static func tab(for kind: CardKind) -> CardKind {
         switch kind {
+        case .taskExport: return .tasks
         case .result, .phoneTransfer: return .shelf
         case .approval: return .claude
         case .reminderAlert: return .reminders
@@ -89,7 +90,7 @@ enum Isle {
         case .clipboard: return "hang_upsidedown"
         case .tasks, .focus: return "hang_smile"
         case .alerts: return "hang_peek"
-        case .teleprompter, .arrange: return "hang_think"
+        case .teleprompter, .arrange, .taskExport: return "hang_think"
         }
     }
 }
@@ -506,7 +507,7 @@ final class IslandView: NSView {
     var captionObstacles: [NSRect] {
         guard mode == .peek else { return [islandRect] }
         let root = NSRect(x: centerX - notchWidth / 2, y: 0, width: notchWidth, height: band)
-        return [root] + tabs.indices.map { bloomFrame($0) } + [bloomSearchFrame]
+        return [root, settingsButton.frame] + tabs.indices.map { bloomFrame($0) } + [bloomSearchFrame]
     }
 
     /// Everything the pointer can be over while she's bloomed (or the island's shape otherwise).
@@ -514,7 +515,7 @@ final class IslandView: NSView {
         guard mode == .peek else { return islandRect }
         var r = islandRect
         for i in tabs.indices { r = r.union(bloomFrame(i)) }
-        return r.union(bloomSearchFrame)
+        return r.union(bloomSearchFrame).union(settingsButton.frame)
     }
 
     /// Glides the nodes to where the mode wants them: out round her (peek), or into the rail.
@@ -603,12 +604,18 @@ final class IslandView: NSView {
     private func layoutClose() {
         let w = nodeSize, h = nodeSize, gap = Isle.nodeGap
         _ = (w, h, gap)
-        let cs: CGFloat = 24
+        let cs: CGFloat = 28
         closeButton.frame = NSRect(x: islandRect.maxX - 16 - cs, y: ((band - cs) / 2).rounded(), width: cs, height: cs)
         // Banners carry their own dismiss; the island's ✕ is for lenses.
         closeButton.isHidden = mode != .open || content is TimedNotificationBanner
-        settingsButton.frame = NSRect(x: closeButton.frame.minX - Space.s - cs, y: closeButton.frame.minY, width: cs, height: cs)
-        settingsButton.isHidden = closeButton.isHidden || activeTab == nil
+        if mode == .peek {
+            // Keep the utility action below the hardware cutout, clear of every hover style.
+            settingsButton.frame = NSRect(x: barPeek ? centerX + barWidth / 2 - 44 : centerX + notchWidth / 2 + Space.s,
+                                          y: band + Space.s, width: cs, height: cs)
+        } else {
+            settingsButton.frame = NSRect(x: closeButton.frame.minX - Space.s - cs, y: max(0, closeButton.frame.minY), width: cs, height: cs)
+        }
+        settingsButton.isHidden = mode == .closed || content is TimedNotificationBanner
         tabIndicator.frame = bounds
         tabIndicator.needsDisplay = true
     }
@@ -624,7 +631,7 @@ final class IslandView: NSView {
             ctx.duration = Motion.duration(visible ? 0.22 : 0.12)
             tabs.forEach { $0.animator().alphaValue = visible ? 1 : 0 }
             closeButton.animator().alphaValue = visible && mode == .open ? 1 : 0
-            settingsButton.animator().alphaValue = visible && mode == .open ? 1 : 0
+            settingsButton.animator().alphaValue = visible ? 1 : 0
             searchNode.animator().alphaValue = visible && mode == .peek ? 1 : 0
             tabIndicator.animator().alphaValue = visible ? 1 : 0
         }
@@ -839,7 +846,7 @@ final class IslandView: NSView {
         } else if islandRect.insetBy(dx: -2, dy: -2).contains(p) { return true }
         // Bloomed: the nodes and the search node take clicks; the gaps between them don't.
         guard mode == .peek else { return false }
-        return tabs.contains { $0.frame.contains(p) } || (!searchNode.isHidden && searchNode.alphaValue > 0 && searchNode.frame.contains(p))
+        return (!settingsButton.isHidden && settingsButton.frame.contains(p)) || tabs.contains { $0.frame.contains(p) } || (!searchNode.isHidden && searchNode.alphaValue > 0 && searchNode.frame.contains(p))
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {

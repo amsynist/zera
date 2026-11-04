@@ -136,7 +136,7 @@ final class TaskStore {
         ]
     }
 
-    deinit { sleepObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) } }
+    deinit { timer?.invalidate(); sleepObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) } }
     private var sleepObservers: [NSObjectProtocol] = []
 
     // MARK: Sleep
@@ -507,9 +507,8 @@ final class TaskStore {
         links = (saved.links ?? [:]).filter { projects.contains($0.key) }
         // A session that was running when Zera quit stays paused; the time up to its last fold is kept.
         focusID = saved.focus
-        // Keep the list short: finished tasks older than 90 days go (export them first if you need them).
-        let cutoff = now().addingTimeInterval(-90 * 86_400)
-        tasks.removeAll { ($0.doneAt ?? .distantFuture) < cutoff }
+        // History is user data. Loading an update must not silently delete completed
+        // tasks or timesheet logs; explicit task/project deletion owns that decision.
     }
 
     /// Writes go here in order; the file (every commit hash of every linked repo) is not small,

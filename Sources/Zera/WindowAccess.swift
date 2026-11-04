@@ -55,7 +55,7 @@ struct ArrangeRefreshRequests {
 /// Used exclusively on WindowArrangementService.queue. No AX round trip runs on the UI thread.
 final class ArrangeWindowAccess: @unchecked Sendable {
     // Mutable AX state is confined to the service serial queue. onEvent is set once before use.
-    struct Entry { var element: AXUIElement; var window: ArrangeWindow }
+    struct Entry { var element: AXUIElement; var window: ArrangeWindow; var serverID: CGWindowID? }
     private var entries: [String: Entry] = [:]
     private var serial = 0
     private(set) var hidden: Set<String> = []
@@ -87,16 +87,17 @@ final class ArrangeWindowAccess: @unchecked Sendable {
         var yes = DarwinBoolean(false)
         return AXUIElementIsAttributeSettable(element, key as CFString, &yes) == .success && yes.boolValue
     }
-    func scan(apps: [ArrangeApplication], frontPID: pid_t?, recovery: Bool = false, affectedPIDs: Set<pid_t>? = nil, displays: [CGRect] = [], activatingPID: pid_t? = nil) -> (windows: [ArrangeWindow], focused: String?) {
+    func scan(apps: [ArrangeApplication], frontPID: pid_t?, recovery: Bool = false, affectedPIDs: Set<pid_t>? = nil, displays: [CGRect] = [], activatingPID: pid_t? = nil) -> (windows: [ArrangeWindow], focused: String?, knownIDs: Set<String>) {
         if !displays.isEmpty { screenFrames = displays }
         let began = ProcessInfo.processInfo.systemUptime
-        var visible: [pid_t: [CGRect]] = [:]
+        var visible: [pid_t: [(id: CGWindowID, frame: CGRect)]] = [:]
         for item in CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? [] {
             guard (item[kCGWindowLayer as String] as? Int) == 0, let pid = item[kCGWindowOwnerPID as String] as? Int32,
                   let bounds = item[kCGWindowBounds as String] as? NSDictionary, let frame = CGRect(dictionaryRepresentation: bounds) else { continue }
-            visible[pid, default: []].append(frame)
+            guard let number = item[kCGWindowNumber as String] as? NSNumber else { continue }
+            visible[pid, default: []].append((number.uint32Value, frame))
         }
-        var result: [ArrangeWindow] = [], focused: String?, retained: Set<String> = []
+        var result: [ArrangeWindow] = [], focused: String?, retained: Set<String> = [], known: Set<String> = []
         for app in apps where affectedPIDs?.contains(app.pid) ?? true {
             let root = AXUIElementCreateApplication(app.pid)
             AXUIElementSetMessagingTimeout(root, 0.15)
@@ -105,16 +106,22 @@ final class ArrangeWindowAccess: @unchecked Sendable {
             }
             let focusedElement = app.pid == frontPID ? value(root, kAXFocusedWindowAttribute) : nil
             for element in windows.prefix(64) {
+                let existing = entries.first { $0.value.window.pid == app.pid && CFEqual($0.value.element, element) }?.key
+                if let existing { known.insert(existing) }
                 // Messaging timeouts apply to this exact object, not its application root.
                 AXUIElementSetMessagingTimeout(element, 0.15)
                 let attributes = values(element, [kAXSubroleAttribute, "AXFullScreen", kAXPositionAttribute, kAXSizeAttribute, kAXMinimizedAttribute, kAXTitleAttribute])
                 guard (attributes[0] as? String) == kAXStandardWindowSubrole,
                       (attributes[1] as? NSNumber)?.boolValue != true, let frame = ArrangeAXRead.frame(attributes[2], attributes[3]),
                       settable(element, kAXSizeAttribute), settable(element, kAXPositionAttribute), settable(element, kAXMinimizedAttribute) else { continue }
-                let existing = entries.first { $0.value.window.pid == app.pid && CFEqual($0.value.element, element) }?.key
                 let minimized = (attributes[4] as? NSNumber)?.boolValue ?? false
                 let owned = existing.map { hidden.contains($0) } ?? false
-                let isOnScreen = visible[app.pid]?.contains { ArrangeGeometry.near($0, frame, tolerance: 6) } ?? false
+                let matches = (visible[app.pid] ?? []).filter { ArrangeGeometry.near($0.frame, frame, tolerance: 6) }
+                // Bind an unambiguous public WindowServer ID when first discovered.
+                // Bounds metadata may trail an AX write; retain identity instead of
+                // dropping and re-adopting a successfully resized window as a new one.
+                let serverID = existing.flatMap { entries[$0]?.serverID } ?? (matches.count == 1 ? matches.first?.id : nil)
+                let isOnScreen = serverID.map { id in visible[app.pid]?.contains { $0.id == id } ?? false } ?? !matches.isEmpty
                 // Do not adopt user-minimized windows or documents on another native Space.
                 guard owned || (recovery && (minimized || ArrangeParking.accepts(frame, displays: screenFrames))) || (!minimized && isOnScreen) else { continue }
                 serial += existing == nil ? 1 : 0
@@ -123,21 +130,26 @@ final class ArrangeWindowAccess: @unchecked Sendable {
                 let previous = existing.flatMap { entries[$0]?.window }
                 let window = ArrangeWindow(id: id, app: app.name, bundle: app.bundle, title: title, pid: app.pid,
                     frame: owned ? journal[id]?.frame ?? frame : frame, workspace: previous?.workspace ?? 1, minimized: owned || minimized, minimum: previous?.minimum ?? CGSize(width: 240, height: 160))
-                entries[id] = .init(element: element, window: window); result.append(window); retained.insert(id)
+                entries[id] = .init(element: element, window: window, serverID: serverID); result.append(window); retained.insert(id)
                 if let focus = focusedElement, CFEqual(focus, element),
                    !owned || activatingPID == app.pid || (journal[id]?.parkedFrame != nil && !ArrangeParking.accepts(frame, displays: screenFrames)) { focused = id }
             }
         }
         var journalChanged = false
-        for id in Set(entries.keys).subtracting(retained) {
+        for id in Set(entries.keys).subtracting(retained.union(known)) {
             if let affectedPIDs, let entry = entries[id], !affectedPIDs.contains(entry.window.pid) { continue }
-            if hidden.contains(id), let entry = entries[id], apps.contains(where: { $0.pid == entry.window.pid }) {
+            if let entry = entries[id], apps.contains(where: { $0.pid == entry.window.pid }) {
                 var value: CFTypeRef?
                 let error = AXUIElementCopyAttributeValue(entry.element, kAXPositionAttribute as CFString, &value)
                 // A sleeping/unresponsive app can briefly report no windows. Keep ownership
                 // until it explicitly invalidates the element or terminates.
                 if error != .invalidUIElement {
-                    var window = entry.window; window.minimized = true; result.append(window); continue
+                    if hidden.contains(id) {
+                        var window = entry.window; window.minimized = true; result.append(window)
+                    }
+                    // Minimized, hidden, full-screen and other-Space windows keep their
+                    // identity metadata, but never become frame-write targets here.
+                    continue
                 }
             }
             entries[id] = nil; hidden.remove(id); observedWindows.remove(id)
@@ -145,7 +157,7 @@ final class ArrangeWindowAccess: @unchecked Sendable {
         }
         if journalChanged { saveJournal() }
         Diag.log("arrange scan: \(affectedPIDs == nil ? "full" : "scoped"), \(apps.filter { affectedPIDs?.contains($0.pid) ?? true }.count) apps, \(result.count) windows, \(Int((ProcessInfo.processInfo.systemUptime - began) * 1000)) ms")
-        return (result, focused)
+        return (result, focused, Set(entries.keys))
     }
     func watch(apps: [ArrangeApplication]) {
         let pids = Set(apps.map(\.pid))
@@ -252,7 +264,7 @@ final class ArrangeWindowAccess: @unchecked Sendable {
     }
     /// A short-lived batch, not one animation/timer per app. Use elapsed time so slow
     /// AX clients skip missed samples rather than accumulating delayed frames.
-    private func animateFrames(_ targets: [String: CGRect]) -> String? {
+    private func animateFrames(_ targets: [String: CGRect], isCurrent: () -> Bool) -> String? {
         guard !targets.isEmpty, targets.count <= 12 else { return nil }
         var starts: [String: CGRect] = [:]
         for id in targets.keys {
@@ -263,10 +275,12 @@ final class ArrangeWindowAccess: @unchecked Sendable {
         let ids = starts.keys.sorted(), began = ProcessInfo.processInfo.systemUptime
         var previous = starts, ticks = 0
         animation: while true {
+            guard isCurrent() else { return "Desktop changed during window motion" }
             let tick = ProcessInfo.processInfo.systemUptime
             let progress = CGFloat((tick - began) / ArrangeMotion.duration)
             if progress >= 1 { break }
             for id in ids {
+                guard isCurrent() else { return "Desktop changed during window motion" }
                 if ProcessInfo.processInfo.systemUptime - began >= ArrangeMotion.duration { break animation }
                 guard let element = entries[id]?.element else { return "A window closed while moving." }
                 let frame = ArrangeMotion.frame(from: starts[id]!, to: targets[id]!, progress: progress)
@@ -289,17 +303,26 @@ final class ArrangeWindowAccess: @unchecked Sendable {
         return nil
     }
     /// A refused or clamped layout restores every touched window, including minimize state.
-    func apply(windows: [ArrangeWindow], active: Set<Int>, frames: [String: CGRect], assistiveTechnologyActive: Bool, animated: Bool) -> String? {
-        var restore: [AXUIElement] = []
-        if !assistiveTechnologyActive, !frames.isEmpty {
-            for pid in Set(windows.map(\.pid)) {
-                let root = AXUIElementCreateApplication(pid); AXUIElementSetMessagingTimeout(root, 0.15)
-                if (value(root, "AXEnhancedUserInterface") as? NSNumber)?.boolValue == true,
-                   AXUIElementSetAttributeValue(root, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse) == .success { restore.append(root) }
-            }
+    func apply(windows: [ArrangeWindow], active: Set<Int>, frames: [String: CGRect], assistiveTechnologyActive: Bool, animated: Bool,
+               isCurrent: @escaping () -> Bool = { true }) -> String? {
+        let valid = { isCurrent() && AXIsProcessTrusted() }
+        guard valid() else { return "Accessibility or desktop changed; refresh before arranging" }
+        // Revalidate live geometry immediately before a transaction. Cached windows may
+        // have moved to another Space, entered full screen, or been minimized since scan.
+        let visible = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        for window in windows where !hidden.contains(window.id) {
+            guard let entry = entries[window.id], !flag(entry.element, "AXFullScreen"),
+                  !flag(entry.element, kAXMinimizedAttribute), let current = rect(entry.element),
+                  visible.contains(where: { info in
+                      guard (info[kCGWindowOwnerPID as String] as? pid_t) == window.pid,
+                            (info[kCGWindowLayer as String] as? Int) == 0,
+                            let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                            let frame = CGRect(dictionaryRepresentation: bounds) else { return false }
+                      if let serverID = entry.serverID { return (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value == serverID }
+                      return ArrangeGeometry.near(frame, current, tolerance: 6)
+                  }) else { return "A window left this desktop or changed state. Refresh and try again." }
         }
-        defer { for root in restore { _ = AXUIElementSetAttributeValue(root, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue) } }
-        let animation: (([String: CGRect]) -> String?)? = animated && !assistiveTechnologyActive ? { self.animateFrames($0) } : nil
+        let animation: (([String: CGRect]) -> String?)? = animated && !assistiveTechnologyActive ? { self.animateFrames($0, isCurrent: valid) } : nil
         return ArrangeTransaction.apply(windows: windows, active: active, frames: frames, read: { id in
             guard let e = self.entries[id]?.element else { return nil }
             let attributes = self.values(e, [kAXPositionAttribute, kAXSizeAttribute, kAXMinimizedAttribute])
@@ -307,7 +330,7 @@ final class ArrangeWindowAccess: @unchecked Sendable {
             return (self.hidden.contains(id) ? self.journal[id]?.frame ?? frame : frame,
                     self.hidden.contains(id) || (attributes[2] as? NSNumber)?.boolValue == true)
         }, setFrame: { self.writeFrame($0, $1)
-        }, setMinimized: { self.minimize($0, $1, restoreFrame: frames[$0]) }, animate: animation)
+        }, setMinimized: { self.minimize($0, $1, restoreFrame: frames[$0]) }, animate: animation, isCurrent: valid)
     }
     func restoreHidden() -> Int {
         var remaining = 0

@@ -1000,7 +1000,7 @@ final class DropFilesView: NSView, CardContent {
     /// Called each time the card is shown: tapping Zera opens just Drop Files; a fresh drop or
     /// an answer that finished while the card was closed opens the full workspace.
     func willShow() {
-        expanded = pendingExpand && selectedPath != nil
+        if !NotchNavigation.shared.remembersScreen || pendingExpand { expanded = pendingExpand && selectedPath != nil }
         pendingExpand = false
         if freshTab { FreshFiles.shared.start() }
         reload()
