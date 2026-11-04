@@ -58,7 +58,9 @@ jobs:
           swift --version
 
       - name: Test
-        run: swift test
+        run: |
+          echo "::add-matcher::.github/swift-problem-matcher.json"
+          swift test
 
       - name: Import signing certificate
         if: env.CODESIGN_IDENTITY != ''

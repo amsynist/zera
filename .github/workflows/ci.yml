@@ -32,7 +32,9 @@ jobs:
         run: node scripts/check-site.mjs
 
       - name: Test
-        run: swift test
+        run: |
+          echo "::add-matcher::.github/swift-problem-matcher.json"
+          swift test
 
       - name: Android receiver package tests
         run: swift test --package-path Packages/AndropKit
