@@ -1468,7 +1468,7 @@ final class ZeraController: NSObject {
         }
         SecureInputWatch.shared.onNotice = { text in
             MainActor.assumeIsolated {
-                CommandEcho.shared.present(EchoContent(symbol: "lock.fill", keys: "", text: "Keyboard hidden", detail: text,
+                _ = CommandEcho.shared.present(EchoContent(symbol: "lock.fill", keys: "", text: "Keyboard hidden", detail: text,
                                                        tint: NSColor(srgbRed: 1, green: 0.7, blue: 0.28, alpha: 1)), hold: 4)
             }
         }
@@ -1476,7 +1476,7 @@ final class ZeraController: NSObject {
         Diag.log("launch: dictation \(Dictation.shared.enabled) key \(Dictation.shared.trigger.title), echo \(MainActor.assumeIsolated { CommandEcho.shared.isEnabled }), accessibility \(AXIsProcessTrusted()), murmur \(Murmur.shared.state.summary)")
         dictation.onDone = { status in
             MainActor.assumeIsolated {
-                CommandEcho.shared.present(EchoContent(symbol: "text.cursor", keys: "", text: "Dictation", detail: status), hold: 1.6)
+                _ = CommandEcho.shared.present(EchoContent(symbol: "text.cursor", keys: "", text: "Dictation", detail: status), hold: 1.6)
             }
         }
 
