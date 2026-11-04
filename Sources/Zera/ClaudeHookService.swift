@@ -137,6 +137,14 @@ final class ClaudeHookService {
     }
 
     private static func parse(id: String, json: [String: Any]) -> HookRequest {
+        // Cursor's beforeShellExecution payload, queued by Zera's Cursor approval hook.
+        if json["tool_name"] == nil, let command = json["command"] as? String {
+            let roots = json["workspace_roots"] as? [String] ?? []
+            return HookRequest(id: id, receivedAt: queuedAt(id: id) ?? Date(),
+                               sessionID: "cursor:" + (json["conversation_id"] as? String ?? ""),
+                               toolName: "Cursor", command: command, detail: "Cursor's agent wants to run this",
+                               cwd: json["cwd"] as? String ?? roots.first ?? "")
+        }
         let tool = json["tool_name"] as? String ?? "Tool"
         let input = json["tool_input"] as? [String: Any] ?? [:]
         var command = ""
@@ -170,28 +178,34 @@ final class ClaudeHookService {
     static let decisionLockout: TimeInterval = 0.6
     private var lastDecisionAt = Date.distantPast
     private var answered: Set<String> = []
+    private(set) var lastResponseError: String?
 
     /// False when nothing was written: the request was already answered, or another decision
     /// went out a moment ago.
     @discardableResult
     func respond(_ req: HookRequest, allow: Bool) -> Bool {
         let now = Date()
-        guard !answered.contains(req.id), now.timeIntervalSince(lastDecisionAt) >= Self.decisionLockout else { return false }
-        lastDecisionAt = now
-        answered.insert(req.id)
-        if answered.count > 200 { answered = answered.filter { id in pending.contains { $0.id == id } } }
+        guard pending.contains(where: { $0.id == req.id }),
+              fm.fileExists(atPath: requestsDir.appendingPathComponent(req.id + ".json").path),
+              !answered.contains(req.id), now.timeIntervalSince(lastDecisionAt) >= Self.decisionLockout else { return false }
         let decision: [String: Any] = [
             "hookSpecificOutput": [
                 "hookEventName": "PermissionRequest",
                 "decision": allow ? ["behavior": "allow"] : ["behavior": "deny", "message": "Rejected in Zera"]
             ]
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: decision) {
-            let final = responsesDir.appendingPathComponent(req.id + ".json")
-            let tmp = responsesDir.appendingPathComponent(req.id + ".tmp")
-            try? data.write(to: tmp)
-            try? fm.moveItem(at: tmp, to: final)
+        do {
+            let data = try JSONSerialization.data(withJSONObject: decision)
+            try data.write(to: responsesDir.appendingPathComponent(req.id + ".json"), options: .atomic)
+        } catch {
+            lastResponseError = "Couldn’t send the decision. The request is still waiting; try again."
+            NotificationCenter.default.post(name: Self.changed, object: nil)
+            return false
         }
+        lastResponseError = nil
+        lastDecisionAt = now
+        answered.insert(req.id)
+        if answered.count > 200 { answered = answered.filter { id in pending.contains { $0.id == id } } }
         pending.removeAll { $0.id == req.id }
         answeredCount += 1
         NotificationCenter.default.post(name: Self.changed, object: nil)

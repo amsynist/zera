@@ -1,0 +1,31 @@
+<resources>
+    <style name="Theme.Androp" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#101A1C</item>
+        <item name="android:navigationBarColor">#101A1C</item>
+        <item name="android:windowBackground">#101A1C</item>
+        <item name="colorPrimary">#C4ECDD</item>
+        <item name="colorOnPrimary">#142722</item>
+        <item name="colorSurface">#1B292B</item>
+    </style>
+    <style name="Theme.Androp.Drop" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+    <style name="Androp.Eyebrow" parent="">
+        <item name="android:textSize">10sp</item>
+        <item name="android:textColor">#A9BEB9</item>
+        <item name="android:letterSpacing">0.18</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    <style name="Androp.Body" parent="">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">#B0C0BB</item>
+        <item name="android:lineSpacingExtra">4dp</item>
+    </style>
+</resources>

@@ -16,8 +16,8 @@ final class ThemeTests: XCTestCase {
     }
 
     func testEveryBuiltInThemeSetsEveryColour() {
-        XCTAssertEqual(BuiltInThemes.all.count, 7)
-        XCTAssertEqual(Set(BuiltInThemes.all.map(\.id)).count, 7, "ids are unique")
+        XCTAssertEqual(BuiltInThemes.all.count, 8)
+        XCTAssertEqual(Set(BuiltInThemes.all.map(\.id)).count, 8, "ids are unique")
         for def in BuiltInThemes.all {
             for k in ThemeColors.keys {
                 XCTAssertNotNil(NSColor(themeHex: def.colors[keyPath: k]), "\(def.id) \(k)")

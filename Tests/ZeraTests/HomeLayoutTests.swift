@@ -3,6 +3,16 @@ import XCTest
 @testable import Zera
 
 final class HomeLayoutTests: XCTestCase {
+    func testApprovalActionsAlignBelowNavigation() {
+        let card = ApprovalCard()
+        card.frame.size = NSSize(width: card.cardWidth, height: card.desiredHeight)
+        card.layoutSubtreeIfNeeded()
+        XCTAssertEqual(card.cardWidth, Isle.lensWidth)
+        let buttons = card.subviews.compactMap { $0 as? CardButton }
+        XCTAssertEqual(buttons.count, 2)
+        for button in buttons { XCTAssertEqual(button.frame.minY, ScreenHeader.controlY(Metrics.control)) }
+        XCTAssertFalse(buttons[0].frame.intersects(buttons[1].frame))
+    }
     private func descendants(_ view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants($0) }
     }
@@ -13,7 +23,8 @@ final class HomeLayoutTests: XCTestCase {
             home.setFrameSize(NSSize(width: width, height: Isle.maxContentHeight))
             home.layoutSubtreeIfNeeded()
             let actions = descendants(home).compactMap { $0 as? ActionTile }
-            XCTAssertEqual(actions.count, QuickAction.grid.count)
+            // The grid plus the "More" row (tasks, pull requests, focus, teleprompter, settings).
+            XCTAssertEqual(actions.count, QuickAction.grid.count + QuickAction.more.count)
             let scroll = try XCTUnwrap(home.subviews.compactMap { $0 as? NSScrollView }.first)
             let document = try XCTUnwrap(scroll.documentView)
             XCTAssertLessThanOrEqual(home.desiredHeight, Isle.maxContentHeight)
@@ -53,9 +64,12 @@ final class HomeLayoutTests: XCTestCase {
         XCTAssertFalse(strip.isHidden)
         XCTAssertEqual(strip.frame.minY - vitals.frame.maxY, Space.m, accuracy: 0.5)
         let scroll = try XCTUnwrap(home.subviews.compactMap { $0 as? NSScrollView }.first)
-        // With at most one thing needing you, the quick actions stay in view without scrolling.
+        // The primary quick actions stay visible; the separate More row remains in the scroll document.
         if descendants(home).filter({ $0 is ListRow && !$0.isHidden }).count <= 1 {
-            for action in descendants(home).compactMap({ $0 as? ActionTile }) {
+            let names = Set(QuickAction.grid.map(\.tileTitle))
+            let primary = descendants(home).compactMap { $0 as? ActionTile }.filter { names.contains($0.accessibilityLabel() ?? "") }
+            XCTAssertEqual(primary.count, QuickAction.grid.count)
+            for action in primary {
                 XCTAssertLessThanOrEqual(action.frame.maxY, scroll.contentView.bounds.height + 0.5)
             }
         }

@@ -1,70 +1,66 @@
-# Third-Party Notices — Zera
+# Third-party notices — Zera 2
 
-Inventory of third-party components and content. It is not legal advice; check each licence at its source.
+## Native Mac app
 
-## 1. Packages compiled into Zera
+Zera links WhisperKit 1.1.1 and ArgmaxCore from argmaxinc/WhisperKit for optional on-device dictation. Source: https://github.com/argmaxinc/WhisperKit/tree/v1.1.1. Its MIT license is reproduced below and this notice is included in the app bundle. Models are downloaded separately on request; their model cards and terms apply independently.
 
-**None.** `Package.swift` declares one executable target and one test target with **no package
-dependencies**. There is no `Package.resolved`, and no CocoaPods, Carthage, npm, Python, Go or
-vendored source. Nothing third-party is compiled into the app.
+AndropKit is local project source under this repository’s MIT license. Package.resolved also pins Apple swift-argument-parser 1.8.2 (Apache-2.0), used by WhisperKit’s CLI target; Zera does not link that CLI or ArgumentParser. Source: https://github.com/apple/swift-argument-parser.
 
-| Package | Version | License | Source | Required attribution | Redistribution obligations | Modification requirements | Notice requirements |
-|---|---|---|---|---|---|---|---|
-| *(none)* | — | — | — | — | — | — | — |
+Apple platform frameworks, SF Symbols and system fonts come from the OS/SDK and are not redistributed. SF Symbols are used as app interface glyphs, not as Zera’s identity.
 
-## 2. Platform frameworks (linked, not redistributed)
+## Android companion
 
-These come from Apple's SDK under the Xcode and Apple Developer agreements. Zera links to them and does
-not redistribute them.
+The downloadable debug-signed Androp APK includes the following direct runtime dependencies and their transitives. The exact direct versions are in android/app/build.gradle.kts; dependency source licenses and notices remain applicable.
 
-| Component | Use in Zera | Notes |
-|---|---|---|
-| AppKit, Foundation, EventKit, PDFKit, QuickLook / QuickLookThumbnailing, Security (Keychain), ServiceManagement, CoreText, XCTest | UI, calendar, PDFs, thumbnails, Keychain, login item, tests | System frameworks; no bundled copies |
-| SF Symbols (via `NSImage(systemSymbolName:)`) | UI glyphs | Used through the system API only; not bundled. Apple's SF Symbols terms limit use to app UI on Apple platforms and forbid using them in app icons, logos or trademarks. Zera's app icon is its own art. |
-| System fonts (SF Pro / SF Mono, via `NSFont.systemFont`) | UI text | Not bundled or redistributed. |
-
-## 3. Build and CI tools (not shipped in the app)
-
-| Tool / Action | Version referenced | License | Source | Obligations |
-|---|---|---|---|---|
-| actions/checkout | v4.4.0 (pinned by commit SHA) | MIT | github.com/actions/checkout | None for users of the action |
-| actions/upload-artifact | v4.6.2 (pinned by commit SHA) | MIT | github.com/actions/upload-artifact | Same |
-| softprops/action-gh-release | v2.6.2 (pinned by commit SHA) | MIT | github.com/softprops/action-gh-release | Same; it runs with `contents: write` in the release job only |
-| Xcode / Swift toolchain, `codesign`, `notarytool`, `stapler`, `hdiutil`, `ditto`, `sips`, `iconutil` | runner-provided | Apple licences | macOS runner | Not redistributed |
-
-There are no `curl | sh` or `wget | sh` patterns, downloaded installers or remote scripts in the build.
-
-## 4. External software Zera talks to at runtime (not bundled)
-
-| Software | Relationship | Notes |
-|---|---|---|
-| Claude Code CLI (`claude`), Anthropic | Optional. The user installs it; Zera runs it as a subprocess (print mode) and installs documented Claude Code hooks in `~/.claude/settings.json` | Proprietary to Anthropic; governed by the user's own Anthropic terms. Zera neither bundles nor redistributes it, and does not read its credentials. |
-| Anthropic Messages API | Optional API-key mode | The user's key, the user's terms |
-| GitHub REST API | Optional | The user's token; GitHub Terms of Service and API terms |
-
-## 5. Third-party text and data in the repository
-
-| File | Content | Source indicator | Risk / action |
+| Component | Direct version | License | Source |
 |---|---|---|---|
-| `Tests/ZeraTests/ClaudeCLITests.swift` | Short excerpt of `claude --help` output (flag names) | Anthropic CLI output | Interoperability test fixture |
-| `Tests/ZeraTests/ClaudeCodeOutputParserTests.swift` | JSON event shapes "copied from a real `claude -p … stream-json` run, trimmed" | Anthropic CLI output format | Sanitised (`/tmp`, `abc-123`, `/Users/me`); data-format fixtures |
+| AndroidX Core KTX | 1.13.1 | Apache-2.0 | https://android.googlesource.com/platform/frameworks/support/ |
+| AndroidX AppCompat | 1.6.1 | Apache-2.0 | https://android.googlesource.com/platform/frameworks/support/ |
+| AndroidX ConstraintLayout | 2.1.4 | Apache-2.0 | https://github.com/androidx/constraintlayout |
+| Material Components Android | 1.11.0 | Apache-2.0 | https://github.com/material-components/material-components-android |
+| OkHttp / Okio | 4.12.0 / transitive | Apache-2.0 | https://github.com/square/okhttp · https://github.com/square/okio |
+| Kotlin standard library / coroutines Android | 1.9.23 / 1.8.0 | Apache-2.0 | https://github.com/JetBrains/kotlin · https://github.com/Kotlin/kotlinx.coroutines |
 
-No third-party copyright headers, SPDX tags, licence texts or vendored code were found in any file
-or in any historical revision.
+The Gradle wrapper and Android/Kotlin build plugins are build tools, not Mac app dependencies. Gradle is Apache-2.0. Apache license: https://www.apache.org/licenses/LICENSE-2.0.
 
-## 6. Images and artwork
+## Optional services and tools
 
-| Asset group | Origin | Third-party marks | Notes |
-|---|---|---|---|
-| `Resources/Sprites/*.png` (shipped in the app) | AI-assisted artwork of the Zera character (see `Resources/CARD_SPRITE_PROMPT.md`); some files carry C2PA "Anthropic Files" provenance metadata | None — the laptop in `laptop.png`, `card_laptop_side.png`, `focused.png` was retouched to remove a brand mark | Original project artwork |
-| `docs/banner.png`, `docs/screen-*.png` (README only, not shipped) | AI-generated illustrations from `docs/SCREENSHOT_PROMPTS.md`; captioned "Illustration" in the README | None — all names are fictional (`demo-org`, `alex-dev`…), avatars are initials; the laptop in `screen-claude-sessions.png` was retouched to remove a brand mark | To be replaced by real screenshots |
-| App icon (rendered at build time by `Tools/MakeIcon.swift`) | Programmatic, from the sprites | None | — |
-| GitHub mark | **Not shipped.** The PR screen uses a generic glyph | — | — |
-| Fonts | None bundled (system fonts via API) | — | — |
+Claude Code, Codex, provider APIs, GitHub and weather integrations are separately configured external services; they are not bundled with Zera. Users supply their own installed tools, credentials and permissions. Claude/Codex hooks and observed local activity have different capabilities from managed agent sessions. See docs/PRIVACY_DATA_MAP.md.
 
-## 7. Trademark and affiliation notice
+## Website and release film
 
-Zera is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by
-Anthropic, GitHub, or Apple. Claude and Claude Code are trademarks of Anthropic, PBC. GitHub is a
-trademark of GitHub, Inc. Apple, Mac, macOS and Finder are trademarks of Apple Inc., registered in
-the U.S. and other countries. Other names may be trademarks of their respective owners.
+The static website has no third-party JavaScript runtime. The launch film was rendered using Hyperframes/GSAP development tools; those runtimes are not shipped in the Mac app or website. The website ships only the rendered MP4 and images.
+
+Film music: “Happy Beats / Business Moves Vol. 12” by Sascha Ende, https://ende.app/en, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Edited, trimmed and mixed for the Zera 2 film. UI accents: Kenney interface/impact packs, CC0. Full media credits and capture provenance: docs/MEDIA.md and docs/media/v2/audio-credits.txt. These music rights are separate from the code license.
+
+Fresh v2 app screenshots use fictional fixture data. The phone gallery artwork is synthetic project-created scenery. Older illustrations remain historical assets and are no longer the lead README/site screenshots. Zera’s character, icon and original creative assets retain LICENSE-ASSETS.md terms. No third-party font files are bundled.
+
+CI uses pinned actions/checkout, actions/upload-artifact and softprops/action-gh-release. Their source repositories contain their respective MIT licenses. Xcode and native signing/packaging tools are not redistributed.
+
+## WhisperKit license
+
+MIT License
+
+Copyright (c) 2024 argmax, inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## Names and marks
+
+Zera is independent of Anthropic, OpenAI, GitHub, Apple and Samsung. Product names and marks belong to their respective owners; their appearance describes interoperability and does not imply endorsement.

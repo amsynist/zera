@@ -272,7 +272,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     var ropeX: CGFloat = 0
 
     private let rope = NSView()
-    private let holder = OpenerFlipped()
+    private let holder = FlippedView()
     private let zera = NSImageView()
     /// Her live eyes, over the picture: they follow the app you're on (see `focusPoint`).
     private let zeraFace = OpenerZeraFace()
@@ -289,7 +289,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     // Your usual · Commands · Actions.
     private let lanes = OpenerLanes()
     // The arc of results. ⌘K opens the chosen item's actions as a list node.
-    private let orbit = OpenerFlipped()
+    private let orbit = FlippedView()
     private let arcLine = CAShapeLayer()
     private let arcFade = CAGradientLayer()
     private let arcNodes = CAShapeLayer()
@@ -305,7 +305,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private let actionCount = NSTextField(labelWithString: "")
     private let actionDivider = NSView()
     private let actionScroll = NSScrollView()
-    private let actionDoc = OpenerFlipped()
+    private let actionDoc = FlippedView()
     private let actionBranch = CAShapeLayer()
     private let actionEmpty = NSTextField(labelWithString: "No matching actions")
     private var actionRows: [TreeRowView] = []
@@ -515,7 +515,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         holder.addSubview(actionPanel)
         actionIcon.imageScaling = .scaleProportionallyUpOrDown
         actionPanel.addSubview(actionIcon)
-        actionHeading.font = NSFont.systemFont(ofSize: 14, weight: .medium)
+        actionHeading.font = Typo.rowTitle
         actionHeading.wantsLayer = true
         actionHeading.lineBreakMode = .byTruncatingTail
         actionPanel.addSubview(actionHeading)
@@ -2248,7 +2248,7 @@ final class OpenerFooter: NSTextField {
         guard !hints.isEmpty else { super.draw(dirtyRect); return }
         let groups = hints
         let font = NSFont.systemFont(ofSize: 12, weight: .regular)
-        let keyFont = NSFont.systemFont(ofSize: 11, weight: .regular)
+        let keyFont = Typo.caption
         func keyWidth(_ key: String) -> CGFloat { max(20, ceil((key as NSString).size(withAttributes: [.font: keyFont]).width) + 10) }
         let widths = groups.map { $0.0.reduce(CGFloat(0)) { $0 + keyWidth($1) + 4 } + 2 + ($0.1 as NSString).size(withAttributes: [.font: font]).width }
         let total = widths.reduce(0, +) + 20 * CGFloat(groups.count - 1)
@@ -2542,8 +2542,7 @@ final class TreeButton: NSView {
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false; pressed = false }
@@ -2556,7 +2555,6 @@ final class TreeButton: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
-final class OpenerFlipped: NSView { override var isFlipped: Bool { true } }
 
 /// A rounded panel that paints its own fill, edge and glow, so it's solid however it's layered.
 final class OpenerGlass: NSView {
@@ -2610,7 +2608,7 @@ final class OpenerPill: NSView {
     var ghost = false { didSet { needsDisplay = true } }
     var keycap = false { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
-    private static let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+    private static let font = Typo.bodyStrong
     private static let keyFont = NSFont.systemFont(ofSize: 11.5, weight: .medium)
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }

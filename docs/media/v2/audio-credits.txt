@@ -1,0 +1,5 @@
+Music: “Happy Beats / Business Moves Vol. 12” by Sascha Ende, ende.app, CC BY 4.0.
+Source: https://ende.app/en
+License: https://creativecommons.org/licenses/by/4.0/
+Sound effects: Kenney interface and impact packs, CC0.
+GSAP 3.15.0: bundled local runtime provided by the Hyperframes CLI (GreenSock standard license).

@@ -83,6 +83,23 @@ struct ReminderAlert: Equatable {
     var isEvent: Bool { kind == .calendarHeadsUp || kind == .calendarNow || eventID != nil }
 }
 
+/// Transient presentation is separate from unresolved alerts/history. A newer event replaces
+/// the previous banner; closing or timing out never exposes an older entry underneath it.
+struct ReminderBannerState {
+    static let freshness: TimeInterval = 120
+    private var alert: ReminderAlert?
+    private var raisedAt = Date.distantPast
+    mutating func offer(_ value: ReminderAlert, at now: Date = Date()) {
+        guard !value.hydration else { return }
+        alert = value; raisedAt = now
+    }
+    func current(at now: Date = Date()) -> ReminderAlert? {
+        guard now.timeIntervalSince(raisedAt) < Self.freshness else { return nil }
+        return alert
+    }
+    mutating func finish() { alert = nil }
+}
+
 /// A macOS Calendar calendar Zera may create events in.
 struct WritableCalendar {
     let id: String
@@ -125,6 +142,12 @@ final class ReminderService {
     private(set) var externalEvents: [CalendarEvent] = []
     private(set) var completions: [CompletionEntry] = []
     private(set) var pendingAlerts: [ReminderAlert] = []
+    private var bannerState = ReminderBannerState()
+    var currentBanner: ReminderAlert? {
+        guard let alert = bannerState.current(), pendingAlerts.contains(alert) else { return nil }
+        return alert
+    }
+    func finishBanner() { bannerState.finish(); post() }
     private(set) var calendarAuthorized = false
     private(set) var calendarDenied = false
     private(set) var writableCalendars: [WritableCalendar] = []
@@ -518,6 +541,7 @@ final class ReminderService {
     // MARK: - Alerts
 
     func dismiss(_ alert: ReminderAlert) {
+        if currentBanner?.id == alert.id { bannerState.finish() }
         pendingAlerts.removeAll { $0.id == alert.id }
         if alert.kind == .breakTime { lastBreakAt = Date() }
         post()
@@ -525,6 +549,7 @@ final class ReminderService {
 
     /// Snooze from the notification: 15 min … tomorrow.
     func snooze(_ alert: ReminderAlert, until: Date) {
+        if currentBanner?.id == alert.id { bannerState.finish() }
         pendingAlerts.removeAll { $0.id == alert.id }
         if let id = alert.reminderID, reminder(id) != nil {
             snooze(reminder: id, occurrence: alert.occurrence, until: until)
@@ -566,6 +591,7 @@ final class ReminderService {
     /// Shows `a` as the banner without firing or remembering it (screen renders in tests).
     func preview(_ a: ReminderAlert) {
         pendingAlerts = [a]
+        bannerState.offer(a)
         post()
     }
 
@@ -574,9 +600,12 @@ final class ReminderService {
         // One card per reminder: a newer nudge replaces an older one still waiting.
         if let rid = a.reminderID { pendingAlerts.removeAll { $0.reminderID == rid } }
         pendingAlerts.append(a)
+        // A missed occurrence stays in Alerts/Reminders, but does not interrupt hours later.
+        let isLateOccurrence = (a.kind == .now || a.kind == .calendarNow) && a.occurrence.map { Date().timeIntervalSince($0) > ReminderBannerState.freshness } == true
+        if !isLateOccurrence { bannerState.offer(a) }
         fired.insert(a.id)
         persistFired()
-        NotificationCenter.default.post(name: Self.alert, object: nil, userInfo: ["alert": a])
+        if !isLateOccurrence { NotificationCenter.default.post(name: Self.alert, object: nil, userInfo: ["alert": a]) }
         post()
     }
 

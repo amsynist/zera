@@ -173,7 +173,7 @@ final class FileTypeTile: NSView {
             NSColor.white.withAlphaComponent(0.18).setStroke(); path.lineWidth = 1; path.stroke()
             return
         }
-        kind.color.withAlphaComponent(Pal.isDark ? 0.22 : 0.18).setFill(); path.fill()
+        kind.color.withAlphaComponent(0.22).setFill(); path.fill()
         kind.color.withAlphaComponent(0.35).setStroke(); path.lineWidth = 1; path.stroke()
         ddraw(dsymbol(kind.symbol, bounds.width * 0.38, kind.color), centeredIn: bounds)
     }
@@ -214,7 +214,7 @@ final class FileDropZone: NSView {
         let p = Pal
         let r = bounds.insetBy(dx: 1, dy: 1)
         let path = NSBezierPath(roundedRect: r, xRadius: Radius.l + 2, yRadius: Radius.l + 2)
-        p.accent.withAlphaComponent(isTargeted ? 0.16 : (p.isDark ? 0.06 : 0.05)).setFill()
+        p.accent.withAlphaComponent(isTargeted ? 0.16 : 0.06).setFill()
         path.fill()
         path.lineWidth = isTargeted ? 2 : 1.5
         if !isTargeted { path.setLineDash([7, 5], count: 2, phase: 0) }
@@ -253,7 +253,7 @@ final class FileDropZone: NSView {
         for k in kinds {
             let tr = NSRect(x: x + (col - tile) / 2, y: 112, width: tile, height: tile)
             let tp = NSBezierPath(roundedRect: tr, xRadius: 10, yRadius: 10)
-            k.color.withAlphaComponent(p.isDark ? 0.22 : 0.16).setFill(); tp.fill()
+            k.color.withAlphaComponent(0.22).setFill(); tp.fill()
             ddraw(dsymbol(k == .other ? "doc" : k.symbol, 13, k.color), centeredIn: tr)
             let name = k == .other ? "Any file" : k.label
             let ls = (name as NSString).size(withAttributes: la)
@@ -309,8 +309,7 @@ final class FileActionTile: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false; pressed = false }
@@ -496,8 +495,7 @@ final class ShelfFileRow: NSView, NSDraggingSource {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false; pressedDown = false }
@@ -587,8 +585,7 @@ final class ShelfRowButton: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false; pressed = false }
@@ -646,8 +643,7 @@ final class DropBin: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -859,7 +855,16 @@ private final class UndoStrip: NSView {
 // MARK: - The screen
 
 final class DropFilesView: NSView, CardContent {
-    weak var delegate: ShelfViewDelegate?
+    // What the Shelf tells the rest of Zera, as closures like every other screen.
+    var onAcceptDrop: (() -> Void)?
+    var onDragOverChanged: ((Bool) -> Void)?
+    var onDragOutBegan: (() -> Void)?
+    var onDragOutEnded: (() -> Void)?
+    /// Zera speaks for the Shelf. `seconds == 0` holds the line until `onSettle`.
+    var onSay: ((String, ZeraMood, TimeInterval) -> Void)?
+    var onSettle: (() -> Void)?
+    /// Summarize / Explain / Extract / Ask about an item, answered in this screen's result panel.
+    var onRunInPlace: ((FileAction, ShelfItem) -> Void)?
     var onHeightChange: (() -> Void)?
     var onEscape: (() -> Void)?
 
@@ -987,7 +992,7 @@ final class DropFilesView: NSView, CardContent {
         needsLayout = true
         layoutSubtreeIfNeeded()
         onHeightChange?()
-        delegate?.shelfHeightChanged()
+        onHeightChange?()
         // The file's page slides in; Back slides the Shelf back from the left.
         Motion.open(on ? center : left, forward: on)
     }
@@ -1003,6 +1008,9 @@ final class DropFilesView: NSView, CardContent {
 
     // MARK: Fresh
 
+    /// A new note or deliberate file drop belongs on the Shelf, even after browsing Fresh.
+    func showShelfItems() { showFresh(false) }
+
     /// Shelf ↔ Fresh. The first time Fresh opens, the watched folders are read (macOS asks for
     /// access then) and watched from then on.
     private func showFresh(_ on: Bool) {
@@ -1012,7 +1020,6 @@ final class DropFilesView: NSView, CardContent {
         reload()
         layoutSubtreeIfNeeded()
         onHeightChange?()
-        delegate?.shelfHeightChanged()
         Motion.page(on ? freshScroll : recentScroll, forward: on)
     }
 
@@ -1022,7 +1029,7 @@ final class DropFilesView: NSView, CardContent {
         guard freshTab else { return }
         layoutSubtreeIfNeeded()
         onHeightChange?()
-        delegate?.shelfHeightChanged()
+        onHeightChange?()
     }
 
     @objc private func addFolderTapped() {
@@ -1166,8 +1173,8 @@ final class DropFilesView: NSView, CardContent {
         bin.onDropPaths = { [weak self] paths in self?.binRemove(paths) }
         bin.onTargetChange = { [weak self] on in
             guard let self = self else { return }
-            if on { self.delegate?.shelfSays("let go to take it off the Shelf 🗑", mood: .surprised, for: 0) }
-            else { self.delegate?.shelfSettles() }
+            if on { self.onSay?("let go to take it off the Shelf 🗑", .surprised, 0) }
+            else { self.onSettle?() }
         }
         right.addSubview(bin)
 
@@ -1213,10 +1220,10 @@ final class DropFilesView: NSView, CardContent {
         let n = store.ingest(pasteboard: .general)
         if n > 0 {
             selectNewest(excluding: before)
-            delegate?.shelfSays(n == 1 ? "got it! drag it wherever you need it 💜" : "got all \(n)! ✨", mood: .happy, for: 2)
-            delegate?.shelfDidAcceptDrop()
+            onSay?(n == 1 ? "got it! drag it wherever you need it 💜" : "got all \(n)! ✨", .happy, 2)
+            onAcceptDrop?()
         } else {
-            delegate?.shelfSays("clipboard's empty 🤔", mood: .thinking, for: 1.6)
+            onSay?("clipboard's empty 🤔", .thinking, 1.6)
         }
     }
 
@@ -1303,7 +1310,7 @@ final class DropFilesView: NSView, CardContent {
         lastShelfPaths = paths
         if selectedPath == nil { Self.selectedPath = store.items.first?.path ?? store.recent.first?.path }
         // Nothing left to show in the workspace: fold back to Drop Files.
-        if expanded, selectedPath == nil { expanded = false; DispatchQueue.main.async { [weak self] in self?.onHeightChange?(); self?.delegate?.shelfHeightChanged() } }
+        if expanded, selectedPath == nil { expanded = false; DispatchQueue.main.async { [weak self] in self?.onHeightChange?() } }
 
         reloadLeft()
         reloadRight()
@@ -1404,12 +1411,12 @@ final class DropFilesView: NSView, CardContent {
         r.onAction = { [weak self] in self?.runSuggested(path) }
         r.onMenu = { [weak self] v in self?.showRowMenu(path: path, style: style, from: v) }
         r.onDragBegan = { [weak self] in
-            self?.delegate?.shelfDragOutBegan()
-            self?.delegate?.shelfSays("drag it to the Drop Bin to remove — or out to copy it 💜", mood: .giving, for: 0)
+            self?.onDragOutBegan?()
+            self?.onSay?("drag it to the Drop Bin to remove — or out to copy it 💜", .giving, 0)
         }
         r.onDragEnded = { [weak self] in
-            self?.delegate?.shelfDragOutEnded()
-            self?.delegate?.shelfSettles()
+            self?.onDragOutEnded?()
+            self?.onSettle?()
         }
         return r
     }
@@ -1478,8 +1485,8 @@ final class DropFilesView: NSView, CardContent {
 
         // Content for the tab.
         let (title, symbol, md, buttons, copyable) = tabContent(path: path, kind: kind, thread: thread, running: running, exists: exists)
-        let theme = MarkdownLite.Theme(text: p.text, secondary: p.textSecondary, code: p.isDark ? p.codeText : p.text,
-                                       codeBackground: p.isDark ? p.codeBox : p.surfaceStrong, accent: p.accent,
+        let theme = MarkdownLite.Theme(text: p.text, secondary: p.textSecondary, code: p.codeText,
+                                       codeBackground: p.codeBox, accent: p.accent,
                                        body: NSFont.systemFont(ofSize: 13.5), bold: NSFont.systemFont(ofSize: 13.5, weight: .semibold),
                                        mono: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
                                        h1: NSFont.systemFont(ofSize: 16, weight: .bold), h2: Typo.detailTitle,
@@ -1754,6 +1761,8 @@ final class DropFilesView: NSView, CardContent {
             right = removeButton.frame.minX - 8
         }
         finder.setTitleText("")
+        finder.setAccessibilityLabel("Show in Finder")
+        finder.toolTip = "Show in Finder"
         finder.frame = NSRect(x: right - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
         fileName.frame = ScreenHeader.detailTitleFrame(width: w, padding: x)
         fileMeta.frame = ScreenHeader.detailSubtitleFrame(width: w, padding: x)
@@ -1819,7 +1828,7 @@ final class DropFilesView: NSView, CardContent {
     private func copyItem(_ path: String) {
         guard let how = ShelfCopier.copy(path) else {
             NSSound.beep()
-            delegate?.shelfSays("that file isn't there any more 😕", mood: .worried, for: 2)
+            onSay?("that file isn't there any more 😕", .worried, 2)
             return
         }
         Self.selectedPath = path
@@ -1837,7 +1846,7 @@ final class DropFilesView: NSView, CardContent {
         case .text: line = "copied the note's text ✓"
         case .link: line = "copied the link ✓"
         }
-        delegate?.shelfSays(line, mood: .happy, for: 1.6)
+        onSay?(line, .happy, 1.6)
     }
 
     private func selectNewest(excluding before: Set<String>) {
@@ -1848,7 +1857,7 @@ final class DropFilesView: NSView, CardContent {
     /// Runs an action on a file inside Zera (the answer appears in the centre panel).
     private func run(_ action: FileAction, on path: String) {
         guard FileManager.default.fileExists(atPath: path) else {
-            delegate?.shelfSays("that file isn't there any more 😕", mood: .worried, for: 2)
+            onSay?("that file isn't there any more 😕", .worried, 2)
             return
         }
         // Recent files go back on the Shelf when you work with them.
@@ -1856,7 +1865,7 @@ final class DropFilesView: NSView, CardContent {
             ?? store.recent.first { $0.path == path }.flatMap { store.reshelve($0) }
         guard let it = item else { return }
         if ZeraAssistant.shared.isBusy {
-            delegate?.shelfSays("still working on \(ZeraAssistant.shared.currentFileName ?? "the last one") — one sec ⏳", mood: .focused, for: 2.5)
+            onSay?("still working on \(ZeraAssistant.shared.currentFileName ?? "the last one") — one sec ⏳", .focused, 2.5)
             return
         }
         Self.selectedPath = path
@@ -1867,7 +1876,7 @@ final class DropFilesView: NSView, CardContent {
         case .ask: Self.tab = 3
         }
         store.setLastAction(action.title, for: path)
-        delegate?.shelfRunsInPlace(action, on: it)
+        onRunInPlace?(action, it)
         reload()
         setExpanded(true)
     }
@@ -1928,7 +1937,7 @@ final class DropFilesView: NSView, CardContent {
         guard !currentCopyText.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(currentCopyText, forType: .string)
-        delegate?.shelfSays("copied! 📋", mood: .happy, for: 1.2)
+        onSay?("copied! 📋", .happy, 1.2)
     }
 
     @objc private func finderTapped() {
@@ -1959,6 +1968,8 @@ final class DropFilesView: NSView, CardContent {
             ClosureMenuItem("Open details", symbol: "doc.text.magnifyingglass", enabled: exists) { [weak self] in self?.select(path) },
             .separator(),
             ClosureMenuItem("Open in app", symbol: "arrow.up.forward.app", enabled: exists) { _ = NSWorkspace.shared.open(URL(fileURLWithPath: path)) },
+            ClosureMenuItem("AirDrop…", symbol: "dot.radiowaves.left.and.right",
+                            enabled: exists && AirDrop.canSend([URL(fileURLWithPath: path)])) { AirDrop.send([URL(fileURLWithPath: path)]) },
             analyze,
             ClosureMenuItem("Reveal in Finder", symbol: "folder", enabled: exists) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) },
             ClosureMenuItem("Copy path", symbol: "doc.on.doc") {
@@ -1991,7 +2002,7 @@ final class DropFilesView: NSView, CardContent {
         let recentOnly = paths.filter { !onShelf.contains($0) }
         if !onShelf.isEmpty { removePaths(onShelf) }
         for p in recentOnly { store.removeRecent(path: p) }
-        if onShelf.isEmpty, !recentOnly.isEmpty { delegate?.shelfSays("removed from Recent ✨", mood: .happy, for: 1.4) }
+        if onShelf.isEmpty, !recentOnly.isEmpty { onSay?("removed from Recent ✨", .happy, 1.4) }
     }
 
     private func removePaths(_ paths: [String]) {
@@ -1999,14 +2010,14 @@ final class DropFilesView: NSView, CardContent {
         let removed = store.remove(ids: ids)
         guard !removed.isEmpty else { return }
         offerUndo(removed, message: removed.count == 1 ? "Removed from Shelf" : "Removed \(removed.count) files")
-        delegate?.shelfSays(removed.count == 1 ? "taken off the Shelf — the file's still on your Mac ✨" : "Shelf tidied ✨", mood: .happy, for: 1.8)
+        onSay?(removed.count == 1 ? "taken off the Shelf — the file's still on your Mac ✨" : "Shelf tidied ✨", .happy, 1.8)
     }
 
     @objc private func clearShelfTapped() {
         let removed = store.clear()
         guard !removed.isEmpty else { return }
         offerUndo(removed, message: "Removed \(removed.count) file\(removed.count == 1 ? "" : "s") from the Shelf")
-        delegate?.shelfSays("all tidy! Your files are still on your Mac ✨", mood: .happy, for: 2)
+        onSay?("all tidy! Your files are still on your Mac ✨", .happy, 2)
     }
 
     @objc private func clearRecentTapped() {
@@ -2061,8 +2072,8 @@ final class DropFilesView: NSView, CardContent {
     private func setTargeted(_ on: Bool) {
         guard zone.isTargeted != on else { return }
         zone.isTargeted = on
-        delegate?.shelfDragOverChanged(on)
-        if on { delegate?.shelfSays("toss it here! 🙌", mood: .excited, for: 0) } else { delegate?.shelfSettles() }
+        onDragOverChanged?(on)
+        if on { onSay?("toss it here! 🙌", .excited, 0) } else { onSettle?() }
         reloadLeft()
         needsLayout = true
     }
@@ -2086,10 +2097,10 @@ final class DropFilesView: NSView, CardContent {
         if let payload = ShelfStore.payload(from: pb), !store.alreadyHas(pasteboard: pb) {
             store.ingest(payload) { [weak self] added in
                 guard let self = self else { return }
-                guard added > 0 else { self.delegate?.shelfSays("hmm, I can't hold that", mood: .thinking, for: 1.6); return }
+                guard added > 0 else { self.onSay?("hmm, I can't hold that", .thinking, 1.6); return }
                 self.selectNewest(excluding: before)
-                self.delegate?.shelfSays(added == 1 ? "got it! drag it wherever you need it 💜" : "got all \(added)! ✨", mood: .happy, for: 2)
-                self.delegate?.shelfDidAcceptDrop()
+                self.onSay?(added == 1 ? "got it! drag it wherever you need it 💜" : "got all \(added)! ✨", .happy, 2)
+                self.onAcceptDrop?()
             }
             return true
         }
@@ -2098,10 +2109,10 @@ final class DropFilesView: NSView, CardContent {
                 Self.selectedPath = url.standardizedFileURL.path
                 reload()
             }
-            delegate?.shelfSays("already on your Shelf 😊", mood: .happy, for: 1.4)
+            onSay?("already on your Shelf 😊", .happy, 1.4)
             return true
         }
-        delegate?.shelfSays("hmm, I can't hold that", mood: .thinking, for: 1.6)
+        onSay?("hmm, I can't hold that", .thinking, 1.6)
         return false
     }
 }

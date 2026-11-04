@@ -53,8 +53,11 @@ private final class DropdownRow: NSView {
     init(item: DropdownItem) {
         self.item = item
         super.init(frame: .zero)
+        setAccessibilityElement(!item.isSeparator)
         setAccessibilityRole(item.isSeparator ? .unknown : .menuItem)
         setAccessibilityLabel(item.title)
+        setAccessibilityHelp(item.subtitle)
+        setAccessibilityValue(NSNumber(value: item.checked))
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -367,12 +370,12 @@ final class ZeraDropdown {
 // MARK: - Select field
 
 /// Field-styled choice: "[icon] Every day  ⌄". Uses the shared menu appearance preference.
-final class ZeraSelect: NSView {
+final class ZeraSelect: NSButton {
     struct Option { var title: String; var symbol: String? = nil }
     var options: [Option] { didSet { needsDisplay = true } }
     var selectedIndex = 0 { didSet { needsDisplay = true; setAccessibilityValue(selectedTitle) } }
     var onChange: ((Int) -> Void)?
-    var isEnabled = true { didSet { alphaValue = isEnabled ? 1 : 0.5 } }
+    override var isEnabled: Bool { didSet { alphaValue = isEnabled ? 1 : 0.5; needsDisplay = true } }
     private var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { isEnabled }
@@ -381,11 +384,15 @@ final class ZeraSelect: NSView {
     init(_ titles: [String], symbols: [String?]? = nil) {
         options = titles.enumerated().map { i, t in Option(title: t, symbol: symbols.flatMap { i < $0.count ? $0[i] : nil }) }
         super.init(frame: .zero)
+        title = ""; isBordered = false
+        setButtonType(.momentaryChange)
+        setAccessibilityElement(true)
         setAccessibilityRole(.popUpButton)
     }
     required init?(coder: NSCoder) { fatalError() }
 
     var selectedTitle: String { options.indices.contains(selectedIndex) ? options[selectedIndex].title : "" }
+    override func accessibilityValue() -> Any? { selectedTitle }
 
     func select(_ i: Int) { selectedIndex = max(0, min(options.count - 1, i)) }
 
@@ -411,9 +418,12 @@ final class ZeraSelect: NSView {
             c.draw(in: NSRect(x: bounds.width - 14 - sz.width, y: (bounds.height - sz.height) / 2, width: sz.width, height: sz.height),
                    from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
+        drawControlFocus()
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
+        window?.makeFirstResponder(self)
         openMenu()
     }
 
@@ -424,6 +434,7 @@ final class ZeraSelect: NSView {
 
     override func accessibilityPerformPress() -> Bool {
         guard isEnabled else { return false }
+        window?.makeFirstResponder(self)
         openMenu()
         return true
     }
@@ -442,8 +453,7 @@ final class ZeraSelect: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
