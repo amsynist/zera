@@ -1,25 +1,24 @@
-# Zera: phone to Mac
+# Zera v2 — Android to MacBook
 
-A 20-second sharing film follows one original photo from the real Androp gallery on Android to the real Zera receiver on the Mac. The phone stays on the left and the Mac on the right. Their native screen recordings supply every app interaction, incoming ripple, saved state and Preview window.
+LOOK: Charcoal, muted mint and steel; photographic coastal originals, native animated teal wallpaper, dimensional dark hardware, generous readable typography and a flowing hex lattice.
 
-## Visual direction
+A 20-second, 1920×1080, 60fps sharing-only film shows the real Androp gallery on the left and native Zera photo arrival on the right. The audience is Android users with a Mac; the hook is the clear Android → MacBook relationship. The action is to download Zera v2 and Androp. Original files stay on the local network. The film demonstrates a real transfer, not guaranteed speed or physical positioning. No unrelated notch/app scenes appear.
 
-Charcoal background, parchment typography and a mint accent drawn from Androp. Polished black and metal device cases provide restrained perspective depth. Large masked word reveals carry the story; each phrase settles before the next. Camera movement brings selection closer, returns to both screens for the swipe, follows the Mac arrival and pulls back to show both devices completely at the end.
+| Time | Picture and motion | Caption |
+|---|---|---|
+| 0–1.65 | Both devices emerge over the flowing grid; native wallpaper is already moving. | Android → MacBook |
+| 1.65–3.807 | Camera pushes to 1.26× on the actual photographic gallery and selected original. | Pick a photo. |
+| 3.807–6.157 | Pull back to both devices for the actual phone edge gesture. | Glide it across. |
+| 6.157–8.407 | Exact original bridges only the physical gap; real edge arrival on the native Mac. | Arrives on your MacBook. |
+| 8.407–15.2 | 1.24× Mac close-up holds on the original opened in Preview after verified save. | Your original. Saved. |
+| 15.2–20 | Return to both complete devices, readable labels, photo and live wallpaper. | No internet. Just Wi-Fi. / Same local network. |
 
-## Caption beats
+The selected generated coast PNG is 3,285,000 bytes and matches the verified received original by SHA-256. Both source clips run continuously for the synchronized 20-second interval at real speed; no wallpaper freeze or optical-flow synthesis. Android and MacBook labels remain attached to their hardware; the distant Android label fades while outside the Mac close-up and returns for the final complete view.
 
-| Film time | Caption | Native action |
-| --- | --- | --- |
-| 0.18–4.94 s | Pick a photo. | Gallery selection opens the exact original. |
-| 4.94–7.29 s | Glide it across. | The photo follows the real edge gesture. |
-| 7.29–9.54 s | Arrives on your Mac. | The matching photo enters with the actual native ripple and opens in Preview. |
-| 9.54–15.20 s | Your original. Saved. | The verified original remains visible in Preview. |
-| 15.20–20.00 s | No internet. Just Wi‑Fi. | Both devices are fully framed; the same original remains visible on the Mac. |
+## Music cue guidance
 
-The supporting line “Same local network.” makes the Wi-Fi context clear. The film does not claim guaranteed latency, physical Wi-Fi positioning or universal drag support in other apps. It contains no unrelated feature scenes.
+Happy Beats / Business Moves Vol. 12 by Sascha Ende, CC BY 4.0, with a quiet 0.22 bed and normalized fade envelope. Sparse CC0 UI accents mark selection, release and verified save. Reading and actual transfer events take priority over beat alignment. No narration.
 
-## Capture and delivery
+Final checks: strict browser gate with nonzero text contrast coverage, motion assertions, focus/ending snapshots, original source cadence and wallpaper-continuity proof, decoded MP4 and accessible six-cue SRT/VTT. Poster is the settled closing beat, baked into frame zero only.
 
-Verified native take3 supplies an unsped, synchronized 11.8-second action interval at film time 1.6–13.4 s. ScreenCaptureKit records the Mac; Android uses native screenrecord with host graphics. Original recorded timestamps show about 57 real frames per second on the Mac and 45 on Android during the gesture-to-Preview interval. No optical-flow interpolation or source speed change is used. The received 28,379-byte PNG is byte-identical to the original.
-
-Delivery is 1920×1080 at 60fps with burned kinetic captions, matching SRT/VTT, restrained licensed music and three subtle effects. There is no narration. The fully framed closing sharing beat supplies the poster, baked into frame zero only. Production and rendering stay local.
+Tone: polished; tactile native-device product film with smooth camera focus, legible holds and restrained depth. Visual identity: #0a0f10 background, #edf3e9 text, #c4ecdd mint, #c3d5cd hardware labels; system sans-serif for display and body. Strongest visual: the same coast photograph following a real edge swipe into native Preview. Share copy is retained in share-copy.txt.

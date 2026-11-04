@@ -467,7 +467,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     var onOpenURL: ((URL) -> Void)?
 
     private let search = SearchBox(placeholder: "Ask Zera or search files…")
-    /// Zera 2: Zera herself, one sentence about what matters now, and the action for it.
+    /// Zera v2: Zera herself, one sentence about what matters now, and the action for it.
     private let hero = HomeHero()
     private let body = FlippedView()
     private let bodyScroll = NSScrollView()

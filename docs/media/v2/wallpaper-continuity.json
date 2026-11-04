@@ -1,0 +1,52 @@
+{
+  "native_video_span": [
+    0,
+    20
+  ],
+  "authored_freeze_or_loop": false,
+  "source": "Actual native ScreenCaptureKit wallpaper video; no composited replacement inside display.",
+  "sample_region_pixels": {
+    "x": 40,
+    "y": 100,
+    "width": 160,
+    "height": 160
+  },
+  "comparisons": [
+    {
+      "film_times": [
+        0.5,
+        1.5
+      ],
+      "mean_absolute_channel_delta_0_255": 1.917578125,
+      "channel_fraction_changed_over_2": 0.16423177083333335,
+      "frame_hashes": [
+        "f31d5e0fb2cb3dd6832bef3aaf15c7b3f1b044d266d895da999c187b641ef9d5",
+        "08d54fa9542ef102b11320eb8cee94393c834e08306deb36477b4c704cbeca5f"
+      ]
+    },
+    {
+      "film_times": [
+        12,
+        13
+      ],
+      "mean_absolute_channel_delta_0_255": 2.9548828125,
+      "channel_fraction_changed_over_2": 0.4819921875,
+      "frame_hashes": [
+        "d48d034f192033b670fb5cc61afa3505248e74f2967d9d88e64e5eef1c70cf24",
+        "fc1d9f1b77ce4ea1607909c0ff28318182dc55a46f8c934e97459922fa827555"
+      ]
+    },
+    {
+      "film_times": [
+        17.5,
+        19
+      ],
+      "mean_absolute_channel_delta_0_255": 1.5079166666666666,
+      "channel_fraction_changed_over_2": 0.12412760416666667,
+      "frame_hashes": [
+        "6942af0ca52737e1fb4a1652dad40bb7468a9a330cca5ea89d1298be95d00a28",
+        "cd95a61f4350e7040765f5f70ebe2bcf87a326d9116736c17a27ac70fca6c9a1"
+      ]
+    }
+  ]
+}

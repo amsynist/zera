@@ -1,21 +1,21 @@
 {
-  "runtime": "one paused GSAP timeline; transform-only camera wrapper and word elements",
+  "runtime": "one paused GSAP timeline; transform-only camera and masked per-word captions",
   "fps": 60,
   "camera_poses": [
     {
-      "at": 0.1,
-      "duration": 1.5,
+      "at": 1.65,
+      "duration": 1.2,
       "subject": "phone selection",
       "target": {
-        "x": 30,
-        "y": -76,
-        "scale": 1.12
+        "x": -30,
+        "y": -225,
+        "scale": 1.26
       },
-      "ease": "power2.inOut"
+      "ease": "power3.inOut"
     },
     {
-      "at": 4.735177707672118,
-      "duration": 1.2,
+      "at": 3.956999969,
+      "duration": 0.85,
       "subject": "two-screen swipe context",
       "target": {
         "x": 0,
@@ -25,35 +25,35 @@
       "ease": "power3.inOut"
     },
     {
-      "at": 7.285177707672119,
-      "duration": 1.25,
-      "subject": "real Mac entry and ripple",
+      "at": 6.706999969,
+      "duration": 1.4,
+      "subject": "native Mac arrival",
       "target": {
-        "x": -190,
-        "y": -38,
-        "scale": 1.13
+        "x": -270,
+        "y": -140,
+        "scale": 1.22
       },
       "ease": "power2.inOut"
     },
     {
-      "at": 9.68517770767212,
-      "duration": 1.2,
-      "subject": "real original in Preview",
+      "at": 8.556999969,
+      "duration": 1.1,
+      "subject": "verified original in Preview",
       "target": {
-        "x": -310,
-        "y": -52,
-        "scale": 1.18
+        "x": -280,
+        "y": -160,
+        "scale": 1.24
       },
       "ease": "power2.inOut"
     },
     {
-      "at": 15.1,
+      "at": 13.7,
       "duration": 1.3,
-      "subject": "both devices fully in frame with Wi-Fi benefit",
+      "subject": "both complete devices and Wi-Fi benefit",
       "target": {
-        "x": 125,
-        "y": 155,
-        "scale": 0.83
+        "x": 140,
+        "y": 184,
+        "scale": 0.8
       },
       "ease": "power3.inOut"
     }
@@ -65,11 +65,28 @@
       0.54,
       0.82
     ],
-    "contact_sheet": "qc/caption-motion-proof.jpg",
-    "snapshot_source_directory": "composition/.hyperframes/artifacts/snapshots/f0a8df69-584e-41f6-bd76-51020e00acc6"
+    "contact_sheet": "qc/caption-motion-proof.jpg"
   },
-  "motion_assertions": "composition/index.motion.json",
-  "strict_gate": "check-final.json",
+  "encoded_pose_proof": {
+    "times": [
+      1,
+      3.55,
+      5.9,
+      8.25,
+      10.2,
+      19.2,
+      19.983333
+    ],
+    "contact_sheet": "qc/encoded-transition-contact.jpg"
+  },
+  "hardware_labels": "Attached to cases; far Android label fades during the Mac-only focus and returns before the final hold.",
+  "motion_assertions": "12 visible-state/caption-frame assertions",
+  "strict_gate": {
+    "errors": 0,
+    "warnings": 0,
+    "contrast_checked": 38,
+    "contrast_passed": 38
+  },
   "no_per_frame_callbacks": true,
   "no_animated_blur_or_layout": true
 }

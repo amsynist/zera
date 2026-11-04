@@ -1249,7 +1249,7 @@ final class ScreenRenderTests: XCTestCase {
         try sampleShelf()
         let tasks = sampleTasks()
         let scripts = TeleprompterStore(url: nil)
-        _ = scripts.newScript(title: "A little place for your day", text: "Your agents, files and focus.\n\nClose at hand, in the notch.\n\nZera 2 is a native Mac companion.")
+        _ = scripts.newScript(title: "A little place for your day", text: "Your agents, files and focus.\n\nClose at hand, in the notch.\n\nZera v2 is a native Mac companion.")
         let entries: [AgentOverviewItem] = [
             .init(id: "demo-claude", provider: "claude", providerName: "Claude", title: "Polish the preferences", project: "~/Projects/Studio", activity: "Reading Settings.swift", state: .working, source: .claude("demo-claude")),
             .init(id: "demo-codex", provider: "codex", providerName: "Codex", title: "Review the new layout", project: "~/Projects/Studio", activity: "Run the native checks", state: .waiting, source: .managedCodex("demo-codex"))]
@@ -1333,6 +1333,7 @@ final class ScreenRenderTests: XCTestCase {
         background.level = .normal
         background.hasShadow = false
         let root = FlippedView(frame: CGRect(origin: .zero, size: size)); background.contentView = root
+        installReleaseWallpaper(on: root)
         let buddy = NotchBuddyView(frame: CGRect(x: size.width / 2 - (190 + 2 * NotchBuddyView.wingWidth(forHeight: 34)) / 2,
                                                   y: 0, width: 190 + 2 * NotchBuddyView.wingWidth(forHeight: 34), height: 34))
         let source = ZeraView(frame: .zero); buddy.source = source
@@ -1391,7 +1392,7 @@ final class ScreenRenderTests: XCTestCase {
             .write(to: out.appendingPathComponent("photo-receiver-ready.json"))
         var previewIncluded = false, previewAt: Double?
         while Date().timeIntervalSince1970 - started < 80 {
-            if let savedAt, Date().timeIntervalSince1970 - savedAt > 6 { break }
+            if let savedAt, Date().timeIntervalSince1970 - savedAt > 17 { break }
             let current = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
             let windows = allowed(current.windows)
             let updated = Set(windows.map(\.windowID))

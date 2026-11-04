@@ -92,7 +92,7 @@ final class NotchBuddyView: NSView, ZeraAnimating {
     /// The ear's width for a notch of this height (kept for older callers).
     static func width(forHeight h: CGFloat) -> CGFloat { (h * 1.25).rounded() + overlap }
 
-    /// Zera 2: the notch grows a wing on each side. Zera's face lives in the left one, a live
+    /// Zera v2: the notch grows a wing on each side. Zera's face lives in the left one, a live
     /// status (an agent working, waiting, done; music; dictation) in the right one.
     static func wingWidth(forHeight h: CGFloat) -> CGFloat { (h * 1.3).rounded() }
     static func frame(around notch: NSRect) -> NSRect {

@@ -34,7 +34,7 @@ crash reporting, accounts or update service**. It talks only to the services the
 | **Pointer position / idle state** | Polled `NSEvent.mouseLocation` | Hover, break nudges | No | — | No | — | — | — | None (no Accessibility / Input Monitoring) |
 | **Preferences** | Settings | UI | Yes | UserDefaults (`zera.*`) | No | — | Until reset | Settings | — |
 
-## Zera 2 additions
+## Zera v2 additions
 
 | Feature | Local data and lifetime | Network / permission |
 |---|---|---|

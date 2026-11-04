@@ -18,6 +18,26 @@ class MediaCapture(private val test: Instrumentation) {
     private val context get() = test.targetContext
     fun seed() {
         val resolver = context.contentResolver
+        val photographs = File(context.filesDir, "media-assets").listFiles { file -> file.extension.lowercase() in setOf("png", "jpg", "jpeg") }?.sortedBy { it.name }.orEmpty()
+        if (photographs.isNotEmpty()) {
+            resolver.delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?", arrayOf("Zera demo%"))
+            // External original assets are copied byte-for-byte; no drawing or recompression.
+            for (index in 0 until photographs.size * 3) {
+                val selected = index == photographs.size * 3 - 1
+                val source = if (selected) photographs.first { it.name.startsWith("00-") } else photographs[(index * 5 + index / photographs.size) % photographs.size]
+                val name = if (selected) "Zera coast.png" else "Zera demo ${index.toString().padStart(2, '0')}.png"
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, name); put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Zera demo"); put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+                val uri = checkNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
+                resolver.openOutputStream(uri)!!.use { output -> source.inputStream().use { it.copyTo(output) } }
+                resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+                if (selected) source.copyTo(File(context.filesDir, "transfer-photo.png"), overwrite = true)
+                Thread.sleep(1100)
+            }
+            return
+        }
         resolver.delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?", arrayOf("Zera demo%"))
         for (index in 0..7) {
             val bitmap = Bitmap.createBitmap(1440, 1008, Bitmap.Config.ARGB_8888)
@@ -49,6 +69,7 @@ class MediaCapture(private val test: Instrumentation) {
     }
     fun share() {
         val result = Bundle()
+        File(context.filesDir, "phone-timing.json").delete()
         try {
             val activity = test.startActivitySync(Intent(context, com.androp.ui.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             test.waitForIdleSync()
@@ -65,7 +86,7 @@ class MediaCapture(private val test: Instrumentation) {
                 val frame = grid.getChildAt(index) as android.view.ViewGroup
                 val uri = (frame.getChildAt(0) as ImageView).tag as android.net.Uri
                 context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use {
-                    it.moveToFirst() && it.getString(0) == "Zera coast.png"
+                    it.moveToFirst() && it.getString(0).startsWith("Zera coast")
                 } == true
             } + grid.firstVisiblePosition
             result.putLong("selected_epoch_ms", System.currentTimeMillis())
@@ -98,7 +119,7 @@ class MediaCapture(private val test: Instrumentation) {
             }
             result.putLong("release_epoch_ms", System.currentTimeMillis())
             inject(MotionEvent.ACTION_UP, width - 3, true)
-            Thread.sleep(6000)
+            Thread.sleep(15000)
             result.putString("stream", "Real native Gallery photo gesture captured; verify the Mac original SHA-256.\n")
             File(context.filesDir, "phone-timing.json").writeText(org.json.JSONObject().apply {
                 for (key in result.keySet()) put(key, result.get(key))
