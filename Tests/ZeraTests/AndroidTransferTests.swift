@@ -5,6 +5,27 @@ import AndropKit
 @testable import Zera
 
 final class AndroidTransferTests: XCTestCase {
+    @MainActor func testReceiverIsOffByDefaultAndRejectsLateCallbacks() throws {
+        let suite = "zera.receiver.off." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let receiver = AndroidTransfer(defaults: defaults)
+        XCTAssertFalse(receiver.enabled)
+        receiver.start()
+        XCTAssertFalse(receiver.isRunning)
+        receiver.preview()
+        receiver.didReceiveDragEnter(event: DragEnterEvent(id: "late", name: "file.txt", mimeType: "text/plain", thumbnail: ""))
+        receiver.serverDidStart(port: 8989)
+        receiver.clientConnected(endpoint: "late")
+        XCTAssertNil(receiver.transfer)
+        XCTAssertFalse(receiver.phoneConnected)
+        XCTAssertEqual(receiver.status, "Receiving is off")
+        receiver.stop()
+        XCTAssertFalse(receiver.isRunning)
+        XCTAssertEqual(AndroidTransfer(defaults: defaults).pairingCode, receiver.pairingCode)
+        XCTAssertFalse(ArrangeSettings().enabled)
+    }
+
     func testReceiptNeedsFinalSaveAndIgnoresStaleEvents() {
         var receipt = PhoneTransferState(id: "new", name: "original.heic")
         receipt.phase = .receiving
@@ -87,8 +108,9 @@ extension AndroidTransferTests {
             island.setPhoneTransfer(receipt)
         }
         defer { window.orderOut(nil); window.contentView = nil }
-        service.start()
-        defer { service.stop() }
+        let previousEnabled = UserDefaults.standard.object(forKey: "zera.androp.enabled")
+        service.setEnabled(true)
+        defer { service.stop(); UserDefaults.standard.set(previousEnabled, forKey: "zera.androp.enabled") }
         for _ in 0..<100 where !service.status.hasPrefix("Ready") { try await Task.sleep(nanoseconds: 20_000_000) }
         XCTAssertTrue(service.status.hasPrefix("Ready"), service.status)
         let socket = URLSession.shared.webSocketTask(with: URL(string: "ws://127.0.0.1:\(port)")!)
@@ -230,7 +252,14 @@ extension AndroidTransferTests {
         let previous = overlay.autoOpenReceivedMedia
         defer { overlay.autoOpenReceivedMedia = previous }
         overlay.autoOpenReceivedMedia = true
-        let service = AndroidTransfer()
+        let suite = "zera.receipt." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        let previousPort = ProcessInfo.processInfo.environment["ZERA_ANDROP_PORT"]
+        defer { defaults.removePersistentDomain(forName: suite); if let previousPort { setenv("ZERA_ANDROP_PORT", previousPort, 1) } else { unsetenv("ZERA_ANDROP_PORT") } }
+        setenv("ZERA_ANDROP_PORT", String(UInt16.random(in: 30000...35000)), 1)
+        let service = AndroidTransfer(defaults: defaults)
+        service.setEnabled(true)
+        defer { service.stop() }
         service.didReceiveDragEnter(event: DragEnterEvent(id: "photo", name: "Incoming file", mimeType: "image/jpeg", thumbnail: "", edge: .left))
         XCTAssertEqual(service.transfer?.opensDirectly, true)
         XCTAssertEqual(service.transfer?.side, -1)
@@ -238,7 +267,10 @@ extension AndroidTransferTests {
         service.didReceiveDragEnter(event: DragEnterEvent(id: "photo", name: "IMG_2041.HEIC", mimeType: "image/heic", thumbnail: "", edge: .left))
         XCTAssertEqual(service.transfer?.name, "IMG_2041.HEIC")
         XCTAssertEqual(service.transfer?.side, -1)
-        let other = AndroidTransfer()
+        setenv("ZERA_ANDROP_PORT", String(UInt16.random(in: 35001...38000)), 1)
+        let other = AndroidTransfer(defaults: defaults)
+        other.start()
+        defer { other.stop() }
         other.didReceiveDragEnter(event: DragEnterEvent(id: "doc", name: "report.pdf", mimeType: "application/pdf", thumbnail: "", edge: .right))
         XCTAssertEqual(other.transfer?.opensDirectly, false)
     }

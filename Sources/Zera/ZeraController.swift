@@ -1343,6 +1343,11 @@ final class ZeraController: NSObject {
         say("welcome back! \(news)", mood: .happy, for: 4.5)
     }
 
+    func showExtras() {
+        show(.settings)
+        (cards[.settings] as? SettingsCard)?.select(.extras)
+    }
+
     // MARK: - Events from services
 
     @objc private func githubChanged() { refreshBadges() }

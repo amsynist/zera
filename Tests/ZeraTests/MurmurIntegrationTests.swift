@@ -49,7 +49,8 @@ final class MurmurIntegrationTests: XCTestCase {
         }
         XCTAssertTrue(transcript?.lowercased().contains("quick brown fox") == true, "synthetic speech must be recognized")
         if let target, let transcript {
-            XCTAssertEqual(target.insert(transcript), .inserted)
+            XCTAssertEqual(target.insert(transcript), .sent)
+            try await Task.sleep(nanoseconds: 700_000_000)
             var element: CFTypeRef?, value: CFTypeRef?
             XCTAssertEqual(AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute as CFString, &element), .success)
             if let element, CFGetTypeID(element) == AXUIElementGetTypeID() {

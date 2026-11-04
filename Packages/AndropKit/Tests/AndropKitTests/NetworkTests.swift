@@ -3,6 +3,50 @@ import CryptoKit
 @testable import AndropKit
 
 final class NetworkTests: XCTestCase {
+    func testStopClosesListenerAbortsPartialAndCanRestart() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let port = UInt16.random(in: 39001...49000)
+        let server = WebSocketServer(port: port, code: "123456", receiver: FileReceiver(directory: directory))
+        XCTAssertFalse(server.isRunning)
+        server.start(); server.start() // idempotent: a second listener must not replace the first
+        defer { server.stop() }
+        try await Task.sleep(nanoseconds: 250_000_000)
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let url = URL(string: "ws://127.0.0.1:\(port)")!
+        let socket = session.webSocketTask(with: url)
+        socket.resume()
+        try await socket.send(.string("{\"type\":\"HELLO\",\"code\":\"123456\",\"version\":3}"))
+        _ = try await json(socket)
+        let enter = DragEnterEvent(id: "partial", name: "partial.bin", mimeType: "application/octet-stream", thumbnail: "")
+        try await socket.send(.string(String(decoding: JSONEncoder().encode(enter), as: UTF8.self)))
+        try await socket.send(.string("{\"type\":\"DRAG_RELEASE\",\"id\":\"partial\",\"action\":\"COMMIT\",\"velocityX\":0,\"velocityY\":0,\"stream\":true}"))
+        _ = try await json(socket)
+        try await socket.send(.data(Data(repeating: 42, count: FileReceiver.chunkBytes)))
+        _ = try await json(socket)
+        await withCheckedContinuation { continuation in server.stop { continuation.resume() } }
+        XCTAssertFalse(server.isRunning)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path), [])
+        do { _ = try await socket.receive(); XCTFail("the paired socket must be closed") } catch {}
+        let rejected = session.webSocketTask(with: url)
+        rejected.resume()
+        do {
+            try await rejected.send(.string("{\"type\":\"HELLO\",\"code\":\"123456\"}"))
+            _ = try await rejected.receive()
+            XCTFail("a stopped receiver must not accept even a correctly paired phone")
+        } catch {}
+        rejected.cancel(with: .goingAway, reason: nil)
+        server.start()
+        try await Task.sleep(nanoseconds: 250_000_000)
+        let restarted = session.webSocketTask(with: url)
+        restarted.resume()
+        defer { restarted.cancel(with: .normalClosure, reason: nil) }
+        try await restarted.send(.string("{\"type\":\"HELLO\",\"code\":\"123456\"}"))
+        let response = try await json(restarted)
+        XCTAssertEqual(response["ok"] as? Bool, true)
+    }
+
     func testAuthenticatedTransferIsAcknowledgedAfterSaving() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

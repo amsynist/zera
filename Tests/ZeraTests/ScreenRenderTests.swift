@@ -148,6 +148,9 @@ final class ScreenRenderTests: XCTestCase {
     /// Opt-in native audit of newer destinations and every settings pane. Uses a disposable
     /// home like the existing screen renders; no captures are produced by ordinary test runs.
     func testRenderRedesignInventory() throws {
+        let receiving = UserDefaults.standard.object(forKey: "zera.androp.enabled")
+        defer { UserDefaults.standard.set(receiving, forKey: "zera.androp.enabled") }
+        UserDefaults.standard.set(false, forKey: "zera.androp.enabled")
         guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else {
             throw XCTSkip("use a disposable CFFIXED_USER_HOME for the complete UI audit")
         }

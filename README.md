@@ -13,7 +13,7 @@ Zera lives at the top of your Mac. Hover to open one shared island for Home, Age
 - Dictate into editable fields, run focus sessions and keep reminders close.
 - Reach Settings directly and return to the screen where you left off.
 
-Window Manager is an optional **Beta** addition. The notch companion and its everyday tools remain Zera’s core.
+Window Manager is an optional **Beta** addition under **Settings → Extras**, alongside Android sharing. Both are off on a fresh install; enable only the extras you want. The notch companion and its everyday tools remain Zera’s core.
 
 ## What’s new in Zera v2
 
@@ -28,7 +28,7 @@ Photos and videos travel as the picture itself and open after Zera verifies and 
 **[Download Androp.apk](Androp.apk?raw=1)** · [Pairing and sharing guide](docs/ANDROID_SHARING.md) · [Wire protocol](docs/ANDROID_PROTOCOL.md)
 
 1. Connect phone and Mac to the same trusted Wi-Fi, or connect the Mac to your phone’s hotspot.
-2. In Zera’s menu, open **Android sharing** and copy the six-digit pairing code. Enable receiving.
+2. In Zera’s menu, open **Extras → Android sharing** and copy the six-digit pairing code. Enable receiving.
 3. Enter the code in Androp’s settings. Use discovery or enter the Mac’s local address.
 4. Hold a gallery tile or open a photo, then glide it off an edge. The Files tab sends documents and other originals. **Share → Androp** works too.
 

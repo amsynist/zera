@@ -3,20 +3,19 @@ import ApplicationServices
 import Carbon.HIToolbox
 
 /// One dictation take belongs to the field that had focus when it began. Permission
-/// preflights are advisory; AX writes must produce a verifiable field change. Unsupported
-/// editors receive one native paste on release instead of unverified live keystrokes.
+/// preflights are advisory. External fields receive one target-checked native paste on
+/// release; local NSTextViews can also insert directly while speaking.
 final class DictationInsertionTarget {
     enum Result { case inserted, sent, unavailable }
     private let pid: pid_t
     private let element: AXUIElement?
-    private let usesWebEditor: Bool
     private weak var editor: NSTextView?
     private var expectedSelection: CFRange?
     private var acceptedUnverifiedWrite = false
     private var acceptedWrite = false
 
-    private init(pid: pid_t, element: AXUIElement?, editor: NSTextView?, usesWebEditor: Bool) {
-        self.pid = pid; self.element = element; self.editor = editor; self.usesWebEditor = usesWebEditor
+    private init(pid: pid_t, element: AXUIElement?, editor: NSTextView?) {
+        self.pid = pid; self.element = element; self.editor = editor
         if let editor {
             let range = editor.selectedRange()
             expectedSelection = CFRange(location: range.location, length: range.length)
@@ -28,17 +27,13 @@ final class DictationInsertionTarget {
         // Zera's nonactivating panels can own the keyboard while another app stays frontmost.
         if let window = NSApp?.keyWindow, window.isKeyWindow, let editor = window.firstResponder as? NSTextView {
             guard editor.isEditable, !(editor.delegate is NSSecureTextField) else { return nil }
-            return DictationInsertionTarget(pid: ProcessInfo.processInfo.processIdentifier, element: nil, editor: editor, usesWebEditor: false)
+            return DictationInsertionTarget(pid: ProcessInfo.processInfo.processIdentifier, element: nil, editor: editor)
         }
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
-        let local: NSTextView? = nil
         let (element, error) = focusedElement(pid: app.processIdentifier)
         Diag.log("dictation target: app \(app.bundleIdentifier ?? "unknown"), AX \(error.rawValue), post \(CGPreflightPostEventAccess()), trust \(AXIsProcessTrusted())")
         guard let element, Self.isEditable(element) else { return nil }
-        let electron = app.bundleURL.map { FileManager.default.fileExists(atPath: $0.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path) } ?? false
-        let web = electron || Self.isWebContent(element)
-        Diag.log("dictation target: web editor \(web)")
-        return DictationInsertionTarget(pid: app.processIdentifier, element: element, editor: local, usesWebEditor: web)
+        return DictationInsertionTarget(pid: app.processIdentifier, element: element, editor: nil)
     }
 
     private static func focusedElement(pid: pid_t) -> (AXUIElement?, AXError) {
@@ -82,19 +77,6 @@ final class DictationInsertionTarget {
                                 writable: writable.boolValue)
     }
 
-    private static func isWebContent(_ element: AXUIElement) -> Bool {
-        var node = element
-        for _ in 0..<16 {
-            var role: CFTypeRef?, parent: CFTypeRef?
-            if AXUIElementCopyAttributeValue(node, kAXRoleAttribute as CFString, &role) == .success,
-               role as? String == "AXWebArea" { return true }
-            guard AXUIElementCopyAttributeValue(node, kAXParentAttribute as CFString, &parent) == .success,
-                  let parent, CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
-            node = parent as! AXUIElement
-        }
-        return false
-    }
-
     private static func selection(in element: AXUIElement) -> CFRange? {
         var value: CFTypeRef?, range = CFRange()
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
@@ -136,14 +118,9 @@ final class DictationInsertionTarget {
             advanceSelection(by: text)
             return .inserted
         }
-        if !usesWebEditor, let element {
-            if writeSelectedText(text, to: element) { return .inserted }
-            // An acknowledged AX write may settle asynchronously. Never paste the same
-            // words again while that write could still complete.
-            if acceptedWrite { acceptedUnverifiedWrite = true; return .sent }
-        }
-        // Web editors may accept AX setters without updating their actual document, and
-        // Chromium can ignore bulk Unicode key events. Do not count either as live typing.
+        // Custom native editors can acknowledge AXSelectedText without changing their
+        // document, just like web editors. Do not issue that write and then retry it:
+        // one target-checked paste on release is the external-field insertion path.
         guard allowPaste else { return .unavailable }
         return paste(text)
     }

@@ -56,3 +56,5 @@ crash reporting, accounts or update service**. It talks only to the services the
 - **Calendar contents:** never persisted by Zera and never sent to Claude.
 
 Navigation restoration stores destination IDs, range/format/filter preferences and scroll coordinates under `zera.navigation.*`. Clipboard search text and unfinished input remain in cached views only. First-run progress is separate from completion, and existing onboarding completion is preserved. Completed task and timesheet history is no longer pruned merely because it is over 90 days old; explicit task/project deletion owns its removal.
+
+Optional Extras: Android receiving and Window Manager are disabled by default for fresh installs. A saved opt-in remains a user choice. Android off closes its listener/Bonjour service, disconnects peers, cancels timeouts and tears down arrival overlays. Pending partial-file cleanup drains without publishing stale UI/Shelf callbacks. Window Manager off releases shortcuts/observers and stops window discovery; disabling restores its parked windows before becoming idle.
