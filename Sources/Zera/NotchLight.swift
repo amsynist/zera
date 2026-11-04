@@ -37,7 +37,7 @@ enum NotchLightStyle: Int, CaseIterable {
 
     static var current: NotchLightStyle {
         get {
-            // Once for Zera 2: one solid line of light round the notch (the old stepped Pixel edge
+            // Once for Zera v2: one solid line of light round the notch (the old stepped Pixel edge
             // read as a dashed border that didn't match the glow).
             let d = UserDefaults.standard
             if !d.bool(forKey: "zera.notchLight.z2Migrated") {

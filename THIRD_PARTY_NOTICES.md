@@ -1,4 +1,4 @@
-# Third-party notices — Zera 2
+# Third-party notices — Zera v2
 
 ## Native Mac app
 
@@ -31,9 +31,9 @@ Claude Code, Codex, provider APIs, GitHub and weather integrations are separatel
 
 The static website has no third-party JavaScript runtime. The launch film was rendered using Hyperframes/GSAP development tools; those runtimes are not shipped in the Mac app or website. The website ships only the rendered MP4 and images.
 
-Film music: “Happy Beats / Business Moves Vol. 12” by Sascha Ende, https://ende.app/en, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Edited, trimmed and mixed for the Zera 2 film. UI accents: Kenney interface/impact packs, CC0. Full media credits and capture provenance: docs/MEDIA.md and docs/media/v2/audio-credits.txt. These music rights are separate from the code license.
+Film music: “Happy Beats / Business Moves Vol. 12” by Sascha Ende, https://ende.app/en, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Edited, trimmed and mixed for the Zera v2 film. UI accents: Kenney interface/impact packs, CC0. Full media credits and capture provenance: docs/MEDIA.md and docs/media/v2/audio-credits.txt. These music rights are separate from the code license.
 
-Fresh v2 app screenshots use fictional fixture data. The phone gallery artwork is synthetic project-created scenery. Older illustrations remain historical assets and are no longer the lead README/site screenshots. Zera’s character, icon and original creative assets retain LICENSE-ASSETS.md terms. No third-party font files are bundled.
+Fresh v2 app screenshots use fictional fixture data. The phone gallery photographs are original photorealistic demo images generated with the built-in image_gen tool; prompts are retained in docs/media/v2/photo-prompts.md. The teal wallpaper is original native vector/gradient artwork, with a separately downloadable 5K still. Older illustrations remain historical assets and are no longer the lead README/site screenshots. Zera’s character, icon and original creative assets retain LICENSE-ASSETS.md terms. No third-party font files are bundled.
 
 CI uses pinned actions/checkout, actions/upload-artifact and softprops/action-gh-release. Their source repositories contain their respective MIT licenses. Xcode and native signing/packaging tools are not redistributed.
 
