@@ -2,7 +2,7 @@
 
 <h1 align="center">Zera 2</h1>
 <p align="center"><b>From your phone. Into your Mac.</b><br>Your agents, files, focus and day — close at hand in a native Mac notch.</p>
-<p align="center"><a href="https://github.com/amsynist/zera/releases/latest">Download for Mac</a> · <a href="Androp.apk?raw=1">Download Androp for Android</a> · <a href="https://zera.pravincodes.in/">Website</a> · <a href="site/assets/v2/sharing.mp4">Watch the new film</a></p>
+<p align="center"><a href="https://github.com/amsynist/zera/releases/latest">Download for Mac</a> · <a href="Androp.apk?raw=1">Download Androp for Android</a> · <a href="https://zera.pravincodes.in/">Website</a> · <a href="site/assets/v2/sharing.mp4">Watch the sharing film</a></p>
 
 ## What’s new in Zera 2
 
@@ -35,7 +35,7 @@ Hold right **⌥ or ⇧** to dictate with the configured provider. Optional **Mu
 
 ## See the current app
 
-[Watch the sharing film](site/assets/v2/sharing.mp4) · [Watch the complete screen walkthrough](site/assets/v2/walkthrough.mp4)
+[Watch the sharing-only film](site/assets/v2/sharing.mp4) · [Watch the complete screen walkthrough](site/assets/v2/walkthrough.mp4)
 
 <table><tr><td><img src="site/assets/v2/screens/agents.webp" alt="Native Claude and Codex overview with fictional demo tasks"></td><td><img src="site/assets/v2/screens/sharing.webp" alt="The existing notch receives an original document with themed progress"></td></tr><tr><td><img src="site/assets/v2/screens/home.webp" alt="Zera 2 Home and Mac vitals"></td><td><img src="site/assets/v2/screens/shelf.webp" alt="The redesigned Shelf"></td></tr></table>
 

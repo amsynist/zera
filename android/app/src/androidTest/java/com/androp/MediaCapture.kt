@@ -59,27 +59,50 @@ class MediaCapture(private val test: Instrumentation) {
             while (grid.childCount == 0 && SystemClock.uptimeMillis() < deadline) Thread.sleep(100)
             check(grid.childCount > 0) { "Demo gallery is empty" }
             result.putLong("connected_epoch_ms", System.currentTimeMillis())
-            Thread.sleep(1800); screenshot("phone-home.png")
-            test.runOnMainSync { grid.performItemClick(grid.getChildAt(0), 0, grid.adapter.getItemId(0)) }
-            Thread.sleep(1300); screenshot("phone-photo.png")
+            Thread.sleep(2800); screenshot("phone-home.png")
+            // Select our exact synthetic image even if a previous recording is newer in MediaStore.
+            val position = (0 until grid.childCount).first { index ->
+                val frame = grid.getChildAt(index) as android.view.ViewGroup
+                val uri = (frame.getChildAt(0) as ImageView).tag as android.net.Uri
+                context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use {
+                    it.moveToFirst() && it.getString(0) == "Zera coast.png"
+                } == true
+            } + grid.firstVisiblePosition
+            result.putLong("selected_epoch_ms", System.currentTimeMillis())
+            test.runOnMainSync { grid.performItemClick(grid.getChildAt(position - grid.firstVisiblePosition), position, grid.adapter.getItemId(position)) }
+            Thread.sleep(1600); screenshot("phone-photo.png")
+            Thread.sleep(500)
             val card = activity.findViewById<ImageView>(R.id.dragCard)
             val point = IntArray(2)
             var x = 0f; var y = 0f
             test.runOnMainSync { card.getLocationOnScreen(point); x = point[0] + card.width / 2f; y = point[1] + card.height / 2f }
             val width = context.resources.displayMetrics.widthPixels.toFloat()
             val t = SystemClock.uptimeMillis()
-            fun inject(action: Int, px: Float) {
+            fun inject(action: Int, px: Float, wait: Boolean = false) {
                 val event = MotionEvent.obtain(t, SystemClock.uptimeMillis(), action, px, y, 0)
                 event.source = InputDevice.SOURCE_TOUCHSCREEN
-                check(test.uiAutomation.injectInputEvent(event, true)); event.recycle()
+                check(test.uiAutomation.injectInputEvent(event, wait)); event.recycle()
             }
             result.putLong("gesture_epoch_ms", System.currentTimeMillis())
-            inject(MotionEvent.ACTION_DOWN, x)
-            for (step in 1..45) { inject(MotionEvent.ACTION_MOVE, x + (width - 3 - x) * step / 45); Thread.sleep(30) }
+            inject(MotionEvent.ACTION_DOWN, x, true)
+            // Asynchronous injection keeps Binder acknowledgement latency out of the gesture cadence.
+            // Match display vsync over a natural 1.1-second continuous swipe.
+            val swipeStart = SystemClock.uptimeMillis()
+            for (step in 1..66) {
+                val due = swipeStart + step * 1100L / 66
+                val pause = due - SystemClock.uptimeMillis()
+                if (pause > 0) Thread.sleep(pause)
+                val fraction = step / 66f
+                val eased = fraction * fraction * (3 - 2 * fraction)
+                inject(MotionEvent.ACTION_MOVE, x + (width - 3 - x) * eased)
+            }
             result.putLong("release_epoch_ms", System.currentTimeMillis())
-            inject(MotionEvent.ACTION_UP, width - 3)
-            Thread.sleep(4500)
+            inject(MotionEvent.ACTION_UP, width - 3, true)
+            Thread.sleep(6000)
             result.putString("stream", "Real native Gallery photo gesture captured; verify the Mac original SHA-256.\n")
+            File(context.filesDir, "phone-timing.json").writeText(org.json.JSONObject().apply {
+                for (key in result.keySet()) put(key, result.get(key))
+            }.toString(2))
             test.finish(Activity.RESULT_OK, result)
         } catch (e: Throwable) {
             result.putString("stream", e.stackTraceToString()); test.finish(Activity.RESULT_CANCELED, result)
