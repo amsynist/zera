@@ -33,6 +33,34 @@ struct HotKeyShortcut: Codable, Equatable {
         return m
     }
 
+    // MARK: Saved shortcuts
+
+    /// A recorded shortcut kept in defaults under `key`: `fallback` until you record another,
+    /// nil once you turn it off.
+    static func load(_ key: String, default fallback: HotKeyShortcut) -> HotKeyShortcut? {
+        let u = UserDefaults.standard
+        if u.bool(forKey: key + "Off") { return nil }
+        return u.data(forKey: key).flatMap { try? JSONDecoder().decode(HotKeyShortcut.self, from: $0) } ?? fallback
+    }
+
+    /// Saves `shortcut` under `key`; nil turns the shortcut off.
+    static func save(_ shortcut: HotKeyShortcut?, _ key: String) {
+        let u = UserDefaults.standard
+        u.set(shortcut == nil, forKey: key + "Off")
+        if let s = shortcut, let data = try? JSONEncoder().encode(s) { u.set(data, forKey: key) }
+    }
+
+    /// The Settings recorder's swap: save `new` and register it; if macOS refuses it (another app
+    /// owns that combination), put `old` back and register that again. True when `new` took.
+    static func swap(to new: HotKeyShortcut?, from old: HotKeyShortcut?,
+                     save: (HotKeyShortcut?) -> Void, register: () -> Bool) -> Bool {
+        save(new)
+        if register() { return true }
+        save(old)
+        _ = register()
+        return false
+    }
+
     /// Just the modifier symbols, for showing what's held down while recording.
     static func symbols(_ flags: NSEvent.ModifierFlags) -> String {
         HotKeyShortcut(keyCode: 0, modifiers: carbonModifiers(flags), key: "").label
@@ -69,7 +97,10 @@ final class GlobalHotKey {
         let hotKeyID = EventHotKeyID(signature: OSType(0x5A455241), id: id)   // 'ZERA'
         var out: EventHotKeyRef?
         let status = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, hotKeyID, GetApplicationEventTarget(), 0, &out)
-        guard status == noErr, let r = out else { return nil }
+        guard status == noErr, let r = out else {
+            Diag.log("hotkey registration failed: key \(shortcut.keyCode), modifiers \(shortcut.modifiers), status \(status)")
+            return nil
+        }
         ref = r
         Self.handlers[id] = handler
     }
@@ -98,7 +129,7 @@ final class GlobalHotKey {
 /// Click it, press the keys you want: a shortcut field. Esc cancels, ⌫ turns the shortcut off.
 /// `onChange` returns false when the combination can't be used (taken by another app).
 final class ShortcutRecorder: NSView {
-    var shortcut: HotKeyShortcut? { didSet { needsDisplay = true } }
+    var shortcut: HotKeyShortcut? { didSet { updateAccessibility(); needsDisplay = true } }
     var onChange: ((HotKeyShortcut?) -> Bool)?
     /// Recording started / stopped: the live shortcut is paused meanwhile so pressing it is recorded.
     var onRecording: ((Bool) -> Void)?
@@ -108,10 +139,23 @@ final class ShortcutRecorder: NSView {
             guard recording != oldValue else { return }
             held = ""
             message = nil
+            if let keyLossObserver { NotificationCenter.default.removeObserver(keyLossObserver); self.keyLossObserver = nil }
+            if recording, let window {
+                keyLossObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.stop() }
+                }
+            }
             onRecording?(recording)
             needsDisplay = true
         }
     }
+    private var keyLossObserver: NSObjectProtocol?
+    deinit { if let keyLossObserver { NotificationCenter.default.removeObserver(keyLossObserver) } }
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if recording, newWindow !== window { stop() }
+        super.viewWillMove(toWindow: newWindow)
+    }
+    override func viewDidHide() { if recording { stop() }; super.viewDidHide() }
     private var held = ""
     private var message: String?
     private var hovered = false { didSet { needsDisplay = true } }
@@ -149,6 +193,7 @@ final class ShortcutRecorder: NSView {
         return super.resignFirstResponder()
     }
 
+    func cancelRecording() { if recording { stop() } }
     private func stop() {
         recording = false
         updateAccessibility()
@@ -230,8 +275,7 @@ final class ShortcutRecorder: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }

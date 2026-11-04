@@ -222,6 +222,23 @@ final class GitHubService {
 
     var isConnected: Bool { token != nil && login != nil }
 
+    /// The saved token needs your OK (saved by an older build): ask macOS once, on request.
+    var tokenNeedsUnlock: Bool { KeychainStore.isLocked(.github) }
+
+    func unlockToken() {
+        Self.credentialQueue.async { [weak self] in
+            let t = KeychainStore.read(.github, interactive: true)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.tokenGeneration += 1
+                self.tokenLoading = false
+                self.cachedToken = .some((t?.isEmpty ?? true) ? nil : t)
+                self.startPolling()
+                NotificationCenter.default.post(name: Self.changed, object: nil)
+            }
+        }
+    }
+
     /// Shows sample PRs without a token or a request (the screen renders).
     func preview(login: String, pulls: [GHPullRequest]) {
         tokenGeneration += 1; tokenLoading = false
@@ -237,7 +254,7 @@ final class GitHubService {
         tokenGeneration += 1; tokenLoading = false
         let generation = tokenGeneration
         let saved: Bool = await withCheckedContinuation { continuation in
-            Self.credentialQueue.async { continuation.resume(returning: KeychainStore.write(token, to: .githubToken)) }
+            Self.credentialQueue.async { continuation.resume(returning: KeychainStore.write(token, to: .github)) }
         }
         guard saved else { throw GHError.badResponse }
         guard tokenGeneration == generation else { throw CancellationError() }
@@ -248,11 +265,11 @@ final class GitHubService {
         let fm = FileManager.default
         if let s = try? String(contentsOf: legacyTokenURL, encoding: .utf8) {
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !t.isEmpty, KeychainStore.has(.githubToken) || KeychainStore.write(t, to: .githubToken) {
+            if !t.isEmpty, KeychainStore.has(.github) || KeychainStore.write(t, to: .github) {
                 try? fm.removeItem(at: legacyTokenURL)
             }
         }
-        let t = KeychainStore.read(.githubToken)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = KeychainStore.read(.github)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (t?.isEmpty ?? true) ? nil : t
     }
 
@@ -278,7 +295,7 @@ final class GitHubService {
         tokenGeneration += 1; tokenLoading = false
         let legacy = legacyTokenURL
         Self.credentialQueue.async {
-            KeychainStore.delete(.githubToken)
+            KeychainStore.delete(.github)
             try? FileManager.default.removeItem(at: legacy)
         }
         cachedToken = .some(nil)

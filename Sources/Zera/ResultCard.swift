@@ -160,7 +160,7 @@ final class ThreadBlock: NSView {
         switch kind {
         case .answer: layer?.backgroundColor = p.surface.cgColor
         case .question: layer?.backgroundColor = p.accentSoft.cgColor
-        case .problem: layer?.backgroundColor = p.warning.withAlphaComponent(p.isDark ? 0.16 : 0.20).cgColor
+        case .problem: layer?.backgroundColor = p.warning.withAlphaComponent(0.16).cgColor
         }
         text.isSelectable = true
         text.allowsEditingTextAttributes = false
@@ -172,7 +172,7 @@ final class ThreadBlock: NSView {
         icon.isHidden = kind != .problem
         if kind == .problem {
             icon.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Problem")
-            icon.contentTintColor = p.isDark ? p.warning : NSColor(srgbRed: 0.55, green: 0.35, blue: 0.0, alpha: 1)
+            icon.contentTintColor = p.warning
         }
         addSubview(icon)
     }
@@ -468,8 +468,8 @@ final class ResultCard: CardBase, CardContent, NSTextFieldDelegate {
 
     private var markdownTheme: MarkdownLite.Theme {
         let p = Pal
-        return MarkdownLite.Theme(text: p.text, secondary: p.textSecondary, code: p.isDark ? p.codeText : p.text,
-                                  codeBackground: p.isDark ? p.codeBox : p.surfaceStrong, accent: p.accent)
+        return MarkdownLite.Theme(text: p.text, secondary: p.textSecondary, code: p.codeText,
+                                  codeBackground: p.codeBox, accent: p.accent)
     }
 
     /// Lays the conversation out as blocks: questions right, answers left, problems amber.

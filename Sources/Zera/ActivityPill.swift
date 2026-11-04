@@ -14,6 +14,7 @@ import AppKit
 /// sits above this one) and each wing tapers into a tendril that reaches into her. The wings
 /// keep their navy-black look in light and dark mode.
 final class LiveActivityView: NSView {
+    let companion = LivingCompanionView()
     enum Mode: Equatable { case idle, running, approval, attention, done }
 
     /// ⌄ on the left wing: open the session. The wing bodies themselves don't react to clicks.
@@ -125,12 +126,12 @@ final class LiveActivityView: NSView {
         replyField.isBordered = false
         replyField.drawsBackground = false
         replyField.focusRingType = .none
-        replyField.font = NSFont.systemFont(ofSize: 14, weight: .medium)
+        replyField.font = Typo.rowTitle
         replyField.textColor = Neon.text
         replyField.cell?.usesSingleLineMode = true
         replyField.cell?.isScrollable = true
         replyField.placeholderAttributedString = NSAttributedString(string: "Reply to Claude…", attributes: [
-            .foregroundColor: Neon.textFaint, .font: NSFont.systemFont(ofSize: 14, weight: .medium)])
+            .foregroundColor: Neon.textFaint, .font: Typo.rowTitle])
         replyField.delegate = self
         replyField.setAccessibilityLabel("Reply to Claude")
         replyBox.addSubview(replyField)
@@ -138,6 +139,8 @@ final class LiveActivityView: NSView {
         replyButton.toolTip = "Reply: Claude carries on in this session"
         sendButton.onTap = { [weak self] in self?.sendReply() }
         [replyButton, replyBox, sendButton].forEach { $0.isHidden = true }
+        addSubview(companion)
+        companion.onTap = { [weak self] in self?.onTap?() }
         expand.onTap = { [weak self] in self?.onTap?() }
         expand.setAccessibilityLabel("Open the Claude session")
         expand.toolTip = "Open the session"
@@ -255,7 +258,7 @@ final class LiveActivityView: NSView {
         replyBox.layer?.backgroundColor = Neon.field.cgColor
         replyField.textColor = Neon.text
         replyField.placeholderAttributedString = NSAttributedString(string: "Reply to Claude…", attributes: [
-            .foregroundColor: Neon.textFaint, .font: NSFont.systemFont(ofSize: 14, weight: .medium)])
+            .foregroundColor: Neon.textFaint, .font: Typo.rowTitle])
         needsDisplay = true
     }
 
@@ -273,7 +276,7 @@ final class LiveActivityView: NSView {
     // MARK: - Content
 
     /// Everything from the session and the first pending approval; safe to call every second.
-    func update(session s: ClaudeSession?, pending: HookRequest?) {
+    func update(session s: ClaudeSession?, pending: HookRequest?, provider: String = "Claude", review: Bool = false) {
         request = pending
         let newMode: Mode
         if pending != nil { newMode = .approval }
@@ -288,6 +291,7 @@ final class LiveActivityView: NSView {
         let wasAsking = mode == .approval
         let modeChanged = newMode != mode
         mode = newMode
+        companion.activityOverride = newMode == .approval ? .approval : newMode == .running ? .running : newMode == .done ? .done : .none
 
         let elapsed: String? = s?.promptAt == nil ? nil : s.map { ClaudeActivityCard.clock($0.elapsed) }
         let current = s?.steps.last(where: { !$0.finished }) ?? s?.steps.last
@@ -297,25 +301,25 @@ final class LiveActivityView: NSView {
         switch mode {
         case .idle:
             ring.set(.idle)
-            set(leftTitle, "Claude is ready")
+            set(leftTitle, provider + " is ready")
             set(leftSub, "Ask me anything…")
         case .running:
             ring.set(.spinning)
-            set(leftTitle, "Claude is working…")
+            set(leftTitle, provider + " is working…")
             let step: String? = current.map { $0.finished || $0.progressLine.isEmpty ? $0.text : "\($0.text)…" }
             set(leftSub, step ?? (task.isEmpty ? "Thinking…" : task))
         case .approval:
             ring.set(.breathing)
-            set(leftTitle, "Claude is ready")
+            set(leftTitle, provider + " is ready")
             set(leftSub, pending?.detail.map { ClaudeActivityService.oneLine($0, max: 60) }
                 ?? (task.isEmpty ? "Waiting on your OK to continue" : task))
         case .attention:
             ring.set(.waiting)
-            set(leftTitle, "Claude needs you")
+            set(leftTitle, provider + " needs you")
             set(leftSub, task.isEmpty ? "Waiting for your reply" : task)
         case .done:
             ring.set(.done)
-            set(leftTitle, "Claude is done")
+            set(leftTitle, provider + " is done")
             set(leftSub, task.isEmpty ? "All finished" : task)
         }
 
@@ -327,6 +331,10 @@ final class LiveActivityView: NSView {
         // Right wing: status line, time and bar — or the command with its two buttons.
         // The orb and minimize stay in both.
         let asking = mode == .approval
+        expand.setAccessibilityLabel("Open the \(provider) session")
+        minimize.setAccessibilityLabel("Minimize \(provider) activity")
+        approve.setTitleText(review ? "Review…" : "Approve")
+        if asking { set(leftTitle, provider + " needs you") }
         let runGroup: [NSView] = [status, clock, bar]
         let askGroup: [NSView] = [prompt, command, reject, approve]
         runGroup.forEach { $0.isHidden = asking || typing }
@@ -373,7 +381,7 @@ final class LiveActivityView: NSView {
         }
 
         setAccessibilityLabel(asking
-            ? "Claude needs your approval: \(command.stringValue)"
+            ? "\(provider) needs your approval: \(command.stringValue)"
             : "\(leftTitle.stringValue), \(leftSub.stringValue). \(status.stringValue) \(clock.stringValue)")
         switch mode {
         case .approval, .attention: stateColor = Neon.warning
@@ -471,6 +479,7 @@ final class LiveActivityView: NSView {
         super.layout()
         let y = ((bounds.height - M.wingH) / 2).rounded()
         let mid = y + M.wingH / 2
+        companion.frame = NSRect(x: centerX - 48, y: mid - 44, width: 96, height: 88)
 
         let lx1 = centerX - M.tail
         let lx0 = max(M.edge, lx1 - M.leftMax)
@@ -674,7 +683,7 @@ final class LiveActivityView: NSView {
 
     /// Whether `p` (view coordinates) is on a wing, with a little slack for the glow.
     func wingContains(_ p: NSPoint) -> Bool {
-        onWing(p) || onWing(NSPoint(x: p.x, y: p.y - 4)) || onWing(NSPoint(x: p.x, y: p.y + 4))
+        companion.frame.contains(p) || onWing(p) || onWing(NSPoint(x: p.x, y: p.y - 4)) || onWing(NSPoint(x: p.x, y: p.y + 4))
     }
 
     private func onWing(_ p: NSPoint) -> Bool {
@@ -684,6 +693,7 @@ final class LiveActivityView: NSView {
     /// Only the wings take clicks; the transparent rest of the panel lets them through.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let p = superview.map { convert(point, from: $0) } ?? point
+        if companion.frame.contains(p) { return companion }
         guard onWing(p) else { return nil }
         // Buttons (and the command, which copies) take their own clicks; the rest of the wing
         // only holds the pointer so clicks don't fall through to the window behind.
@@ -740,7 +750,9 @@ enum Neon {
     static var fillTop: NSColor { t.glassTop.withAlphaComponent(0.97) }
     static var fillBottom: NSColor { t.glassBottom.withAlphaComponent(0.97) }
     static var edge: NSColor { t.edge }
-    static var halo: NSColor { t.accent.withAlphaComponent(0.38) }
+    /// The glow round the island: the same light as its edge and the edge light (wallpaper colour
+    /// when that's on, else the theme accent), so outline and glow never disagree.
+    static var halo: NSColor { WallpaperTint.lightAccent.withAlphaComponent(0.38) }
     /// The bright end of the accent gradient (rings, bars, glows).
     static var cyan: NSColor { t.accent }
     /// The far end of the accent gradient.
@@ -1128,8 +1140,7 @@ final class OrbView: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { wantSpeed = 3.4 }
     override func mouseExited(with event: NSEvent) { wantSpeed = 1 }
@@ -1195,8 +1206,7 @@ final class CommandCopyButton: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -1229,8 +1239,7 @@ final class GlowIconButton: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -1240,7 +1249,7 @@ final class GlowIconButton: NSView {
 final class GlowPillButton: NSView {
     enum Tint { case red, green, blue }
     var onTap: (() -> Void)?
-    private let title: String
+    private var title: String
     private let symbol: String
     private let tint: Tint
     private var hovered = false { didSet { needsDisplay = true } }
@@ -1258,6 +1267,10 @@ final class GlowPillButton: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// Glow inset + padding + icon + gap + text + padding.
+    func setTitleText(_ text: String) {
+        guard title != text else { return }
+        title = text; setAccessibilityLabel(text); needsDisplay = true; superview?.needsLayout = true
+    }
     var fittedWidth: CGFloat {
         let textWidth = ceil((title as NSString).size(withAttributes: [.font: Self.font]).width)
         return textWidth + 8 + 14 + 15 + 7 + 17
@@ -1297,8 +1310,7 @@ final class GlowPillButton: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -1333,8 +1345,8 @@ final class StatusChip: NSView {
     func set(text: String, color c: NSColor) {
         color = c
         label.stringValue = text
-        label.textColor = Pal.isDark ? c : (c.blended(withFraction: 0.35, of: .black) ?? c)
-        layer?.backgroundColor = c.withAlphaComponent(Pal.isDark ? 0.18 : 0.15).cgColor
+        label.textColor = c
+        layer?.backgroundColor = c.withAlphaComponent(0.18).cgColor
         needsDisplay = true; needsLayout = true
     }
 

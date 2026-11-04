@@ -8,3 +8,21 @@ audit/
 .env
 # Local Claude Code preview config and screenshots
 .claude/
+.desloppify/
+
+# Private local tooling, self-test desktops and generated media workspaces
+.rea/
+.mcp.json
+0/
+scorecard.png
+brag-output*/
+**/node_modules/
+**/.gradle/
+**/build/
+android/local.properties
+# Local audit journals contain machine paths/session evidence; public release notes live in docs/releases/.
+docs/NATIVE_REDESIGN_AUDIT.md
+docs/NATIVE_REDESIGN_PLAN.md
+docs/REA_SETUP_PLAN.md
+docs/STABILITY_VERIFICATION_*.md
+docs/WINDOW_ARRANGEMENT_PLAN.md

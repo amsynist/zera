@@ -78,8 +78,8 @@ final class ClaudeActivityCard: CardBase, CardContent {
         approvalBox.wantsLayer = true
         approvalBox.layer?.cornerRadius = Radius.l
         approvalBox.layer?.cornerCurve = .continuous
-        approvalBox.layer?.backgroundColor = p.warning.withAlphaComponent(p.isDark ? 0.14 : 0.16).cgColor
-        approvalTitle.textColor = p.isDark ? p.warning : NSColor(srgbRed: 0.72, green: 0.42, blue: 0.0, alpha: 1)
+        approvalBox.layer?.backgroundColor = p.warning.withAlphaComponent(0.14).cgColor
+        approvalTitle.textColor = p.warning
         approvalCommand.font = Typo.bodyStrong; approvalCommand.textColor = p.text; approvalCommand.lineBreakMode = .byTruncatingTail
         approvalDetail.font = Typo.secondary; approvalDetail.textColor = p.textSecondary; approvalDetail.lineBreakMode = .byTruncatingTail
         for v in [approvalTitle, approvalCommand, approvalDetail, reject, approve] as [NSView] { approvalBox.addSubview(v) }
@@ -242,14 +242,14 @@ final class ClaudeActivityCard: CardBase, CardContent {
     @objc private func approveTapped() {
         guard let r = pendingRequest else { return }
         approve.isEnabled = false; reject.isEnabled = false
-        guard ClaudeHookService.shared.respond(r, allow: true) else { return }
+        guard ClaudeHookService.shared.respond(r, allow: true) else { reload(); return }
         SoundService.shared.play(.claudeApproved)
         say?("approved — running ✅", .approved)
     }
     @objc private func rejectTapped() {
         guard let r = pendingRequest else { return }
         approve.isEnabled = false; reject.isEnabled = false
-        guard ClaudeHookService.shared.respond(r, allow: false) else { return }
+        guard ClaudeHookService.shared.respond(r, allow: false) else { reload(); return }
         SoundService.shared.play(.claudeRejected)
         say?("okay, skipped that", .sad)
     }

@@ -180,8 +180,7 @@ final class OrbitTile: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -241,9 +240,19 @@ final class OrbitCaption: NSView {
 /// YOUR USUAL 7 · COMMANDS 4 · ACTIONS 8 — a pill of lanes; the lit pill glides between them.
 final class OpenerLanes: NSView {
     struct Lane { var title: String; var count: Int }
-    var lanes: [Lane] = [] { didSet { needsDisplay = true; invalidateIntrinsicContentSize() } }
+    var lanes: [Lane] = [] {
+        didSet {
+            // Filtering replaces lanes without sending mouseExited for a removed lane.
+            hoverIndex = nil
+            selected = min(max(0, selected), max(0, lanes.count - 1))
+            needsDisplay = true
+            invalidateIntrinsicContentSize()
+        }
+    }
     var selected = 0 {
         didSet {
+            let valid = min(max(0, selected), max(0, lanes.count - 1))
+            if selected != valid { selected = valid }
             guard selected != oldValue, lanes.indices.contains(selected) else { return }
             indicator.move(to: slot(selected), animated: true)
             needsDisplay = true
@@ -274,6 +283,7 @@ final class OpenerLanes: NSView {
     var fittedWidth: CGFloat { lanes.reduce(0) { $0 + laneWidth($1) } + CGFloat(max(0, lanes.count - 1)) * Self.gap + Self.inset * 2 }
 
     private func slot(_ i: Int) -> NSRect {
+        guard lanes.indices.contains(i) else { return .zero }
         var x = Self.inset
         for j in 0..<i { x += laneWidth(lanes[j]) + Self.gap }
         return NSRect(x: x, y: Self.inset, width: laneWidth(lanes[i]), height: bounds.height - Self.inset * 2)

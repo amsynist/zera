@@ -16,10 +16,10 @@ enum Isle {
     static let corner: CGFloat = 34
     /// Hovering her (v2): the nodes bloom out round her on an arc, each centre this far from
     /// the rope (x) and below the top of the screen (y); the search node hangs under them.
-    static let bloom: [CGPoint] = [CGPoint(x: -258, y: 72), CGPoint(x: -206, y: 158), CGPoint(x: -130, y: 226), CGPoint(x: -56, y: 272),
-                                   CGPoint(x: 56, y: 272), CGPoint(x: 130, y: 226), CGPoint(x: 206, y: 158), CGPoint(x: 258, y: 72)]
-    static let bloomSearch = CGPoint(x: 0, y: 336)
-    static let bloomNode: CGFloat = 56
+    static let bloom: [CGPoint] = [CGPoint(x: -300, y: 72), CGPoint(x: -270, y: 148), CGPoint(x: -210, y: 224), CGPoint(x: -140, y: 300), CGPoint(x: -56, y: 376),
+                                   CGPoint(x: 56, y: 376), CGPoint(x: 140, y: 300), CGPoint(x: 210, y: 224), CGPoint(x: 270, y: 148), CGPoint(x: 300, y: 72)]
+    static let bloomSearch = CGPoint(x: 0, y: 464)
+    static let bloomNode: CGFloat = 44
     /// The rail's nodes (v2): they hang just under the notch, either side of her, this big and
     /// this far apart; the innermost centre sits `railInner` from the rope.
     static let node: CGFloat = 36
@@ -40,18 +40,20 @@ enum Isle {
         return ceil((max(left, right) + zeraGap / 2 + 8) * 2)
     }
 
-    /// The tabs at notch level: Home · Claude · Files · Clipboard left of the notch, Tasks ·
-    /// PRs · Reminders · Settings right of it.
-    static let leftTabs: [CardKind] = [.home, .claude, .shelf, .clipboard]
-    static let rightTabs: [CardKind] = [.tasks, .github, .reminders, .settings]
+    /// Every primary screen is directly reachable; PRs and Tasks have their own selection.
+    static let leftTabs: [CardKind] = [.home, .claude, .github, .alerts, .clipboard]
+    static let rightTabs: [CardKind] = [.shelf, .tasks, .reminders, .teleprompter, .focus]
+    /// Screens that open without a tab of their own at the notch.
+    static let offRail: [CardKind] = [.settings, .arrange, .phoneTransfer]
 
     /// Which tab lights up for a screen that has none of its own.
     static func tab(for kind: CardKind) -> CardKind {
         switch kind {
-        case .result: return .shelf
+        case .result, .phoneTransfer: return .shelf
         case .approval: return .claude
         case .reminderAlert: return .reminders
-        case .toast: return .github
+        case .toast: return .alerts
+        case .settings, .arrange: return .home
         default: return kind
         }
     }
@@ -66,6 +68,9 @@ enum Isle {
         case .settings: return "gearshape"
         case .clipboard: return "doc.on.clipboard"
         case .tasks: return "checklist"
+        case .alerts: return "bell.badge"
+        case .teleprompter: return "text.alignleft"
+        case .focus: return "scope"
         default: return tab.symbol
         }
     }
@@ -73,6 +78,7 @@ enum Isle {
     /// Zera's pose while a screen is open.
     static func pose(for kind: CardKind) -> String {
         switch kind {
+        case .phoneTransfer: return "hang_peek"
         case .home: return "hang_wave"
         case .claude, .approval: return "hang_climb"
         case .shelf: return "hang_peek"
@@ -81,16 +87,33 @@ enum Isle {
         case .settings: return "hang_swing"
         case .toast: return "hang_wave"
         case .clipboard: return "hang_upsidedown"
-        case .tasks: return "hang_smile"
+        case .tasks, .focus: return "hang_smile"
+        case .alerts: return "hang_peek"
+        case .teleprompter, .arrange: return "hang_think"
         }
     }
 }
 
 enum HoverMenuStyle: Int, CaseIterable {
-    case arc, tiles
-    var title: String { self == .arc ? "Arc" : "Tiles" }
+    case arc, tiles, bar
+    var title: String {
+        switch self {
+        case .arc: return "Arc"
+        case .tiles: return "Tiles"
+        case .bar: return "Notch bar"
+        }
+    }
+    /// The notch bar (the notch widens and drops one row of tabs) unless you picked another.
     static var current: HoverMenuStyle {
-        get { HoverMenuStyle(rawValue: UserDefaults.standard.integer(forKey: "zera.hoverMenuStyle")) ?? .arc }
+        get {
+            // Once: the Glance-style notch bar replaces whatever older style was saved.
+            let d = UserDefaults.standard
+            if !d.bool(forKey: "zera.hoverMenuStyle.barMigrated") {
+                d.set(true, forKey: "zera.hoverMenuStyle.barMigrated")
+                d.set(HoverMenuStyle.bar.rawValue, forKey: "zera.hoverMenuStyle")
+            }
+            return HoverMenuStyle(rawValue: d.object(forKey: "zera.hoverMenuStyle") as? Int ?? HoverMenuStyle.bar.rawValue) ?? .bar
+        }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: "zera.hoverMenuStyle") }
     }
 }
@@ -108,9 +131,25 @@ final class IslandView: NSView {
     private(set) var mode: Mode = .closed
     var hoverStyle = HoverMenuStyle.current
     private var tiledPeek: Bool { mode == .peek && hoverStyle == .tiles }
+    /// The notch bar: one row of tabs (and search) in the notch, grown sideways and down.
+    private var barPeek: Bool { mode == .peek && hoverStyle == .bar }
+    private static let barStep: CGFloat = 82
+    private static let barTop: CGFloat = 6
+    private var barWidth: CGFloat { min(bounds.width - 24, max(760, CGFloat(tabs.count + 1) * Self.barStep + 32)) }
+    private var barColumns: Int {
+        let maximum = max(1, Int((barWidth - 32) / 70))
+        let rows = Int(ceil(Double(tabs.count + 1) / Double(maximum)))
+        return Int(ceil(Double(tabs.count + 1) / Double(rows)))
+    }
+    private var barRows: Int { Int(ceil(Double(tabs.count + 1) / Double(barColumns))) }
+    /// Zera 2: the deck (Zera, the busiest agent, music) sits above the row of screens.
+    let deck = HoverDeck()
+    private var deckSpace: CGFloat { HoverDeck.height + 14 }
+    private var barHeight: CGFloat { band + deckSpace + Self.barTop + CGFloat(barRows) * (Isle.bloomNode + IslandTab.labelH) + CGFloat(barRows - 1) * Space.s + 12 }
     private var tileWidth: CGFloat { min(560, bounds.width - 2 * Isle.margin) }
     private var tileTop: CGFloat { band + 108 }
-    private var tileHeight: CGFloat { band + 420 }
+    private var tileRows: Int { Int(ceil(Double(tabs.count) / 4)) }
+    private var tileHeight: CGFloat { band + 180 + CGFloat(tileRows) * 120 }
 
     /// Notch height (the black band) and width.
     var band: CGFloat = 34 { didSet { needsLayout = true } }
@@ -132,10 +171,13 @@ final class IslandView: NSView {
     /// Live rings on the nodes: CPU on Home, the session on Claude, the next event on Reminders…
     var instruments: [CardKind: IslandInstrument] = [:] { didSet { tabs.forEach { $0.instrument = instruments[$0.kind] } } }
     var onClose: (() -> Void)?
-    /// The search node after the rail: opens the App Opener in the middle of the screen.
+    /// Arrange replaces the redundant search node; Option-Space still opens apps.
     var onSearch: (() -> Void)?
     private let closeButton = IslandClose()
-    private let searchNode = IslandClose(symbol: "magnifyingglass", label: "Open an app", tip: "Open an app (⌥Space)", accent: true)
+    /// Settings left the rail (Glance-style eight tabs); the gear on the band opens it.
+    private let settingsButton = IslandClose(symbol: "gearshape", label: "Settings", tip: "Settings (⌘,)")
+    var onSettings: (() -> Void)?
+    private let searchNode = IslandClose(symbol: "rectangle.3.group", label: "Arrange windows", tip: "Arrange windows and workspaces", accent: true)
 
     /// The island's current shape, in view coordinates.
     private(set) var islandRect = NSRect.zero
@@ -144,8 +186,17 @@ final class IslandView: NSView {
     private let glow = CAShapeLayer()
     private let fill = CAGradientLayer()
     private let fillMask = CAShapeLayer()
+    let phoneLiquid = PhoneLiquidLayer()
+    private let ambient = CAGradientLayer()
+    private let ambientHost = CALayer()
+    private let ambientFade = CAGradientLayer()
+    private let ambientMask = CAShapeLayer()
+    let companion = LivingCompanionView(frame: .zero)
     private let edge = CAShapeLayer()
     private let edgeFade = CAGradientLayer()
+    /// The notch light: the chosen style around the island, and the reactions that run along it
+    /// (copy sweeps, volume arcs, an approval waiting) even while the island is closed.
+    let light = NotchLightLayer()
     private let hostMask = CAShapeLayer()
     /// v2: where the lens attaches under the notch — a bright hairline and a soft accent bloom.
     private let rootLine = CAGradientLayer()
@@ -166,8 +217,8 @@ final class IslandView: NSView {
         wantsLayer = true
         layer?.masksToBounds = false
 
-        glow.fillColor = Neon.fillBottom.cgColor
-        glow.shadowColor = Neon.halo.cgColor
+        glow.fillColor = NSColor.black.cgColor
+        glow.shadowColor = NSColor.black.cgColor
         glow.shadowOpacity = 0
         glow.shadowRadius = 16
         glow.shadowOffset = .zero
@@ -175,6 +226,17 @@ final class IslandView: NSView {
 
         fill.mask = fillMask
         layer?.addSublayer(fill)
+        ambient.type = .radial
+        ambient.startPoint = CGPoint(x: 0.5, y: 0.12); ambient.endPoint = CGPoint(x: 1, y: 0.72)
+        ambientHost.mask = ambientMask
+        ambient.mask = ambientFade
+        ambientFade.startPoint = CGPoint(x: 0.5, y: 0)
+        ambientFade.endPoint = CGPoint(x: 0.5, y: 1)
+        ambientFade.colors = [NSColor.clear.cgColor, NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor]
+        ambient.colors = [CompanionGlyph.tint(for: .idle).withAlphaComponent(0.17).cgColor, CompanionGlyph.tint(for: .idle).withAlphaComponent(0.035).cgColor, NSColor.clear.cgColor]
+        ambientHost.addSublayer(ambient)
+        layer?.addSublayer(ambientHost)
+        layer?.addSublayer(phoneLiquid)
 
         edge.fillColor = nil
         edge.strokeColor = Neon.edge.cgColor
@@ -187,6 +249,11 @@ final class IslandView: NSView {
         edgeFade.colors = [NSColor.clear.cgColor, NSColor.black.cgColor]
         edge.mask = edgeFade
         layer?.addSublayer(edge)
+        // The light draws the edge; the old edge layer stays
+        // for the morph geometry but never shows.
+        edge.isHidden = true
+        light.quietWhenExpanded = true
+        layer?.addSublayer(light)
 
         rootGlow.type = .radial
         rootGlow.startPoint = CGPoint(x: 0.5, y: 0)
@@ -205,6 +272,13 @@ final class IslandView: NSView {
         whisperView.alphaValue = 0
         whisperView.isHidden = true
         addSubview(whisperView)
+        companion.isHidden = true
+        companion.onTintChange = { [weak self] tint in
+            CATransaction.begin(); CATransaction.setAnimationDuration(Motion.duration(0.4))
+            self?.ambient.colors = [tint.withAlphaComponent(0.17).cgColor, tint.withAlphaComponent(0.035).cgColor, NSColor.clear.cgColor]
+            CATransaction.commit()
+        }
+        addSubview(companion)
 
         tabIndicator.alphaValue = 0
         tabIndicator.target = { [weak self] in self?.activeTabFrame }
@@ -212,12 +286,16 @@ final class IslandView: NSView {
         closeButton.alphaValue = 0
         closeButton.onTap = { [weak self] in self?.onClose?() }
         addSubview(closeButton)
+        settingsButton.alphaValue = 0
+        settingsButton.onTap = { [weak self] in self?.onSettings?() }
+        addSubview(settingsButton)
         searchNode.alphaValue = 0
         searchNode.onTap = { [weak self] in self?.onSearch?() }
         addSubview(searchNode)
         for kind in Isle.leftTabs + Isle.rightTabs {
             let t = IslandTab(kind: kind)
-            t.onTap = { [weak self] in self?.onTab?(kind) }
+            t.onTap = { [weak self] in self?.companion.react(.success); self?.onTab?(kind) }
+            t.onHover = { [weak self] in self?.companion.noticeSelection() }
             t.alphaValue = 0
             addSubview(t)
             tabs.append(t)
@@ -262,7 +340,7 @@ final class IslandView: NSView {
         islandRect = r
         let closedPath = Self.path(r, corner: corner, closed: true, neck: tiledPeek ? notchWidth : nil, band: band)
         let openPath = Self.path(r, corner: corner, closed: false, neck: tiledPeek ? notchWidth : nil, band: band)
-        let pairs: [(CAShapeLayer, CGPath)] = [(glow, closedPath), (fillMask, closedPath), (hostMask, closedPath), (edge, openPath)]
+        let pairs: [(CAShapeLayer, CGPath)] = [(glow, closedPath), (fillMask, closedPath), (ambientMask, closedPath), (hostMask, closedPath), (phoneLiquid.outline, closedPath), (edge, openPath)]
         for (layer, p) in pairs {
             if animated, !Motion.reduced {
                 let from = layer.presentation()?.path ?? layer.path
@@ -276,9 +354,28 @@ final class IslandView: NSView {
             layer.path = p
             CATransaction.commit()
         }
+        phoneLiquid.layout(in: r, canvas: bounds, corner: corner)
+        light.apply(path: openPath, bounds: bounds, mode: Self.lightMode(mode), animated: animated)
         window?.invalidateCursorRects(for: self)
         needsLayout = true
     }
+
+    private static func lightMode(_ m: Mode) -> NotchLightMode {
+        switch m {
+        case .closed: return .closed
+        case .peek: return .peek
+        case .open: return .open
+        }
+    }
+
+    /// Something happened on the Mac: let the light answer it (a copy sweep, a volume arc…).
+    /// `tint` colours this one copy / paste comet (a colour you just copied).
+    func react(_ r: NotchLightReaction, tint: NSColor? = nil) {
+        companion.react(r)
+        light.oneShotTint = tint
+        light.react(r)
+    }
+    func clearStickyLight() { light.clearSticky() }
 
     private func recolorRoot() {
         rootGlow.colors = [Neon.accent.withAlphaComponent(0.16).cgColor, Neon.accent.withAlphaComponent(0).cgColor]
@@ -288,10 +385,12 @@ final class IslandView: NSView {
     /// The theme changed: recolour the glass, its edge and the tabs.
     func themeChanged() {
         recolorRoot()
-        glow.fillColor = Neon.fillBottom.cgColor
-        glow.shadowColor = Neon.halo.cgColor
+        glow.fillColor = NSColor.black.cgColor
+        glow.shadowColor = NSColor.black.cgColor
         edge.strokeColor = Neon.edge.cgColor
         edge.shadowColor = Neon.edge.cgColor
+        light.accent = Neon.accent
+        light.highlight = Neon.highlight
         tabs.forEach { $0.needsDisplay = true }
         whisperView.needsDisplay = true
         needsLayout = true
@@ -302,11 +401,16 @@ final class IslandView: NSView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         let b = bounds
         fill.frame = b
+        ambientHost.frame = b
+        ambient.frame = b
+        ambientFade.frame = b
         let h = max(1, b.height)
-        fill.colors = [NSColor.black.cgColor, NSColor.black.cgColor, Neon.fillTop.cgColor, Neon.fillBottom.cgColor]
+        fill.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.black.cgColor, NSColor.black.cgColor]
+        ambientFade.locations = [0, NSNumber(value: Double(band / h)), NSNumber(value: Double((band + 36) / h)), 1]
         fill.locations = [0, NSNumber(value: Double(band / h)), NSNumber(value: Double((band + 44) / h)), 1]
         edge.frame = b
         edgeFade.frame = b
+        light.frame = b
         // The luminous root sits on the island's very top edge, where it meets the screen.
         // Wide enough to show either side of the hardware notch.
         let lw = max(300, notchWidth + 260)
@@ -316,6 +420,11 @@ final class IslandView: NSView {
         updateEdgeFade()
         host.frame = b
         layoutTabs()
+        let size: CGFloat = content is TimedNotificationBanner ? 56 : 104
+        companion.frame = barPeek
+            ? NSRect(x: centerX - 44, y: band + 4, width: 88, height: 88)
+            : NSRect(x: centerX - 56, y: band + 8, width: 112, height: size)
+        companion.isHidden = mode != .open && !barPeek
         layoutWhisper()
     }
 
@@ -358,19 +467,34 @@ final class IslandView: NSView {
     private var nodesMovingUntil: CFTimeInterval = 0
 
     /// Each node's frame in the bloom (with room for its name), and the search node's.
+    private func barFrame(_ index: Int) -> NSRect {
+        let row = index / barColumns, column = index % barColumns
+        let count = min(barColumns, tabs.count + 1 - row * barColumns)
+        let step = min(Self.barStep, (barWidth - 32) / CGFloat(barColumns))
+        return NSRect(x: (centerX - CGFloat(count) * step / 2 + CGFloat(column) * step).rounded(),
+                      y: band + deckSpace + Self.barTop + CGFloat(row) * (Isle.bloomNode + IslandTab.labelH + Space.s),
+                      width: floor(step), height: Isle.bloomNode + IslandTab.labelH)
+    }
     private func bloomFrame(_ i: Int) -> NSRect {
+        if barPeek { return barFrame(i) }
         if tiledPeek {
             let pad = Space.xl, gap = Space.m
             let w = (tileWidth - 2 * pad - 3 * gap) / 4
-            return NSRect(x: (centerX - tileWidth / 2 + pad + CGFloat(i % 4) * (w + gap)).rounded(),
+            let count = min(4, tabs.count - (i / 4) * 4)
+            let rowWidth = CGFloat(count) * w + CGFloat(count - 1) * gap
+            return NSRect(x: (centerX - rowWidth / 2 + CGFloat(i % 4) * (w + gap)).rounded(),
                           y: tileTop + CGFloat(i / 4) * 120, width: w.rounded(), height: 108)
         }
         let p = Isle.bloom[i], d = Isle.bloomNode
         return NSRect(x: (centerX + p.x - 48).rounded(), y: (p.y - d / 2).rounded(), width: 96, height: d + IslandTab.labelH)
     }
     private var bloomSearchFrame: NSRect {
+        if barPeek {
+            let cell = barFrame(tabs.count)
+            return NSRect(x: (cell.midX - 18).rounded(), y: cell.minY + 6, width: 36, height: 36)
+        }
         if tiledPeek {
-            return NSRect(x: centerX - tileWidth / 2 + Space.xl, y: tileTop + 252,
+            return NSRect(x: centerX - tileWidth / 2 + Space.xl, y: tileTop + CGFloat(tileRows) * 120 + 12,
                           width: tileWidth - 2 * Space.xl, height: 38)
         }
         let p = Isle.bloomSearch
@@ -396,6 +520,7 @@ final class IslandView: NSView {
     /// Glides the nodes to where the mode wants them: out round her (peek), or into the rail.
     private func moveNodes(animated: Bool) {
         let bloom = mode == .peek
+        if bloom { searchNode.isHidden = false }
         tabs.forEach { $0.tiled = tiledPeek }
         searchNode.expanded = tiledPeek
         guard animated, !Motion.reduced else {
@@ -431,11 +556,21 @@ final class IslandView: NSView {
     }
 
     /// The innermost rail centre's distance from the rope: the design's, or clear of a wide notch.
-    private var railInner: CGFloat { max(Isle.railInner, notchWidth / 2 + nodeSize / 2 + 22) }
+    private var railWidth: CGFloat { content?.bounds.width ?? min(Isle.lensWidth, bounds.width - 24) }
+    private var railInner: CGFloat {
+        let slots = CGFloat(max(Isle.leftTabs.count, Isle.rightTabs.count) - 1)
+        let preferred = max(Isle.railInner, notchWidth / 2 + nodeSize / 2 + 22)
+        let available = railWidth / 2 - nodeSize / 2 - 12 - slots * nodeSize
+        return min(preferred, max(notchWidth / 2 + nodeSize / 2 + 12, available))
+    }
+    private var railStep: CGFloat {
+        let slots = CGFloat(max(1, max(Isle.leftTabs.count, Isle.rightTabs.count) - 1))
+        return min(nodeSize + Isle.nodeGap, max(nodeSize, (railWidth / 2 - railInner - nodeSize / 2 - 12) / slots))
+    }
     private var railY: CGFloat { (band + Isle.railDrop - nodeSize / 2).rounded() }
 
     private func railFrames() -> [NSRect] {
-        let w = nodeSize, step = w + Isle.nodeGap, y = railY
+        let w = nodeSize, step = railStep, y = railY
         var out: [NSRect] = []
         let nl = Isle.leftTabs.count
         for i in 0..<nl {
@@ -449,7 +584,7 @@ final class IslandView: NSView {
         return out
     }
     private var railSearchFrame: NSRect {
-        let w = nodeSize, step = w + Isle.nodeGap
+        let w = nodeSize, step = railStep
         let cx = centerX + railInner + CGFloat(Isle.rightTabs.count) * step
         return NSRect(x: (cx - w / 2).rounded(), y: railY, width: w, height: w)
     }
@@ -472,6 +607,8 @@ final class IslandView: NSView {
         closeButton.frame = NSRect(x: islandRect.maxX - 16 - cs, y: ((band - cs) / 2).rounded(), width: cs, height: cs)
         // Banners carry their own dismiss; the island's ✕ is for lenses.
         closeButton.isHidden = mode != .open || content is TimedNotificationBanner
+        settingsButton.frame = NSRect(x: closeButton.frame.minX - Space.s - cs, y: closeButton.frame.minY, width: cs, height: cs)
+        settingsButton.isHidden = closeButton.isHidden || activeTab == nil
         tabIndicator.frame = bounds
         tabIndicator.needsDisplay = true
     }
@@ -487,6 +624,7 @@ final class IslandView: NSView {
             ctx.duration = Motion.duration(visible ? 0.22 : 0.12)
             tabs.forEach { $0.animator().alphaValue = visible ? 1 : 0 }
             closeButton.animator().alphaValue = visible && mode == .open ? 1 : 0
+            settingsButton.animator().alphaValue = visible && mode == .open ? 1 : 0
             searchNode.animator().alphaValue = visible && mode == .peek ? 1 : 0
             tabIndicator.animator().alphaValue = visible ? 1 : 0
         }
@@ -497,14 +635,15 @@ final class IslandView: NSView {
         let a = CABasicAnimation(keyPath: "opacity")
         a.duration = Motion.duration(0.3)
         CATransaction.begin()
-        // The peek bar wears the island's edge too, a touch softer: a black bar framed in blue.
+        // Keep stationary chrome quiet; event light is owned by NotchLightLayer.
         edge.opacity = open ? 1 : (peek ? 0.9 : 0)
         glow.shadowOpacity = open ? 0.55 : (peek ? 0.4 : 0)
         glow.shadowRadius = open ? 16 : 10
-        rootLine.opacity = open ? 0.9 : 0
-        rootGlow.opacity = open ? 1 : 0
+        rootLine.opacity = 0
+        rootGlow.opacity = 0
         edge.add(a, forKey: "fade")
         CATransaction.commit()
+        light.setVisible(m != .closed)
         updateEdgeFade()
     }
 
@@ -516,6 +655,7 @@ final class IslandView: NSView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         edgeFade.locations = [NSNumber(value: Double(from / h)), NSNumber(value: Double(to / h))]
         CATransaction.commit()
+        light.fade(from: from, to: to)
     }
 
     /// Wide enough for the longer row of tabs on either side of the notch.
@@ -528,9 +668,16 @@ final class IslandView: NSView {
 
     // MARK: - Modes
 
+    func setPhoneTransfer(_ receipt: PhoneTransferState?) {
+        phoneLiquid.update(receipt, reducedMotion: Motion.reduced)
+    }
+
     /// Just the notch: nothing to see, nothing to click.
     func close(animated: Bool = true, completion: (() -> Void)? = nil) {
+        setPhoneTransfer(nil)
+        showDeck(false)
         mode = .closed
+        companion.isHidden = true
         activeTab = nil
         whisper(nil)
         dismissContent(direction: 0, animated: animated)
@@ -544,6 +691,27 @@ final class IslandView: NSView {
         }
     }
 
+    /// The deck fades in once the black has grown under it, and out at once when leaving.
+    private func showDeck(_ on: Bool) {
+        if on {
+            if deck.superview !== self { addSubview(deck) }
+            deck.refresh()
+            deck.frame = NSRect(x: (centerX - barWidth / 2 + 18).rounded(), y: band + 8, width: barWidth - 36, height: HoverDeck.height)
+            deck.alphaValue = 0
+            let delay = Motion.reduced ? 0 : 0.16
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self = self, self.barPeek else { return }
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = Motion.duration(0.18)
+                    self.deck.animator().alphaValue = 1
+                }
+            }
+        } else {
+            deck.alphaValue = 0
+            deck.removeFromSuperview()
+        }
+    }
+
     /// Hovering her: the notch widens to show the tabs.
     func peek() {
         // A screen is up: the rail is already there. (Open with nothing presented is a state
@@ -551,6 +719,10 @@ final class IslandView: NSView {
         guard mode != .open || content == nil else { return }
         let wasClosed = mode == .closed
         mode = .peek
+        if barPeek {
+            companion.isHidden = false
+            if wasClosed { companion.enterFromNotch() }
+        }
         activeTab = nil
         if wasClosed, !Motion.reduced {
             // From her: every node starts small at the rope and blooms out.
@@ -561,17 +733,27 @@ final class IslandView: NSView {
         setTabs(visible: true)
         setChrome(.peek)
         // v2: the notch only widens a little; the nodes float round her.
-        applyShape(shapeRect(width: tiledPeek ? tileWidth : notchWidth + 44,
-                             height: tiledPeek ? tileHeight : band + 2),
-                   corner: tiledPeek ? Isle.corner : 14, animated: true)
+        if barPeek {
+            // The notch itself grows sideways, then down: the deck, then one row of screens.
+            applyShape(shapeRect(width: barWidth, height: barHeight), corner: 28, animated: true)
+            showDeck(true)
+        } else {
+            applyShape(shapeRect(width: tiledPeek ? tileWidth : notchWidth + 44,
+                                 height: tiledPeek ? tileHeight : band + 2),
+                       corner: tiledPeek ? Isle.corner : 14, animated: true)
+        }
         moveNodes(animated: true)
     }
 
     /// Opens (or switches to, or resizes for) a screen. `direction` is the side the new screen
     /// comes from when switching: −1 left, +1 right, 0 open in place.
     func present(_ view: NSView, size: NSSize, direction: CGFloat, animated: Bool) {
+        if !(view is AndroidTransferCard) { setPhoneTransfer(nil) }
+        showDeck(false)
         let wasOpen = mode == .open, wasBloomed = mode == .peek
         mode = .open
+        companion.isHidden = false
+        if !wasOpen { companion.greet() }
         // The rail hangs in a screen's header; banners are a slim band of their own.
         setTabs(visible: !(view is TimedNotificationBanner))
         setChrome(.open)
@@ -718,9 +900,11 @@ struct IslandInstrument: Equatable {
 /// One node of the rail at notch level (v2): a small round instrument — a ring with a number, or
 /// the screen's glyph — that wears a count badge (amber when something there needs you). The
 /// open screen's node gets the accent ring, drawn underneath by `IslandTabIndicator`.
-final class IslandTab: NSView {
+final class IslandTab: NSButton {
+    override var acceptsFirstResponder: Bool { true }
     let kind: CardKind
     var onTap: (() -> Void)?
+    var onHover: (() -> Void)?
     var isOn = false { didSet { if isOn != oldValue { needsDisplay = true } } }
     var hasBadge = false { didSet { if hasBadge != oldValue { needsDisplay = true } } }
     var count = 0 {
@@ -738,6 +922,9 @@ final class IslandTab: NSView {
     init(kind: CardKind) {
         self.kind = kind
         super.init(frame: .zero)
+        title = ""; isBordered = false
+        setButtonType(.momentaryChange)
+        target = self; action = #selector(activate)
         wantsLayer = true
         layer?.masksToBounds = false
         layer?.shadowColor = NSColor.black.cgColor
@@ -745,7 +932,7 @@ final class IslandTab: NSView {
         layer?.shadowOffset = .zero
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(kind.title)
+        setAccessibilityLabel(kind == .github ? "Pull requests" : kind.title)
         toolTip = kind == .github ? "Pull requests" : kind.title
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -772,12 +959,13 @@ final class IslandTab: NSView {
         // Compositor shadow follows the disc, outside the view's drawing buffer.
         // Drawing a blur in draw() clips it to the rectangular node backing.
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        layer?.shadowPath = CGPath(ellipseIn: disc, transform: nil)
+        layer?.shadowPath = CGPath(roundedRect: disc, cornerWidth: disc.width * 0.32, cornerHeight: disc.width * 0.32, transform: nil)
         layer?.shadowOpacity = bloomed && !tiled ? 0.22 : 0
         CATransaction.commit()
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        defer { drawControlFocus() }
         let c = disc
         guard c.width > 4 else { return }
         let k = c.width / 28          // everything scales with the node
@@ -789,13 +977,17 @@ final class IslandTab: NSView {
             (hovered ? t.accent.withAlphaComponent(0.6) : t.border).setStroke()
             card.lineWidth = 0.75; card.stroke()
         }
-        // A glass bead: lit a little from the top with the accent.
-        let top = t.glassTop.blended(withFraction: hovered ? 0.24 : 0.14, of: t.accent) ?? t.glassTop
-        NSGradient(starting: top, ending: t.glassBottom)?.draw(in: circle, angle: -90)
-        (hovered && !isOn ? t.accent.withAlphaComponent(0.7) : t.border.withAlphaComponent(min(1, t.border.alphaComponent * 1.6))).setStroke()
-        if bloomed && !tiled { t.accent.withAlphaComponent(hovered ? 0.7 : 0.4).setStroke() }
-        circle.lineWidth = 1; circle.stroke()
-
+        _ = circle
+        // Zera 2: a rounded key. Quiet in the rail, a graphite tile in the deck, white when open.
+        let key = NSBezierPath(roundedRect: c, xRadius: c.width * 0.32, yRadius: c.width * 0.32)
+        if isOn {
+            // Selection belongs to the moving surface behind the rail, not a second static key.
+            if bloomed { Pal.drawSegmentIndicator(key) }
+        } else if hovered {
+            t.surfaceHover.setFill(); key.fill()
+        } else if bloomed {
+            t.surface.setFill(); key.fill()
+        }
         let ink = isOn || hovered ? Neon.text : Neon.textDim
         if let ins = instrument, let p = ins.progress {
             let r = c.insetBy(dx: 4.5 * k, dy: 4.5 * k)
@@ -819,7 +1011,7 @@ final class IslandTab: NSView {
                 Neon.symbol(Isle.symbol(for: kind), in: c, size: 9.5 * k, weight: .semibold, color: ink)
             }
         } else {
-            Neon.symbol(Isle.symbol(for: kind), in: c, size: 12 * k, weight: .semibold, color: isOn ? Neon.accent : ink)
+            Neon.symbol(Isle.symbol(for: kind), in: c, size: 12 * k, weight: .semibold, color: ink)
         }
 
         if count > 0 || hasBadge {
@@ -838,37 +1030,31 @@ final class IslandTab: NSView {
             }
         }
         if bloomed {
-            let name = kind == .github ? "Pull requests" : kind.title
-            let a: [NSAttributedString.Key: Any] = [.font: Typo.control,
+            let name = kind == .github ? "PRs" : kind.title
+            let a: [NSAttributedString.Key: Any] = [.font: tiled ? Typo.control : Typo.secondary,
                                                     .foregroundColor: !tiled || hovered ? Neon.text : Neon.textDim]
             let sz = (name as NSString).size(withAttributes: a)
             let y = tiled ? bounds.maxY - Space.s - sz.height : bounds.maxY - Self.labelH + (Self.labelH - sz.height) / 2
-            if !tiled {
-                let width = min(bounds.width - 1, ceil(sz.width) + Space.m)
-                let plate = NSBezierPath(roundedRect: NSRect(x: bounds.midX - width / 2,
-                    y: bounds.maxY - Self.labelH, width: width, height: Self.labelH), xRadius: Radius.s, yRadius: Radius.s)
-                NSGradient(starting: t.glassTop, ending: t.glassBottom)?.draw(in: plate, angle: -90)
-                t.border.setStroke(); plate.lineWidth = 0.75; plate.stroke()
-            }
+            // Just the name under the key: no plate.
             (name as NSString).draw(at: NSPoint(x: bounds.midX - sz.width / 2, y: y), withAttributes: a)
         }
     }
 
-    override func mouseDown(with event: NSEvent) { onTap?() }
+    @objc private func activate() { onTap?() }
     override func accessibilityPerformPress() -> Bool { onTap?(); return true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
-    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseEntered(with event: NSEvent) { hovered = true; onHover?() }
     override func mouseExited(with event: NSEvent) { hovered = false }
 }
 
 /// A small round button at notch level: the lens's close (✕) on the island's right edge, and
 /// the App Opener's search node (🔍) after the rail.
-final class IslandClose: NSView {
+final class IslandClose: NSButton {
+    override var acceptsFirstResponder: Bool { true }
     var onTap: (() -> Void)?
     private let symbol: String
     /// The search node glows in the accent; close stays quiet.
@@ -881,6 +1067,9 @@ final class IslandClose: NSView {
         self.symbol = symbol
         self.accent = accent
         super.init(frame: .zero)
+        title = ""; isBordered = false
+        setButtonType(.momentaryChange)
+        target = self; action = #selector(activate)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(label)
@@ -888,37 +1077,35 @@ final class IslandClose: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
     override func draw(_ dirtyRect: NSRect) {
+        defer { drawControlFocus() }
         if expanded {
             let t = ThemeStore.shared.current
             let p = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.m, yRadius: Radius.m)
             (hovered ? t.glassTop : t.glassBottom).setFill(); p.fill()
             (hovered ? t.accent.withAlphaComponent(0.6) : t.border).setStroke(); p.lineWidth = 0.75; p.stroke()
             Neon.symbol(symbol, in: NSRect(x: 12, y: 9, width: 20, height: 20), size: 15, weight: .regular, color: Neon.textDim)
-            ("Search apps and commands…" as NSString).draw(at: NSPoint(x: 42, y: 11),
+            ("Arrange windows and workspaces" as NSString).draw(at: NSPoint(x: 42, y: 11),
                 withAttributes: [.font: Typo.control, .foregroundColor: Neon.textDim])
             return
         }
         let d = min(bounds.width, bounds.height) - 2
         let disc = NSRect(x: (bounds.width - d) / 2, y: (bounds.height - d) / 2, width: d, height: d)
-        let c = NSBezierPath(ovalIn: disc)
+        let c = NSBezierPath(roundedRect: disc, xRadius: 12, yRadius: 12)
         if accent {
             let t = ThemeStore.shared.current
-            let top = t.glassTop.blended(withFraction: hovered ? 0.34 : 0.2, of: t.accent) ?? t.glassTop
-            NSGradient(starting: top, ending: t.glassBottom)?.draw(in: c, angle: -90)
-            t.accent.withAlphaComponent(hovered ? 0.9 : 0.55).setStroke(); c.lineWidth = 1; c.stroke()
-            Neon.symbol(symbol, in: disc, size: max(11.5, d * 0.36), weight: .bold, color: hovered ? Neon.text : Neon.accent)
+            (hovered ? t.surfaceHover : t.surface).setFill(); c.fill()
+            Neon.symbol(symbol, in: disc, size: max(11.5, d * 0.36), weight: .semibold, color: hovered ? Neon.text : Neon.textDim)
         } else {
             (hovered ? Neon.chipHover : Neon.chip).setFill(); c.fill()
             Neon.symbol(symbol, in: disc, size: 9.5, weight: .bold, color: hovered ? Neon.text : Neon.textFaint)
         }
     }
-    override func mouseDown(with event: NSEvent) { onTap?() }
+    @objc private func activate() { onTap?() }
     override func accessibilityPerformPress() -> Bool { onTap?(); return true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -942,16 +1129,14 @@ final class IslandTabIndicator: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        defer { drawControlFocus() }
         guard showing, let r = target?() else { return }
         indicator.settle(at: r)
-        // The open node: an accent ring with a soft halo, gliding from node to node.
-        let at = indicator.rect
-        let d = min(at.width, at.height) - 4
-        let disc = NSRect(x: at.midX - d / 2, y: at.midY - d / 2, width: d, height: d)
-        Neon.glowing(Neon.accent.withAlphaComponent(0.55), blur: 10) {
-            Neon.accent.withAlphaComponent(0.22).setFill(); NSBezierPath(ovalIn: disc.insetBy(dx: -3, dy: -3)).fill()
-        }
-        let ring = NSBezierPath(ovalIn: disc.insetBy(dx: -0.5, dy: -0.5))
-        Neon.accent.setStroke(); ring.lineWidth = 1.5; ring.stroke()
+        // A single substantial surface travels between the nodes. Its rounded-square shape
+        // matches the keys, rather than drawing an unrelated circular blue outline.
+        let at = indicator.rect.insetBy(dx: 1, dy: 1)
+        let path = NSBezierPath(roundedRect: at, xRadius: at.height * 0.32, yRadius: at.height * 0.32)
+        Pal.drawSegmentIndicator(path)
+
     }
 }

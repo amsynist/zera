@@ -33,7 +33,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     var ropeX: CGFloat = 0
 
     private let rope = NSView()
-    private let holder = OpenerFlipped()
+    private let holder = FlippedView()
     private let zera = NSImageView()
     private let card = OpenerGlass()
     /// v2: the search sits in a field box, and a bright hairline marks where she holds the window.
@@ -48,11 +48,11 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     private let rootStem = NSView()
     // The tree.
     private let treeScroll = NSScrollView()
-    private let treeDoc = OpenerFlipped()
+    private let treeDoc = FlippedView()
     private let dimLines = CAShapeLayer()
     private let litLines = CAShapeLayer()
     // The chosen item, on the right.
-    private let detail = OpenerFlipped()
+    private let detail = FlippedView()
     private let dIcon = NSImageView()
     private let dHalo = CAGradientLayer()
     private let dName = NSTextField(labelWithString: "")
@@ -262,7 +262,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         for _ in 0..<4 {
             let k = NSTextField(labelWithString: ""), v = NSTextField(labelWithString: ""), rule = NSView()
             k.font = NSFont.systemFont(ofSize: 12.5)
-            v.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+            v.font = Typo.bodyMedium
             v.alignment = .right
             v.lineBreakMode = .byTruncatingMiddle
             rule.wantsLayer = true
@@ -507,7 +507,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         case .command(let c):
             let r = TreeRowView(style: .item)
             r.icon = c.icon
-            r.titleText = NSAttributedString(string: c.title, attributes: [.font: NSFont.systemFont(ofSize: 14, weight: .semibold), .foregroundColor: Neon.text])
+            r.titleText = NSAttributedString(string: c.title, attributes: [.font: Typo.rowTitleStrong, .foregroundColor: Neon.text])
             r.sub = c.subtitle.replacingOccurrences(of: "Command · ", with: "")
             r.dimmed = mode != .command(c)
             r.setAccessibilityLabel(c.title)
@@ -547,7 +547,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             r.symbol = ask ? "exclamationmark.triangle.fill" : a.symbol
             r.tint = ask ? Neon.red : a.tint
             r.titleText = NSAttributedString(string: ask ? (a.confirm ?? a.title) : a.title, attributes: [
-                .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: (ask ? Neon.red : (a.tint ?? Neon.text))])
+                .font: Typo.control, .foregroundColor: (ask ? Neon.red : (a.tint ?? Neon.text))])
             r.accessory = ask ? "⏎ confirm" : (a.shortcut?.label ?? "")
             r.accessoryKeycap = !ask
             r.selected = k == leaf

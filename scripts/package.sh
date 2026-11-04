@@ -58,8 +58,10 @@ if $can_notarize; then
   xcrun stapler staple "$DMG"
 fi
 
+cp Androp.apk dist/Androp.apk
+
 echo "==> Checksums"
-(cd dist && shasum -a 256 "Zera-$VERSION.dmg" "Zera-$VERSION.zip" > SHA256SUMS.txt && cat SHA256SUMS.txt)
+(cd dist && shasum -a 256 "Zera-$VERSION.dmg" "Zera-$VERSION.zip" Androp.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
 echo "==> Ready: $DMG, $ZIP"
 # A successful staple, rather than signing alone, determines the release message.
 if [ -n "${GITHUB_OUTPUT:-}" ]; then

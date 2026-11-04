@@ -216,7 +216,7 @@ final class PRStatusChip: NSView {
 
     var fittedWidth: CGFloat { ceil((text as NSString).size(withAttributes: [.font: Self.font]).width) + 8 + 14 + 6 + 10 }
 
-    private var labelColor: NSColor { Pal.isDark ? (color.blended(withFraction: 0.25, of: .white) ?? color) : (color.blended(withFraction: 0.35, of: .black) ?? color) }
+    private var labelColor: NSColor { color.blended(withFraction: 0.25, of: .white) ?? color }
 
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
@@ -378,8 +378,7 @@ final class GHSquareButton: NSButton {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -389,8 +388,8 @@ final class GHSquareButton: NSButton {
 /// The island's text button, used on every screen: icon + title centred, hover / pressed /
 /// disabled / keyboard-focus states.
 class PRActionButton: NSButton {
-    /// The island's button family (see `Palette.drawButton`): primary is filled with the accent
-    /// gradient, secondary a quiet chip, success filled green (Done, Approve), destructive a soft
+    /// The island's button family (see `Palette.drawButton`): primary is a neutral raised
+    /// surface, secondary a quiet chip, success filled green (Done, Approve), destructive a soft
     /// red (Stop, Delete), warning a soft amber.
     enum Style { case primary, secondary, destructive, warning, success }
     var style: Style { didSet { needsDisplay = true } }
@@ -496,8 +495,7 @@ class PRActionButton: NSButton {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -505,7 +503,7 @@ class PRActionButton: NSButton {
 }
 
 /// "Author ⌄" — compact filter control; shows the chosen value and a violet edge when active.
-final class GitHubFilterButton: NSView {
+final class GitHubFilterButton: NSButton {
     var onClick: ((GitHubFilterButton) -> Void)?
     private let base: String
     var value: String? { didSet { needsDisplay = true; setAccessibilityValue(value ?? "Any") } }
@@ -517,6 +515,10 @@ final class GitHubFilterButton: NSView {
     init(_ title: String) {
         base = title
         super.init(frame: .zero)
+        self.title = ""; isBordered = false
+        setButtonType(.momentaryChange)
+        target = self; action = #selector(activate)
+        setAccessibilityElement(true)
         setAccessibilityRole(.popUpButton)
         setAccessibilityLabel(title)
     }
@@ -548,12 +550,11 @@ final class GitHubFilterButton: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) { onClick?(self) }
+    @objc private func activate() { onClick?(self) }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
@@ -572,20 +573,20 @@ final class GitHubSegmentedControl: NSView {
         /// Show the badge even when the count is 0.
         var showsZero = false
     }
-    var items: [Item] { didSet { needsDisplay = true } }
+    var items: [Item] { didSet { needsDisplay = true; needsLayout = true } }
     /// Segments sized to their content (proportionally) instead of equal widths.
-    var fitToContent = false { didSet { needsDisplay = true } }
+    var fitToContent = false { didSet { needsDisplay = true; needsLayout = true } }
     /// v2: a row of separate pill chips (Claude and Clipboard filters, PR and Reminders tabs)
     /// instead of one boxed track. The selected chip's accent wash still glides between them.
-    var chipStyle = false { didSet { needsDisplay = true } }
+    var chipStyle = false { didSet { needsDisplay = true; needsLayout = true } }
     private static let chipGap: CGFloat = 8
-    private static let countFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .bold)
+    private static let countFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
     /// The chosen segment. Changing it glides the indicator over (`setSelected(_:animated:)`).
     var selected = 0 {
         didSet {
             guard selected != oldValue else { return }
             indicator.move(to: slot(selected), animated: true)
-            needsDisplay = true
+            needsDisplay = true; needsLayout = true
         }
     }
     var onSelect: ((Int) -> Void)?
@@ -593,6 +594,7 @@ final class GitHubSegmentedControl: NSView {
     var switches: (() -> [NSView])?
     private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
     private lazy var indicator = SlidingIndicator(view: self)
+    private lazy var targets = SegmentTargets(owner: self)
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     private static let font = Typo.chip
@@ -601,9 +603,24 @@ final class GitHubSegmentedControl: NSView {
     init(items: [Item]) {
         self.items = items
         super.init(frame: .zero)
+        setAccessibilityElement(true)
         setAccessibilityRole(.tabGroup)
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        let labels = items.map { item in
+            item.title + (hasBadge(item) ? ", \(item.count)" : "")
+        }
+        targets.update(labels: labels, selected: [selected], frame: slot) { [weak self] index in
+            guard let self else { return }
+            let old = self.selected
+            self.selected = index
+            self.onSelect?(index)
+            if let views = self.switches?() { Motion.tabSwitch(views, from: old, to: index) }
+        }
+    }
 
     private func icon(_ it: Item) -> NSImage? {
         it.symbol.isEmpty ? nil : NSImage(systemSymbolName: it.symbol, accessibilityDescription: nil)?
@@ -716,15 +733,14 @@ final class GitHubSegmentedControl: NSView {
         let p = Pal
         for (i, _) in items.enumerated() {
             let r = slot(i).insetBy(dx: 0.5, dy: 0.5)
-            let pill = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+            let pill = NSBezierPath(roundedRect: r, xRadius: Radius.m, yRadius: Radius.m)
             (hoverIndex == i && i != selected ? p.surfaceHover : p.surface).setFill(); pill.fill()
         }
         if !items.isEmpty {
             indicator.settle(at: slot(selected))
             let r = indicator.rect.insetBy(dx: 0.5, dy: 0.5)
-            let wash = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-            p.accent.withAlphaComponent(0.18).setFill(); wash.fill()
-            p.accent.withAlphaComponent(0.45).setStroke(); wash.lineWidth = 1; wash.stroke()
+            let wash = NSBezierPath(roundedRect: r, xRadius: Radius.m, yRadius: Radius.m)
+            p.drawSegmentIndicator(wash)
         }
         for (i, it) in items.enumerated() {
             let r = slot(i), on = i == selected
@@ -747,9 +763,9 @@ final class GitHubSegmentedControl: NSView {
             x += titleW + 7
             if let c = cnt {
                 let br = NSRect(x: x, y: r.midY - 9, width: cw, height: 18)
-                (on ? p.accent : NSColor.black.withAlphaComponent(0.35)).setFill()
+                (on ? p.accentSoft : p.surfaceStrong).setFill()
                 NSBezierPath(roundedRect: br, xRadius: 6, yRadius: 6).fill()
-                let ba: [NSAttributedString.Key: Any] = [.font: Self.countFont, .foregroundColor: on ? p.onAccent : (it.badgeTint ?? p.textSecondary)]
+                let ba: [NSAttributedString.Key: Any] = [.font: Self.countFont, .foregroundColor: on ? p.text : p.textSecondary]
                 let sz = (c as NSString).size(withAttributes: ba)
                 (c as NSString).draw(at: NSPoint(x: br.midX - sz.width / 2, y: br.midY - sz.height / 2), withAttributes: ba)
             }
@@ -837,6 +853,7 @@ final class GHSplitButton: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     private static let font = Typo.control
     private let chevronW: CGFloat = 38
+    private var actionTargets: [ControlActionTarget] = []
 
     init(title: String, symbol: String) {
         self.title = title
@@ -844,10 +861,28 @@ final class GHSplitButton: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = false
-        setAccessibilityRole(.button)
-        setAccessibilityLabel(title)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        let main = ControlActionTarget(label: title)
+        let menu = ControlActionTarget(label: "More \(title) options", role: .popUpButton)
+        main.onPress = { [weak self] in self?.onMain?() }
+        menu.onPress = { [weak self] in guard let self else { return }; self.onMenu?(self) }
+        actionTargets = [main, menu]
+        for (index, target) in actionTargets.enumerated() {
+            target.onHover = { [weak self] on in self?.hoverPart = on ? index : nil }
+            target.onPressed = { [weak self] on in self?.pressedPart = on ? index : nil }
+            addSubview(target)
+        }
+        setAccessibilityChildren(actionTargets)
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        let split = max(0, bounds.width - chevronW)
+        actionTargets[0].frame = NSRect(x: 0, y: 0, width: split, height: bounds.height)
+        actionTargets[1].frame = NSRect(x: split, y: 0, width: min(chevronW, bounds.width), height: bounds.height)
+    }
 
     var fittedWidth: CGFloat { ceil((title as NSString).size(withAttributes: [.font: Self.font]).width) + 16 + 7 + 32 + chevronW }
 

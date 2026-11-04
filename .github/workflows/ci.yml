@@ -28,8 +28,14 @@ jobs:
           sudo xcode-select -s /Applications/Xcode.app 2>/dev/null || true
           swift --version
 
+      - name: Website checks
+        run: node scripts/check-site.mjs
+
       - name: Test
         run: swift test
+
+      - name: Android receiver package tests
+        run: swift test --package-path Packages/AndropKit
 
       - name: Build Zera.app
         run: |

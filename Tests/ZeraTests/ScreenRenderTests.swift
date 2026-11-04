@@ -90,6 +90,163 @@ final class ScreenRenderTests: XCTestCase {
 
     // MARK: Renders
 
+    /// Opt-in native audit of newer destinations and every settings pane. Uses a disposable
+    /// home like the existing screen renders; no captures are produced by ordinary test runs.
+    func testRenderRedesignInventory() throws {
+        guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else {
+            throw XCTSkip("use a disposable CFFIXED_USER_HOME for the complete UI audit")
+        }
+        for pane in SettingsCard.Pane.allCases {
+            let settings = SettingsCard(defaultKind: .home, showingZera: true, loginEnabled: false)
+            settings.select(pane)
+            island(settings, tab: .settings, "audit-settings-\(pane.title.lowercased())")
+        }
+        island(AlertsView(), tab: .alerts, "audit-alerts-empty")
+        island(FocusView(store: TaskStore(url: nil)), tab: .focus, "audit-focus-empty")
+        let hover = HoverDeck(frame: NSRect(x: 0, y: 0, width: 760, height: HoverDeck.height))
+        shot(hover, "audit-hover-compact", background: .black)
+        let lightHost = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 120))
+        lightHost.wantsLayer = true
+        let notch = CGRect(x: 250, y: 50, width: 260, height: 34)
+        let contour = NotchGeometry.notchOutline(in: notch, arms: 117)
+        let light = GlowStrip(frame: lightHost.bounds, edge: .top, depth: 40, color: Pal.accent,
+                              style: .glow, contour: contour)
+        lightHost.layer?.addSublayer(light.layer)
+        shot(lightHost, "audit-light-contour", background: .black)
+        let echo = CommandEcho()
+        defer { echo.stop() }
+        for kind in CommandEcho.Preview.allCases {
+            echo.preview(kind)
+            let content = try XCTUnwrap(echo.currentFeedback)
+            let view = EchoNotchView(frame: NSRect(x: 0, y: 0, width: 760, height: 64))
+            view.notchSize = NSSize(width: 190, height: 34)
+            view.show(content, animated: false)
+            shot(view, "audit-feedback-\(kind)")
+        }
+        for mood in [ZeraMood.idle, .hello, .thinking, .happy, .focused, .sleepy] {
+            for height: CGFloat in [24, 34] {
+                let source = ZeraView(frame: .zero)
+                source.mood = mood
+                let buddy = NotchBuddyView(frame: NSRect(x: 0, y: 0,
+                    width: 190 + 2 * NotchBuddyView.wingWidth(forHeight: height), height: height))
+                buddy.source = source
+                shot(buddy, "audit-buddy-\(mood)-\(Int(height))", background: .black)
+            }
+        }
+        let scripts = TeleprompterStore(url: nil)
+        _ = scripts.newScript(title: "Design review", text: "One clear idea, close at hand.")
+        let prompter = TeleprompterView(store: scripts)
+        prompter.setMode(.edit)
+        island(prompter, tab: .teleprompter, "audit-prompter-edit")
+        prompter.setMode(.roll)
+        island(prompter, tab: .teleprompter, "audit-prompter-roll")
+        for (name, form) in [("event", EventFormView(editing: nil) as ReminderFormBase),
+                             ("reminder", ReminderFormView(editing: nil)),
+                             ("hydration", HydrationFormView(editing: nil))] {
+            form.frame = NSRect(x: 0, y: 0, width: 480, height: 500)
+            panel(form, "audit-form-\(name)")
+        }
+    }
+
+    func testRenderHomeNavigation() {
+        island(HomeCard(), tab: .home, "audit-home-navigation")
+        let preview = IslandView(frame: NSRect(x: 0, y: 0, width: 1000, height: 400))
+        preview.centerX = 500; preview.band = 34; preview.notchWidth = 190
+        preview.peek()
+        shot(preview, "audit-navigation-deck", background: .black)
+    }
+
+    func testRenderManagedClaude() {
+        let service = ClaudeAgentService(writer: { _ in })
+        let id = service.create(cwd: "/tmp/Aurora")
+        _ = service.send("Review the updated layout and run its checks", to: id)
+        service.receive(["type": "assistant", "message": ["content": [["type": "text", "text": "I’ll check the layout, then run its tests."], ["type": "tool_use", "name": "Read", "input": ["file_path": "/tmp/Aurora/README.md"]]]]], threadID: id)
+        service.receive(["type": "control_request", "request_id": "render-approval", "request": ["subtype": "can_use_tool", "tool_name": "Bash", "input": ["command": "swift test --filter HomeLayoutTests"]]], threadID: id)
+        let view = ClaudeAgentsView(service: service); view.selectThread(id)
+        island(view, tab: .claude, "audit-managed-claude-approval")
+        let start = AgentsView(snapshot: { [] })
+        island(start, tab: .claude, "audit-agents-start-options")
+        let wings = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
+        wings.update(session: nil, pending: HookRequest(id: "managed-codex:render", receivedAt: Date(), sessionID: "fixture", toolName: "Command", command: "/usr/bin/true", detail: "Codex · Aurora", cwd: "/tmp/Aurora"), provider: "Codex")
+        panel(wings, "audit-managed-codex-wings")
+        let approvalCard = ApprovalCard()
+        approvalCard.titleLabel.stringValue = "Permission needed"
+        approvalCard.setSubtitle("Claude · Aurora · layout-only fixture")
+        island(approvalCard, tab: .claude, "audit-approval-card-header")
+    }
+
+    func testRenderNativeCodexDetail() {
+        var run = AgentRun(agent: .codex, id: "layout-only", project: "Aurora", state: .working, lastEventAt: Date(), summary: nil)
+        run.title = "Review current sessions"; run.activity = "Reading project files"
+        run.records = [ObservedAgentStep(id: "1", tool: "Read", action: "Read Navigation.swift", at: Date().addingTimeInterval(-20), finished: true, files: ["Sources/Navigation.swift"]),
+                       ObservedAgentStep(id: "2", tool: "apply_patch", action: "Edit Navigation.swift", at: Date().addingTimeInterval(-10), finished: true, files: ["Sources/Navigation.swift"], patch: "*** Update File: Sources/Navigation.swift\n-old\n+new"),
+                       ObservedAgentStep(id: "3", tool: "Terminal", action: "Run layout checks", at: Date(), finished: false)]
+        let view = ObservedAgentView(snapshot: { run }); view.select(provider: "codex", id: run.id)
+        island(view, tab: .claude, "audit-codex-native-live")
+        for index in 1...4 { view.selectPage(index); island(view, tab: .claude, "audit-codex-native-tab-\(index)") }
+    }
+
+    func testRenderRestoredSessionStack() {
+        let service = ClaudeActivityService.shared
+        let previous = service.ordered
+        defer { service.preview(previous) }
+        let session = ClaudeSession(id: "layout-only-claude", cwd: "/tmp/Aurora", at: Date())
+        session.title = "Review project navigation"; session.status = .running; session.promptAt = Date()
+        session.steps = [ActivityStep(id: "read", kind: .read, verb: "Read", target: "Sources/Navigation.swift", detail: nil, at: Date(), finished: false)]
+        service.preview([session])
+        let view = AgentsView()
+        island(view, tab: .claude, "audit-restored-session-stack")
+        view.claude.openSession(session.id)
+        island(view.claude, tab: .claude, "audit-original-claude-detail")
+    }
+
+    func testRenderAgentsDashboard() throws {
+        let entries: [AgentOverviewItem] = [
+            .init(id: "c1", provider: "claude", providerName: "Claude", title: "Polish the preferences", project: "~/Projects/Zera", activity: "Reading Settings.swift", state: .working, source: .claude("c1")),
+            .init(id: "x1", provider: "codex", providerName: "Codex", title: "Review the build", project: "~/Projects/Zera", activity: "Run swift test before continuing", state: .waiting, source: .managedCodex("x1")),
+            .init(id: "x2", provider: "codex", providerName: "Codex", title: "Check keyboard navigation", project: "~/Projects/Zera", activity: "Checking the live app", state: .working, source: .observed("codex", "x2"))
+        ]
+        let view = AgentsView(snapshot: { entries })
+        island(view, tab: .claude, "audit-agents-dashboard")
+    }
+
+    func testRenderCompanionExpressions() throws {
+        let grid = FlippedView(frame: NSRect(x: 0, y: 0, width: 800, height: 360))
+        for (index, mood) in [ZeraMood.idle, .hello, .focused, .surprised, .celebrate, .giving, .error, .sleepy].enumerated() {
+            let portrait = CompanionExpressionFixture(mood: mood)
+            portrait.frame = NSRect(x: CGFloat(index % 4) * 200 + 40, y: CGFloat(index / 4) * 180 + 12, width: 120, height: 120)
+            grid.addSubview(portrait)
+            let label = NSTextField(labelWithString: String(describing: mood))
+            label.font = Typo.caption; label.textColor = .white; label.alignment = .center
+            label.frame = NSRect(x: CGFloat(index % 4) * 200, y: CGFloat(index / 4) * 180 + 140, width: 200, height: 22)
+            grid.addSubview(label)
+        }
+        shot(grid, "audit-companion-expressions")
+    }
+
+    func testRenderEdgeLightVariants() throws {
+        for style in EdgeLightStyle.allCases {
+            for level: CGFloat in [0, 0.25, 0.5, 0.75, 1] {
+                let host = NSView(frame: NSRect(x: 0, y: 0, width: 1000, height: 170))
+                host.wantsLayer = true
+                let notch = CGRect(x: 400, y: 96, width: 200, height: 34)
+                let path = NotchGeometry.notchOutline(in: notch, edges: 0...1000)
+                let glow = GlowStrip(frame: host.bounds, edge: .top, depth: 72,
+                                     color: .systemBlue, style: style, contour: path)
+                let reveal = LightLevelMask()
+                reveal.update(bounds: host.bounds, notch: notch, value: level)
+                glow.layer.mask = reveal.layer
+                host.layer?.addSublayer(glow.layer)
+                let fill = CAShapeLayer()
+                fill.path = NotchGeometry.notchOutline(in: notch, closed: true)
+                fill.fillColor = NSColor.black.cgColor
+                host.layer?.addSublayer(fill)
+                shot(host, "audit-edge-\(style.rawValue)-\(Int(level * 100))", background: desk)
+                glow.stopLoops()
+            }
+        }
+    }
+
     func testRenderMascotPoses() throws {
         guard ProcessInfo.processInfo.environment["ZERA_RENDER_FACE"] != nil else { throw XCTSkip("local animation review") }
         let grid = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 520))
@@ -1009,5 +1166,257 @@ final class ScreenRenderTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: times).write(to: out.appendingPathComponent("times.json"))
         try JSONSerialization.data(withJSONObject: scenes).write(to: out.appendingPathComponent("scenes.json"))
         print("full tour: \(times.count) frames, \(String(format: "%.1f", times.last ?? 0)) s")
+    }
+    /// Release-only native recording. Fictional fixtures; no microphone, real clipboard or account data.
+    func testRecordV2Release() throws {
+        guard ProcessInfo.processInfo.environment["ZERA_V2_MEDIA"] == "1",
+              ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else {
+            throw XCTSkip("set ZERA_V2_MEDIA=1 with a disposable CFFIXED_USER_HOME")
+        }
+        ThemeStore.shared.select(try XCTUnwrap(ThemeStore.shared.theme(id: "obsidian")))
+        let size = NSSize(width: 1440, height: 900)
+        let w = NSWindow(contentRect: NSRect(origin: NSPoint(x: 20, y: 20), size: size), styleMask: .borderless, backing: .buffered, defer: false)
+        w.backgroundColor = NSColor(srgbRed: 0.055, green: 0.058, blue: 0.065, alpha: 1)
+        w.hasShadow = false; w.appearance = NSAppearance(named: .darkAqua)
+        let root = FlippedView(frame: NSRect(origin: .zero, size: size)); w.contentView = root
+        let iv = IslandView(frame: NSRect(origin: .zero, size: size))
+        iv.band = 34; iv.notchWidth = 190; iv.centerX = size.width / 2
+        root.addSubview(iv); w.orderFrontRegardless()
+        defer { iv.close(animated: false); w.orderOut(nil); w.contentView = nil; SystemVitals.shared.unwatch() }
+        let frames = out.appendingPathComponent("v2-frames", isDirectory: true)
+        let stills = out.appendingPathComponent("native", isDirectory: true)
+        try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: stills, withIntermediateDirectories: true)
+        let encode = DispatchQueue(label: "zera.v2-media.encode"), slots = DispatchSemaphore(value: 3), group = DispatchGroup()
+        var times: [Double] = [], scenes: [[String: Any]] = []
+        let began = CACurrentMediaTime()
+        var floating: NSView?
+        func image() -> CGImage? {
+            CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), .bestResolution)
+        }
+        func capture() {
+            guard let cg = image(), let context = CGContext(data: nil, width: 1440, height: 900, bitsPerComponent: 8,
+                        bytesPerRow: 1440 * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            context.interpolationQuality = .high; context.draw(cg, in: CGRect(origin: .zero, size: size))
+            guard let small = context.makeImage() else { return }
+            let n = times.count; times.append(CACurrentMediaTime() - began)
+            slots.wait(); group.enter()
+            encode.async {
+                defer { slots.signal(); group.leave() }
+                try? NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.94])?
+                    .write(to: frames.appendingPathComponent(String(format: "%05d.jpg", n)))
+            }
+        }
+        func run(_ seconds: Double) {
+            let end = CACurrentMediaTime() + seconds
+            var next = CACurrentMediaTime()
+            while CACurrentMediaTime() < end {
+                next += 1.0 / 24
+                RunLoop.main.run(until: Date().addingTimeInterval(max(0.001, next - CACurrentMediaTime())))
+                capture()
+            }
+        }
+        func scene(_ name: String, _ title: String) {
+            scenes.append(["name": name, "title": title, "start": CACurrentMediaTime() - began,
+                           "crop": [iv.islandRect.minX, 0, iv.islandRect.width, iv.islandRect.height]])
+        }
+        func still(_ name: String, full: Bool = false) throws {
+            let cg = try XCTUnwrap(image()), scale = CGFloat(cg.width) / size.width
+            let rect = full ? CGRect(origin: .zero, size: size) : iv.islandRect.insetBy(dx: -24, dy: -18).intersection(CGRect(origin: .zero, size: size))
+            let cropped = try XCTUnwrap(cg.cropping(to: CGRect(x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale)))
+            try XCTUnwrap(NSBitmapImageRep(cgImage: cropped).representation(using: .png, properties: [:])).write(to: stills.appendingPathComponent(name + ".png"))
+        }
+        func show(_ c: NSView & CardContent, _ tab: CardKind?, _ name: String, _ title: String) throws {
+            floating?.removeFromSuperview(); floating = nil; iv.isHidden = false
+            c.setFrameSize(NSSize(width: c.cardWidth, height: 400)); c.layoutSubtreeIfNeeded()
+            iv.present(c, size: NSSize(width: min(c.cardWidth, 1200), height: min(c.desiredHeight, Isle.maxContentHeight)), direction: 1, animated: true)
+            iv.activeTab = tab
+            scene(name, title); run(1.2); try still(name); run(1.5)
+        }
+        func float(_ view: NSView, _ name: String, _ title: String) throws {
+            iv.close(animated: false); iv.isHidden = true; floating?.removeFromSuperview()
+            view.setFrameOrigin(NSPoint(x: (size.width - view.frame.width) / 2, y: max(40, (size.height - view.frame.height) / 2)))
+            root.addSubview(view); floating = view
+            scene(name, title); run(1.0); try still(name, full: true); run(1.5)
+        }
+        SystemVitals.shared.simulate()
+        GitHubService.shared.preview(login: "you", pulls: samplePRs())
+        ClipboardStore.shared.preview([
+            ClipItem(kind: .text, text: "A little less switching. A little more focus.", fingerprint: "v2-text"),
+            ClipItem(kind: .link, text: "https://example.com/studio/notes", fingerprint: "v2-link"),
+            ClipItem(kind: .color, text: "#9B8CFF", fingerprint: "v2-color")])
+        try sampleShelf()
+        let tasks = sampleTasks()
+        let scripts = TeleprompterStore(url: nil)
+        _ = scripts.newScript(title: "A little place for your day", text: "Your agents, files and focus.\n\nClose at hand, in the notch.\n\nZera 2 is a native Mac companion.")
+        let entries: [AgentOverviewItem] = [
+            .init(id: "demo-claude", provider: "claude", providerName: "Claude", title: "Polish the preferences", project: "~/Projects/Studio", activity: "Reading Settings.swift", state: .working, source: .claude("demo-claude")),
+            .init(id: "demo-codex", provider: "codex", providerName: "Codex", title: "Review the new layout", project: "~/Projects/Studio", activity: "Run the native checks", state: .waiting, source: .managedCodex("demo-codex"))]
+        // The physical notch stays empty of labels; all readable content is below it.
+        iv.close(animated: false); scene("closed", "The notch"); run(1.0)
+        iv.peek(); scene("navigation", "One notch, your whole day"); run(1.2); try still("navigation"); run(1.0)
+        try show(HomeCard(), .home, "home", "Home")
+        try show(AgentsView(snapshot: { entries }), .claude, "agents", "Claude and Codex")
+        // Ordinary files use the real receipt/companion and pour into the actual island.
+        let receipt = AndroidTransferCard()
+        var file = PhoneTransferState(id: "media-demo", name: "Field notes.pdf")
+        file.mime = "application/pdf"; file.total = 104857600
+        receipt.update(file)
+        iv.present(receipt, size: NSSize(width: receipt.cardWidth, height: receipt.desiredHeight), direction: 0, animated: true)
+        iv.activeTab = .shelf; iv.setPhoneTransfer(file); iv.companion.awaitPhone(from: 1)
+        scene("sharing", "Originals, from your Android")
+        run(0.7)
+        file.phase = .receiving; iv.companion.catchFromPhone()
+        for step in 0...40 {
+            file.received = file.total! * Int64(step) / 40
+            receipt.update(file); iv.setPhoneTransfer(file)
+            run(0.09)
+            if step == 22 { try still("sharing") }
+        }
+        file.phase = .saved; receipt.update(file); iv.setPhoneTransfer(file)
+        iv.companion.releasePhone(); iv.companion.react(.success); run(1.2)
+        iv.setPhoneTransfer(nil)
+        try show(DropFilesView(), .shelf, "shelf", "Your Shelf")
+        try show(ClipboardView(), .clipboard, "clipboard", "Clipboard")
+        try show(TasksCard(store: tasks), .tasks, "tasks", "Tasks")
+        if let task = tasks.tasks.first { tasks.focusOn(task.id) }
+        try show(FocusView(store: tasks), .focus, "focus", "One thing at a time")
+        tasks.pause()
+        try show(GitHubCard(), .github, "pull-requests", "Pull requests")
+        let rs = ReminderService.shared
+        rs.save(event: CalendarEvent(title: "Design review", startAt: Date().addingTimeInterval(3600)))
+        rs.addOneOff(title: "Send the release notes", at: Date().addingTimeInterval(7200))
+        try show(RemindersView(), .reminders, "reminders", "Your day")
+        try show(AlertsView(), .alerts, "alerts", "What needs you")
+        let prompter = TeleprompterView(store: scripts); prompter.setMode(.edit)
+        try show(prompter, .teleprompter, "teleprompter", "Your words, within reach")
+        try show(WindowArrangementView(), .arrange, "layouts", "Arrange windows")
+        let settings = SettingsCard(defaultKind: .home, showingZera: true, loginEnabled: false)
+        try show(settings, .settings, "settings", "Make it yours")
+        settings.select(.appearance); try show(settings, .settings, "themes", "The same theme, everywhere")
+        settings.select(.notch); try show(settings, .settings, "notch-settings", "Voice and the notch")
+        let export = TaskExportView(store: sampleMonth()); export.frame = NSRect(origin: .zero, size: TaskExportView.size)
+        export.span = .all; export.format = .xlsx
+        try float(export, "timesheet", "A week, ready to export")
+        let launcher = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: 900))
+        launcher.prepare(); launcher.previewType("safari")
+        try float(launcher, "launcher", "Open an app")
+        launcher.previewActions(); scene("launcher-actions", "Or run an action"); run(2.2)
+        floating?.removeFromSuperview(); floating = nil; iv.isHidden = false
+        let echo = EchoNotchView(frame: NSRect(x: 340, y: 0, width: 760, height: 64))
+        echo.notchSize = NSSize(width: 190, height: 34)
+        echo.show(EchoContent(symbol: "waveform", keys: "right ⌥", text: "A little less switching.", detail: "Dictation preview", tint: Pal.accent), animated: true)
+        iv.close(animated: false); root.addSubview(echo)
+        scene("dictation", "Hold, speak, release"); run(2.7); echo.removeFromSuperview()
+        let water = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
+        water.detail = "4 of 8 glasses today"; water.begin(at: CACurrentMediaTime() - 2)
+        try float(water, "water", "A small water break")
+        group.wait()
+        try JSONSerialization.data(withJSONObject: times).write(to: out.appendingPathComponent("v2-times.json"))
+        try JSONSerialization.data(withJSONObject: scenes, options: [.prettyPrinted, .sortedKeys]).write(to: out.appendingPathComponent("v2-scenes.json"))
+        print("V2 release capture: \(times.count) frames; \(times.last ?? 0) seconds. Fictional demo data only.")
+    }
+
+    /// Captures only our clean fixture windows and the new demo-photo Preview window.
+    func testRecordV2PhotoReceiver() throws {
+        guard ProcessInfo.processInfo.environment["ZERA_V2_PHOTO_RECEIVER"] == "1",
+              ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else {
+            throw XCTSkip("set ZERA_V2_PHOTO_RECEIVER=1 with a disposable home")
+        }
+        _ = NSApplication.shared
+        let g = NotchGeometry.detect(), screen = g.screen.frame
+        let size = screen.size
+        let background = NSWindow(contentRect: screen, styleMask: .borderless, backing: .buffered, defer: false)
+        background.backgroundColor = NSColor(srgbRed: 0.055, green: 0.058, blue: 0.065, alpha: 1)
+        background.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue - 1)
+        background.hasShadow = false
+        let root = FlippedView(frame: CGRect(origin: .zero, size: size)); background.contentView = root
+        let buddy = NotchBuddyView(frame: CGRect(x: size.width / 2 - (190 + 2 * NotchBuddyView.wingWidth(forHeight: 34)) / 2,
+                                                  y: 0, width: 190 + 2 * NotchBuddyView.wingWidth(forHeight: 34), height: 34))
+        let source = ZeraView(frame: .zero); buddy.source = source
+        root.addSubview(buddy); background.orderFrontRegardless()
+        let frames = out.appendingPathComponent("photo-frames", isDirectory: true)
+        try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
+        UserDefaults.standard.set("123456", forKey: "zera.androp.pairingCode")
+        UserDefaults.standard.set(true, forKey: "zera.androp.enabled")
+        let service = AndroidTransfer()
+        var savedAt: Double?, receiptURL: URL?, markers: [[String: Any]] = []
+        var previousPhase: PhoneTransferState.Phase?
+        service.onTransferChange = { file in
+            guard let file else { return }
+            if previousPhase != file.phase {
+                markers.append(["phase": String(describing: file.phase), "epoch": Date().timeIntervalSince1970])
+                previousPhase = file.phase
+            }
+            if file.phase == .saved { savedAt = Date().timeIntervalSince1970; receiptURL = file.url }
+        }
+        service.start()
+        defer { service.stop(); background.orderOut(nil); background.contentView = nil }
+        let readyDeadline = Date().addingTimeInterval(8)
+        while !service.status.hasPrefix("Ready"), Date() < readyDeadline { RunLoop.main.run(until: Date().addingTimeInterval(0.04)) }
+        XCTAssertTrue(service.status.hasPrefix("Ready"), service.status)
+        let started = Date().timeIntervalSince1970
+        try JSONSerialization.data(withJSONObject: ["epoch": started, "port": 18989, "code": "123456", "width": size.width, "height": size.height])
+            .write(to: out.appendingPathComponent("photo-receiver-ready.json"))
+        let top = NSScreen.screens.first?.frame.maxY ?? screen.maxY
+        let region = CGRect(x: screen.minX, y: top - screen.maxY, width: size.width, height: size.height)
+        let queue = DispatchQueue(label: "zera.photo-movie.encode"), slots = DispatchSemaphore(value: 3), group = DispatchGroup()
+        var times: [Double] = []
+        var previewIncluded = false
+        while Date().timeIntervalSince1970 - started < 45 {
+            let now = Date().timeIntervalSince1970
+            if let savedAt, now - savedAt > 4.5 { break }
+            let tick = CACurrentMediaTime()
+            let own = Set(NSApplication.shared.windows.filter(\.isVisible).map { $0.windowNumber })
+            let previewPID = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Preview").first?.processIdentifier
+            let info = (CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]]) ?? []
+            if let context = CGContext(data: nil, width: 1440, height: 900, bitsPerComponent: 8, bytesPerRow: 1440 * 4,
+                                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                context.scaleBy(x: 1440 / size.width, y: 900 / size.height)
+                context.interpolationQuality = .high
+                // Composite only our fixture windows and the exact new demo-photo window. Never the user's desktop.
+                for item in info.reversed() {
+                    guard let number = item[kCGWindowNumber as String] as? NSNumber,
+                          let dictionary = item[kCGWindowBounds as String] as? [String: Any],
+                          let bounds = CGRect(dictionaryRepresentation: dictionary as CFDictionary) else { continue }
+                    let preview = previewPID != nil && (item[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == previewPID
+                        && (item[kCGWindowName as String] as? String)?.localizedCaseInsensitiveContains("Zera coast") == true
+                    guard own.contains(number.intValue) || preview else { continue }
+                    guard let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(number.uint32Value), [.boundsIgnoreFraming, .bestResolution]) else { continue }
+                    if preview { previewIncluded = true }
+                    context.draw(cg, in: CGRect(x: bounds.minX - region.minX,
+                        y: size.height - (bounds.minY - region.minY) - bounds.height, width: bounds.width, height: bounds.height))
+                }
+                if let image = context.makeImage() {
+                    let n = times.count; times.append(now - started)
+                    slots.wait(); group.enter()
+                    queue.async {
+                        defer { slots.signal(); group.leave() }
+                        try? NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.95])?
+                            .write(to: frames.appendingPathComponent(String(format: "%05d.jpg", n)))
+                    }
+                }
+            }
+            RunLoop.main.run(until: Date().addingTimeInterval(max(0.001, 1.0 / 30 - (CACurrentMediaTime() - tick))))
+        }
+        group.wait()
+        XCTAssertNotNil(savedAt, "No real phone photo arrived before the capture deadline")
+        let url = try XCTUnwrap(receiptURL)
+        XCTAssertGreaterThan((try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0, 0)
+        try JSONSerialization.data(withJSONObject: ["start_epoch": started, "times": times, "markers": markers,
+                                                   "saved_path": url.path, "preview_included": previewIncluded], options: [.prettyPrinted, .sortedKeys])
+            .write(to: out.appendingPathComponent("photo-mac-timing.json"))
+        print("Photo receiver: \(times.count) frames; verified real file saved; Preview window included: \(previewIncluded)")
+    }
+
+}
+
+private final class CompanionExpressionFixture: NSView {
+    let mood: ZeraMood
+    init(mood: ZeraMood) { self.mood = mood; super.init(frame: .zero) }
+    required init?(coder: NSCoder) { fatalError() }
+    override func draw(_ dirtyRect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        CompanionGlyph.draw(context, in: bounds, mood: mood, gaze: CGPoint(x: 0.15, y: 0), blink: 0, attention: mood == .hello ? 1 : 0, phase: 1)
     }
 }

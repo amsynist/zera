@@ -64,6 +64,29 @@ final class ClaudeHookServiceTests: XCTestCase {
         XCTAssertEqual(hooks.pending.map(\.id), [b])
     }
 
+    @MainActor
+    func testFailedResponseWriteKeepsRequestPendingAndRetryable() throws {
+        clearSpool()
+        defer { clearSpool() }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.65))
+        let id = "\(Int(Date().timeIntervalSince1970))-91-91"
+        try drop(id)
+        let hooks = ClaudeHookService.shared
+        hooks.scan()
+        let request = try XCTUnwrap(hooks.pending.first)
+        let obstruction = responses.appendingPathComponent(id + ".json")
+        try FileManager.default.createDirectory(at: obstruction, withIntermediateDirectories: true)
+        XCTAssertFalse(hooks.respond(request, allow: true))
+        XCTAssertTrue(hooks.pending.contains(request))
+        XCTAssertNotNil(hooks.lastResponseError)
+        try FileManager.default.removeItem(at: obstruction)
+        XCTAssertTrue(hooks.respond(request, allow: false))
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: obstruction)) as! [String: Any]
+        let output = json["hookSpecificOutput"] as! [String: Any]
+        XCTAssertEqual((output["decision"] as! [String: Any])["behavior"] as? String, "deny")
+        XCTAssertNil(hooks.lastResponseError)
+    }
+
     func testSettingsFileIsNeverReplacedWhenItCannotBeRead() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("zera-settings-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

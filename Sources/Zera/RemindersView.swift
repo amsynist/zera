@@ -102,7 +102,7 @@ private final class AgendaTip: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l + 2, yRadius: Radius.l + 2)
-        NSGradient(starting: p.accentSoft.withAlphaComponent(p.isDark ? 0.55 : 0.6), ending: p.surfaceElevated)?.draw(in: path, angle: 0)
+        NSGradient(starting: p.accentSoft.withAlphaComponent(0.55), ending: p.surfaceElevated)?.draw(in: path, angle: 0)
         p.accentBorder.setStroke(); path.lineWidth = 1; path.stroke()
     }
 }

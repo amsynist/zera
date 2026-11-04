@@ -7,8 +7,10 @@ enum KeychainStore {
     private static let service = "ai.zera.anthropic"
 
     enum Account: String {
+        // Keychain account names. The stored strings stay as they were: changing them would
+        // orphan secrets people have already saved.
         case apiKey = "api-key"
-        case githubToken = "github-token"
+        case github = "github-token"
         var label: String { self == .apiKey ? "Zera — Anthropic API key" : "Zera — GitHub token" }
     }
 
@@ -18,12 +20,38 @@ enum KeychainStore {
          kSecAttrAccount as String: account.rawValue]
     }
 
-    static func read(_ account: Account) -> String? {
+    /// Accounts whose item exists but macOS wants your OK before Zera may read it (it was saved by
+    /// a differently signed build). Reading them quietly fails instead of popping a password
+    /// prompt — a prompt nobody asked for hides the keyboard from every app until answered.
+    private(set) static var locked: Set<Account> = []
+    private static let lock = NSLock()
+
+    static func isLocked(_ account: Account) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return locked.contains(account)
+    }
+
+    /// The secret, or nil. Non-interactive unless you asked for it (`interactive`): then macOS
+    /// may show its "allow access" prompt, and "Always Allow" ends the question for good.
+    static func read(_ account: Account, interactive: Bool = false) -> String? {
         var q = query(account)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
+        if !interactive { q[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail }
         var out: CFTypeRef?
+        // The login keychain is a file keychain, where only this switch reliably stops macOS from
+        // showing its "allow access" prompt (the query flag alone isn't always honoured).
+        var allowed: DarwinBoolean = true
+        if !interactive {
+            SecKeychainGetUserInteractionAllowed(&allowed)
+            SecKeychainSetUserInteractionAllowed(false)
+        }
         let status = SecItemCopyMatching(q as CFDictionary, &out)
+        if !interactive { SecKeychainSetUserInteractionAllowed(allowed.boolValue) }
+        lock.lock()
+        if status == errSecInteractionNotAllowed || status == errSecAuthFailed { locked.insert(account) }
+        else if status == errSecSuccess || status == errSecItemNotFound { locked.remove(account) }
+        lock.unlock()
         guard status == errSecSuccess, let data = out as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
@@ -31,7 +59,11 @@ enum KeychainStore {
     static func has(_ account: Account) -> Bool {
         var q = query(account)
         q[kSecReturnData as String] = false
-        return SecItemCopyMatching(q as CFDictionary, nil) == errSecSuccess
+        q[kSecReturnAttributes as String] = true
+        q[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        var out: CFTypeRef?
+        let status = SecItemCopyMatching(q as CFDictionary, &out)
+        return status == errSecSuccess || status == errSecInteractionNotAllowed
     }
 
     @discardableResult

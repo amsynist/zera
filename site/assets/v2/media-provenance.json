@@ -1,0 +1,52 @@
+{
+  "version": "2.0.0",
+  "recorded": "2026-11-04",
+  "film": {
+    "duration_seconds": 24,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "real_app_surfaces": true,
+    "device_framing": "Motion design; phone left, Mac right",
+    "source_speed_up": false,
+    "photo_bridge": "Exact original crosses only the gap between device frames",
+    "voiceover": false
+  },
+  "transfer": {
+    "source": "Disposable Android emulator; real Androp gallery and edge gesture",
+    "receiver": "Isolated native Zera receiver; original opened by macOS Preview after verified save",
+    "internet": "Emulator mobile data disabled; local connection",
+    "original_bytes": 28379,
+    "original_sha256": "e21711b14f8501fcbc79d86801126450ac9102c6160331050457c5283328ae84",
+    "received_sha256": "e21711b14f8501fcbc79d86801126450ac9102c6160331050457c5283328ae84",
+    "identical": true,
+    "benchmark": false,
+    "physical_samsung_test": false
+  },
+  "walkthrough": {
+    "duration_seconds": 62.42,
+    "screens": 19,
+    "data": "Fictional fixture tasks, PRs, files, clipboard and vitals"
+  },
+  "apk": {
+    "name": "Androp.apk",
+    "version": "3.0.1",
+    "version_code": 4,
+    "signing": "Android debug key",
+    "bytes": 6570911,
+    "sha256": "a45693ff715fd67b3d612bf1120f09758596cb0dfbc9e21b0ec3e5d4c61b42dc"
+  },
+  "checks": {
+    "hyperframes_errors": 0,
+    "hyperframes_warnings": 0,
+    "contrast_checks_passed": 21
+  },
+  "music": {
+    "title": "Happy Beats / Business Moves Vol. 12",
+    "artist": "Sascha Ende",
+    "url": "https://ende.app/",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "Edited and mixed for this film"
+  }
+}
