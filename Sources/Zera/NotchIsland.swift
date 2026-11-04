@@ -178,7 +178,7 @@ final class IslandView: NSView {
     /// Settings left the rail (Glance-style eight tabs); the gear on the band opens it.
     private let settingsButton = IslandClose(symbol: "gearshape", label: "Settings", tip: "Settings (⌘,)")
     var onSettings: (() -> Void)?
-    private let searchNode = IslandClose(symbol: "rectangle.3.group", label: "Arrange windows", tip: "Arrange windows and workspaces", accent: true)
+    private let searchNode = IslandClose(symbol: "rectangle.3.group", label: "Arrange windows (Beta)", tip: "Arrange windows and workspaces (Beta)", accent: true)
 
     /// The island's current shape, in view coordinates.
     private(set) var islandRect = NSRect.zero
@@ -253,7 +253,6 @@ final class IslandView: NSView {
         // The light draws the edge; the old edge layer stays
         // for the morph geometry but never shows.
         edge.isHidden = true
-        light.quietWhenExpanded = true
         layer?.addSublayer(light)
 
         rootGlow.type = .radial
@@ -1091,7 +1090,7 @@ final class IslandClose: NSButton {
             (hovered ? t.glassTop : t.glassBottom).setFill(); p.fill()
             (hovered ? t.accent.withAlphaComponent(0.6) : t.border).setStroke(); p.lineWidth = 0.75; p.stroke()
             Neon.symbol(symbol, in: NSRect(x: 12, y: 9, width: 20, height: 20), size: 15, weight: .regular, color: Neon.textDim)
-            ("Arrange windows and workspaces" as NSString).draw(at: NSPoint(x: 42, y: 11),
+            ("Arrange windows and workspaces (Beta)" as NSString).draw(at: NSPoint(x: 42, y: 11),
                 withAttributes: [.font: Typo.control, .foregroundColor: Neon.textDim])
             return
         }

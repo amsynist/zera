@@ -3,7 +3,7 @@ import QuartzCore
 
 // MARK: - Style
 
-/// How the island's edge glows (Settings → Appearance → Light, and onboarding step 2).
+/// How the island's edge glows (Settings → Appearance → Notch border & glow).
 /// Persisted in `zera.notchLight`; the strength in `zera.notchLight.intensity`.
 enum NotchLightStyle: Int, CaseIterable {
     case classic, nimbus, prism, pixel, lumiere
@@ -194,8 +194,6 @@ final class NotchLightLayer: CALayer {
     }
     /// Follow Settings (style + intensity) and the theme on its own. On by default.
     var followsSettings = true
-    /// Expanded application chrome stays neutral; style previews retain their actual light.
-    var quietWhenExpanded = false
     /// Colours the next copy / paste comet only (a colour you just copied runs along the edge),
     /// then clears itself. Set right before `react(.copy)` / `react(.paste)`.
     var oneShotTint: NSColor?
@@ -281,7 +279,6 @@ final class NotchLightLayer: CALayer {
         let modeChanged = mode != currentMode
         currentMode = mode
         lastPath = path
-        if quietWhenExpanded && mode != .closed { cancelReactions() }
         if !topSpanExplicit { deriveTopSpan(from: path) }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -340,7 +337,6 @@ final class NotchLightLayer: CALayer {
         visible = on
         if !on { currentMode = .closed } else if currentMode == .closed { currentMode = .open }
         recolor(); restyle()
-        if quietWhenExpanded && on { cancelReactions() }
         applyModeOpacity(animated: true)
         syncAnimations()
     }
@@ -363,9 +359,7 @@ final class NotchLightLayer: CALayer {
 
     private func recolor() {
         let c = accent.cgColor
-        stroke.strokeColor = quietWhenExpanded && currentMode != .closed
-            ? NSColor.white.withAlphaComponent(0.10).cgColor
-            : (lightStyle == .classic ? NSColor.white.withAlphaComponent(0.18).cgColor : c)
+        stroke.strokeColor = lightStyle == .classic ? NSColor.white.withAlphaComponent(0.18).cgColor : c
         stroke.shadowColor = c
         halo.strokeColor = c
         halo.shadowColor = c
@@ -394,12 +388,6 @@ final class NotchLightLayer: CALayer {
         stroke.isHidden = false
         stroke.lineWidth = 1
 
-        if quietWhenExpanded && currentMode != .closed {
-            stroke.strokeColor = NSColor.white.withAlphaComponent(0.10).cgColor
-            stroke.opacity = 1
-            CATransaction.commit()
-            return
-        }
         switch lightStyle {
         case .classic:
             stroke.opacity = a(0.8)
@@ -474,7 +462,7 @@ final class NotchLightLayer: CALayer {
 
     /// Runs only what the style wants, only while visible, never with Reduce Motion.
     private func syncAnimations() {
-        let running = visible && (!quietWhenExpanded || currentMode == .closed) && !paused && !Motion.reduced
+        let running = visible && !paused && !Motion.reduced
         let wantDrift = running && lightStyle == .prism
         let wantBreath = running && lightStyle == .lumiere
 
@@ -568,8 +556,7 @@ extension NotchLightLayer {
     /// Lights the outline up for a moment. Works in every mode, including closed; a repeat of the
     /// same reaction while one is running restarts it. No-op (or a 120 ms flash) with Reduce Motion.
     func react(_ r: NotchLightReaction) {
-        guard reactionsEnabled, !(quietWhenExpanded && currentMode != .closed),
-              let path = lastPath, bounds.width > 0 else { return }
+        guard reactionsEnabled, let path = lastPath, bounds.width > 0 else { return }
         let key = r.key
         if case .modifier(let held) = r, !held { endReaction(key); return }
         if case .fileDrag(let on) = r, !on { endReaction(key); return }

@@ -110,29 +110,52 @@ final class EchoInteractionTests: XCTestCase {
         }
     }
 
-    func testOpeningIslandClearsPixelChromeEvenWhenVisibilityChangesFirst() {
-        let path = CGPath(roundedRect: CGRect(x: 0, y: 0, width: 400, height: 200),
-                          cornerWidth: 20, cornerHeight: 20, transform: nil)
-        func shapes(_ layer: CALayer) -> [CAShapeLayer] {
-            (layer as? CAShapeLayer).map { [$0] } ?? []
-                + (layer.sublayers ?? []).flatMap(shapes)
+    func testLiveIslandAppliesEverySelectedOutlineAndStopsHiddenAnimations() {
+        _ = NSApplication.shared
+        let savedStyle = NotchLightStyle.current, savedIntensity = NotchLightStyle.intensity
+        defer { NotchLightStyle.current = savedStyle; NotchLightStyle.intensity = savedIntensity }
+        NotchLightStyle.intensity = 1
+        func layers(_ layer: CALayer) -> [CALayer] {
+            guard !layer.isHidden else { return [] }
+            return [layer] + (layer.sublayers ?? []).flatMap(layers)
         }
-        let light = NotchLightLayer()
-        light.quietWhenExpanded = true
-        light.lightStyle = .pixel
-        light.apply(path: path, bounds: path.boundingBox, mode: .closed, animated: false)
-        light.setVisible(true)
-        light.apply(path: path, bounds: path.boundingBox, mode: .open, animated: false)
-        light.accent = .red
-        let visible = shapes(light).filter { !$0.isHidden && $0.strokeColor != nil }
-        XCTAssertFalse(visible.isEmpty)
-        XCTAssertTrue(visible.allSatisfy { $0.lineDashPattern == nil })
-        XCTAssertTrue(visible.allSatisfy { $0.strokeColor == NSColor.white.withAlphaComponent(0.10).cgColor })
-        let preview = NotchLightLayer()
-        preview.lightStyle = .pixel
-        preview.apply(path: path, bounds: path.boundingBox, mode: .open, animated: false)
-        XCTAssertTrue(shapes(preview).contains { !$0.isHidden && $0.lineDashPattern != nil },
-                      "the style picker must still show the actual pixel style")
+        func check(_ island: IslandView, _ style: NotchLightStyle) {
+            let visible = layers(island.light)
+            let shapes = visible.compactMap { $0 as? CAShapeLayer }.filter { $0.strokeColor != nil }
+            XCTAssertEqual(island.light.lightStyle, style)
+            switch style {
+            case .classic:
+                XCTAssertTrue(shapes.contains { $0.lineDashPattern == nil && $0.strokeColor == NSColor.white.withAlphaComponent(0.18).cgColor })
+            case .nimbus:
+                XCTAssertTrue(shapes.contains { $0.shadowRadius == 26 && $0.shadowOpacity > 0 })
+            case .prism:
+                XCTAssertTrue(visible.contains { ($0 as? CAGradientLayer)?.type == .conic })
+            case .pixel:
+                XCTAssertEqual(shapes.filter { $0.lineDashPattern != nil }.count, 3)
+            case .lumiere:
+                XCTAssertTrue(shapes.contains { $0.shadowRadius == 14 && $0.shadowOpacity > 0 })
+            }
+            if style.animates && !Motion.reduced {
+                XCTAssertTrue(visible.contains { $0.animation(forKey: "drift") != nil || $0.animation(forKey: "breath") != nil })
+            }
+        }
+        for hover in HoverMenuStyle.allCases {
+            let island = IslandView(frame: CGRect(x: 0, y: 0, width: 1000, height: 640))
+            island.band = 34; island.notchWidth = 190; island.centerX = 500; island.hoverStyle = hover
+            for style in NotchLightStyle.allCases {
+                island.peek()
+                NotchLightStyle.current = style // exercise the same notification as the picker
+                check(island, style)
+                island.present(FlippedView(), size: CGSize(width: 720, height: 400), direction: 0, animated: false)
+                check(island, style)
+                island.light.pause()
+                XCTAssertFalse(layers(island.light).contains { $0.animation(forKey: "drift") != nil || $0.animation(forKey: "breath") != nil })
+                island.light.resume()
+                check(island, style)
+                island.close(animated: false)
+                XCTAssertFalse(layers(island.light).contains { $0.animation(forKey: "drift") != nil || $0.animation(forKey: "breath") != nil })
+            }
+        }
     }
 
     func testLevelRevealAdvancesFromNotchToBothScreenEdges() throws {

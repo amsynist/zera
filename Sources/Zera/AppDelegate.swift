@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                 ("Alerts", #selector(showAlerts)), ("Clipboard", #selector(showClipboard)),
                                 ("Shelf", #selector(showShelf)), ("Reminders", #selector(showReminders)),
                                 ("Focus", #selector(showFocus)), ("Teleprompter", #selector(showTeleprompter)),
-                                ("Tasks", #selector(showTasks)), ("Pull requests", #selector(showGitHub)), ("Arrange windows", #selector(showArrange))] {
+                                ("Tasks", #selector(showTasks)), ("Pull requests", #selector(showGitHub)), ("Arrange windows (Beta)", #selector(showArrange))] {
             view.addItem(withTitle: title, action: action, keyEquivalent: "").target = self
         }
         for menu in [application, edit, view] {

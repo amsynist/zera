@@ -411,6 +411,45 @@ final class WindowArrangementTests: XCTestCase {
         var optedIn = legacy; optedIn.visualTransitions = true
         XCTAssertEqual(try JSONDecoder().decode(ArrangeSettings.self, from: JSONEncoder().encode(optedIn)).visualTransitions, true)
     }
+    @MainActor func testArrangeSettingsLabelsDoNotCoverInteractiveControls() throws {
+        _ = NSApplication.shared
+        let manager = WindowArrangementService.shared
+        let original = manager.settings.visualTransitions == true
+        let saved = UserDefaults.standard.object(forKey: ArrangeSettings.key)
+        defer {
+            manager.setVisualTransitions(original)
+            UserDefaults.standard.set(saved, forKey: ArrangeSettings.key)
+        }
+        for width: CGFloat in [720, 880] {
+            let host = FlippedView(frame: CGRect(x: 0, y: 0, width: width, height: 640))
+            let view = WindowArrangementView()
+            view.frame = host.bounds
+            host.addSubview(view)
+            view.layoutSubtreeIfNeeded()
+            let tabs = try XCTUnwrap(view.subviews.compactMap { $0 as? PillTabs }.first)
+            let scroll = try XCTUnwrap(view.subviews.compactMap { $0 as? NSScrollView }.first)
+            for page in [0, 1] {
+                tabs.onSelect?(page); view.layoutSubtreeIfNeeded()
+                let body = try XCTUnwrap(scroll.documentView)
+                let toggle = try XCTUnwrap(body.subviews.compactMap { $0 as? Toggle }.first)
+                toggle.scrollToVisible(toggle.bounds)
+                let point = view.convert(CGPoint(x: toggle.bounds.midX, y: toggle.bounds.midY), from: toggle)
+                XCTAssertTrue(view.hitTest(point) === toggle, "page \(page), width \(width): hit=\(String(describing: view.hitTest(point))) point=\(point) toggle=\(toggle.frame) clip=\(scroll.contentView.bounds) root=\(view.bounds)")
+                if page == 0 {
+                    let next = !toggle.isOn
+                    XCTAssertTrue(toggle.accessibilityPerformPress())
+                    XCTAssertEqual(manager.settings.visualTransitions, next)
+                    XCTAssertEqual(ArrangeSettings.load().visualTransitions, next)
+                } else {
+                    let limit = try XCTUnwrap(body.subviews.compactMap { $0 as? ZeraSelect }.last)
+                    limit.scrollToVisible(limit.bounds)
+                    let point = view.convert(CGPoint(x: limit.bounds.midX, y: limit.bounds.midY), from: limit)
+                    XCTAssertTrue(view.hitTest(point) === limit, "menu hit=\(String(describing: view.hitTest(point))) point=\(point) frame=\(limit.frame) clip=\(scroll.contentView.bounds)")
+                }
+            }
+            XCTAssertTrue(view.superview === host)
+        }
+    }
     @MainActor func testVisualSurfaceReleasesAfterCancelAndCanFinishAfterCancellation() {
         _ = NSApplication.shared
         weak var released: ArrangeVisualTransition?

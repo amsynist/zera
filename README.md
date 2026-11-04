@@ -29,7 +29,7 @@ The notch opens into one continuous Obsidian island, with a living companion and
 
 Follow current work, requests, tools and results from the Agents screen. Managed sessions can accept replies and approvals; observed desktop sessions are read-only activity. Connect through your own installed tools and logins. Claude plan usage appears when you enable tracking; it is a plan reading, not a made-up task percentage.
 
-### Window manager. Make room for your work.
+### Window manager (Beta). Make room for your work.
 
 Arrange native app windows in columns, rows, a grid or a main-window layout. Group them into Zera workspaces, choose which apps participate, move between displays and restore a previous arrangement with Undo. These are Zera window groups; they do not create macOS Spaces.
 
