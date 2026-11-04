@@ -1,0 +1,33 @@
+{
+  "tour": {
+    "duration": 63.858333,
+    "frames": 3681,
+    "capture": "ScreenCaptureKit exact fixture window only",
+    "source_frames": 3681,
+    "average_actual_frames_per_second": 57.64322097164672,
+    "median_frame_interval_seconds": 0.016666999999999987,
+    "max_frame_interval_seconds": 0.031667
+  },
+  "windows": {
+    "duration": 13.383333,
+    "frames": 763,
+    "capture": "ScreenCaptureKit native wallpaper and new disposable fixture process only",
+    "engine": "Production ArrangeWindowAccess and ArrangeLayout; real AX writes verified",
+    "source_frames": 763,
+    "average_actual_frames_per_second": 57.01120939006748,
+    "median_frame_interval_seconds": 0.016666999999999987,
+    "max_frame_interval_seconds": 0.15
+  },
+  "source_speed": 1,
+  "optical_flow": false,
+  "output_duration": 80.03333333333333,
+  "scenes": 27,
+  "water": {
+    "duration": 3.701667,
+    "source_frames": 210,
+    "average_actual_frames_per_second": 56.731197052571176,
+    "median_frame_interval_seconds": 0.016666999999999987,
+    "max_frame_interval_seconds": 0.068333,
+    "capture": "Same native fixture window; animation explicitly ticked while occluded; replaced blank water scene without changing chapter timing"
+  }
+}

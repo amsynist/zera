@@ -1,0 +1,86 @@
+{
+  "mechanism": "Original recorded presentation timestamps counted without interpolation. Static Android screens emit few frames.",
+  "common_crop_global_epoch": [
+    1793763878.815374,
+    1793763898.815374
+  ],
+  "source_speed": 1,
+  "sources": {
+    "mac": {
+      "recorded_frames_total": 1527,
+      "windows": {
+        "common_full_film": {
+          "global_epoch": [
+            1793763878.815374,
+            1793763898.815374
+          ],
+          "seconds": 20.0,
+          "real_frames": 1148,
+          "cadence_fps": 57.4,
+          "median_frame_delta_seconds": 0.016666999999999987,
+          "max_frame_delta_seconds": 0.04999999999999716
+        },
+        "gesture_only": {
+          "global_epoch": [
+            1793763884.206374,
+            1793763885.3223739
+          ],
+          "seconds": 1.1159999370574951,
+          "real_frames": 65,
+          "cadence_fps": 58.243730883518204,
+          "median_frame_delta_seconds": 0.016666999999999987,
+          "max_frame_delta_seconds": 0.03333300000000072
+        },
+        "gesture_to_preview": {
+          "global_epoch": [
+            1793763884.206374,
+            1793763886.7132201
+          ],
+          "seconds": 2.5068461894989014,
+          "real_frames": 143,
+          "cadence_fps": 57.04378696986773,
+          "median_frame_delta_seconds": 0.016666999999999987,
+          "max_frame_delta_seconds": 0.033333999999999975
+        }
+      }
+    },
+    "phone": {
+      "recorded_frames_total": 145,
+      "windows": {
+        "common_full_film": {
+          "global_epoch": [
+            1793763878.815374,
+            1793763898.815374
+          ],
+          "seconds": 20.0,
+          "real_frames": 96,
+          "cadence_fps": 4.8,
+          "median_frame_delta_seconds": 0.017110999999999876,
+          "max_frame_delta_seconds": 2.4502889999999997
+        },
+        "gesture_only": {
+          "global_epoch": [
+            1793763884.206374,
+            1793763885.3223739
+          ],
+          "seconds": 1.1159999370574951,
+          "real_frames": 59,
+          "cadence_fps": 52.86738649427037,
+          "median_frame_delta_seconds": 0.016672499999999424,
+          "max_frame_delta_seconds": 0.053033000000000996
+        },
+        "gesture_to_preview": {
+          "global_epoch": [
+            1793763884.206374,
+            1793763886.7132201
+          ],
+          "seconds": 2.5068461894989014,
+          "real_frames": 84,
+          "cadence_fps": 33.50823849978244,
+          "median_frame_delta_seconds": 0.017110999999999876,
+          "max_frame_delta_seconds": 0.1857779999999991
+        }
+      }
+    }
+  }
+}

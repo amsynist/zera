@@ -1,0 +1,107 @@
+{
+  "result": "passed",
+  "release_name": "Zera v2",
+  "duration_seconds": 20,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "fps": 60,
+  "video_frames": 1200,
+  "video_codec": "h264",
+  "pixel_format": "yuv420p",
+  "audio_codec": "aac",
+  "faststart": true,
+  "top_level_atoms": [
+    {
+      "type": "ftyp",
+      "offset": 0,
+      "size": 32
+    },
+    {
+      "type": "moov",
+      "offset": 32,
+      "size": 33176
+    },
+    {
+      "type": "free",
+      "offset": 33208,
+      "size": 8
+    },
+    {
+      "type": "mdat",
+      "offset": 33216,
+      "size": 8477774
+    }
+  ],
+  "poster_source_frame": 1110,
+  "poster_source_seconds": 18.5,
+  "poster_baked_frames": [
+    0
+  ],
+  "poster_frame0_mean_absolute_channel_error": 2.1039366319444444,
+  "burned_captions": true,
+  "caption_cues": 6,
+  "strict_gate": true,
+  "browser_skipped": false,
+  "contrast_checked": 38,
+  "contrast_passed": 38,
+  "error_count": 0,
+  "warning_count": 0,
+  "audio_peak_dbfs": -6.8,
+  "audio_mean_dbfs": -30.6,
+  "source_speed": 1,
+  "optical_flow_interpolation": false,
+  "source_original_verified": true,
+  "full_native_source_seconds": 20,
+  "wallpaper_freeze": false,
+  "hex_grid_background": true,
+  "encoded_transition_proof": "qc/encoded-transition-contact.jpg",
+  "caption_motion_proof": "qc/caption-motion-proof.jpg",
+  "files": {
+    "brag.mp4": {
+      "bytes": 8510990,
+      "sha256": "c6e754d3bbfe9b811bf32ebc436acf134e4a4243d45e8663dabe0b0d66a1090b"
+    },
+    "brag.jpg": {
+      "bytes": 193081,
+      "sha256": "0d41c5e82d2f7237a595925e74c84fb025e23ca3097ca6f045616ebd7efba8b9"
+    },
+    "captions.srt": {
+      "bytes": 322,
+      "sha256": "3ef91f7cc58d2a70262c4409fbc887dd41dfa845e3da2e83b1ecbc6accd313ef"
+    },
+    "captions.vtt": {
+      "bytes": 330,
+      "sha256": "677374c84a5b834ed9d49a8c4874b40ea85e767066a38355398c69942a1dff98"
+    },
+    "caption-timeline.json": {
+      "bytes": 5998,
+      "sha256": "91efbe283a80dd284d3f72937b16a3d764bc49ff4d4a83434ccad92d43f53f12"
+    },
+    "source-cadence.json": {
+      "bytes": 2628,
+      "sha256": "3a20a12be66120daa628dfa20fe96f236f6fef9309b357f54991107ee417741c"
+    },
+    "wallpaper-continuity.json": {
+      "bytes": 1416,
+      "sha256": "4e4516988c019d96b0c9653ea868d9992adb22e6b1e9675e3e0d3f223dddf34e"
+    },
+    "keyframes-proof.json": {
+      "bytes": 1949,
+      "sha256": "d4f72be62bd239ae4493ef669ee481a971286c6c81fb4a9bad63112935dd83d8"
+    },
+    "share-copy.txt": {
+      "bytes": 128,
+      "sha256": "09105652214a6b45995c2741275b3c6e9eedb22b2838a9e101ec826960852b7d"
+    },
+    "brag-plan.md": {
+      "bytes": 2805,
+      "sha256": "81ad7da34953368cda486b5dcc172a8eb29584e4559f4396da2df7cee3e6f43d"
+    },
+    "composition-brief.md": {
+      "bytes": 1662,
+      "sha256": "b14cbac8af4f7016d0714854c580eebb43bcd79a1863d7af2b1fc48b02a64958"
+    }
+  }
+}

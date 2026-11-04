@@ -1,6 +1,6 @@
 import AppKit
 
-// MARK: - Hover deck (Zera 2)
+// MARK: - Hover deck (Zera v2)
 //
 // A compact status row for hover: no repeated portrait or nested dashboard cards.
 // The busiest agent and what is playing or coming up sit beside the summary. Navigation sits

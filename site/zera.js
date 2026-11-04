@@ -4,7 +4,7 @@
   const panel = document.getElementById('screen-panel');
   const select = (tab, focus = false) => {
     for (const item of tabs) { const active = item === tab; item.setAttribute('aria-selected', String(active)); item.tabIndex = active ? 0 : -1; }
-    image.src = tab.dataset.image; image.alt = `${tab.dataset.label}: current native Zera 2 screen with example data`;
+    image.src = tab.dataset.image; image.alt = `${tab.dataset.label}: current native Zera v2 screen with example data`;
     document.getElementById('screen-title').textContent = tab.dataset.label;
     document.getElementById('screen-caption').textContent = tab.dataset.caption;
     panel.setAttribute('aria-labelledby', tab.id);

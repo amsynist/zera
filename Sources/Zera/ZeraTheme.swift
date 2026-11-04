@@ -121,8 +121,8 @@ enum BuiltInThemes {
         let colors: ThemeColors
     }
 
-    /// Zera 2: notch-black panel, graphite cards with a light top edge, violet actions.
-    static let obsidian = Def(id: "obsidian", name: "Obsidian (Zera 2)", colors: ThemeColors(
+    /// Zera v2: notch-black panel, graphite cards with a light top edge, violet actions.
+    static let obsidian = Def(id: "obsidian", name: "Obsidian (Zera v2)", colors: ThemeColors(
         glassTop: "#0B0B10", glassBottom: "#050507", edge: "#FFFFFF1A",
         surface: "#15151B", surfaceHover: "#1D1D25", surfaceStrong: "#262630", row: "#15151B", field: "#101015",
         border: "#FFFFFF10", divider: "#FFFFFF0A",
@@ -221,7 +221,7 @@ final class ThemeStore {
             .appendingPathComponent("Themes", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         loadCustom()
-        // Once: Zera 2's Obsidian look replaces whatever theme was saved before the redesign.
+        // Once: Zera v2's Obsidian look replaces whatever theme was saved before the redesign.
         if !UserDefaults.standard.bool(forKey: "zera.theme.z2Migrated") {
             UserDefaults.standard.set(true, forKey: "zera.theme.z2Migrated")
             UserDefaults.standard.set("obsidian", forKey: Self.key)
