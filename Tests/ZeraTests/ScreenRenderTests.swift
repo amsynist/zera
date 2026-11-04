@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+import ScreenCaptureKit
 @testable import Zera
 
 /// Renders every screen to PNGs so the UI can be reviewed without running the app:
@@ -1317,8 +1318,9 @@ final class ScreenRenderTests: XCTestCase {
         print("V2 release capture: \(times.count) frames; \(times.last ?? 0) seconds. Fictional demo data only.")
     }
 
-    /// Captures only our clean fixture windows and the new demo-photo Preview window.
-    func testRecordV2PhotoReceiver() throws {
+    /// Hardware-records only our fixture windows and the exact newly opened synthetic photo.
+    @available(macOS 15.0, *)
+    func testRecordV2PhotoReceiver() async throws {
         guard ProcessInfo.processInfo.environment["ZERA_V2_PHOTO_RECEIVER"] == "1",
               ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else {
             throw XCTSkip("set ZERA_V2_PHOTO_RECEIVER=1 with a disposable home")
@@ -1328,15 +1330,13 @@ final class ScreenRenderTests: XCTestCase {
         let size = screen.size
         let background = NSWindow(contentRect: screen, styleMask: .borderless, backing: .buffered, defer: false)
         background.backgroundColor = NSColor(srgbRed: 0.055, green: 0.058, blue: 0.065, alpha: 1)
-        background.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue - 1)
+        background.level = .normal
         background.hasShadow = false
         let root = FlippedView(frame: CGRect(origin: .zero, size: size)); background.contentView = root
         let buddy = NotchBuddyView(frame: CGRect(x: size.width / 2 - (190 + 2 * NotchBuddyView.wingWidth(forHeight: 34)) / 2,
                                                   y: 0, width: 190 + 2 * NotchBuddyView.wingWidth(forHeight: 34), height: 34))
         let source = ZeraView(frame: .zero); buddy.source = source
         root.addSubview(buddy); background.orderFrontRegardless()
-        let frames = out.appendingPathComponent("photo-frames", isDirectory: true)
-        try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
         UserDefaults.standard.set("123456", forKey: "zera.androp.pairingCode")
         UserDefaults.standard.set(true, forKey: "zera.androp.enabled")
         let service = AndroidTransfer()
@@ -1353,60 +1353,71 @@ final class ScreenRenderTests: XCTestCase {
         service.start()
         defer { service.stop(); background.orderOut(nil); background.contentView = nil }
         let readyDeadline = Date().addingTimeInterval(8)
-        while !service.status.hasPrefix("Ready"), Date() < readyDeadline { RunLoop.main.run(until: Date().addingTimeInterval(0.04)) }
+        while !service.status.hasPrefix("Ready"), Date() < readyDeadline { try await Task.sleep(nanoseconds: 40_000_000) }
         XCTAssertTrue(service.status.hasPrefix("Ready"), service.status)
-        let started = Date().timeIntervalSince1970
-        try JSONSerialization.data(withJSONObject: ["epoch": started, "port": 18989, "code": "123456", "width": size.width, "height": size.height])
-            .write(to: out.appendingPathComponent("photo-receiver-ready.json"))
-        let top = NSScreen.screens.first?.frame.maxY ?? screen.maxY
-        let region = CGRect(x: screen.minX, y: top - screen.maxY, width: size.width, height: size.height)
-        let queue = DispatchQueue(label: "zera.photo-movie.encode"), slots = DispatchSemaphore(value: 3), group = DispatchGroup()
-        var times: [Double] = []
-        var previewIncluded = false
-        while Date().timeIntervalSince1970 - started < 45 {
-            let now = Date().timeIntervalSince1970
-            if let savedAt, now - savedAt > 4.5 { break }
-            let tick = CACurrentMediaTime()
-            let own = Set(NSApplication.shared.windows.filter(\.isVisible).map { $0.windowNumber })
-            let previewPID = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Preview").first?.processIdentifier
-            let info = (CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]]) ?? []
-            if let context = CGContext(data: nil, width: 1440, height: 900, bitsPerComponent: 8, bytesPerRow: 1440 * 4,
-                                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
-                context.scaleBy(x: 1440 / size.width, y: 900 / size.height)
-                context.interpolationQuality = .high
-                // Composite only our fixture windows and the exact new demo-photo window. Never the user's desktop.
-                for item in info.reversed() {
-                    guard let number = item[kCGWindowNumber as String] as? NSNumber,
-                          let dictionary = item[kCGWindowBounds as String] as? [String: Any],
-                          let bounds = CGRect(dictionaryRepresentation: dictionary as CFDictionary) else { continue }
-                    let preview = previewPID != nil && (item[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == previewPID
-                        && (item[kCGWindowName as String] as? String)?.localizedCaseInsensitiveContains("Zera coast") == true
-                    guard own.contains(number.intValue) || preview else { continue }
-                    guard let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(number.uint32Value), [.boundsIgnoreFraming, .bestResolution]) else { continue }
-                    if preview { previewIncluded = true }
-                    context.draw(cg, in: CGRect(x: bounds.minX - region.minX,
-                        y: size.height - (bounds.minY - region.minY) - bounds.height, width: bounds.width, height: bounds.height))
-                }
-                if let image = context.makeImage() {
-                    let n = times.count; times.append(now - started)
-                    slots.wait(); group.enter()
-                    queue.async {
-                        defer { slots.signal(); group.leave() }
-                        try? NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.95])?
-                            .write(to: frames.appendingPathComponent(String(format: "%05d.jpg", n)))
-                    }
-                }
+        let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
+        let displayID = (g.screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+        let display = try XCTUnwrap(content.displays.first { $0.displayID == displayID })
+        let oldPreviewIDs = Set(content.windows.filter { $0.owningApplication?.bundleIdentifier == "com.apple.Preview" }.map(\.windowID))
+        func allowed(_ windows: [SCWindow]) -> [SCWindow] {
+            let own = Set(NSApplication.shared.windows.compactMap { UInt32(exactly: $0.windowNumber) })
+            return windows.filter { window in
+                if own.contains(window.windowID) { return true }
+                guard let received = receiptURL,
+                      window.owningApplication?.bundleIdentifier == "com.apple.Preview",
+                      !oldPreviewIDs.contains(window.windowID) else { return false }
+                return [received.lastPathComponent, received.deletingPathExtension().lastPathComponent]
+                    .contains(window.title ?? "")
             }
-            RunLoop.main.run(until: Date().addingTimeInterval(max(0.001, 1.0 / 30 - (CACurrentMediaTime() - tick))))
         }
-        group.wait()
+        let config = SCStreamConfiguration()
+        config.width = 1440; config.height = 900
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        config.queueDepth = 6; config.showsCursor = false; config.capturesAudio = false
+        let recorder = ReleaseMediaRecorder()
+        let recordingConfig = SCRecordingOutputConfiguration()
+        recordingConfig.outputURL = out.appendingPathComponent("mac-source.mp4")
+        recordingConfig.videoCodecType = .h264; recordingConfig.outputFileType = .mp4
+        let recording = SCRecordingOutput(configuration: recordingConfig, delegate: recorder)
+        let initial = allowed(content.windows)
+        var ids = Set(initial.map(\.windowID))
+        let stream = SCStream(filter: SCContentFilter(display: display, including: initial), configuration: config, delegate: nil)
+        try stream.addRecordingOutput(recording)
+        try await stream.startCapture()
+        let beginDeadline = Date().addingTimeInterval(5)
+        while recorder.startedAt == nil && recorder.failure == nil && Date() < beginDeadline { try await Task.sleep(nanoseconds: 20_000_000) }
+        let started = try XCTUnwrap(recorder.startedAt)
+        try JSONSerialization.data(withJSONObject: ["epoch": started, "port": 18989, "code": "123456", "width": 1440, "height": 900, "requested_fps": 60])
+            .write(to: out.appendingPathComponent("photo-receiver-ready.json"))
+        var previewIncluded = false, previewAt: Double?
+        while Date().timeIntervalSince1970 - started < 80 {
+            if let savedAt, Date().timeIntervalSince1970 - savedAt > 6 { break }
+            let current = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
+            let windows = allowed(current.windows)
+            let updated = Set(windows.map(\.windowID))
+            if ids != updated {
+                try await stream.updateContentFilter(SCContentFilter(display: display, including: windows))
+                ids = updated
+            }
+            if !previewIncluded && windows.contains(where: { $0.owningApplication?.bundleIdentifier == "com.apple.Preview" }) {
+                previewIncluded = true; previewAt = Date().timeIntervalSince1970
+            }
+            try await Task.sleep(nanoseconds: 70_000_000)
+        }
+        try await stream.stopCapture()
+        let finishDeadline = Date().addingTimeInterval(5)
+        while !recorder.finished && recorder.failure == nil && Date() < finishDeadline { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertNil(recorder.failure); XCTAssertTrue(recorder.finished)
         XCTAssertNotNil(savedAt, "No real phone photo arrived before the capture deadline")
+        XCTAssertTrue(previewIncluded, "Only the newly opened synthetic image is eligible for capture")
         let url = try XCTUnwrap(receiptURL)
-        XCTAssertGreaterThan((try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0, 0)
-        try JSONSerialization.data(withJSONObject: ["start_epoch": started, "times": times, "markers": markers,
-                                                   "saved_path": url.path, "preview_included": previewIncluded], options: [.prettyPrinted, .sortedKeys])
+        var metadata: [String: Any] = ["start_epoch": started, "markers": markers,
+            "saved_path": url.path, "preview_included": previewIncluded, "requested_fps": 60,
+            "capture": "ScreenCaptureKit hardware recording; own windows and only the new synthetic-photo Preview window"]
+        if let previewAt { metadata["preview_epoch"] = previewAt }
+        try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
             .write(to: out.appendingPathComponent("photo-mac-timing.json"))
-        print("Photo receiver: \(times.count) frames; verified real file saved; Preview window included: \(previewIncluded)")
+        print("Smooth photo receiver: hardware-recorded; verified original saved; exact new Preview included: \(previewIncluded)")
     }
 
 }

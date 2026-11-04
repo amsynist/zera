@@ -1,0 +1,211 @@
+{
+  "duration": 20,
+  "fps": 60,
+  "source_status": "FINAL \u2014 verified replacement native take3",
+  "phrases": [
+    {
+      "id": "pick",
+      "text": "Pick a photo.",
+      "start": 0.18,
+      "end": 4.935177707672119,
+      "settled_by": 0.73,
+      "minimum_complete_hold": 3.925177707672119,
+      "word_entries": [
+        {
+          "text": "Pick",
+          "at": 0.18,
+          "from_y": 72,
+          "to_y": 0,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "a",
+          "at": 0.258,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "photo.",
+          "at": 0.33599999999999997,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        }
+      ]
+    },
+    {
+      "id": "glide",
+      "text": "Glide it across.",
+      "start": 4.935177707672119,
+      "end": 7.285177707672119,
+      "settled_by": 5.485177707672118,
+      "minimum_complete_hold": 1.5200000000000005,
+      "word_entries": [
+        {
+          "text": "Glide",
+          "at": 4.935177707672119,
+          "from_y": 72,
+          "to_y": 0,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "it",
+          "at": 5.013177707672119,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "across.",
+          "at": 5.091177707672118,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        }
+      ]
+    },
+    {
+      "id": "arrival",
+      "text": "Arrives on your Mac.",
+      "start": 7.285177707672119,
+      "end": 9.53517770767212,
+      "settled_by": 7.835177707672119,
+      "minimum_complete_hold": 1.42,
+      "word_entries": [
+        {
+          "text": "Arrives",
+          "at": 7.285177707672119,
+          "from_y": 72,
+          "to_y": 0,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "on",
+          "at": 7.363177707672119,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "your",
+          "at": 7.441177707672119,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "Mac.",
+          "at": 7.519177707672119,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        }
+      ]
+    },
+    {
+      "id": "saved",
+      "text": "Your original. Saved.",
+      "start": 9.53517770767212,
+      "end": 15.2,
+      "settled_by": 10.08517770767212,
+      "minimum_complete_hold": 4.83482229232788,
+      "word_entries": [
+        {
+          "text": "Your",
+          "at": 9.53517770767212,
+          "from_y": 72,
+          "to_y": 0,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "original.",
+          "at": 9.613177707672119,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "Saved.",
+          "at": 9.69117770767212,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        }
+      ]
+    },
+    {
+      "id": "benefit",
+      "text": "No internet. Just Wi\u2011Fi.",
+      "start": 15.2,
+      "end": 20,
+      "settled_by": 15.75,
+      "minimum_complete_hold": 3.9700000000000006,
+      "word_entries": [
+        {
+          "text": "No",
+          "at": 15.2,
+          "from_y": 72,
+          "to_y": 0,
+          "duration": 0.34,
+          "ease": "expo.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "internet.",
+          "at": 15.277999999999999,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "Just",
+          "at": 15.356,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        },
+        {
+          "text": "Wi\u2011Fi.",
+          "at": 15.434,
+          "from_y": 58,
+          "to_y": 0,
+          "duration": 0.27,
+          "ease": "power4.out",
+          "mask": "122px line overflow:hidden"
+        }
+      ]
+    }
+  ],
+  "mechanism": "Masked per-word transform reveals,complete-line reading holds,transform-only camera poses; no per-frame callback."
+}

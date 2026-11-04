@@ -1,21 +1,21 @@
-# Composition brief — Zera 2
+# Sharing-film implementation brief
 
-Follow brag-plan.md. Build a 24-second polished 1920×1080 local Hyperframes composition and final launch film, no narration.
+This is a 20-second, 60fps native sharing demonstration with five prominent caption beats. The actual Android app stays left and the actual Mac stays right. Device cases are presentation framing; no app UI is recreated. The exact same photo is carried by the Android gesture, native Mac arrival and received original in Preview.
 
-Use the current installed Hyperframes core/creative/animation/CLI skill contracts. The older references to hyperframes-registry/media-use have been split across these installed domain skills; use their documented equivalents and available audio extraction helper. Do not copy an old brag template or use old Zera marketing screenshots.
+## Motion and readability
 
-Fresh native assets will be provided under composition/assets/native/. A full native walkthrough and scene manifest will be supplied; use those clips or the matching fresh PNGs. Expected screen names: home, agents, sharing, shelf, clipboard, tasks, focus, reminders, layouts, settings. If assets are not yet present, author timing and source structure first, then wait for the parent agent's asset-ready message before final checking/rendering.
+One paused, seek-safe GSAP timeline owns the film. Masked words enter through transform-only movement, then hold as complete readable phrases. Caption text is 96–100 px at 1080p. Camera poses use one wrapper with continuous x/y/scale interpolation. Their movement stays above native recorded motion and does not retime the source.
 
-The core flow is Android original → current animated notch receipt → Shelf. Treat recordings as documentary product material. Avoid claiming a simulated gesture was tested on the user's physical S23. Captions may say “Originals over local Wi-Fi” and “Verified, then saved”, based on the native protocol. No cloud-transfer or universal drag claims.
+No animated layout, live blur, per-frame audio callback or rebuilt gradient is used. A sparse precomputed music envelope modulates one static localized light through opacity tweens. The actual Mac ripple stays visible below the caption area. The ending camera pose fits both complete devices in frame.
 
-LOOK: ink-black #0A0A0D, bone #F3F1F7, Obsidian theme accent #9B8CFF used tonally, native companion warmth. Actual app panels are the main visual. No candy-colored waves, stock website mockups, generic feature grids or invented UI.
+## Sources
 
-Use readable sparse typography, enough settled hold, source-traceable copy. One paused deterministic timeline, framework-owned media, root duration exactly 24 s. Use local assets only. Music is copied under assets/music, SFX selected from the brag package's approved library. Credit CC BY music in an audio credits file. Use cue preset JSON copied under assets/music/cues. Gentle audio-reactive modulation only if the documented helper works.
+Verified take3 is installed under composition/assets/native. Raw recordings and timing metadata are retained in its source directory. Matching working clips preserve the global 1853.6–1865.4 interval within epoch prefix 179376. Android start alignment uses the supplied recording-start estimate and sampled clock offset. source-cadence.json independently counts real recorded frames in the gesture-to-Preview window. source-provenance.json records the exact original and received-byte verification.
 
-Delivery: composition/index.html and needed local assets, successful hyperframes check (including nonzero text contrast coverage), render brag.mp4 at delivery quality, settled best-frame brag.jpg baked as frame 0 without altering duration/audio, share-copy.txt. Start a background preview for review; the user already explicitly requested recording/rendering, so no new confirmation is needed. No publish/deploy, Git changes, messages to other people, unrelated source edits, voiceover, or feedback transmission. Keep all final output within this timestamped brag directory.
+Only the physical gap between devices contains a brief bridge of the exact original image. It never paints over native screen UI. The final actual Preview window remains visible across the source clip-to-still hold.
 
-## Latest creative priority — sharing is the hero
-The user's latest direction supersedes the earlier scene order: sharing leads the entire film. Use restrained realistic 3D polished-metal/black hardware framing: Samsung-like Android phone on the left (small punch-hole camera, no iPhone island), Mac on the right with a physical notch. Screen content is actual synchronized native recordings, never recreated UI. Caption exactly: “No internet. Just Wi‑Fi.” Use assets/native/phone-share.mp4 and mac-share.mp4, with transfer-photo.png only for a precisely matched inter-device handoff. Parent will provide native source timestamps and crop boxes. An ordinary document's notch-liquid receipt is secondary, not the main photo behavior. Preserve a small end sweep and CTA in the 24-second film; the longer walkthrough separately covers all screens.
+## Validation and delivery
 
-## Capture provenance
-The comprehensive native source is a newly recorded 62.42-second 1440×900 walkthrough. mac-*.png stills are extracted at scene start + 1.2s using walkthrough-scenes.json, preserving actual desktop/notch geometry. notch-secondary.mp4 selects the document receipt and following Shelf from that source, compressed to a 4.7s editorial beat; this is recorded UI with demo data, not a network-speed benchmark. The synchronized Android/Mac hero remains pending and no placeholder will be delivered.
+The strict Hyperframes gate covers runtime, layout, motion, contrast, craft and audio. Native footage and all caption/camera transitions are inspected from encoded frames. keyframes-proof.json and qc/caption-motion-proof.jpg document actual word motion. Matching sidecars are captions.srt, captions.vtt and caption-timeline.json.
+
+The final web MP4 uses H.264, yuv420p, AAC and faststart. It contains 1,200 video frames and 20 seconds of audio. A settled, fully framed closing sharing frame supplies brag.jpg and frame zero of the video. No publishing, telemetry/feedback submission, cloud render, voice generation or native-source change is part of this workflow.

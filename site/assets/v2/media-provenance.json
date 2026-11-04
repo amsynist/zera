@@ -2,15 +2,29 @@
   "version": "2.0.0",
   "recorded": "2026-11-04",
   "film": {
-    "duration_seconds": 24,
+    "duration_seconds": 20,
     "width": 1920,
     "height": 1080,
-    "fps": 30,
+    "fps": 60,
     "real_app_surfaces": true,
     "device_framing": "Motion design; phone left, Mac right",
     "source_speed_up": false,
     "photo_bridge": "Exact original crosses only the gap between device frames",
-    "voiceover": false
+    "voiceover": false,
+    "sharing_only": true,
+    "burned_in_captions": true,
+    "caption_sidecars": [
+      "sharing.srt",
+      "sharing.vtt"
+    ],
+    "camera": "Continuous phone selection push-in, two-device handoff, Mac arrival push-in and settled two-device close",
+    "source_interpolation": false,
+    "sha256": "a60c53ad8703f5eafcf56d37e33ed9132527d6cf1fe1d274b354a99bf304bce0",
+    "bytes": 3064333,
+    "poster_source_seconds": 18.5,
+    "poster_baked_frames": [
+      0
+    ]
   },
   "transfer": {
     "source": "Disposable Android emulator; real Androp gallery and edge gesture",
@@ -21,7 +35,8 @@
     "received_sha256": "e21711b14f8501fcbc79d86801126450ac9102c6160331050457c5283328ae84",
     "identical": true,
     "benchmark": false,
-    "physical_samsung_test": false
+    "physical_samsung_test": false,
+    "capture": "ScreenCaptureKit native hardware recording on Mac; native Android screenrecord with host graphics; isolated synthetic photo"
   },
   "walkthrough": {
     "duration_seconds": 62.42,
@@ -39,7 +54,12 @@
   "checks": {
     "hyperframes_errors": 0,
     "hyperframes_warnings": 0,
-    "contrast_checks_passed": 21
+    "contrast_checks_passed": 29,
+    "caption_cues": 5,
+    "audio_peak_dbfs": -6.8,
+    "audio_mean_dbfs": -30.6,
+    "faststart": true,
+    "video_frames": 1200
   },
   "music": {
     "title": "Happy Beats / Business Moves Vol. 12",
@@ -48,5 +68,33 @@
     "license": "CC BY 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
     "changes": "Edited and mixed for this film"
+  },
+  "source_cadence": {
+    "window_global_epoch": [
+      1793761858.5171776,
+      1793761860.5006971
+    ],
+    "window_seconds": 1.9835195541381836,
+    "mechanism": "Count original recorded presentation timestamps in the actual gesture\u2192new Preview window; no interpolation. Phone emits few frames while static.",
+    "sources": {
+      "mac": {
+        "recorded_frames_total": 1370,
+        "active_real_frames": 113,
+        "active_cadence_fps": 56.969440893209246,
+        "median_active_frame_delta_seconds": 0.01666699999999821,
+        "max_active_frame_delta_seconds": 0.033333999999999975,
+        "first_active_source_pts": 16.583333,
+        "last_active_source_pts": 18.55
+      },
+      "phone": {
+        "recorded_frames_total": 150,
+        "active_real_frames": 90,
+        "active_cadence_fps": 45.37389097689232,
+        "median_active_frame_delta_seconds": 0.01684399999999897,
+        "max_active_frame_delta_seconds": 0.0678219999999996,
+        "first_active_source_pts": 7.067678,
+        "last_active_source_pts": 8.783622
+      }
+    }
   }
 }

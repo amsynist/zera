@@ -1,0 +1,28 @@
+{
+  "window_global_epoch": [
+    1793761858.5171776,
+    1793761860.5006971
+  ],
+  "window_seconds": 1.9835195541381836,
+  "mechanism": "Count original recorded presentation timestamps in the actual gesture\u2192new Preview window; no interpolation. Phone emits few frames while static.",
+  "sources": {
+    "mac": {
+      "recorded_frames_total": 1370,
+      "active_real_frames": 113,
+      "active_cadence_fps": 56.969440893209246,
+      "median_active_frame_delta_seconds": 0.01666699999999821,
+      "max_active_frame_delta_seconds": 0.033333999999999975,
+      "first_active_source_pts": 16.583333,
+      "last_active_source_pts": 18.55
+    },
+    "phone": {
+      "recorded_frames_total": 150,
+      "active_real_frames": 90,
+      "active_cadence_fps": 45.37389097689232,
+      "median_active_frame_delta_seconds": 0.01684399999999897,
+      "max_active_frame_delta_seconds": 0.0678219999999996,
+      "first_active_source_pts": 7.067678,
+      "last_active_source_pts": 8.783622
+    }
+  }
+}
