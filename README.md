@@ -19,6 +19,10 @@ Window Manager is an optional **Beta** addition. The notch companion and its eve
 
 ### Android sharing. One picture, across two screens.
 
+[![Watch Android-to-Mac sharing: a photo glides from Androp onto the Mac](site/assets/v2/sharing-poster.jpg)](https://zera.pravincodes.in/assets/v2/sharing.mp4)
+
+**[▶ Watch the 20-second Android sharing video](https://zera.pravincodes.in/assets/v2/sharing.mp4)** · Real Androp and Mac photo/file arrival over local Wi-Fi.
+
 Open a photo in **Androp**, glide it off the phone’s edge, and it arrives from the matching edge of your Mac. Original files move directly over **local Wi-Fi or a phone hotspot**. **No internet connection or cloud upload is required.**
 
 Photos and videos travel as the picture itself and open after Zera verifies and saves the original. Other files glide into the notch: Zera catches them, the themed liquid receipt fills with actual progress, and the saved original appears on your Shelf. Filename, size and errors stay readable below the hardware cutout. Zera already contains the receiver — you only need the Android companion on your phone.
