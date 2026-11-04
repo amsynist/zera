@@ -12,6 +12,8 @@ import Foundation
 struct ClaudeCLICapabilities: Equatable {
     var print = false                   // -p
     var outputFormat = false            // --output-format text|json|stream-json
+    var inputStreaming = false
+    var manualPermissions = false
     var streamJSON = false              // "stream-json" listed as a choice
     var partialMessages = false         // --include-partial-messages (token streaming)
     var resume = false                  // --resume <id>
@@ -46,6 +48,8 @@ struct ClaudeCLICapabilities: Equatable {
         c.print = has("--print") || has("-p")
         c.outputFormat = has("--output-format")
         c.streamJSON = c.outputFormat && help.contains("stream-json")
+        c.inputStreaming = has("--input-format")
+        c.manualPermissions = help.contains("\"manual\"")
         c.partialMessages = has("--include-partial-messages")
         c.resume = has("--resume")
         c.sessionID = has("--session-id")

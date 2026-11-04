@@ -125,6 +125,7 @@ jobs:
             dist/Zera-${{ steps.v.outputs.version }}.dmg
             dist/Zera-${{ steps.v.outputs.version }}.zip
             dist/SHA256SUMS.txt
+            dist/Androp.apk
 
       - name: Clean up keychain
         if: always() && env.CODESIGN_IDENTITY != ''

@@ -197,8 +197,7 @@ final class PullRequestRow: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -482,7 +481,7 @@ final class PRInsightCard: NSView {
         bubble.wantsLayer = true
         bubble.layer?.cornerRadius = Radius.l
         bubble.layer?.cornerCurve = .continuous
-        bubble.layer?.backgroundColor = p.field.withAlphaComponent(p.isDark ? 0.7 : 1).cgColor
+        bubble.layer?.backgroundColor = p.field.withAlphaComponent(0.7).cgColor
         bubble.layer?.borderWidth = 1
         bubble.layer?.borderColor = p.border.cgColor
         addSubview(bubble)
@@ -533,7 +532,7 @@ private final class GHHeaderTile: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 13, yRadius: 13)
-        (p.isDark ? p.surfaceStrong : p.tileGitHub).setFill(); path.fill()
+        p.surfaceStrong.setFill(); path.fill()
         NSColor.white.withAlphaComponent(0.14).setStroke(); path.lineWidth = 1; path.stroke()
         let side = bounds.width * 0.54
         let r = NSRect(x: (bounds.width - side) / 2, y: (bounds.height - side) / 2, width: side, height: side)

@@ -1,151 +1,83 @@
-<p align="center"><img src="docs/banner.png" alt="Zera — your AI desktop buddy (illustration)" width="100%"></p>
+<p align="center"><img src="site/assets/v2/sharing-poster.jpg" alt="Zera 2: an Android photo glides into a clean Mac desktop" width="100%"></p>
 
-<h1 align="center">Zera</h1>
-<p align="center"><b>Your AI buddy in the notch.</b> A free, open-source macOS app that lives in your notch: your Mac's vitals, your Claude Code sessions, fresh downloads, tasks and timesheets, and your day. <a href="https://zera.pravincodes.in/">zera.pravincodes.in</a></p>
+<h1 align="center">Zera 2</h1>
+<p align="center"><b>From your phone. Into your Mac.</b><br>Your agents, files, focus and day — close at hand in a native Mac notch.</p>
+<p align="center"><a href="https://github.com/amsynist/zera/releases/latest">Download for Mac</a> · <a href="Androp.apk?raw=1">Download Androp for Android</a> · <a href="https://zera.pravincodes.in/">Website</a> · <a href="site/assets/v2/sharing.mp4">Watch the new film</a></p>
 
-<p align="center">
-  <a href="https://github.com/amsynist/zera/releases/latest"><img src="https://img.shields.io/github/v/release/amsynist/zera?label=download&color=4dbdff" alt="Latest release"></a>
-  <a href="https://github.com/amsynist/zera/actions/workflows/ci.yml"><img src="https://github.com/amsynist/zera/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/macOS-13%2B-black" alt="macOS 13+">
-</p>
+## What’s new in Zera 2
 
-<p align="center">
-  <a href="site/assets/zera-film.mp4"><img src="docs/zera-film.webp" alt="Zera in action: hovering her blooms the tabs, approving a Claude Code command from the notch, dropping a file on the Shelf, adding a task from the focus orb, and choosing an app on the ⌥Space arc" width="100%"></a><br>
-  <sub>▶ <a href="site/assets/zera-film.mp4">Watch the 40-second film</a> (with sound)</sub>
-</p>
+### Android sharing. One picture, across two screens.
 
-## What's new
+Open a photo in **Androp**, glide it off the phone’s edge, and it arrives from the matching edge of your Mac. Original files move directly over **local Wi-Fi or a phone hotspot**. **No internet connection or cloud upload is required.**
 
-- **Claude plan usage:** one compact card on Home shows your 5-hour and weekly limits, with slim fluid bars that fill as usage rises and change color near the limit. Percentages and reset times stay visible. A gauge badge keeps the same readings in Claude sessions.
-- **Agent timelines:** follow each Claude Code agent's task, live steps and result from its session's **Agents** tab. Background agents keep their own lifecycle when the main reply finishes.
-- **Optional Dock icon:** turn off **Settings → General → Show in the Dock** to keep Zera at the notch and in the menu bar.
+Photos and videos travel as the picture itself and open after Zera verifies and saves the original. Other files glide into the notch: Zera catches them, the themed liquid receipt fills with actual progress, and the saved original appears on your Shelf. Filename, size and errors stay readable below the hardware cutout. Zera already contains the receiver — you only need the Android companion on your phone.
 
-- **A buddy with personality:** Zera follows your cursor with live eyes, blinks, breathes and reacts to hover and taps. Four quick taps earn a playful huff.
-- **Water breaks · Splash:** a glass pops up beside your cursor and Zera jumps from the notch into it with a splash. Answer **Drank** or **10 min**, and she jumps back up. After each sip a small glass under the notch shows today's count, and your week makes a shareable card. [Try the interactive preview](https://zera.pravincodes.in/#water).
+**[Download Androp.apk](Androp.apk?raw=1)** · [Pairing and sharing guide](docs/ANDROID_SHARING.md) · [Wire protocol](docs/ANDROID_PROTOCOL.md)
 
-- **Your Mac at a glance:** a vitals strip on Home (CPU, memory, GPU, Wi-Fi, battery). Tap it for **This Mac**: per-core load, a minute of network and GPU, memory by kind, battery health and cycles, and an internet speed test on demand.
-- **Shelf · Fresh:** new files from Downloads, Desktop and folders you add, newest first. Tap to copy, drag straight into Slack, Mail or Finder.
-- **Battery alerts:** a banner and its own sound when the battery crosses your mark, and optionally when its health drops. Plug in and the warning goes away, replaced by a short **Charging** banner with the time to full (Settings › General can turn that off).
-- **Approvals:** your open PRs that someone approved now show up too, with who approved them.
-- **Themes:** Zera, Tokyo Night, Dracula, Catppuccin, Nord, Rosé Pine and Gruvbox, or your own from a JSON file.
-- **Snappier:** tabs switch in a few milliseconds, the Shelf copies pictures instantly, and drops land in the same frame.
+1. Connect phone and Mac to the same trusted Wi-Fi, or connect the Mac to your phone’s hotspot.
+2. In Zera’s menu, open **Android sharing** and copy the six-digit pairing code. Enable receiving.
+3. Enter the code in Androp’s settings. Use discovery or enter the Mac’s local address.
+4. Hold a gallery tile or open a photo, then glide it off an edge. The Files tab sends documents and other originals. **Share → Androp** works too.
 
-## What it does
+Androp’s optional background overlay supports **global drags exported by the source app**. Support varies by app and Android/One UI mode; an in-app Gallery drag is not always a cross-app drag. All four edges work, and direction follows your gesture. Wi-Fi does not locate your Mac’s physical position. Transfers are paired but **unencrypted**; use trusted local networks and keep the receiver off the public internet. Native streaming has no fixed file-size cap; disk, provider and OS limits still apply. Transfer time depends on the file and local connection.
 
-- **Notch island** — hover Zera to open eight destinations as an **Arc** or a **Tiles** grid (Settings → General → Hover menu); pick one and the notch opens into it: Home, Claude, Shelf, Clipboard, Tasks, Pull requests, Reminders, Settings.
-- **Vitals** — CPU, memory, GPU, network and battery on Home; This Mac for the detail and a speed test.
-- **Claude Code, live** — wings beside the notch show what each session is doing; approve its commands and reply when it's done, without the terminal. Follow agents individually and see your plan usage on Home or in Claude sessions.
-- **Tasks and focus** — projects, a to-do list and a focus orb at the screen edge that times your work and opens into the focus card. Add with `Write docs #project 30m` or ⌥⌘T from anywhere.
-- **Timesheets from commits** — link a project to its repos and your commits become done tasks, grouped by Claude. Click a day to copy it, or export to Excel, CSV or text.
-- **Shelf** — drop files on the notch, drag them back out into any app, tap to copy, or ask Claude to summarize, explain or extract. **Fresh** lists what just landed in your Downloads and Desktop.
-- **Clipboard history**, **pull requests** (reviews, checks, approvals), **reminders and calendar** with meeting heads-ups, **battery alerts**.
-- **Playful hydration reminders** — choose your interval and active hours; when it's time, a glass pops up beside your cursor and Zera jumps into it until you answer.
-- **App opener** — ⌥Space: Zera drops down with your usual apps on an arc. Arrow to one and press Return, or type to search apps and commands, with ⌘K actions. Prefer a tree under the notch? Pick the classic style.
-- **Themes** — Zera, Tokyo Night, Dracula, Catppuccin, Nord, Rosé Pine and Gruvbox, or your own from a JSON file ([docs/THEMES.md](docs/THEMES.md)).
+### A complete native redesign
 
-No account and no API key: Claude runs through your existing Claude Code login.
+The notch opens into one continuous Obsidian island, with a living companion and consistent controls. Home, Agents, Shelf, Clipboard, Tasks, Pull requests, Reminders, Alerts, Focus and Teleprompter share the same navigation. Optional window arrangements, the app launcher and themed shortcut feedback stay close at hand. No embedded browser UI.
 
-## Download
+### Claude and Codex, together
 
-1. Grab **`Zera-<version>.dmg`** from [zera.pravincodes.in](https://zera.pravincodes.in/) or the [latest release](https://github.com/amsynist/zera/releases/latest).
-2. Open the DMG and drag **Zera** onto the **Applications** shortcut. This installs it at `/Applications/Zera.app`.
-3. Open **Finder → Applications → Zera**, then eject the DMG. She appears under the notch (or in the middle of the menu bar on Macs without one).
+Follow current work, requests, tools and results from the Agents screen. Managed sessions can accept replies and approvals; observed desktop sessions are read-only activity. Connect through your own installed tools and logins. Claude plan usage appears when you enable tracking; it is a plan reading, not a made-up task percentage.
 
-Requires macOS 13 or newer, Apple silicon or Intel. Claude Code is optional for installation; connect it later for Claude features.
+### Voice, focus and everyday tools
 
-### If macOS blocks the first launch
+Hold right **⌥ or ⇧** to dictate with the configured provider. Optional **Murmur** uses an on-device Whisper model after its one-time download. The first use asks for the relevant microphone/speech permissions. Tasks, the focus orb, commit-based timesheets, reminders, water breaks, clipboard history, now playing, weather and optional window layouts round out the day. Some integrations require separate access or setup.
 
-The current release is not notarized. After trying to open Zera, go to **System Settings → Privacy & Security**, scroll to **Security**, and choose **Open Anyway** beside Zera. Authenticate if asked, then confirm **Open**. macOS remembers this exception for that copy. See [Apple's first-launch guide](https://support.apple.com/en-us/102445).
+## See the current app
 
-<details>
-<summary>Optional Terminal method for the official download</summary>
+[Watch the sharing film](site/assets/v2/sharing.mp4) · [Watch the complete screen walkthrough](site/assets/v2/walkthrough.mp4)
 
-After moving Zera to Applications, open **Terminal** and paste:
+<table><tr><td><img src="site/assets/v2/screens/agents.webp" alt="Native Claude and Codex overview with fictional demo tasks"></td><td><img src="site/assets/v2/screens/sharing.webp" alt="The existing notch receives an original document with themed progress"></td></tr><tr><td><img src="site/assets/v2/screens/home.webp" alt="Zera 2 Home and Mac vitals"></td><td><img src="site/assets/v2/screens/shelf.webp" alt="The redesigned Shelf"></td></tr></table>
+
+These are fresh captures from the v2 Swift UI with fictional demo data. The walkthrough covers every primary screen; the short film shows the phone-to-Mac flow. [Media sources and recording steps](docs/MEDIA.md).
+
+## Install
+
+**Mac:** macOS 13 or newer, Apple silicon or Intel. Download the DMG from [Releases](https://github.com/amsynist/zera/releases), drag Zera to Applications, then open it. A release without Apple notarization may need **System Settings → Privacy & Security → Open Anyway** after the first launch attempt. [Full install/update/uninstall guide](docs/INSTALL.txt).
+
+**Android:** Android 8/API 26 or newer. Download [Androp.apk](Androp.apk?raw=1) and allow installation from your download source. The supplied companion is debug-signed for direct installation. Photo/media, optional Files access, notifications and the edge-overlay permission are explained in the app; choose the features you use.
+
+Quit an older Zera before replacing it, then reopen the updated app. Quit standalone Androp on the Mac before enabling Zera’s receiver: only one receiver can own port 8989. Your existing pairing code is reused when available.
+
+## Setup and privacy
+
+- **Agents:** use your own Claude/Codex tools and login. Installing activity hooks or starting a managed session is explicit. Observed desktop chats remain read-only.
+- **GitHub, calendar, weather and audio:** optional integrations request their own access. Tokens are kept in macOS Keychain.
+- **Shelf:** stores references; removing an item does not delete the original. File contents go to Claude only when you ask for analysis. Received photos, videos and plain text can open after the verified save.
+- **Android sharing:** original bytes and preview metadata stay on the local network. Files save to `~/Downloads/Androp` with collision-safe names, quarantine and byte-count/SHA-256 verification. Only the final verified result means saved.
+- **Voice:** on-device Murmur needs a model download. Provider behavior and platform permissions are explained in Settings. Zera has no account, analytics or telemetry service.
+
+See [Security](SECURITY.md), [the data map](docs/PRIVACY_DATA_MAP.md), and [the sharing guide](docs/ANDROID_SHARING.md).
+
+## Build and test
 
 ```sh
-xattr -dr com.apple.quarantine "/Applications/Zera.app"
-open "/Applications/Zera.app"
-```
-
-This removes quarantine from **Zera only**; it does not sign or notarize the app. Use it only for a copy downloaded from this repository or the official site. If macOS reports malware or a damaged app, download a fresh copy and report the issue rather than bypassing that warning.
-
-</details>
-
-[Full install, update and uninstall guide](docs/INSTALL.txt).
-
-## Setup
-
-Everything is in **Settings → Integrations**:
-
-- **Claude** — install the [Claude Code CLI](https://docs.claude.com/en/docs/claude-code) and sign in once; Zera finds it. An Anthropic API key is optional.
-- **Live progress and approvals** — one click adds small hooks to `~/.claude/settings.json`; **Remove** undoes it. Enable **Follow each agent on its own** for separate agent timelines.
-- **Plan usage** — in the Claude integration, choose **Track usage**, then **Show on Home** and/or **Show in Claude sessions**. Available for Claude Code Pro and Max plan readings.
-- **GitHub** — paste a fine-grained token with read access to pull requests, checks and actions.
-- **Calendar** — connects through macOS Calendar, so Google, Outlook and iCloud accounts all show up.
-
-## Claude plan usage
-
-Enable **Settings → Integrations → Claude → Track usage**. Claude Code supplies the 5-hour and weekly plan readings after a reply; Zera displays them without making an extra API request.
-
-- **Home:** one card matches the Mac vitals and shows **5 hours** and **This week**, each with **percentage used**, a slim fluid bar, and **time until reset**. Each bar fills with usage and clears when its window resets; its color changes as you approach the limit. Motion respects macOS Reduce Motion.
-- **Claude sessions:** a gauge badge shows the same plan readings inside the header, without changing the session list's spacing. This is plan usage, not a session's task progress.
-- **Freshness:** hover the usage card or gauge badge for the last reading time. Readings update after Claude replies, not continuously; the card shows a waiting label until the first reading arrives.
-
-Tracking installs a status-line wrapper in `~/.claude/settings.json`. Your existing status-line command continues to run and is restored by **Stop tracking usage**. Zera keeps the percentages and reset times locally and leaves your Claude login alone. A project that overrides the status line won't send readings to Zera.
-
-## Water breaks with Zera
-
-In **Reminders**, open the **Add Event ▾** menu and choose **Hydration**. Pick an interval and your active hours, then create the reminder.
-
-When it's time, a glass of water pops up just beside your cursor (never under it, so your clicks still land). At the same moment Zera lets go of her rope, flips through the air from the notch and lands in the glass with a splash. She waves from the water, and a slim bar beside her shows **Water break** with two answers:
-
-- **Drank** — the water goes down as she drinks with you, then she jumps back up to her rope. The reminder is marked done.
-- **10 min** — she jumps back up and the reminder comes back in ten minutes.
-- No answer for 30 seconds — she heads home and leaves a small drop under the notch. Click it whenever you're ready and she comes back down.
-
-After each sip, a tiny glass shows under the notch for a few seconds with today's water, like **5/8**: glasses you've had against the water reminders scheduled for today. It also shows beside the waiting drop, and stays hidden the rest of the time. Click it, or choose **Water this week…** from the Zera menu-bar icon, for your week: seven glasses side by side with your total and streak. **Save image** puts a 1080 × 1350 card in Downloads, ready to share. On Fridays, or the day you reach a 7-day streak, Zera mentions it once.
-
-If Zera is hidden (a full-screen app, or she's turned off), only the drop under the notch appears. The visit never takes focus or clicks anything in other apps; only its two buttons take clicks. Reduce Motion skips the jump and the splash. Reminder data stays on your Mac.
-
-[Try the water-break preview on the website](https://zera.pravincodes.in/#water).
-
-## Privacy
-
-No account, analytics, telemetry or update service. Everything stays on your Mac; file contents and
-commit messages go to Claude only through your own Claude Code login, and only when you ask (or link a
-project). Fresh reads only file names, sizes and dates, and the speed test runs only when you press it.
-Tokens live in your Keychain. Details in [SECURITY.md](SECURITY.md) and
-[docs/PRIVACY_DATA_MAP.md](docs/PRIVACY_DATA_MAP.md).
-
-## Build from source
-
-```bash
 git clone https://github.com/amsynist/zera.git
 cd zera
-./build.sh          # → dist/Zera.app
+./build.sh
 open dist/Zera.app
 swift test
+swift test --package-path Packages/AndropKit
 ```
 
-Needs macOS 13+ and the Xcode Command Line Tools. No Xcode project, no dependencies.
+The Mac app uses Swift, AppKit/SwiftUI, Network.framework and the pinned WhisperKit dependency. `VERSION` defines the local release version; CI can override it with `ZERA_VERSION`. The build uses the project’s stable local signing identity when configured, Developer ID when explicitly supplied, and ad-hoc signing otherwise. Signing alone is not notarization.
 
-## Contributing
+The self-contained Android source is in [android/](android/README.md), and the native receiver package in [Packages/AndropKit](Packages/AndropKit). No adjacent private checkout is required to build Zera. [Agent/project guide](AGENTS.md) · [v2 release notes](docs/releases/v2.0.0.md).
 
-Found something that could work better? Tell us what happened in an issue, or send a focused pull request. The [contribution guide](CONTRIBUTING.md) covers setup and checks. For security concerns, follow the private reporting instructions in [SECURITY.md](SECURITY.md).
+## Contributing and credits
 
-## Credits
+[Contributions](CONTRIBUTING.md), issues and focused pull requests are welcome. Built by [amsynist](https://github.com/amsynist), with help from [contributors](https://github.com/amsynist/zera/graphs/contributors).
 
-[amsynist](https://github.com/amsynist) builds and maintains Zera. Community contributions help shape each release; the [project history](https://github.com/amsynist/zera/graphs/contributors) recognizes the people behind those changes.
+Code is [MIT](LICENSE). Zera’s identity and original creative assets have [separate terms](LICENSE-ASSETS.md). Film music: **Sascha Ende, [ende.app](https://ende.app/), CC BY 4.0**; motion accents are CC0 where used. [Third-party notices](THIRD_PARTY_NOTICES.md).
 
-Zera is independent and not affiliated with Anthropic, GitHub or Apple. Claude and Claude Code are
-trademarks of Anthropic, PBC; GitHub of GitHub, Inc.; Apple, Mac and macOS of Apple Inc.
-
-## License
-
-Zera's code is available under the [MIT License](LICENSE). You can build on it and share your changes, provided you include the original copyright and license notices.
-
-The Zera identity and original creative work — her character, icons, artwork, sounds and media — belong to amsynist, © 2026. Their permitted uses are explained in [LICENSE-ASSETS.md](LICENSE-ASSETS.md).
-
-**Like Zera? Star the repository ⭐ — it motivates me to keep building and improving her.**
-
-Get Zera from [zera.pravincodes.in](https://zera.pravincodes.in/). Need help? [Open an issue](https://github.com/amsynist/zera/issues). Our [data guide](docs/PRIVACY_DATA_MAP.md) explains what stays on your Mac and what optional integrations send.
+Zera is independent and is not affiliated with Anthropic, OpenAI, GitHub, Apple or Samsung. Their names and marks belong to their owners.

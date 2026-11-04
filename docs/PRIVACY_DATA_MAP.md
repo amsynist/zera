@@ -6,6 +6,7 @@ crash reporting, accounts or update service**. It talks only to the services the
 
 | Data | Source | Purpose | Stored? | Where stored | Transmitted? | Who receives it | Retention | User control | Permission required |
 |---|---|---|---|---|---|---|---|---|---|
+| **Android originals** | Paired phone over LAN WebSocket TCP 8989; Bonjour discovery | Receive originals; verified photos/videos/text can open locally, ordinary files appear on Shelf | Yes, original bytes plus safe filename | Downloads/Androp; Shelf/Recent path in UserDefaults | Phone → Mac on local Wi-Fi/hotspot; no cloud relay; unencrypted | This Mac | Until the user removes the saved file; removing Shelf reference does not delete it | Zera menu → Android sharing → Receive from Android | macOS local network access; six-digit pairing code |
 | **Dropped files** (references) | Drag and drop, paste, Finder | The Shelf / Drop Files list | Yes, path only | UserDefaults `zera.items.v1` | No | — | Until removed from the Shelf | Remove item / Clear shelf (files on disk are never deleted) | None (unsandboxed file access) |
 | **Pasted images / text** | Clipboard (⌘V, Screenshot) | Make them shelf items | Yes, full content | `Application Support/Zera/Staged/` | No | — | Until removed from the Shelf (`cleanStaged`) | Remove item; "Open staging folder" | None |
 | **Recent files** | Shelf actions | Recent list | Yes: path, name, last action | UserDefaults `zera.recent.v1` | No | — | Until cleared | Clear recent | None |
@@ -32,6 +33,19 @@ crash reporting, accounts or update service**. It talks only to the services the
 | **Battery alert settings** | Settings › General | Low-battery and battery-health banners | Thresholds and the last health value warned about | UserDefaults `zera.battery.*` | No | — | Until changed | Settings › General | None |
 | **Pointer position / idle state** | Polled `NSEvent.mouseLocation` | Hover, break nudges | No | — | No | — | — | — | None (no Accessibility / Input Monitoring) |
 | **Preferences** | Settings | UI | Yes | UserDefaults (`zera.*`) | No | — | Until reset | Settings | — |
+
+## Zera 2 additions
+
+| Feature | Local data and lifetime | Network / permission |
+|---|---|---|
+| **Managed Claude/Codex sessions** | Thread records are persisted as `claude-managed.json` / `codex-managed.json` under Application Support/Zera; the CLI maintains its own session data. Remove managed records through the session UI. | Starting a managed task sends its prompt and selected context to the user’s installed CLI/provider. Replies and approvals apply to that managed session. |
+| **Observed Codex / Cursor activity** | Codex rollout logs under `~/.codex/sessions` and the enabled Cursor hook spool are read for local activity. Zera does not control observed desktop chats. | Local observation; enabling a hook changes the respective local configuration. No extra cloud relay. |
+| **Murmur dictation** | Microphone samples are transcribed in memory; the downloaded Whisper model is stored under Application Support/Zera/Models until removed in settings. Recognized text is inserted into the focused app through the insertion/clipboard path. | One-time model download via WhisperKit; subsequent Murmur inference is on the Mac. Requires microphone and, for direct typing, Accessibility permission. |
+| **Apple speech fallback / voice answers** | Short microphone input and transcript during the explicit listening interaction; no audio recording file is retained. | Uses Apple Speech; on-device recognition is required when supported, otherwise Apple’s speech service may be used. Microphone/Speech permissions apply. |
+| **Weather** | Selected city/preferences persist; recent forecast and resolved coordinates are held in memory. | Opt-in coordinates or chosen city go to Open-Meteo for forecast/geocoding. Current-location mode uses CoreLocation and reverse geocoding. |
+| **Now playing / audio bars** | Playback metadata and amplitude values in memory. | Optional Music/Spotify automation; optional system audio access for real bars. No audio recording file or upload. |
+| **Window arrangements** | Window/app/layout descriptions and preferences are local. Optional transition snapshots exist only briefly in memory. | Accessibility for window manipulation; Screen Recording for optional visual transitions. Snapshots are not saved or uploaded. |
+| **Diagnostics** | Modifier/state/error diagnostics can persist in Application Support/Zera/diag.log; build.sh can copy that log into ignored .rea/diag for local debugging. | No automatic upload. Keep diagnostics out of screenshots and release commits. |
 
 ## Sensitive-data notes
 - **Company repositories / source code:** the PR screen polls repositories where the user is an

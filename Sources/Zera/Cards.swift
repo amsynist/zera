@@ -187,8 +187,7 @@ final class ListRow: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -211,7 +210,7 @@ final class ListRow: NSView {
 }
 
 /// Sidebar entry for Settings: small icon + label, highlighted when selected.
-final class NavRow: NSView {
+final class NavRow: NSButton {
     var onTap: (() -> Void)?
     var badge = 0 { didSet { needsDisplay = true } }
     var selected = false { didSet { restyle() } }
@@ -219,18 +218,22 @@ final class NavRow: NSView {
     var washManaged = false { didSet { restyle() } }
     private var hovered = false { didSet { restyle() } }
     private let icon = NSImageView()
-    private let title = NSTextField(labelWithString: "")
+    private let titleLabel = NSTextField(labelWithString: "")
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     init(symbol: String, title t: String) {
         super.init(frame: .zero)
+        title = ""; isBordered = false
+        setButtonType(.momentaryChange)
+        target = self; action = #selector(activate)
+        setAccessibilityElement(true)
         roundLayer(Radius.m)
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: t)?.withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
         addSubview(icon)
-        title.stringValue = t
-        addSubview(title)
+        titleLabel.stringValue = t
+        addSubview(titleLabel)
         setAccessibilityRole(.button)
         setAccessibilityLabel(t)
         restyle()
@@ -245,37 +248,39 @@ final class NavRow: NSView {
         layer?.borderWidth = wash ? 1 : 0
         layer?.borderColor = p.selectedEdge.cgColor
         icon.contentTintColor = selected ? p.text : p.textSecondary
-        title.textColor = selected ? p.text : p.textSecondary
+        titleLabel.textColor = selected ? p.text : p.textSecondary
         // One weight in both states, so the label never shifts when you pick a pane.
-        title.font = Typo.chip
+        titleLabel.font = Typo.chip
     }
 
     override func layout() {
         super.layout()
         icon.frame = NSRect(x: Space.m, y: (bounds.height - 16) / 2, width: 16, height: 16)
-        title.frame = NSRect(x: Space.m + 24, y: (bounds.height - 16) / 2, width: bounds.width - 70, height: 16)
+        titleLabel.frame = NSRect(x: Space.m + 24, y: (bounds.height - 16) / 2, width: bounds.width - 70, height: 16)
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) { onTap?() }
+    @objc private func activate() { onTap?() }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func draw(_ dirtyRect: NSRect) { drawBadge(badge, rightEdge: bounds.maxX - Space.m, midY: bounds.midY) }
+    override func draw(_ dirtyRect: NSRect) {
+        drawBadge(badge, rightEdge: bounds.maxX - Space.m, midY: bounds.midY)
+        drawControlFocus()
+    }
 }
 
 /// Square tile for the Quick Actions grid.
-final class ActionTile: NSView {
+final class ActionTile: NSButton {
     var onTap: (() -> Void)?
     private let symbol: String
     private let tint: NSColor
-    private let title = NSTextField(labelWithString: "")
+    private let titleLabel = NSTextField(labelWithString: "")
     private var hovered = false { didSet { needsDisplay = true } }
-    private var pressed = false { didSet { needsDisplay = true } }
+
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -285,11 +290,15 @@ final class ActionTile: NSView {
         self.symbol = symbol
         self.tint = color
         super.init(frame: .zero)
-        title.stringValue = t
-        title.font = Typo.control
-        title.textColor = Pal.text(0.88)
-        title.lineBreakMode = .byClipping
-        addSubview(title)
+        title = ""; isBordered = false
+        setButtonType(.momentaryChange)
+        target = self; action = #selector(activate)
+        setAccessibilityElement(true)
+        titleLabel.stringValue = t
+        titleLabel.font = Typo.control
+        titleLabel.textColor = Pal.text(0.88)
+        titleLabel.lineBreakMode = .byClipping
+        addSubview(titleLabel)
         setAccessibilityRole(.button)
         setAccessibilityLabel(t)
     }
@@ -298,37 +307,32 @@ final class ActionTile: NSView {
 
     static let height = Metrics.segment
     private static let glyph: CGFloat = 16
-    var fittedWidth: CGFloat { ceil(14 + Self.glyph + 8 + title.intrinsicContentSize.width + 16) }
-    private var contentX: CGFloat { max(Space.m, (bounds.width - Self.glyph - Space.s - title.intrinsicContentSize.width) / 2) }
+    var fittedWidth: CGFloat { ceil(14 + Self.glyph + 8 + titleLabel.intrinsicContentSize.width + 16) }
+    private var contentX: CGFloat { max(Space.m, (bounds.width - Self.glyph - Space.s - titleLabel.intrinsicContentSize.width) / 2) }
 
     override func layout() {
         super.layout()
-        let th = title.intrinsicContentSize.height
+        let th = titleLabel.intrinsicContentSize.height
         let x = contentX + Self.glyph + Space.s
-        title.frame = NSRect(x: x, y: ((bounds.height - th) / 2).rounded(), width: max(0, bounds.width - x - Space.m), height: th)
+        titleLabel.frame = NSRect(x: x, y: ((bounds.height - th) / 2).rounded(), width: max(0, bounds.width - x - Space.m), height: th)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
-        (pressed ? p.surfacePressed : (hovered ? p.surfaceHover : p.surface)).setFill(); shape.fill()
+        let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.m, yRadius: Radius.m)
+        (isHighlighted ? p.surfacePressed : (hovered ? p.surfaceHover : p.surface)).setFill(); shape.fill()
         Neon.symbol(symbol, in: NSRect(x: contentX, y: 0, width: Self.glyph, height: bounds.height), size: 12, weight: .semibold,
-                    color: tint.blended(withFraction: 0.25, of: .white) ?? tint)
+                    color: p.textSecondary)
+        drawControlFocus()
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false; pressed = false }
-    override func mouseDown(with event: NSEvent) { pressed = true }
-    override func mouseUp(with event: NSEvent) {
-        pressed = false
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { onTap?() }
-    }
-    override func accessibilityPerformPress() -> Bool { onTap?(); return true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+    @objc private func activate() { onTap?() }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
@@ -364,6 +368,9 @@ final class SectionHeader: NSView {
 
 enum QuickAction {
     case openClaude, dropFiles, clipboard, newNote, takeBreak, screenshot, startTimer, searchFiles
+    /// Screens off the rail (Glance-style eight tabs): tasks, pull requests, settings, and the
+    /// focus and teleprompter tabs for a tap from Home.
+    case tasks, pullRequests, settings, focus, teleprompter
     /// A question typed into Home — answered inside Zera, no file attached.
     case askZera(String)
 
@@ -377,6 +384,11 @@ enum QuickAction {
         case .screenshot: return "Screenshot"
         case .startTimer: return "Start Timer"
         case .searchFiles: return "Search Files"
+        case .tasks: return "Tasks"
+        case .pullRequests: return "Pull requests"
+        case .settings: return "Settings"
+        case .focus: return "Focus"
+        case .teleprompter: return "Teleprompter"
         case .askZera: return "Ask Zera"
         }
     }
@@ -392,6 +404,11 @@ enum QuickAction {
         case .screenshot: return "Screenshot"
         case .startTimer: return "Timer"
         case .searchFiles: return "Search"
+        case .tasks: return "Tasks"
+        case .pullRequests: return "PRs"
+        case .settings: return "Settings"
+        case .focus: return "Focus"
+        case .teleprompter: return "Script"
         case .askZera: return "Ask"
         }
     }
@@ -406,6 +423,11 @@ enum QuickAction {
         case .screenshot: return "camera.viewfinder"
         case .startTimer: return "timer"
         case .searchFiles: return "magnifyingglass"
+        case .tasks: return "checklist"
+        case .pullRequests: return "arrow.triangle.pull"
+        case .settings: return "gearshape.fill"
+        case .focus: return "scope"
+        case .teleprompter: return "text.alignleft"
         case .askZera: return "bubble.left.fill"
         }
     }
@@ -421,10 +443,16 @@ enum QuickAction {
         case .screenshot: return p.accentSoft.blended(withFraction: 0.5, of: p.accent) ?? p.accent
         case .startTimer: return p.success
         case .searchFiles: return p.tileLink
+        case .tasks, .focus: return p.success
+        case .pullRequests: return p.tileGitHub
+        case .settings: return p.muted
+        case .teleprompter: return p.highlight
         }
     }
 
     static let grid: [QuickAction] = [.openClaude, .dropFiles, .clipboard, .newNote, .takeBreak, .screenshot, .startTimer]
+    /// The "More" row: what left the rail when the tabs became Glance-style.
+    static let more: [QuickAction] = [.tasks, .pullRequests, .focus, .teleprompter, .settings]
 }
 
 // MARK: - Home
@@ -439,6 +467,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     var onOpenURL: ((URL) -> Void)?
 
     private let search = SearchBox(placeholder: "Ask Zera or search files…")
+    /// Zera 2: Zera herself, one sentence about what matters now, and the action for it.
+    private let hero = HomeHero()
     private let body = FlippedView()
     private let bodyScroll = NSScrollView()
     private let attentionHeader = SectionHeader("Needs attention")
@@ -449,6 +479,12 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     private let recentEmpty = NSTextField(labelWithString: "")
     private let quickHeader = SectionHeader("Quick actions")
     private var tiles: [ActionTile] = []
+    /// "Now": what's playing and the weather, side by side when both have something to show.
+    private let nowHeader = SectionHeader("Now")
+    private let media = NowPlayingWidget()
+    private let weather = WeatherWidget()
+    private let moreHeader = SectionHeader("More")
+    private var moreTiles: [ActionTile] = []
     private var query = ""
     /// The Mac's vitals (v2): five tiles under "This Mac"; any of them opens the This Mac page.
     private let vitalsStrip = VitalsOrgans()
@@ -473,6 +509,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         bodyScroll.hasVerticalScroller = false
         bodyScroll.documentView = body
         addSubview(bodyScroll)
+        body.addSubview(hero)
         vitalsStrip.onOpen = { [weak self] in self?.setVitals(true) }
         body.addSubview(vitalsStrip)
         usageStrip.onOpen = { [weak self] in self?.onOpen?(.claude) }
@@ -499,8 +536,22 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             body.addSubview(t)
             tiles.append(t)
         }
+        body.addSubview(nowHeader)
+        body.addSubview(media)
+        weather.onEnable = { [weak self] in
+            WeatherService.shared.setMode(.location)
+            self?.refresh()
+        }
+        body.addSubview(weather)
+        body.addSubview(moreHeader)
+        for a in QuickAction.more {
+            let t = ActionTile(symbol: a.symbol, color: a.color, title: a.tileTitle)
+            t.onTap = { [weak self] in self?.onAction?(a) }
+            body.addSubview(t)
+            moreTiles.append(t)
+        }
         for name in [ShelfStore.changed, GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ClaudeActivityService.changed,
-                     ClaudeUsageService.changed] {
+                     ClaudeUsageService.changed, CodexAgentService.changed, ClaudeAgentService.changed, AgentWatch.changed, NowPlayingService.changed, WeatherService.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(refreshIfVisible), name: name, object: nil)
         }
         refresh()
@@ -523,8 +574,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         guard on != showingVitals else { return }
         showingVitals = on
         bodyScroll.isHidden = on
-        [search, vitalsStrip, macHeader, macHint, attentionHeader, allClear, quickHeader, usageStrip].forEach { $0.isHidden = on }
-        (attentionRows + recentRows + tiles).forEach { $0.isHidden = on }
+        [search, vitalsStrip, macHeader, macHint, attentionHeader, allClear, quickHeader, usageStrip, nowHeader, media, weather, moreHeader].forEach { $0.isHidden = on }
+        ((attentionRows as [NSView]) + recentRows + tiles + moreTiles).forEach { $0.isHidden = on }
         vitalsPage.isHidden = !on
         backButton.isHidden = !on
         let tiles = vitalsStrip.convert(vitalsStrip.bounds, to: self)
@@ -560,12 +611,28 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     private var actionFrames: [NSRect] {
         FlowLayout.frames(widths: tiles.map(\.fittedWidth), available: bounds.width - Metrics.cardPad * 2, height: tileHeight)
     }
+    private var moreFrames: [NSRect] {
+        FlowLayout.frames(widths: moreTiles.map(\.fittedWidth), available: bounds.width - Metrics.cardPad * 2, height: tileHeight)
+    }
+    /// The Now section's height: nothing when neither widget has anything to show.
+    private var nowHeight: CGFloat {
+        guard media.isAvailable || weather.isAvailable else { return 0 }
+        let wide = bounds.width - Metrics.cardPad * 2
+        // Side by side when both fit; otherwise stacked.
+        let stacked = media.isAvailable && weather.isAvailable && wide < 640
+        let tiles = stacked ? NowPlayingWidget.height + Space.m + WeatherWidget.height : max(NowPlayingWidget.height, WeatherWidget.height)
+        return 18 + Space.m + tiles + Space.xxl
+    }
 
     private var bodyHeight: CGFloat {
         let usage: CGFloat = showsUsage ? Space.m + ClaudeUsageStrip.height : 0
-        return 18 + Space.m + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.xxl
+        let quiet = query.isEmpty && attentionRows.isEmpty
+        return (query.isEmpty ? hero.preferredHeight + Space.xl : 0)
+        + (quiet ? Space.xs : 18 + Space.m + listHeight(query.isEmpty ? attentionRows.count : recentRows.count) + Space.xxl)
+        + nowHeight
         + 18 + Space.m + VitalsOrgans.height + usage + Space.xxl
-        + 18 + Space.m + (actionFrames.last?.maxY ?? 0)
+        + 18 + Space.m + (actionFrames.last?.maxY ?? 0) + Space.xxl
+        + 18 + Space.m + (moreFrames.last?.maxY ?? 0)
     }
 
     /// Search belongs to the content column, like the filter/search rows on other screens.
@@ -579,8 +646,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     @objc func refresh() {
         let p = Pal
         showsUsage = ClaudeUsageService.shared.homeStripVisible
-        let hour = Calendar.current.component(.hour, from: Date())
-        titleLabel.stringValue = showingVitals ? "This Mac" : (hour < 12 ? "Good morning" : (hour < 17 ? "Good afternoon" : "Good evening"))
+        titleLabel.stringValue = showingVitals ? "This Mac" : "Home"
 
         // Needs attention: Claude approvals, alerts, unseen GitHub, overdue reminders, a meeting soon.
         attentionRows.forEach { $0.removeFromSuperview() }
@@ -594,12 +660,13 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             r.onTap = { [weak self] in self?.onOpen?(.approval) }
             attentionRows.append(r)
         }
-        if let s = ClaudeActivityService.shared.active.first {
-            let waiting = s.status == .waiting
-            let r = ListRow(symbol: waiting ? "hand.raised.fill" : "terminal.fill", color: p.tileClaude,
-                            title: waiting ? "Claude is waiting for you" : "Claude is working in \(s.folderName)",
-                            subtitle: s.currentStep?.text ?? (s.title.isEmpty ? "Claude Code session" : s.title))
-            r.showsChevron = true; r.emphasized = waiting
+        let agentItems = MainActor.assumeIsolated { AgentOverview.snapshot() }
+        for item in agentItems.filter({ [.waiting, .failed].contains($0.state) }).prefix(2) {
+            // Claude hook approvals already have their dedicated row above.
+            if item.needsApproval && item.provider == "claude" && !hook.pending.isEmpty { continue }
+            let r = ListRow(symbol: item.needsApproval ? "hand.raised.fill" : "terminal.fill", color: item.tone,
+                            title: "\(item.providerName) · \(item.title)", subtitle: item.activity)
+            r.showsChevron = true; r.emphasized = item.needsApproval
             r.onTap = { [weak self] in self?.onOpen?(.claude) }
             attentionRows.append(r)
         }
@@ -607,7 +674,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         if let a = alerts.first {
             let r = ListRow(symbol: "bell.fill", color: p.warning, title: a.headline, subtitle: a.detail)
             r.badge = alerts.count; r.emphasized = true
-            r.onTap = { [weak self] in self?.onOpen?(.reminderAlert) }
+            r.onTap = { [weak self] in self?.onOpen?(.alerts) }
             attentionRows.append(r)
         }
         for e in gh.events.filter({ gh.unseen.contains($0.id) }).prefix(3) {
@@ -631,6 +698,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             attentionRows.append(r)
         }
         let needs = attentionRows.count
+        updateHero(needs: needs)
         attentionRows = Array(attentionRows.prefix(Self.maxAttention))
         for r in attentionRows { r.titleFont = Typo.settingLabel; r.isHidden = showingVitals; body.addSubview(r) }
         allClear.isHidden = showingVitals || !attentionRows.isEmpty
@@ -668,6 +736,27 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         needsLayout = true
         layoutSubtreeIfNeeded()
         onHeightChange?()
+    }
+
+    /// Zera's sentence: the one thing that matters most right now.
+    private func updateHero(needs: Int) {
+        let hook = ClaudeHookService.shared
+        hero.isHidden = showingVitals || !query.isEmpty
+        if let first = hook.pending.first {
+            hero.set(hook.pending.count == 1 ? "Claude needs your OK" : "\(hook.pending.count) agents need your OK",
+                     first.command.isEmpty ? "A permission is waiting." : first.command, mood: .asking,
+                     buttons: [("Review", .primary, { [weak self] in self?.onOpen?(.approval) })])
+        } else if let item = MainActor.assumeIsolated({ AgentOverview.snapshot().first { [.waiting, .working, .failed].contains($0.state) } }) {
+            hero.set(item.needsApproval ? "A moment for \(item.providerName)" : "Work is moving along",
+                     "\(item.providerName) · \(item.activity)", mood: item.needsApproval ? .asking : .working,
+                     buttons: [(item.needsApproval ? "Review agent" : "See activity", .secondary, { [weak self] in self?.onOpen?(.claude) })])
+        } else if needs > 0 {
+            hero.set("\(needs) thing\(needs == 1 ? "" : "s") for you", "Everything that wants you is listed below.", mood: .calm, buttons: [])
+        } else {
+            let t = NowPlayingService.shared.track
+            hero.set("A little room to focus", t.map { "Nothing needs you. \($0.title) is playing." } ?? "Your work, saved things and everyday tools are close at hand.",
+                     mood: .done, buttons: [])
+        }
     }
 
     @objc private func refreshIfVisible() {
@@ -718,10 +807,24 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         let searching = !query.isEmpty
         attentionHeader.title.attributedStringValue = Typo.sectionText(searching ? "Matches" : "Needs you")
         let shown = searching ? recentRows : attentionRows
+        hero.isHidden = searching
+        if !searching {
+            hero.frame = NSRect(x: 0, y: y, width: w, height: hero.preferredHeight)
+            y += hero.preferredHeight + Space.xl
+        }
         attentionRows.forEach { $0.isHidden = searching }
         recentRows.forEach { $0.isHidden = !searching }
-        attentionHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
-        if shown.isEmpty {
+        // Nothing needs you: Zera already says so; no empty section under her.
+        let quiet = !searching && shown.isEmpty
+        attentionHeader.isHidden = quiet
+        if quiet {
+            allClear.isHidden = true
+        } else {
+            attentionHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
+        }
+        if quiet {
+            y -= Space.xxl - Space.xs
+        } else if shown.isEmpty {
             allClear.isHidden = false
             allClear.stringValue = searching ? "No match — press Return to ask Zera." : "All clear — nothing needs you right now ✨"
             allClear.frame = NSRect(x: Space.xs, y: y, width: w - Space.xs, height: 20)
@@ -732,6 +835,38 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             y -= Metrics.rowGap
         }
         y += Space.xxl
+
+        quickHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
+        for (t, frame) in zip(tiles, actionFrames) {
+            t.isHidden = false
+            t.frame = frame.offsetBy(dx: 0, dy: y)
+        }
+        y += (actionFrames.last?.maxY ?? 0) + Space.xxl
+
+        // Now: media and weather, side by side when both have something and the lens is wide.
+        let hasNow = media.isAvailable || weather.isAvailable
+        nowHeader.isHidden = !hasNow
+        media.isHidden = !media.isAvailable
+        weather.isHidden = !weather.isAvailable
+        if hasNow {
+            nowHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
+            if media.isAvailable && weather.isAvailable {
+                if w < 640 {
+                    media.frame = NSRect(x: 0, y: y, width: w, height: NowPlayingWidget.height); y += NowPlayingWidget.height + Space.m
+                    weather.frame = NSRect(x: 0, y: y, width: w, height: WeatherWidget.height); y += WeatherWidget.height
+                } else {
+                    let half = ((w - Space.m) / 2).rounded(.down)
+                    media.frame = NSRect(x: 0, y: y, width: half, height: NowPlayingWidget.height)
+                    weather.frame = NSRect(x: half + Space.m, y: y, width: w - half - Space.m, height: WeatherWidget.height)
+                    y += max(NowPlayingWidget.height, WeatherWidget.height)
+                }
+            } else if media.isAvailable {
+                media.frame = NSRect(x: 0, y: y, width: w, height: NowPlayingWidget.height); y += NowPlayingWidget.height
+            } else {
+                weather.frame = NSRect(x: 0, y: y, width: w, height: WeatherWidget.height); y += WeatherWidget.height
+            }
+            y += Space.xxl
+        }
 
         macHeader.frame = NSRect(x: 0, y: y, width: w, height: 18)
         macHint.frame = NSRect(x: max(100, w - 220), y: y + 1, width: min(220, w - 100), height: 16)
@@ -746,8 +881,8 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         }
         y += Space.xxl
 
-        quickHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
-        for (t, frame) in zip(tiles, actionFrames) {
+        moreHeader.frame = NSRect(x: 0, y: y, width: w, height: 18); y += 18 + Space.m
+        for (t, frame) in zip(moreTiles, moreFrames) {
             t.isHidden = false
             t.frame = frame.offsetBy(dx: 0, dy: y)
         }
@@ -779,6 +914,8 @@ final class SettingsCard: CardBase, CardContent {
     var onOpenerShortcutChanged: ((HotKeyShortcut?) -> Bool)?
     var onOpenerShortcutRecording: ((Bool) -> Void)?
     var onOpenerEnabledChanged: ((Bool) -> Void)?
+    var onOpenAgents: (() -> Void)?
+    var onOpenArrangement: (() -> Void)?
     /// Quick add for Tasks (nil = off), and the menu bar item / orb switches.
     var tasksShortcut: HotKeyShortcut? = TasksSettings.defaultShortcut
     var onTasksShortcutChanged: ((HotKeyShortcut?) -> Bool)?
@@ -787,23 +924,26 @@ final class SettingsCard: CardBase, CardContent {
     var say: ((String, ZeraMood) -> Void)?
 
     enum Pane: Int, CaseIterable {
-        case general, sounds, clipboard, appearance, integrations, shortcuts, about
+        case general, sounds, clipboard, appearance, notch, integrations, shortcuts, about
         case claude, github, calendar, shelf   // detail panes, reached from Integrations
         case diagnostics                        // detail of Claude
+        case codex                              // appended to preserve existing pane IDs
         var title: String {
             switch self {
             case .general: return "General"
             case .sounds: return "Sounds"
             case .clipboard: return "Clipboard"
             case .appearance: return "Appearance"
+            case .notch: return "Notch"
             case .integrations: return "Integrations"
             case .shortcuts: return "Shortcuts"
             case .about: return "About"
-            case .claude: return "Claude"
+            case .claude: return "Claude Code"
             case .github: return "GitHub"
             case .calendar: return "Calendar"
             case .shelf: return "Shelf"
             case .diagnostics: return "Claude diagnostics"
+            case .codex: return "Codex"
             }
         }
         var symbol: String {
@@ -812,6 +952,7 @@ final class SettingsCard: CardBase, CardContent {
             case .sounds: return "speaker.wave.2.fill"
             case .clipboard: return "doc.on.clipboard.fill"
             case .appearance: return "paintpalette.fill"
+            case .notch: return "sparkles.rectangle.stack.fill"
             case .integrations: return "puzzlepiece.extension.fill"
             case .shortcuts: return "keyboard"
             case .about: return "info.circle.fill"
@@ -820,12 +961,13 @@ final class SettingsCard: CardBase, CardContent {
             case .calendar: return "calendar"
             case .shelf: return "tray.full.fill"
             case .diagnostics: return "stethoscope"
+            case .codex: return "terminal"
             }
         }
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
         var isDetail: Bool { rawValue >= Pane.claude.rawValue && self != .shelf }
-        static let nav: [Pane] = [.general, .appearance, .sounds, .clipboard, .shelf, .integrations, .shortcuts, .about]
+        static let nav: [Pane] = [.general, .appearance, .notch, .sounds, .clipboard, .shelf, .integrations, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
@@ -852,7 +994,7 @@ final class SettingsCard: CardBase, CardContent {
         backButton = CardButton("Integrations", style: .tertiary, symbol: "chevron.left", target: nil, action: #selector(SettingsCard.backTapped))
         closeButton = IconButton(symbol: "xmark", label: "Close", target: nil, action: #selector(SettingsCard.closeTapped))
         super.init(width: Isle.lensWidth, title: "Settings")
-        setSubtitle("Everything stays on this Mac")
+        setSubtitle("Your companion, your preferences")
         backButton.target = self
         closeButton.target = self
         addSubview(closeButton)
@@ -897,6 +1039,8 @@ final class SettingsCard: CardBase, CardContent {
                      ClaudeActivityService.changed, ClaudeUsageService.changed, AnthropicAPIClient.configuredChanged] {
             NotificationCenter.default.addObserver(self, selector: #selector(serviceChanged), name: name, object: nil)
         }
+        NotificationCenter.default.addObserver(self, selector: #selector(codexSettingsChanged), name: CodexAgentService.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(managedClaudeSettingsChanged), name: ClaudeAgentService.changed, object: nil)
         rebuildPane()
     }
 
@@ -958,10 +1102,25 @@ final class SettingsCard: CardBase, CardContent {
         refreshServicePane()
     }
 
+    private var managedClaudeSettingsCount = -1
+    @objc private func managedClaudeSettingsChanged() {
+        let count = MainActor.assumeIsolated { ClaudeAgentService.shared.threads.count }
+        guard count != managedClaudeSettingsCount else { return }
+        managedClaudeSettingsCount = count
+        serviceChanged()
+    }
+    private var codexSettingsStamp = ""
+    @objc private func codexSettingsChanged() {
+        let stamp = MainActor.assumeIsolated { "\(CodexAgentService.shared.connection)|\(CodexAgentService.shared.ready)|\(CodexAgentService.shared.threads.count)" }
+        guard stamp != codexSettingsStamp else { return }
+        codexSettingsStamp = stamp
+        serviceChanged()
+    }
+
     private func refreshServicePane() {
         // Only panes that show a service's state need rebuilding. Claude sessions report changes
         // every second, and a rebuild would throw away whatever you're in the middle of.
-        guard [.integrations, .claude, .github, .calendar, .shelf, .diagnostics].contains(current) else { return }
+        guard [.integrations, .claude, .codex, .github, .calendar, .shelf, .diagnostics].contains(current) else { return }
         if shortcutRecorder?.isRecording == true { return }
         if let f = tokenField, f.currentEditor() != nil { return }
         if let f = apiKeyField, f.currentEditor() != nil { return }
@@ -979,10 +1138,12 @@ final class SettingsCard: CardBase, CardContent {
         case .sounds: buildSounds(&s)
         case .clipboard: buildClipboard(&s)
         case .appearance: buildAppearance(&s)
+        case .notch: buildNotch(&s)
         case .integrations: buildIntegrations(&s)
         case .shortcuts: buildShortcuts(&s)
         case .about: buildAbout(&s)
         case .claude: buildClaude(&s)
+        case .codex: buildCodex(&s)
         case .github: buildGitHub(&s)
         case .calendar: buildCalendar(&s)
         case .shelf: buildShelf(&s)
@@ -1029,6 +1190,7 @@ final class SettingsCard: CardBase, CardContent {
         t.isOn = on
         t.isEnabled = enabled
         t.onChange = onChange
+        t.setAccessibilityLabel(title)
         settingRow(title, &s, control: t, controlWidth: 40)
     }
 
@@ -1087,7 +1249,7 @@ final class SettingsCard: CardBase, CardContent {
     private static let timeoutChoices = [60, 120, 180, 300, 600, 900]
     private static let cliModelChoices = ["", "sonnet", "opus", "haiku"]
     private static let maxOutputChoices = [1024, 2048, 4096, 8192]
-    private static let defaultChoices: [CardKind?] = [.shelf, .home, .claude, .reminders, .github, nil]
+    private static let defaultChoices: [CardKind?] = [.shelf, .home, .claude, .alerts, .reminders, .focus, .github, nil]
     private static let breakChoices = [0, 30, 45, 60, 90, 120]
 
     private func buildGeneral(_ s: inout Stack) {
@@ -1132,6 +1294,7 @@ final class SettingsCard: CardBase, CardContent {
                  + "Health: once when it drops below your mark.", &s)
         }
 
+        buttonRow("Window arrangements…", style: .secondary, status: "Optional layouts, workspaces and app shortcuts", &s, action: #selector(openArrangementTapped))
         // The app opener has no tab: Zera brings it down from the notch when you press its shortcut.
         toggleRow("App opener", on: AppOpenerSettings.enabled, &s) { [weak self] on in
             AppOpenerSettings.enabled = on
@@ -1288,6 +1451,20 @@ final class SettingsCard: CardBase, CardContent {
 
     private func buildAppearance(_ s: inout Stack) {
         let store = ThemeStore.shared
+        sectionLabel("Island outline", &s)
+        let picker = NotchLightPicker()
+        picker.onChange = { NotchLightStyle.current = $0 }
+        picker.onIntensityChange = { NotchLightStyle.intensity = $0 }
+        picker.onReactionsChange = { NotchLightStyle.reactionsEnabled = $0 }
+        pane.addSubview(picker)
+        s.place(picker, height: picker.preferredHeight, gap: Space.xs)
+        hint("These styles control the island outline. Event lights use the flowing treatments below; Glow adjusts both.", &s)
+        sectionLabel("Event light", &s)
+        popupRow("Light style", items: EdgeLightStyle.allCases.map(\.title), selected: EdgeLight.shared.style.rawValue,
+                 &s, action: #selector(edgeStyleChanged(_:)))
+        popupRow("Glow size", items: EdgeGlowSize.allCases.map(\.title), selected: EdgeLight.shared.size.rawValue,
+                 &s, action: #selector(edgeThicknessChanged(_:)))
+        buttonRow("Try the light", style: .tertiary, status: EdgeLight.shared.style.blurb, &s, action: #selector(edgePreviewTapped))
         sectionLabel("Menus", &s)
         popupRow("Menu appearance", items: DropdownStyle.allCases.map(\.title), selected: DropdownStyle.current.rawValue,
                  &s, action: #selector(menuAppearanceChanged(_:)))
@@ -1308,6 +1485,181 @@ final class SettingsCard: CardBase, CardContent {
         hint("Change it in System Settings → Accessibility → Display.", &s)
     }
 
+    private var weatherCityField: ThemedField?
+
+    /// Notch: what shows under the notch while you work (Command Echo), the weather on Home, and
+    /// the teleprompter's defaults.
+    private func buildNotch(_ s: inout Stack) {
+        let echo = CommandEcho.shared
+        sectionLabel("Zera", &s)
+        toggleRow("Zera lives in the notch (off: hanging from her rope)", on: BuddyStyle.current == .notch, &s) { on in
+            BuddyStyle.current = on ? .notch : .hanging
+        }
+        sectionLabel("Command Echo", &s)
+        toggleRow("Echo shortcuts and media keys", on: echo.isEnabled, &s) { [weak self] on in
+            CommandEcho.shared.isEnabled = on
+            self?.rebuildPane()
+        }
+        toggleRow("Show command feedback", on: echo.hudEnabled, &s, enabled: echo.isEnabled) { [weak self] on in
+            CommandEcho.shared.hudEnabled = on
+            self?.rebuildPane()
+        }
+        toggleRow("Preview copied and pasted content", on: echo.previewEnabled, &s, enabled: echo.isEnabled && echo.hudEnabled) { on in CommandEcho.shared.previewEnabled = on }
+        toggleRow("Light reacts to shortcuts and volume", on: echo.reactionsEnabled, &s, enabled: echo.isEnabled) { on in NotchLightStyle.reactionsEnabled = on }
+        buttonRow("Preview feedback", style: .secondary, status: "Try Copy, Paste, volume or brightness", &s, action: #selector(echoPreviewTapped(_:)))
+        if GlobalKeys.secureInputOn {
+            hint("Secure Keyboard Entry is active in another app. macOS pauses keyboard feedback until that app releases it.", &s)
+        }
+        if echo.needsKeyboardAccess {
+            buttonRow("Enable keyboard feedback", style: .primary, status: "Input Monitoring lets Zera recognize shortcuts in other apps", &s, action: #selector(echoAccessTapped))
+        } else {
+            hint("⌘C Copy, ⌘V Paste, ⌘Z Undo, Caps Lock, Shift held, volume and brightness show brief feedback beside the notch. Copy a colour to see it in the light. Private copies show as Hidden.", &s)
+        }
+
+        sectionLabel("Light", &s)
+        popupRow("Light beyond the notch", items: EdgeLightMode.allCases.map(\.title), selected: EdgeLight.shared.mode.rawValue,
+                 &s, action: #selector(edgeModeChanged(_:)))
+        hint("Top edge: volume, brightness and copy light arms along the top of the screen. Whole screen: agents and notifications also send a wave round every edge.", &s)
+        popupRow("Light style", items: EdgeLightStyle.allCases.map(\.title), selected: EdgeLight.shared.style.rawValue,
+                 &s, action: #selector(edgeStyleChanged(_:)))
+        popupRow("Moments enter as", items: EdgeEntrance.allCases.map(\.title), selected: EdgeLight.shared.entrance.rawValue,
+                 &s, action: #selector(edgeEntranceChanged(_:)))
+        popupRow("Glow size", items: EdgeGlowSize.allCases.map(\.title), selected: EdgeLight.shared.size.rawValue,
+                 &s, action: #selector(edgeThicknessChanged(_:)))
+        buttonRow("Try the light", style: .tertiary, status: EdgeLight.shared.style.blurb, &s, action: #selector(edgePreviewTapped))
+        toggleRow("Light takes your wallpaper's colour", on: WallpaperTint.shared.enabled, &s) { on in WallpaperTint.shared.enabled = on }
+        toggleRow("Keep the Mac awake while Claude works (the screen still sleeps)", on: AwakeKeeper.shared.enabled, &s) { on in AwakeKeeper.shared.enabled = on }
+        popupRow("Screen sharing", items: ["Always visible", "Hide during calls", "Always hide"],
+                 selected: ShareShield.shared.mode.rawValue, &s, action: #selector(shareShieldChanged(_:)))
+        sectionLabel("Voice", &s)
+        toggleRow("Answer Claude's permission cards by voice (\u{201C}approve\u{201D}, \u{201C}deny\u{201D}, \u{201C}open\u{201D})", on: VoiceApproval.shared.enabled, &s) { on in
+            VoiceApproval.shared.enabled = on
+        }
+        toggleRow("Hold a key to dictate, release to type it (on-device)", on: Dictation.shared.enabled, &s) { on in
+            Dictation.shared.enabled = on
+        }
+        buttonRow("Test text insertion", style: .tertiary, status: "Focus a blank field within 8 seconds; inserts ‘Zera dictation test.’ without opening the microphone", &s, action: #selector(testDictationInsertionTapped))
+        if !Dictation.typingAccessConfirmed {
+            buttonRow("Allow typing into other apps…", style: .secondary, status: "macOS hasn’t confirmed typing access for this running app. Permission is requested only when you click here.", &s, action: #selector(dictationTypingAccessTapped))
+        }
+        popupRow("Dictation key", items: DictationKey.allCases.map(\.title), selected: Dictation.shared.trigger.rawValue,
+                 &s, action: #selector(dictationKeyChanged(_:)))
+        toggleRow("Type words into the field as you speak (off: all at once when you let go)", on: Dictation.shared.typesLive, &s) { on in
+            Dictation.shared.typesLive = on
+        }
+        hint("Editors that don’t support live text insertion receive the full transcript when you release the dictation key.", &s)
+        if Murmur.isAvailable {
+            let m = Murmur.shared
+            buttonRow(m.installedFolder == nil ? "Download Murmur…" : "Murmur speech model…", style: .secondary,
+                      status: "Murmur: \(m.state.summary)\(m.installedFolder != nil ? " · \(m.model.title)" : "")", &s,
+                      action: #selector(murmurTapped))
+            if m.installedFolder != nil {
+                toggleRow("Dictate with Murmur (off: Apple's recogniser)", on: m.useForDictation, &s) { on in Murmur.shared.useForDictation = on }
+                buttonRow("Remove the model", style: .tertiary, status: "Frees the disk space; dictation goes back to Apple's recogniser", &s,
+                          action: #selector(murmurRemoveTapped))
+            }
+        }
+        hint("The microphone opens only while a permission card waits, or while you hold the dictation key. Speech is recognised on this Mac when it supports it.", &s)
+        sectionLabel("Other agents", &s)
+        toggleRow("Follow Codex and Cursor in the notch", on: AgentWatch.shared.enabled, &s) { on in AgentWatch.shared.enabled = on }
+        if AgentWatch.cursorConnected {
+            buttonRow("Disconnect Cursor", style: .secondary, status: "Cursor's agent reports start, edits and stop to Zera", &s, action: #selector(cursorTapped))
+            toggleRow("Approve Cursor's terminal commands from the notch", on: AgentWatch.cursorApprovals, &s) { on in
+                do { try AgentWatch.setCursorApprovals(on) } catch { NSSound.beep() }
+            }
+            hint("Each command Cursor's agent wants to run waits for Approve or Reject on the notch (or your voice). If Zera isn't running, or nobody answers in 2 minutes, Cursor asks as usual.", &s)
+        } else {
+            buttonRow("Connect Cursor", style: .secondary, status: "Adds three read-only hooks to ~/.cursor/hooks.json (backup kept)", &s, action: #selector(cursorTapped))
+        }
+        sectionLabel("Music", &s)
+        toggleRow("Synced lyrics on the music tile (asks lrclib.net)", on: LyricsService.shared.enabled, &s) { on in LyricsService.shared.enabled = on }
+        toggleRow("A wave along the notch while music plays", on: MusicWave.enabled, &s) { on in MusicWave.enabled = on }
+        if SystemAudioLevels.isSupported {
+            toggleRow("Music bars follow the real sound (asks for System Audio Recording)", on: SystemAudioLevels.shared.enabled, &s) { on in
+                SystemAudioLevels.shared.enabled = on
+            }
+        }
+        if GitHubService.shared.tokenNeedsUnlock {
+            buttonRow("Allow Zera to read your GitHub token", style: .secondary,
+                      status: "Saved by an older build; macOS asks once — choose Always Allow", &s, action: #selector(unlockGitHubTapped))
+        }
+
+        sectionLabel("Weather on Home", &s)
+        let ws = WeatherService.shared
+        let modes = WeatherMode.allCases
+        popupRow("Weather", items: modes.map(\.title), selected: modes.firstIndex(of: ws.mode) ?? 0, &s, action: #selector(weatherModeChanged(_:)))
+        if ws.mode == .city {
+            let f = ThemedField(placeholder: "City, e.g. Bengaluru")
+            f.stringValue = ws.city
+            weatherCityField = f
+            let row = FlippedView()
+            let b = CardButton("Use", style: .secondary, target: self, action: #selector(weatherCityTapped))
+            let bw = b.fittedWidth
+            f.frame = NSRect(x: 0, y: 0, width: s.width - bw - Space.s, height: Metrics.control)
+            b.frame = NSRect(x: s.width - bw, y: 0, width: bw, height: Metrics.control)
+            row.addSubview(f); row.addSubview(b)
+            pane.addSubview(row)
+            s.place(row, height: Metrics.control, gap: Space.m)
+        }
+        let units = WeatherUnits.allCases
+        popupRow("Units", items: units.map(\.title), selected: units.firstIndex(of: ws.units) ?? 0, &s, action: #selector(weatherUnitsChanged(_:)))
+        hint(ws.mode == .off ? "Open-Meteo, no account. Your location is used only to fetch the forecast and never leaves this Mac otherwise."
+             : "Status: \(ws.status). Refreshes every 30 minutes and when the Mac wakes.", &s)
+
+        sectionLabel("Teleprompter", &s)
+        let tp = TeleprompterStore.shared
+        popupRow("Speed", items: Self.teleprompterSpeeds.map { String(format: "%.1f×", $0) },
+                 selected: Self.teleprompterSpeeds.firstIndex(where: { abs($0 - tp.speed) < 0.01 }) ?? 2, &s, action: #selector(teleprompterSpeedChanged(_:)))
+        popupRow("Text size", items: Self.teleprompterSizes.map { "\(Int($0)) pt" },
+                 selected: Self.teleprompterSizes.firstIndex(where: { abs($0 - tp.fontSize) < 0.5 }) ?? 2, &s, action: #selector(teleprompterSizeChanged(_:)))
+        toggleRow("Mirror (for a glass in front of the camera)", on: tp.mirrored, &s) { on in TeleprompterStore.shared.mirrored = on }
+        buttonRow(TeleprompterWindowController.shared.isShown ? "Close the floating window" : "Open as a floating window", style: .secondary,
+                  status: "Keeps scrolling above every app; Space plays and pauses", &s, action: #selector(teleprompterDetachTapped))
+    }
+
+    private static let teleprompterSpeeds: [Double] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
+    private static let teleprompterSizes: [CGFloat] = [20, 24, 30, 36, 44, 56]
+
+    @objc private func echoAccessTapped() { CommandEcho.shared.requestKeyboardAccess(); rebuildPane() }
+    @objc private func echoPreviewTapped(_ sender: NSView) {
+        ZeraDropdown.shared.show(CommandEcho.Preview.allCases.map { kind in
+            DropdownItem(title: kind.rawValue) { CommandEcho.shared.preview(kind) }
+        }, below: sender)
+    }
+    @objc private func shareShieldChanged(_ pop: ZeraSelect) {
+        guard let mode = ShareShield.Mode(rawValue: pop.selectedIndex) else { return }
+        ShareShield.shared.mode = mode
+    }
+    @objc private func cursorTapped() {
+        do {
+            if AgentWatch.cursorConnected { try AgentWatch.disconnectCursor() } else { try AgentWatch.connectCursor() }
+        } catch {
+            NSSound.beep()
+        }
+        rebuildPane()
+    }
+    @objc private func weatherModeChanged(_ pop: ZeraSelect) {
+        let modes = WeatherMode.allCases
+        let m = modes[max(0, min(modes.count - 1, pop.selectedIndex))]
+        WeatherService.shared.setMode(m)
+        rebuildPane()
+    }
+    @objc private func weatherCityTapped() {
+        WeatherService.shared.setMode(.city, city: weatherCityField?.stringValue ?? "")
+        say?("fetching the weather there ☁️", .focused)
+    }
+    @objc private func weatherUnitsChanged(_ pop: ZeraSelect) {
+        let units = WeatherUnits.allCases
+        WeatherService.shared.units = units[max(0, min(units.count - 1, pop.selectedIndex))]
+    }
+    @objc private func teleprompterSpeedChanged(_ pop: ZeraSelect) {
+        TeleprompterStore.shared.speed = Self.teleprompterSpeeds[max(0, min(Self.teleprompterSpeeds.count - 1, pop.selectedIndex))]
+    }
+    @objc private func teleprompterSizeChanged(_ pop: ZeraSelect) {
+        TeleprompterStore.shared.fontSize = Self.teleprompterSizes[max(0, min(Self.teleprompterSizes.count - 1, pop.selectedIndex))]
+    }
+    @objc private func teleprompterDetachTapped() { TeleprompterWindowController.shared.toggle(); rebuildPane() }
+
     private func integrationRow(symbol: String, color: NSColor, title: String, state: ConnectionState, detail: String,
                                 on: Bool, enabled: Bool, toggle: Bool = true, _ s: inout Stack, pane target: Pane?, onChange: @escaping (Bool) -> Void) {
         let row = ListRow(symbol: symbol, color: color, title: title, subtitle: detail.isEmpty ? state.label : "\(state.label) · \(detail)")
@@ -1319,6 +1671,7 @@ final class SettingsCard: CardBase, CardContent {
             t.isOn = on
             t.isEnabled = enabled
             t.onChange = onChange
+            t.setAccessibilityLabel("\(title) integration")
             t.frame = NSRect(x: 0, y: 3, width: 40, height: 22)
             box.addSubview(t)
             bx = 40 + Space.s
@@ -1344,14 +1697,21 @@ final class SettingsCard: CardBase, CardContent {
 
     private func buildIntegrations(_ s: inout Stack) {
         let hook = ClaudeHookService.shared, gh = GitHubService.shared, rs = ReminderService.shared, p = Pal
-        let (claudeState, claudeDetail) = Self.claudeSummary()
-        var claudeExtras = ""
-        if hook.isInstalled { claudeExtras += " · approvals" }
-        if ClaudeActivityService.shared.isInstalled { claudeExtras += " · live progress" }
-        if ClaudeUsageService.shared.isInstalled { claudeExtras += " · usage" }
-        integrationRow(symbol: "sparkles", color: p.tileClaude, title: "Claude",
-                       state: claudeState, detail: claudeDetail + claudeExtras,
+        let (assistantState, assistantDetail) = Self.claudeSummary()
+        var features: [String] = []
+        if ClaudeActivityService.shared.isInstalled { features.append("Live progress") }
+        if hook.isInstalled { features.append("Approvals") }
+        if ClaudeUsageService.shared.isInstalled { features.append("Usage") }
+        let claudeState: ConnectionState = features.isEmpty ? assistantState : .connected
+        let claudeDetail = features.isEmpty ? assistantDetail : features.joined(separator: " · ")
+        integrationRow(symbol: "sparkles", color: p.tileClaude, title: "Claude Code",
+                       state: claudeState, detail: claudeDetail,
                        on: false, enabled: false, toggle: false, &s, pane: .claude) { _ in }
+        let codex = MainActor.assumeIsolated { (CodexAgentService.shared.ready, CodexAgentService.shared.connection) }
+        integrationRow(symbol: "terminal", color: p.info, title: "Codex",
+                       state: codex.0 ? .connected : .disconnected,
+                       detail: codex.0 ? "Managed sessions connected" : "Chat monitoring, replies and approvals",
+                       on: false, enabled: false, toggle: false, &s, pane: .codex) { _ in }
         let ghState: ConnectionState = gh.isConnected ? ((gh.lastError?.contains("401") ?? false) ? .error : .connected) : .disconnected
         integrationRow(symbol: "arrow.triangle.pull", color: p.tileGitHub, title: "GitHub",
                        state: ghState, detail: gh.isConnected ? "@\(gh.login ?? "")" : "PRs, CI, approvals",
@@ -1376,6 +1736,34 @@ final class SettingsCard: CardBase, CardContent {
         pane.addSubview(add)
         s.place(add, height: Metrics.button, gap: Space.m)
     }
+
+    private func buildCodex(_ s: inout Stack) {
+        let state = MainActor.assumeIsolated { (CodexAgentService.shared.ready, CodexAgentService.shared.connection, CodexAgentService.shared.threads.count) }
+        sectionLabel("Connection", &s)
+        statusLine(state.0 ? .connected : (state.1 == "Connecting…" ? .connecting : .disconnected), detail: ["Not connected", "Disconnected"].contains(state.1) ? "Connect sessions created in Zera" : state.0 ? "Codex CLI sign-in" : state.1 == "Connecting…" ? "Waiting for Codex" : state.1, &s)
+        hint("Uses your existing Codex CLI sign-in. Zera does not copy or store your login credentials.", &s)
+        buttonRow(state.0 ? "Disconnect managed sessions" : state.1 == "Connecting…" ? "Cancel connection" : "Connect Codex", style: state.0 || state.1 == "Connecting…" ? .secondary : .primary,
+                  status: "Replies and approvals for sessions created in Zera", &s, action: #selector(codexConnectionTapped))
+        sectionLabel("Existing chats", &s)
+        toggleRow("Follow Codex and Cursor activity", on: AgentWatch.shared.enabled, &s) { [weak self] on in
+            AgentWatch.shared.enabled = on; self?.rebuildPane()
+        }
+        hint("Shows current work from existing chats. Replies and approval decisions in those chats stay in their original app.", &s)
+        sectionLabel("Sessions in Zera", &s)
+        kvRow("Saved sessions", String(state.2), &s)
+        hint("Choose New in Agents, then select a project. Send replies, stop a turn, and review command or file approvals in that session. Each approval applies only to that request.", &s)
+        buttonRow("Open Agents", style: .primary, status: "Running work, recent sessions and approvals", &s, action: #selector(openAgentsTapped))
+        sectionLabel("Sign-in and troubleshooting", &s)
+        hint("Install Codex CLI and sign in with `codex login` in Terminal, then connect here. Disconnecting Zera does not sign you out of Codex or close your desktop chats.", &s)
+    }
+    @objc private func codexConnectionTapped() {
+        MainActor.assumeIsolated {
+            let service = CodexAgentService.shared
+            if service.ready || service.connection == "Connecting…" { service.disconnect() } else { service.connect() }
+        }
+        rebuildPane()
+    }
+    @objc private func openAgentsTapped() { onOpenAgents?() }
 
     // MARK: Claude pane
 
@@ -1420,6 +1808,12 @@ final class SettingsCard: CardBase, CardContent {
     private func buildClaude(_ s: inout Stack) {
         let a = ZeraAssistant.shared, cli = ClaudeCLI.shared.info, api = AnthropicAPIClient.shared, hook = ClaudeHookService.shared
         let (state, detail) = Self.claudeSummary()
+        sectionLabel("Conversations in Zera", &s)
+        let saved = MainActor.assumeIsolated { ClaudeAgentService.shared.threads.count }
+        kvRow("Saved sessions", String(saved), &s)
+        buttonRow("Open Agents", style: .primary, status: "Start Claude conversations and review their permissions", &s, action: #selector(openAgentsTapped))
+        hint("New conversations use your Claude Code sign-in and stay with the project you choose. Existing sessions remain in the same Agents list.", &s)
+        sectionLabel("Assistant connection", &s)
         statusLine(state, detail: detail, &s)
         hint("Summarize, Explain, Extract and Ask run in the background and answer inside Zera — no terminal window, ever.", &s)
 
@@ -1631,7 +2025,11 @@ final class SettingsCard: CardBase, CardContent {
 
     private func buildCalendar(_ s: inout Stack) {
         let rs = ReminderService.shared
-        statusLine(rs.calendarAuthorized ? .connected : (rs.calendarDenied ? .needsAuth : .disconnected), detail: rs.calendarStatusText, &s)
+        let state: ConnectionState = rs.calendarAuthorized ? .connected : (rs.calendarDenied ? .needsAuth : .disconnected)
+        let status = rs.calendarStatusText
+        let prefix = state.label + " · "
+        let detail = status == state.label ? "" : (status.hasPrefix(prefix) ? String(status.dropFirst(prefix.count)) : status)
+        statusLine(state, detail: detail, &s)
         hint("Zera warns you 15 minutes before each meeting and again when it starts. Syncs every \(Int(rs.calendarSyncInterval / 60)) minutes and whenever Calendar changes.", &s)
         if rs.calendarDenied { hint("Allow Zera in System Settings → Privacy & Security → Calendars (Full Access).", &s) }
         buttonRow(rs.calendarAuthorized ? "Disconnect" : "Connect Calendar", style: rs.calendarAuthorized ? .secondary : .primary,
@@ -1733,6 +2131,50 @@ final class SettingsCard: CardBase, CardContent {
         onDefaultChanged?(defaultKind)
     }
 
+    @objc private func edgeModeChanged(_ pop: ZeraSelect) {
+        EdgeLight.shared.mode = EdgeLightMode(rawValue: pop.selectedIndex) ?? .top
+        EdgeLight.shared.preview()
+    }
+
+    @objc private func edgeStyleChanged(_ pop: ZeraSelect) {
+        EdgeLight.shared.style = EdgeLightStyle(rawValue: pop.selectedIndex) ?? .glow
+        EdgeLight.shared.preview()
+    }
+
+    @objc private func edgeEntranceChanged(_ pop: ZeraSelect) {
+        EdgeLight.shared.entrance = EdgeEntrance(rawValue: pop.selectedIndex) ?? .sweep
+        EdgeLight.shared.sweep(color: WallpaperTint.lightAccent, inward: false, times: 1)
+    }
+
+    @objc private func edgeThicknessChanged(_ pop: ZeraSelect) {
+        EdgeLight.shared.size = EdgeGlowSize(rawValue: pop.selectedIndex) ?? .medium
+        EdgeLight.shared.preview()
+    }
+
+    @objc private func unlockGitHubTapped() {
+        GitHubService.shared.unlockToken()
+    }
+
+    @objc private func testDictationInsertionTapped() { Dictation.shared.testInsertion() }
+    @objc private func dictationTypingAccessTapped() { Dictation.requestTypingAccess() }
+
+    @objc private func dictationKeyChanged(_ pop: ZeraSelect) {
+        Dictation.shared.trigger = DictationKey(rawValue: pop.selectedIndex) ?? .rightOptionOrShift
+    }
+
+    @objc private func murmurTapped() {
+        MurmurIntroController.present()
+    }
+
+    @objc private func murmurRemoveTapped() {
+        Murmur.shared.remove()
+        NSSound(named: "Pop")?.play()
+    }
+
+    @objc private func edgePreviewTapped() {
+        EdgeLight.shared.preview()
+    }
+
     @objc private func hoverMenuChanged(_ pop: ZeraSelect) {
         let style = HoverMenuStyle(rawValue: pop.selectedIndex) ?? .arc
         HoverMenuStyle.current = style
@@ -1740,6 +2182,7 @@ final class SettingsCard: CardBase, CardContent {
         say?("Hover menu: \(style.title)", .happy)
     }
 
+    @objc private func openArrangementTapped() { onOpenArrangement?() }
     @objc private func openerStyleChanged(_ pop: ZeraSelect) {
         AppOpenerSettings.style = AppOpenerSettings.Style(rawValue: pop.selectedIndex) ?? .orbit
         say?(AppOpenerSettings.style == .orbit ? "the opener comes down in the middle now ✨" : "back to the classic tree 🌳", .happy)
@@ -1976,9 +2419,12 @@ final class SettingsCard: CardBase, CardContent {
 // MARK: - Claude Code approval
 
 final class ApprovalCard: CardBase, CardContent {
-    var cardWidth: CGFloat { 560 }
+    var cardWidth: CGFloat { Isle.lensWidth }
     var say: ((String, ZeraMood) -> Void)?
     var onDrained: (() -> Void)?
+    var onReviewManaged: ((HookRequest) -> Void)?
+    private var managed: HookRequest?
+    private var managedNeedsReview = false
 
     private let tile = IconTile(symbol: "terminal.fill", color: Pal.tileClaude, size: 28, pointSize: 13)
     private let counter = NSTextField(labelWithString: "")
@@ -1990,11 +2436,14 @@ final class ApprovalCard: CardBase, CardContent {
     private let reject: CardButton
     private let approve: CardButton
     private var current: HookRequest?
+    private var preferredSessionID: String?
+
+    func selectSession(_ id: String?) { preferredSessionID = id; reload() }
 
     init() {
         reject = CardButton("Reject", style: .destructive, target: nil, action: #selector(ApprovalCard.rejectTapped))
         approve = CardButton("Approve", style: .success, target: nil, action: #selector(ApprovalCard.approveTapped))
-        super.init(width: 560, title: "Claude wants to run a command")
+        super.init(width: Isle.lensWidth, title: "Claude wants to run a command")
         let p = Pal
         reject.target = self; approve.target = self
         reject.keyEquivalent = "\u{1b}"; approve.keyEquivalent = "\r"
@@ -2021,6 +2470,8 @@ final class ApprovalCard: CardBase, CardContent {
         location.font = Typo.caption; location.textColor = p.textSecondary; location.lineBreakMode = .byTruncatingMiddle; addSubview(location)
         addSubview(reject); addSubview(approve)
         NotificationCenter.default.addObserver(self, selector: #selector(reload), name: ClaudeHookService.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: ClaudeAgentService.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: CodexAgentService.changed, object: nil)
         reload()
     }
 
@@ -2042,7 +2493,7 @@ final class ApprovalCard: CardBase, CardContent {
     }
 
     private var commandHeight: CGFloat {
-        let text = current?.command ?? ""
+        let text = commandText.stringValue
         let bound = (text as NSString).boundingRect(with: NSSize(width: cardWidth - Metrics.cardPad * 2 - Space.m * 2, height: 200),
                                                     options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: Typo.mono])
         return min(96, max(18, ceil(bound.height))) + Space.m * 2
@@ -2057,22 +2508,37 @@ final class ApprovalCard: CardBase, CardContent {
 
     @objc func reload() {
         let hook = ClaudeHookService.shared, p = Pal
-        current = hook.pending.first
+        if let id = preferredSessionID { current = hook.pending.first { $0.sessionID == id } } else { current = hook.pending.first }
+        managed = nil; managedNeedsReview = false
+        if current == nil, preferredSessionID == nil, let pending = MainActor.assumeIsolated({ AgentOverview.managedApproval }) {
+            managed = pending.request; managedNeedsReview = pending.review
+            setSubtitle(pending.provider + " · " + pending.request.cwdDisplay)
+            titleLabel.stringValue = pending.review ? "Your answer is needed" : "Permission needed"
+            commandText.stringValue = pending.request.command
+            counter.stringValue = ""; riskChip.isHidden = true
+            detail.stringValue = "Review this request for the selected session"
+            detail.isHidden = false
+            approve.setTitleText(pending.review ? "Review…" : "Approve once")
+            approve.isEnabled = true; reject.isEnabled = true
+            needsLayout = true; onHeightChange?(); return
+        }
         guard let req = current else { onDrained?(); return }
-        setSubtitle(req.cwd.isEmpty ? (req.sessionID.isEmpty ? nil : "Session \(req.sessionID.prefix(8))") : req.cwdDisplay)
+        approve.setTitleText("Approve")
+        let agent = req.sessionID.hasPrefix("cursor:") ? "Cursor" : "Claude"
+        setSubtitle(agent + (req.cwd.isEmpty ? "" : " · " + req.cwdDisplay))
         titleLabel.stringValue = req.toolName == "Bash" ? "Run this command?" : "Use \(req.toolName)?"
         counter.stringValue = hook.pending.count > 1 ? "1 of \(hook.pending.count)" : ""
         commandText.stringValue = req.command
         if let why = Self.risk(of: req.command) {
             riskChip.isHidden = false
             riskChip.stringValue = "  ⚠︎ \(why)  "
-            riskChip.textColor = p.isDark ? p.warning : NSColor(srgbRed: 0.55, green: 0.35, blue: 0.0, alpha: 1)
-            riskChip.layer?.backgroundColor = p.warning.withAlphaComponent(p.isDark ? 0.18 : 0.22).cgColor
+            riskChip.textColor = p.warning
+            riskChip.layer?.backgroundColor = p.warning.withAlphaComponent(0.18).cgColor
         } else {
             riskChip.isHidden = true
         }
-        detail.stringValue = req.detail ?? ""
-        detail.isHidden = (req.detail ?? "").isEmpty
+        detail.stringValue = ClaudeHookService.shared.lastResponseError ?? req.detail ?? ""
+        detail.isHidden = detail.stringValue.isEmpty
         location.stringValue = req.cwd.isEmpty ? "" : "in \(req.cwdDisplay)"
         approve.isEnabled = true; reject.isEnabled = true
         needsLayout = true
@@ -2087,17 +2553,23 @@ final class ApprovalCard: CardBase, CardContent {
     }
 
     @objc private func approveTapped() {
+        if let managed {
+            if managedNeedsReview { onReviewManaged?(managed) }
+            else { _ = MainActor.assumeIsolated { AgentOverview.decideManaged(managed, allow: true) }; reload() }
+            return
+        }
         guard let req = current else { return }
         approve.isEnabled = false; reject.isEnabled = false
-        guard ClaudeHookService.shared.respond(req, allow: true) else { return }
+        guard ClaudeHookService.shared.respond(req, allow: true) else { reload(); return }
         SoundService.shared.play(.claudeApproved)
         say?("approved ✅", .approved)
     }
 
     @objc private func rejectTapped() {
+        if let managed { _ = MainActor.assumeIsolated { AgentOverview.decideManaged(managed, allow: false) }; reload(); return }
         guard let req = current else { return }
         approve.isEnabled = false; reject.isEnabled = false
-        guard ClaudeHookService.shared.respond(req, allow: false) else { return }
+        guard ClaudeHookService.shared.respond(req, allow: false) else { reload(); return }
         SoundService.shared.play(.claudeRejected)
         say?("okay, not running that", .sad)
     }
@@ -2109,9 +2581,10 @@ final class ApprovalCard: CardBase, CardContent {
         tile.isHidden = true
         layoutHeader()
         let aw = max(96, approve.fittedWidth), rw = max(84, reject.fittedWidth)
-        approve.frame = NSRect(x: bounds.width - x - aw, y: 29, width: aw, height: 30)
-        reject.frame = NSRect(x: approve.frame.minX - Space.s - rw, y: 29, width: rw, height: 30)
-        counter.frame = NSRect(x: reject.frame.minX - 70, y: 36, width: 62, height: 16)
+        let buttonY = ScreenHeader.controlY(Metrics.control)
+        approve.frame = NSRect(x: bounds.width - x - aw, y: buttonY, width: aw, height: Metrics.control)
+        reject.frame = NSRect(x: approve.frame.minX - Space.s - rw, y: buttonY, width: rw, height: Metrics.control)
+        counter.frame = NSRect(x: reject.frame.minX - 70, y: buttonY + 7, width: 62, height: 16)
         location.isHidden = true
         var y = headerBottom
         let ch = commandHeight

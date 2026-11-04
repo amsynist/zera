@@ -134,6 +134,7 @@ final class ClaudeSession {
     var fullPrompt: String = ""
     var steps: [ActivityStep] = []
     var status: Status = .idle
+    var monitoredOnly = false
     var startedAt: Date
     var lastEventAt: Date
     /// When the current prompt was sent.
@@ -158,7 +159,7 @@ final class ClaudeSession {
     var replyUntil: Date?
     var replyHeld = false
     /// Can a reply still reach Claude in this session right now?
-    var canReply: Bool { status == .done && (replyHeld || (replyUntil.map { $0 > Date() } ?? false)) }
+    var canReply: Bool { !monitoredOnly && status == .done && (replyHeld || (replyUntil.map { $0 > Date() } ?? false)) }
     /// Files Claude looked at / changed for the current prompt (full paths, first-seen order).
     var filesTouched: [String] = []
     var filesChanged: [String] = []
@@ -308,6 +309,65 @@ final class ClaudeActivityService {
         t.tolerance = 0.2
         RunLoop.main.add(t, forMode: .common)
         timer = t
+        if let source = mirrorDirectory {
+            watchers.append(FolderWatcher(source) { [weak self] in Task { @MainActor in self?.pollMirror() } })
+            pollMirror()
+        }
+    }
+    /// Review observes installed hooks without claiming/deleting their events or controls.
+    private var mirrorDirectory: URL? {
+        guard Bundle.main.bundleIdentifier == "io.github.amsynist.zera.review", let entry = getpwuid(getuid()) else { return nil }
+        return URL(fileURLWithPath: String(cString: entry.pointee.pw_dir)).appendingPathComponent("Library/Application Support/Zera/hooks/activity")
+    }
+    private var mirrorReading = false
+    private var mirrorOffsets: [UInt64: UInt64] = [:]
+    private var mirrorCarry: [UInt64: Data] = [:]
+    private func pollMirror() {
+        guard let directory = mirrorDirectory, !mirrorReading else { return }
+        mirrorReading = true
+        parseQueue.async {
+            var events: [[String: Any]] = []
+            var liveInodes = Set<UInt64>()
+            for name in ["events.reading.jsonl", "events.jsonl"] {
+                let url = directory.appendingPathComponent(name)
+                guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                      let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value,
+                      let size = (attributes[.size] as? NSNumber)?.uint64Value,
+                      let handle = try? FileHandle(forReadingFrom: url) else { continue }
+                liveInodes.insert(inode)
+                let previous = self.mirrorOffsets[inode] ?? max(0, size > 1_048_576 ? size - 1_048_576 : 0)
+                let offset = previous > size ? 0 : previous
+                try? handle.seek(toOffset: offset)
+                var bytes = handle.readData(ofLength: Int(min(size - offset, 1_048_576)))
+                try? handle.close()
+                let readCount = bytes.count
+                if self.mirrorOffsets[inode] == nil, offset > 0, let end = bytes.firstIndex(of: 10) { bytes.removeSubrange(...end) }
+                self.mirrorOffsets[inode] = offset + UInt64(readCount)
+                self.mirrorCarry[inode] = Self.consumeLines((self.mirrorCarry[inode] ?? Data()) + bytes) { line in
+                    if let event = try? JSONSerialization.jsonObject(with: line) as? [String: Any] { events.append(event) }
+                }
+            }
+            self.mirrorOffsets = self.mirrorOffsets.filter { liveInodes.contains($0.key) }
+            self.mirrorCarry = self.mirrorCarry.filter { liveInodes.contains($0.key) && $0.value.count < 4_194_304 }
+            var transcripts: [String: [ActivityStep]] = [:]
+            for event in events {
+                if let id = event["session_id"] as? String, transcripts[id] == nil,
+                   let path = event["transcript_path"] as? String, path.hasSuffix(".jsonl") {
+                    transcripts[id] = Self.transcriptSteps(atPath: path)
+                }
+            }
+            DispatchQueue.main.async {
+                self.mirrorReading = false
+                for event in events {
+                    self.apply(event)
+                    if let id = event["session_id"] as? String, let session = self.sessions[id] {
+                        session.monitoredOnly = true
+                        if session.steps.isEmpty, let steps = transcripts[id] { session.steps = steps }
+                    }
+                }
+                if !events.isEmpty { NotificationCenter.default.post(name: Self.changed, object: nil) }
+            }
+        }
     }
     private var watchers: [FolderWatcher] = []
 
@@ -319,6 +379,7 @@ final class ClaudeActivityService {
     /// Claims what the hook wrote (rename → read → delete), so events live on disk for at most
     /// a second while Zera is running. The hook starts a fresh file on its next event.
     private func poll() {
+        pollMirror()
         expireReplies()
         guard fm.fileExists(atPath: logURL.path) else {
             if prune() { NotificationCenter.default.post(name: Self.changed, object: nil) }
@@ -846,6 +907,7 @@ final class ClaudeActivityService {
     /// Asks Claude to stop: the activity hook blocks its next tool call with a message, so it
     /// ends the turn. Nothing is killed; the flag clears when the turn ends or you prompt again.
     func requestStop(_ s: ClaudeSession) {
+        guard !s.monitoredOnly else { return }
         guard s.isActive, let flag = stopFlag(s.id) else { return }
         try? fm.createDirectory(at: stopDir, withIntermediateDirectories: true)
         fm.createFile(atPath: flag.path, contents: Data("stop".utf8))
@@ -1162,7 +1224,7 @@ final class ClaudeActivityService {
         return Self.events.contains { ((hooks[$0] as? [[String: Any]]) ?? []).contains(where: Self.entryIsOurs) }
     }
 
-    var isInstalled: Bool { previewing || (fm.fileExists(atPath: scriptURL.path) && settingsHasEntry) }
+    var isInstalled: Bool { previewing || sessions.values.contains(where: { $0.monitoredOnly }) || (fm.fileExists(atPath: scriptURL.path) && settingsHasEntry) }
     private var previewing = false
 
     /// Shows sample sessions without reading any hooks (the screen renders).

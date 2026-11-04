@@ -121,12 +121,21 @@ enum BuiltInThemes {
         let colors: ThemeColors
     }
 
+    /// Zera 2: notch-black panel, graphite cards with a light top edge, violet actions.
+    static let obsidian = Def(id: "obsidian", name: "Obsidian (Zera 2)", colors: ThemeColors(
+        glassTop: "#0B0B10", glassBottom: "#050507", edge: "#FFFFFF1A",
+        surface: "#15151B", surfaceHover: "#1D1D25", surfaceStrong: "#262630", row: "#15151B", field: "#101015",
+        border: "#FFFFFF10", divider: "#FFFFFF0A",
+        text: "#F5F5F7", textSecondary: "#A1A1AA", textTertiary: "#93939D",
+        accent: "#9B8CFF", accentDeep: "#7C6CFF", highlight: "#FF8A5C", onAccent: "#120E2A",
+        success: "#4CD98A", warning: "#FFB347", danger: "#FF5C6C", info: "#5AA2FF"))
+
     /// Zera's own: plum-graphite glass, periwinkle actions, peach from her cheeks.
     static let zera = Def(id: "zera", name: "Zera", colors: ThemeColors(
         glassTop: "#17141F", glassBottom: "#0E0C13", edge: "#A094FF73",
         surface: "#1C1925", surfaceHover: "#262131", surfaceStrong: "#2E2839", row: "#201C2A", field: "#141119",
         border: "#FFFFFF17", divider: "#FFFFFF0F",
-        text: "#F4F2FA", textSecondary: "#A8A3B8", textTertiary: "#77728A",
+        text: "#F4F2FA", textSecondary: "#A8A3B8", textTertiary: "#9993A6",
         accent: "#9D8CFF", accentDeep: "#7C6BF5", highlight: "#FFAA85", onAccent: "#17122B",
         success: "#5FE0B2", warning: "#F6C560", danger: "#FF6F7D", info: "#7FB2FF"))
 
@@ -134,7 +143,7 @@ enum BuiltInThemes {
         glassTop: "#1A1B26", glassBottom: "#14141D", edge: "#7AA2F766",
         surface: "#1F2335", surfaceHover: "#292E42", surfaceStrong: "#343A55", row: "#1E2132", field: "#16161E",
         border: "#FFFFFF14", divider: "#FFFFFF0D",
-        text: "#C0CAF5", textSecondary: "#9AA5CE", textTertiary: "#5F6890",
+        text: "#C0CAF5", textSecondary: "#9AA5CE", textTertiary: "#939CBE",
         accent: "#7AA2F7", accentDeep: "#BB9AF7", highlight: "#FF9E64", onAccent: "#16161E",
         success: "#9ECE6A", warning: "#E0AF68", danger: "#F7768E", info: "#7DCFFF"))
 
@@ -142,7 +151,7 @@ enum BuiltInThemes {
         glassTop: "#282A36", glassBottom: "#1E1F29", edge: "#BD93F966",
         surface: "#303341", surfaceHover: "#3A3D4F", surfaceStrong: "#44475A", row: "#2D2F3D", field: "#21222C",
         border: "#FFFFFF14", divider: "#FFFFFF0D",
-        text: "#F8F8F2", textSecondary: "#BFC3D9", textTertiary: "#7A86B6",
+        text: "#F8F8F2", textSecondary: "#BFC3D9", textTertiary: "#A0A9CC",
         accent: "#BD93F9", accentDeep: "#FF79C6", highlight: "#8BE9FD", onAccent: "#21222C",
         success: "#50FA7B", warning: "#FFB86C", danger: "#FF5555", info: "#8BE9FD"))
 
@@ -150,7 +159,7 @@ enum BuiltInThemes {
         glassTop: "#1E1E2E", glassBottom: "#181825", edge: "#CBA6F766",
         surface: "#262637", surfaceHover: "#313244", surfaceStrong: "#45475A", row: "#232334", field: "#181825",
         border: "#FFFFFF14", divider: "#FFFFFF0D",
-        text: "#CDD6F4", textSecondary: "#A6ADC8", textTertiary: "#7F849C",
+        text: "#CDD6F4", textSecondary: "#A6ADC8", textTertiary: "#A0A5BC",
         accent: "#CBA6F7", accentDeep: "#B4BEFE", highlight: "#FAB387", onAccent: "#1E1E2E",
         success: "#A6E3A1", warning: "#F9E2AF", danger: "#F38BA8", info: "#89DCEB"))
 
@@ -158,7 +167,7 @@ enum BuiltInThemes {
         glassTop: "#2E3440", glassBottom: "#272C36", edge: "#88C0D066",
         surface: "#353B48", surfaceHover: "#3B4252", surfaceStrong: "#434C5E", row: "#323844", field: "#272C36",
         border: "#FFFFFF14", divider: "#FFFFFF0D",
-        text: "#ECEFF4", textSecondary: "#B6BDCA", textTertiary: "#7B8597",
+        text: "#ECEFF4", textSecondary: "#B6BDCA", textTertiary: "#A6AFBF",
         accent: "#88C0D0", accentDeep: "#81A1C1", highlight: "#B48EAD", onAccent: "#2E3440",
         success: "#A3BE8C", warning: "#EBCB8B", danger: "#BF616A", info: "#8FBCBB"))
 
@@ -166,7 +175,7 @@ enum BuiltInThemes {
         glassTop: "#1F1D2E", glassBottom: "#191724", edge: "#EBBCBA59",
         surface: "#26233A", surfaceHover: "#312E48", surfaceStrong: "#403D52", row: "#221F33", field: "#191724",
         border: "#FFFFFF14", divider: "#FFFFFF0D",
-        text: "#E0DEF4", textSecondary: "#908CAA", textTertiary: "#6E6A86",
+        text: "#E0DEF4", textSecondary: "#908CAA", textTertiary: "#A09BB5",
         accent: "#EBBCBA", accentDeep: "#EB6F92", highlight: "#C4A7E7", onAccent: "#191724",
         success: "#9CCFD8", warning: "#F6C177", danger: "#EB6F92", info: "#9CCFD8"))
 
@@ -174,11 +183,11 @@ enum BuiltInThemes {
         glassTop: "#282828", glassBottom: "#1D2021", edge: "#FABD2F55",
         surface: "#32302F", surfaceHover: "#3C3836", surfaceStrong: "#504945", row: "#2E2C2B", field: "#1D2021",
         border: "#FFFFFF14", divider: "#FFFFFF0D",
-        text: "#EBDBB2", textSecondary: "#BDAE93", textTertiary: "#928374",
+        text: "#EBDBB2", textSecondary: "#BDAE93", textTertiary: "#B5A38D",
         accent: "#FABD2F", accentDeep: "#FE8019", highlight: "#83A598", onAccent: "#1D2021",
         success: "#B8BB26", warning: "#FE8019", danger: "#FB4934", info: "#83A598"))
 
-    static let all: [Def] = [zera, tokyoNight, dracula, catppuccin, nord, rosePine, gruvbox]
+    static let all: [Def] = [obsidian, zera, tokyoNight, dracula, catppuccin, nord, rosePine, gruvbox]
 }
 
 // MARK: - The store
@@ -212,6 +221,11 @@ final class ThemeStore {
             .appendingPathComponent("Themes", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         loadCustom()
+        // Once: Zera 2's Obsidian look replaces whatever theme was saved before the redesign.
+        if !UserDefaults.standard.bool(forKey: "zera.theme.z2Migrated") {
+            UserDefaults.standard.set(true, forKey: "zera.theme.z2Migrated")
+            UserDefaults.standard.set("obsidian", forKey: Self.key)
+        }
         current = theme(id: UserDefaults.standard.string(forKey: Self.key)) ?? builtIns[0]
         watch()
     }
@@ -411,8 +425,7 @@ final class ThemeRow: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }

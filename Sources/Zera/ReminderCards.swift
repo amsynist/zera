@@ -75,7 +75,7 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
         let svc = ReminderService.shared
         let previousID = current?.id
         // Water has its own persistent cursor-side visit, independent of timed banners.
-        let banners = svc.pendingAlerts.filter { !$0.hydration }
+        let banners = [svc.currentBanner].compactMap { $0 }
         current = banners.first
         guard let a = current else { onDrained?(); return }
 

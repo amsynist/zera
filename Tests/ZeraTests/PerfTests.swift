@@ -73,8 +73,7 @@ final class PerfTests: XCTestCase {
     }
 
     func testScreenTimings() throws {
-        try fillClipboard()
-        try fillShelf()
+        try autoreleasepool { try fillClipboard(); try fillShelf() }
         let store = TaskStore(url: nil)
         for i in 0..<60 { store.add("Task number \(i) with a longer title #P\(i % 4) 30m") }
 
@@ -205,8 +204,8 @@ final class PerfTests: XCTestCase {
 
     /// Switching through every tab many times shouldn't keep growing memory.
     func testRepeatedNavigationMemory() throws {
-        try fillClipboard()
-        try fillShelf()
+        // Drain full-resolution image generation before measuring the app's thumbnails.
+        try autoreleasepool { try fillClipboard(); try fillShelf() }
         let store = TaskStore(url: nil)
         for i in 0..<30 { store.add("Task \(i) #P\(i % 3)") }
         let cards: [NSView & CardContent] = [HomeCard(), ClaudeSessionsView(), DropFilesView(), ClipboardView(), TasksCard(store: store), GitHubCard(), RemindersView()]

@@ -2,6 +2,37 @@ import XCTest
 @testable import Zera
 
 final class MotionTests: XCTestCase {
+    func testEveryCurvedLightStyleStopsItsAnimationsWhenRemoved() {
+        func layers(_ root: CALayer) -> [CALayer] {
+            [root] + (root.sublayers ?? []).flatMap(layers) + (root.mask.map(layers) ?? [])
+        }
+        let bounds = CGRect(x: 0, y: 0, width: 1000, height: 140)
+        let path = NotchGeometry.topLightPath(bounds: bounds, notch: CGRect(x: 400, y: 102, width: 200, height: 38))
+        for style in EdgeLightStyle.allCases {
+            let glow = GlowStrip(frame: bounds, edge: .top, depth: 72, color: .systemBlue, style: style, contour: path)
+            if !Motion.reduced { XCTAssertTrue(layers(glow.layer).contains { !($0.animationKeys() ?? []).isEmpty }, "\(style) retains its motion treatment") }
+            glow.stopLoops()
+            XCTAssertTrue(layers(glow.layer).allSatisfy { ($0.animationKeys() ?? []).isEmpty }, "hidden \(style) stops all motion")
+        }
+    }
+
+    func testControlSelectionNeverOvershootsAndCharacterRespectsReducedMotion() {
+        let samples = stride(from: 0.0, through: 1.0, by: 0.02).map(Motion.selectionProgress)
+        XCTAssertEqual(samples.first, 0)
+        XCTAssertEqual(samples.last, 1)
+        XCTAssertEqual(samples, samples.sorted())
+        for kind in [CompanionGesture.Kind.acknowledge, .receive, .attention, .greet] {
+            for time in stride(from: 0.0, through: 0.7, by: 0.02) {
+                let reduced = CompanionGesture.sample(kind, elapsed: time, reduced: true)
+                XCTAssertEqual(reduced.lift, 0)
+                XCTAssertEqual(reduced.squash, 0)
+                XCTAssertEqual(reduced.tilt, 0)
+                let moving = CompanionGesture.sample(kind, elapsed: time, reduced: false)
+                XCTAssertLessThanOrEqual(abs(moving.lift), 0.12)
+                XCTAssertLessThanOrEqual(abs(moving.squash), 0.07)
+            }
+        }
+    }
     func testSpringStartsAtZeroAndSettlesAtOne() {
         XCTAssertEqual(Spring.curve(0), 0, accuracy: 0.0001)
         XCTAssertEqual(Spring.curve(1), 1, accuracy: 0.0001)

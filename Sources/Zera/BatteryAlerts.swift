@@ -6,6 +6,8 @@ import IOKit.ps
 /// Listens to macOS's power-source notifications rather than polling.
 @MainActor
 final class BatteryAlerts {
+    /// Plugged in or unplugged; `userInfo["percent"]` (Int) and `["onPower"]` (Bool).
+    nonisolated static let powerFlipped = Notification.Name("ZeraPowerFlipped")
     static let shared = BatteryAlerts()
 
     // MARK: Settings
@@ -79,7 +81,13 @@ final class BatteryAlerts {
         // Plugged in: a low-battery banner no longer applies, so it goes; a short charging one
         // takes its place.
         let change = Self.powerChange(from: wasOnPower, to: b, bannerEnabled: pluggedInEnabled)
+        let before = wasOnPower
         wasOnPower = b.onPower || b.charging
+        if let before = before, before != (b.onPower || b.charging) {
+            // The notch outline fills to the charge level (see ZeraController.powerFlipped).
+            NotificationCenter.default.post(name: Self.powerFlipped, object: nil,
+                                            userInfo: ["percent": b.percent, "onPower": b.onPower || b.charging])
+        }
         if change.clearLow {
             for a in ReminderService.shared.pendingAlerts where Self.isLowAlert(a) { ReminderService.shared.dismiss(a) }
         }

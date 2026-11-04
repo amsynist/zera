@@ -138,8 +138,8 @@ final class TasksController: NSObject, NSWindowDelegate {
     // MARK: Settings
 
     var shortcut: HotKeyShortcut? {
-        get { ZeraController.storedShortcut("tasks.shortcut", default: TasksSettings.defaultShortcut) }
-        set { ZeraController.store(newValue, "tasks.shortcut") }
+        get { HotKeyShortcut.load("tasks.shortcut", default: TasksSettings.defaultShortcut) }
+        set { HotKeyShortcut.save(newValue, "tasks.shortcut") }
     }
 
     @discardableResult
@@ -150,18 +150,16 @@ final class TasksController: NSObject, NSWindowDelegate {
         onShortcutChanged?(label)
         orbView.toolTip = "Click to open · drag to move" + (label.map { " · \($0) adds a task" } ?? "")
         guard let s = shortcut else { return true }
-        hotKey = GlobalHotKey(s) { [weak self] in self?.toggleQuickAdd() }
+        hotKey = GlobalHotKey(s) { [weak self] in
+            MainActor.assumeIsolated { CommandEcho.shared.configuredShortcut(keys: s.label, label: "Add task", symbol: "plus") }
+            self?.toggleQuickAdd()
+        }
         return hotKey != nil
     }
 
     /// From the recorder in Settings: keep the old shortcut if the new one can't be used.
     func setShortcut(_ s: HotKeyShortcut?) -> Bool {
-        let old = shortcut
-        shortcut = s
-        if registerHotKey() { return true }
-        shortcut = old
-        registerHotKey()
-        return false
+        HotKeyShortcut.swap(to: s, from: shortcut, save: { shortcut = $0 }, register: { registerHotKey() })
     }
 
     func pauseHotKey(_ paused: Bool) { if paused { hotKey = nil } else { registerHotKey() } }

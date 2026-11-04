@@ -448,3 +448,8 @@ final class ShelfImageProvider: NSObject, NSPasteboardItemDataProvider {
         return CGImageDestinationFinalize(dst) ? out as Data : nil
     }
 }
+
+extension ShelfItem {
+    var isLink: Bool { url.pathExtension.lowercased() == "webloc" }
+    var isNote: Bool { ["txt", "rtf", "md"].contains(url.pathExtension.lowercased()) }
+}

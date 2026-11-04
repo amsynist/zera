@@ -205,6 +205,7 @@ enum OpenerActions {
         case .takeBreak: return "Action · a short break, starting now"
         case .searchFiles: return "Action · search your recent files"
         case .askZera: return "Action"
+        case .tasks, .pullRequests, .settings, .focus, .teleprompter: return "Screen · opens in the island"
         }
     }
     static func match(_ a: QuickAction, _ q: String) -> (score: Int, hits: [Int])? {

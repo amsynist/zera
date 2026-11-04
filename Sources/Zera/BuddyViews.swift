@@ -37,6 +37,8 @@ final class BuddyView: NSView {
         layer?.backgroundColor = NSColor.clear.cgColor
         radar.frame = bounds
         layer?.addSublayer(radar)
+        troupe.frame = bounds
+        layer?.addSublayer(troupe)
         zera.style = .hanging
         addSubview(zera)
         registerForDraggedTypes([.fileURL, .png, .tiff, .pdf, .rtf, .string, .URL])
@@ -88,6 +90,57 @@ final class BuddyView: NSView {
         super.layout()
         zera.frame = bounds
         radar.frame = bounds
+        if troupe.frame != bounds { troupe.frame = bounds; placeCompanions() }
+    }
+
+    // MARK: Troupe
+
+    /// Little glowing friends under her feet, one per other agent at work (another Claude
+    /// session, Codex, Cursor). They bob out of step, like they're dancing together.
+    private let troupe = CALayer()
+    private var companionColors: [NSColor] = []
+
+    func setCompanions(_ colors: [NSColor]) {
+        let same = colors.count == companionColors.count && zip(colors, companionColors).allSatisfy { $0 == $1 }
+        guard !same else { return }
+        companionColors = colors
+        placeCompanions()
+    }
+
+    private func placeCompanions() {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        troupe.sublayers?.forEach { $0.removeFromSuperlayer() }
+        let n = min(companionColors.count, 4)
+        guard n > 0 else { return }
+        let f = figureBounds
+        let size: CGFloat = 7, gap: CGFloat = 6
+        let total = CGFloat(n) * size + CGFloat(n - 1) * gap
+        var x = f.midX - total / 2
+        let y = max(1, f.minY - size - 1)
+        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        for (i, c) in companionColors.prefix(n).enumerated() {
+            let dot = CALayer()
+            dot.frame = CGRect(x: x, y: y, width: size, height: size)
+            dot.cornerRadius = size / 2
+            dot.backgroundColor = c.cgColor
+            dot.shadowColor = c.cgColor
+            dot.shadowOpacity = 0.9
+            dot.shadowRadius = 4
+            dot.shadowOffset = .zero
+            if !still {
+                let bob = CABasicAnimation(keyPath: "position.y")
+                bob.byValue = 3
+                bob.duration = 0.9
+                bob.autoreverses = true
+                bob.repeatCount = .infinity
+                bob.timeOffset = Double(i) * 0.3
+                bob.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                dot.add(bob, forKey: "bob")
+            }
+            troupe.addSublayer(dot)
+            x += size + gap
+        }
     }
 
     /// Her body, in view coordinates: the strip below the notch, as wide as she is.
@@ -324,6 +377,16 @@ enum CardKind: Int, CaseIterable {
     case clipboard
     /// Today's to-dos and the focus timer.
     case tasks
+    /// One inbox: approvals waiting, PR news, reminders, battery. Appended last: raw values persist.
+    case alerts
+    /// A script that scrolls from the notch (or a detached window) while you talk.
+    case teleprompter
+    /// The focus session: one task, a ring, and what's up next.
+    case focus
+    /// Optional native window layouts and Zera workspaces. Appended for saved IDs.
+    case arrange
+    /// In-flight Android original, inside the existing notch island.
+    case phoneTransfer
 
     var title: String {
         switch self {
@@ -331,14 +394,19 @@ enum CardKind: Int, CaseIterable {
         case .home: return "Home"
         case .github: return "GitHub"
         case .settings: return "Settings"
-        case .approval: return "Claude Code"
+        case .approval: return "Approval"
         case .reminders: return "Reminders"
         case .reminderAlert: return "Reminder"
         case .toast: return "Notification"
         case .result: return "Zera"
-        case .claude: return "Claude"
+        case .claude: return "Agents"
         case .clipboard: return "Clipboard"
         case .tasks: return "Tasks"
+        case .alerts: return "Alerts"
+        case .teleprompter: return "Teleprompter"
+        case .focus: return "Focus"
+        case .phoneTransfer: return "From your phone"
+        case .arrange: return "Arrange"
         }
     }
 
@@ -354,6 +422,11 @@ enum CardKind: Int, CaseIterable {
         case .claude: return "terminal.fill"
         case .clipboard: return "doc.on.clipboard"
         case .tasks: return "checklist"
+        case .alerts: return "bell.badge.fill"
+        case .teleprompter: return "text.alignleft"
+        case .focus: return "scope"
+        case .phoneTransfer: return "iphone.and.arrow.forward"
+        case .arrange: return "rectangle.3.group"
         }
     }
 }
