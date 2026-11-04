@@ -22,6 +22,46 @@ final class DictationInsertionTarget {
         } else if let element { expectedSelection = Self.selection(in: element) }
     }
 
+    private static var preparationTask: Task<Void, Never>?
+
+    /// Chromium exposes its text tree lazily. Teams hosts that tree in a nested
+    /// WebView application, so requesting it only from the main app is insufficient.
+    /// These attributes are documented by Chromium/Electron for assistive clients.
+    static func prepareAccessibility(for app: NSRunningApplication?) {
+        preparationTask?.cancel(); preparationTask = nil
+        guard AXIsProcessTrusted(), let app, let bundle = app.bundleURL else { return }
+        let frameworks = bundle.appendingPathComponent("Contents/Frameworks")
+        let webHost = ["Electron Framework.framework", "MSWebView2.framework"].contains {
+            FileManager.default.fileExists(atPath: frameworks.appendingPathComponent($0).path)
+        } || ["com.google.Chrome", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser"].contains(app.bundleIdentifier ?? "")
+        guard webHost else { return }
+        let helpers = NSWorkspace.shared.runningApplications.filter {
+            !$0.isTerminated && $0.bundleURL?.pathExtension == "app" && belongsToApplication($0.bundleURL, bundle: bundle)
+        }.prefix(8)
+        var seen = Set<pid_t>()
+        let pids = ([app.processIdentifier] + helpers.map(\.processIdentifier)).filter { seen.insert($0).inserted }
+        preparationTask = Task.detached(priority: .userInitiated) {
+            for pid in pids {
+                guard !Task.isCancelled else { return }
+                let root = AXUIElementCreateApplication(pid)
+                AXUIElementSetMessagingTimeout(root, 0.15)
+                // Unsupported attributes fail harmlessly in native apps. Never toggle
+                // them off: another assistive client may already depend on the tree.
+                _ = AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+                _ = AXUIElementSetAttributeValue(root, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+            }
+        }
+    }
+
+    static func cancelAccessibilityPreparation() {
+        preparationTask?.cancel(); preparationTask = nil
+    }
+
+    static func belongsToApplication(_ candidate: URL?, bundle: URL) -> Bool {
+        guard let candidate else { return false }
+        return candidate.resolvingSymlinksInPath().path.hasPrefix(bundle.resolvingSymlinksInPath().path + "/Contents/")
+    }
+
     static func capture() -> DictationInsertionTarget? {
         guard !IsSecureEventInputEnabled() else { return nil }
         // Zera's nonactivating panels can own the keyboard while another app stays frontmost.
@@ -45,7 +85,15 @@ final class DictationInsertionTarget {
         AXUIElementSetMessagingTimeout(system, 0.2)
         var value: CFTypeRef?
         var error = AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &value)
-        if error != .success || value == nil {
+        var owner: pid_t = 0
+        let matchesApp: Bool
+        if let value, CFGetTypeID(value) == AXUIElementGetTypeID(),
+           AXUIElementGetPid(value as! AXUIElement, &owner) == .success {
+            matchesApp = owner == pid || NSRunningApplication(processIdentifier: pid)?.bundleURL.map {
+                belongsToApplication(NSRunningApplication(processIdentifier: owner)?.bundleURL, bundle: $0)
+            } == true
+        } else { matchesApp = false }
+        if error != .success || !matchesApp {
             let app = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(app, 0.2)
             error = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &value)

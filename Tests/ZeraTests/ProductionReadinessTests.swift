@@ -42,6 +42,15 @@ final class ProductionReadinessTests: XCTestCase {
         }
     }
 
+    func testAccessibilityPreparationOnlyIncludesOwnedHelpers() {
+        let app = URL(fileURLWithPath: "/Applications/Example.app")
+        XCTAssertTrue(DictationInsertionTarget.belongsToApplication(URL(fileURLWithPath: "/Applications/Example.app/Contents/Helpers/WebView.app"), bundle: app))
+        for path in ["/Applications/Example.app.other/Contents/Helpers/WebView.app", "/Applications/Other.app", "/Applications/Example.app"] {
+            XCTAssertFalse(DictationInsertionTarget.belongsToApplication(URL(fileURLWithPath: path), bundle: app))
+        }
+        XCTAssertFalse(DictationInsertionTarget.belongsToApplication(nil, bundle: app))
+    }
+
     func testRememberedDestinationsSurviveRelaunchAndIgnoreTransientScreens() throws {
         let suite = "zera.navigation.tests.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

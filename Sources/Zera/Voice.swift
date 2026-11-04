@@ -316,6 +316,7 @@ final class Dictation {
     private var lastPartial = ""
     private var insertionTestWork: DispatchWorkItem?
     private var typingTarget: DictationInsertionTarget?
+    private var typingAccessObserver: NSObjectProtocol?
     private var sentTypingEvents = false
 
     /// A new partial transcript: type the settled words that aren't in the field yet. A word only
@@ -394,9 +395,17 @@ final class Dictation {
     private func install() {
         guard monitors.isEmpty else { return }
         monitors.append(GlobalKeys.shared.subscribe([.flagsChanged, .keyDown]) { [weak self] e in self?.handle(e) })
+        typingAccessObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { notification in
+                DictationInsertionTarget.prepareAccessibility(for: notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)
+            }
+        DictationInsertionTarget.prepareAccessibility(for: NSWorkspace.shared.frontmostApplication)
     }
 
     private func uninstall() {
+        if let typingAccessObserver { NSWorkspace.shared.notificationCenter.removeObserver(typingAccessObserver) }
+        typingAccessObserver = nil
+        DictationInsertionTarget.cancelAccessibilityPreparation()
         monitors.compactMap { $0 as? Int }.forEach { GlobalKeys.shared.unsubscribe($0) }
         monitors.removeAll()
         holdWork?.cancel(); holdWork = nil
