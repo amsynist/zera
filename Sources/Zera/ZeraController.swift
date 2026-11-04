@@ -2230,8 +2230,7 @@ final class ZeraController: NSObject {
             let s = SettingsCard(defaultKind: defaultCard, showingZera: buddySetting,
                                  loginEnabled: SMAppService.mainApp.status == .enabled)
             s.onReturn = { [weak self] in
-                let saved = CardKind(rawValue: NotchNavigation.shared.integer("settings.return", fallback: CardKind.home.rawValue)) ?? .home
-                self?.show(NotchNavigation.isDestination(saved) && saved != .settings ? saved : .home)
+                self?.show(NotchNavigation.shared.settingsReturn)
             }
             s.onOpenArrangement = { [weak self] in self?.show(.arrange) }
             s.onOpenAgents = { [weak self] in self?.show(.claude) }
@@ -2436,7 +2435,7 @@ final class ZeraController: NSObject {
         }
         if let previous = currentCard, let view = currentContent { NotchNavigation.shared.captureScroll(in: view, screen: previous) }
         if kind == .settings, let previous = currentCard, previous != .settings, NotchNavigation.isDestination(previous) {
-            NotchNavigation.shared.set(previous.rawValue, for: "settings.return")
+            NotchNavigation.shared.recordSettingsReturn(previous)
         }
         NotchNavigation.shared.record(kind)
         if swapping {

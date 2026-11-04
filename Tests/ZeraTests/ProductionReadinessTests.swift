@@ -54,6 +54,19 @@ final class ProductionReadinessTests: XCTestCase {
         XCTAssertEqual(scroll.contentView.bounds.minY, 100, accuracy: 1)
     }
 
+    func testBackNavigationStillReturnsToItsSourceWithMemoryDisabled() throws {
+        let suite = "zera.back.tests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let navigation = NotchNavigation(defaults: defaults)
+        navigation.remembersScreen = false
+        navigation.recordSettingsReturn(.taskExport)
+        XCTAssertEqual(navigation.settingsReturn, .taskExport)
+        XCTAssertNil(defaults.object(forKey: "zera.navigation.settings.return"), "temporary Back state must not require durable screen memory")
+        navigation.recordSettingsReturn(.phoneTransfer)
+        XCTAssertEqual(navigation.settingsReturn, .taskExport)
+    }
+
     func testSettingsHoverControlIsClickableAndClearOfAllTabsAndCutout() throws {
         _ = NSApplication.shared
         for style in HoverMenuStyle.allCases {

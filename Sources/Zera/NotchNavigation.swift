@@ -6,6 +6,7 @@ final class NotchNavigation {
     static let shared = NotchNavigation()
     private let defaults: UserDefaults
     private let prefix = "zera.navigation."
+    private var temporarySettingsReturn: CardKind?
     init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
     var remembersScreen: Bool {
@@ -35,6 +36,16 @@ final class NotchNavigation {
     func string(_ key: String) -> String? { remembersScreen ? defaults.string(forKey: prefix + key) : nil }
     func set(_ value: Int, for key: String) { if remembersScreen { defaults.set(value, forKey: prefix + key) } }
     func set(_ value: String?, for key: String) { if remembersScreen { defaults.set(value, forKey: prefix + key) } }
+
+    func recordSettingsReturn(_ kind: CardKind) {
+        guard Self.isDestination(kind), kind != .settings else { return }
+        temporarySettingsReturn = kind
+        set(kind.rawValue, for: "settings.return")
+    }
+    var settingsReturn: CardKind {
+        let saved = temporarySettingsReturn ?? CardKind(rawValue: integer("settings.return", fallback: CardKind.home.rawValue)) ?? .home
+        return Self.isDestination(saved) && saved != .settings ? saved : .home
+    }
 
     /// Save only scroll coordinates, never the contents of fields or clipboard searches.
     func captureScroll(in view: NSView, screen: CardKind) {
