@@ -1,0 +1,103 @@
+{
+  "result": "passed",
+  "release_name": "Zera v2",
+  "numeric_version": "2.0.0",
+  "duration_seconds": 80.03333333333333,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "fps": 60,
+  "video_frames": 4802,
+  "video_codec": "h264",
+  "pixel_format": "yuv420p",
+  "audio_codec": "aac",
+  "full_decode_passed": true,
+  "faststart": true,
+  "top_level_atoms": [
+    {
+      "type": "ftyp",
+      "offset": 0,
+      "size": 32
+    },
+    {
+      "type": "moov",
+      "offset": 32,
+      "size": 128228
+    },
+    {
+      "type": "free",
+      "offset": 128260,
+      "size": 8
+    },
+    {
+      "type": "mdat",
+      "offset": 128268,
+      "size": 20191446
+    }
+  ],
+  "poster_source_seconds": 45.8,
+  "poster_baked_frames": [
+    0
+  ],
+  "poster_frame0_mean_absolute_channel_error": 2.1577713477366256,
+  "caption_cues": 27,
+  "burned_in_kinetic_captions": true,
+  "strict_gate": true,
+  "hyperframes_errors": 0,
+  "hyperframes_warnings": 0,
+  "contrast_checked": 51,
+  "contrast_passed": 51,
+  "audio_peak_dbfs": -11.2,
+  "audio_mean_dbfs": -30.4,
+  "source_speed": 1,
+  "optical_flow": false,
+  "native_window_engine_verified": true,
+  "proof": [
+    "qc/encoded-transition-contact.jpg",
+    "qc/caption-motion-proof.jpg",
+    "qc/native-window-proof.jpg"
+  ],
+  "files": {
+    "brag.mp4": {
+      "bytes": 20319714,
+      "sha256": "4db0d7368d43174f1c4cb8786fa0f402e211c3003becf7dcfd1b30d710159b9d"
+    },
+    "brag.jpg": {
+      "bytes": 228945,
+      "sha256": "ae885d350618e1edb967dce82e64053816dab9d7ace4b44f747fbe8dd6fc00f3"
+    },
+    "captions.srt": {
+      "bytes": 2281,
+      "sha256": "bf58d057d53c3727d5c7d94c5099311660916fca7ddd8ea80db8f599422ad2aa"
+    },
+    "captions.vtt": {
+      "bytes": 2217,
+      "sha256": "591a1c616734523dce62868d61e7ba47fe312b6aa2ad2fefe3b72e2227915024"
+    },
+    "timeline.json": {
+      "bytes": 9542,
+      "sha256": "6ede2b900ea8b479b22f76ed7e9b341207747f1e7c81ef9e043e3043b03c17fe"
+    },
+    "keyframes-proof.json": {
+      "bytes": 36174,
+      "sha256": "eff0eba73f9c2b5f7246a528b740c7da6f5c2efb5f3f5e956d27ecc4de456ca3"
+    },
+    "source-summary.json": {
+      "bytes": 1231,
+      "sha256": "1827517fc783d651e7d710d3c59a2a286bafcda29638b920004c58cccf353b19"
+    },
+    "brag-plan.md": {
+      "bytes": 5180,
+      "sha256": "35bedfcca44f97e428b9a069d1b9e5348196935d0a8b4804ab86cf67bce91c83"
+    },
+    "composition-brief.md": {
+      "bytes": 2190,
+      "sha256": "a8c917317f1fd98c2182c3de43d57f1bf58549ebeace52da16c8eaa1a190769e"
+    },
+    "share-copy.txt": {
+      "bytes": 132,
+      "sha256": "8df4b56a311d9c402642b2ccadfb180531c06abd104d6f9db64941f1a181de93"
+    }
+  }
+}

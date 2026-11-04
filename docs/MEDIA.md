@@ -4,14 +4,33 @@ The v2 site and README use fresh native screenshots and recordings. Published me
 
 ## Reproduce the native walkthrough
 
+On macOS 15 or newer, the existing opt-in fixture records the exact native fixture window with ScreenCaptureKit hardware encoding at requested 60fps. It emits `v2-source.mp4`, measured `v2-scenes.json`, `v2-recording.json` and fresh cropped native PNGs. The source is about 64 seconds, with roughly 58 actual frames per second. No per-frame CG/JPEG loop is used. All data is fictional; no microphone or real account/clipboard/calendar state is captured.
+
 ```sh
 mkdir -p .build/v2-media-home .build/v2-media
-env CFFIXED_USER_HOME="$PWD/.build/v2-media-home" \
+CFFIXED_USER_HOME="$PWD/.build/v2-media-home" \
   ZERA_RENDER_SCREENS="$PWD/.build/v2-media" ZERA_V2_MEDIA=1 \
   swift test --filter ScreenRenderTests/testRecordV2Release
 ```
 
-The fixture emits 24fps-targeted JPEG frames, measured timestamps, scene/crop metadata and cropped native PNGs. Encode using the timestamp deltas, not an assumed fixed capture cadence. The current complete take is about 62 seconds. Native capture runs in a disposable home and never uses real clipboard/account/calendar content. Normal `swift test` skips these recordings.
+Normal `swift test` skips recording. The full kinetic walkthrough inserts a separate real native window-layout take and a closing overview, for 80.033 seconds at 60fps. Its 27 chapters have burned-in masked-word captions plus SRT/VTT. The sources play at actual speed without optical-flow synthesis. The water chapter uses a separately recorded native replacement: the opt-in fixture ticks its floating animation even when its recording window is occluded, so the reminder is visible rather than a blank wallpaper. Set `ZERA_V2_MEDIA_ONLY=water` with the same isolated-home capture command to reproduce that source. Nineteen native screenshots were refreshed from this same take, including the Zera v2 theme label. The dedicated sharing film remains separate.
+
+## Record real window arrangements
+
+The capture fixture is `Tests/Fixtures/WindowMedia/main.swift`, a tiny native app with three disposable windows (notes, a code sample and the generated coast image). Build it inside a `.app` with bundle ID `io.github.amsynist.zera.media-windows`, executable `Fixture` and `NSHighResolutionCapable=true`; no network, documents or account data are used. The test invokes production `ArrangeLayout` and `ArrangeWindowAccess.apply`, rather than creating browser rectangles or claiming to click controls it does not click. It verifies native Accessibility frame writes after a settling delay.
+
+```sh
+CFFIXED_USER_HOME="$PWD/.build/v2-media-home" \
+  ZERA_RENDER_SCREENS="$PWD/.build/v2-window-media" \
+  ZERA_V2_WINDOW_MEDIA=1 \
+  ZERA_WINDOW_MEDIA_APP="/absolute/path/to/Window Media.app" \
+  ZERA_WINDOW_MEDIA_PHOTO="/absolute/path/to/00-coast.png" \
+  swift test --filter WindowMediaTests/testRecordNativeWindowLayouts
+```
+
+Existing Accessibility and Screen Recording access are required. The filter contains only the new fixture process and its native wallpaper window. If AeroSpace is already running, optional `ZERA_MEDIA_AEROSPACE_CLI=/absolute/path/to/aerospace` changes only the new fixture windows to floating in AeroSpace; it never disables that manager globally or changes existing user windows. The background sits below ordinary windows and joins the current Space. The first take was rejected because AeroSpace retiled the demo; the final take visibly and numerically proves overlapping → main-left → columns → restored main-left. All disposable windows terminate after recording. The production Zera feature still refuses activation while AeroSpace is running.
+
+The final source includes 763 real frames over 13.383 seconds (~57fps), with a median 16.667ms interval and a longest 150ms gap. The continuous app source has 3,681 real frames over 63.858 seconds (~57.6fps), with a longest 31.667ms gap. These are capture measurements, not a universal app-performance guarantee. The exact output and caption timeline, source evidence and encoded proof are retained under `docs/media/v2/walkthrough/`. See WINDOW_MANAGER.md for the user-facing feature/setup guide.
 
 ## Phone-to-Mac hero
 
@@ -24,7 +43,8 @@ Raw phone/Mac starts and approach/release/save markers are recorded in the ignor
 - sharing.mp4 / sharing-poster.jpg — standalone sharing-only film, 20 seconds / 60fps, kinetic captions burned in and poster baked into frame zero.
 - sharing.srt / sharing.vtt — caption sidecars for platforms and accessible players.
 - wallpaper/zera-tidal-5k.jpg / .png — clean 5120×3200 exports of the native fixture wallpaper, without the notch, companion or app windows. The JPEG is the practical desktop download; PNG preserves lossless pixels.
-- walkthrough.mp4 / walkthrough-poster.jpg — complete native screen flow.
+- walkthrough.mp4 / walkthrough-poster.jpg — complete 80-second kinetic native screen flow, including real window arrangements.
+- walkthrough.srt / walkthrough.vtt — 27 accessible full-tour caption cues.
 - screens/*.webp — current app screens, cropped at their native island boundaries.
 - media-provenance.json — source timing, fixture and verification summary, without private paths.
 
@@ -32,9 +52,9 @@ The build/composition workspace is ignored. Public storyboard, brief and share c
 
 Music: “Happy Beats / Business Moves Vol. 12” by Sascha Ende, ende.app, CC BY 4.0. Sparse UI accents are CC0 from the brag bundled library where used. These are not covered by the repository’s MIT code license. Zera’s original art remains under LICENSE-ASSETS.md.
 
-## Next requested pass
+## Walkthrough completion
 
-The full walkthrough is still the original native source recording. Its kinetic edit is a separate next task: animated captions, deliberate zooms and a real window-manager demonstration, followed by clearer window-manager presentation in README and site. The sharing-only replacement is completed first; do not mix the unrelated app tour back into it.
+The full kinetic edit replaces the earlier raw 62-second walkthrough. It includes animated captions, deliberate focus moves, music, an actual native window-layout sequence and the complete primary screen flow. README and site now include a dedicated window-manager explanation and demonstration image. Public release publishing is separate from pushing the prepared review branch.
 
 The user requested the wallpaper for personal desktop use. Its source is installReleaseWallpaper(on:) in Tests/ZeraTests/ReleaseMediaRecorder.swift; the still exports render only those native vector layers at 5K. Export orientation must match the flipped capture canvas. The full-size wallpaper files are separate assets and are not fetched during normal page loading.
 

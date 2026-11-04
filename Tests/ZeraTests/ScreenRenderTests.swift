@@ -1169,7 +1169,8 @@ final class ScreenRenderTests: XCTestCase {
         print("full tour: \(times.count) frames, \(String(format: "%.1f", times.last ?? 0)) s")
     }
     /// Release-only native recording. Fictional fixtures; no microphone, real clipboard or account data.
-    func testRecordV2Release() throws {
+    @available(macOS 15.0, *)
+    func testRecordV2Release() async throws {
         guard ProcessInfo.processInfo.environment["ZERA_V2_MEDIA"] == "1",
               ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else {
             throw XCTSkip("set ZERA_V2_MEDIA=1 with a disposable CFFIXED_USER_HOME")
@@ -1180,66 +1181,69 @@ final class ScreenRenderTests: XCTestCase {
         w.backgroundColor = NSColor(srgbRed: 0.055, green: 0.058, blue: 0.065, alpha: 1)
         w.hasShadow = false; w.appearance = NSAppearance(named: .darkAqua)
         let root = FlippedView(frame: NSRect(origin: .zero, size: size)); w.contentView = root
+        installReleaseWallpaper(on: root)
         let iv = IslandView(frame: NSRect(origin: .zero, size: size))
         iv.band = 34; iv.notchWidth = 190; iv.centerX = size.width / 2
         root.addSubview(iv); w.orderFrontRegardless()
         defer { iv.close(animated: false); w.orderOut(nil); w.contentView = nil; SystemVitals.shared.unwatch() }
-        let frames = out.appendingPathComponent("v2-frames", isDirectory: true)
         let stills = out.appendingPathComponent("native", isDirectory: true)
-        try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: stills, withIntermediateDirectories: true)
-        let encode = DispatchQueue(label: "zera.v2-media.encode"), slots = DispatchSemaphore(value: 3), group = DispatchGroup()
-        var times: [Double] = [], scenes: [[String: Any]] = []
-        let began = CACurrentMediaTime()
-        var floating: NSView?
-        func image() -> CGImage? {
-            CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), .bestResolution)
+        let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
+        let own = try XCTUnwrap(content.windows.first { $0.windowID == UInt32(w.windowNumber) })
+        let config = SCStreamConfiguration()
+        config.width = 1440; config.height = 900
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        config.queueDepth = 6; config.showsCursor = false; config.capturesAudio = false
+        let recorder = ReleaseMediaRecorder(), recordingConfig = SCRecordingOutputConfiguration()
+        recordingConfig.outputURL = out.appendingPathComponent("v2-source.mp4")
+        recordingConfig.videoCodecType = .h264; recordingConfig.outputFileType = .mp4
+        let recording = SCRecordingOutput(configuration: recordingConfig, delegate: recorder)
+        let stream = SCStream(filter: SCContentFilter(desktopIndependentWindow: own), configuration: config, delegate: nil)
+        try stream.addRecordingOutput(recording); try await stream.startCapture()
+        let deadline = Date().addingTimeInterval(5)
+        while recorder.startedAt == nil && recorder.failure == nil && Date() < deadline { try await Task.sleep(nanoseconds: 20_000_000) }
+        let began = try XCTUnwrap(recorder.startedAt)
+        var scenes: [[String: Any]] = [], floating: NSView?
+        func image() async throws -> CGImage {
+            let stillConfig = SCStreamConfiguration(); stillConfig.width = 2880; stillConfig.height = 1800
+            return try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: own), configuration: stillConfig)
         }
-        func capture() {
-            guard let cg = image(), let context = CGContext(data: nil, width: 1440, height: 900, bitsPerComponent: 8,
-                        bytesPerRow: 1440 * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
-            context.interpolationQuality = .high; context.draw(cg, in: CGRect(origin: .zero, size: size))
-            guard let small = context.makeImage() else { return }
-            let n = times.count; times.append(CACurrentMediaTime() - began)
-            slots.wait(); group.enter()
-            encode.async {
-                defer { slots.signal(); group.leave() }
-                try? NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.94])?
-                    .write(to: frames.appendingPathComponent(String(format: "%05d.jpg", n)))
-            }
-        }
-        func run(_ seconds: Double) {
+        func run(_ seconds: Double) async throws {
             let end = CACurrentMediaTime() + seconds
-            var next = CACurrentMediaTime()
             while CACurrentMediaTime() < end {
-                next += 1.0 / 24
-                RunLoop.main.run(until: Date().addingTimeInterval(max(0.001, next - CACurrentMediaTime())))
-                capture()
+                // ScreenCaptureKit can record an occluded fixture; its demo animation still needs ticks.
+                (floating as? ZeraAnimating)?.advanceAnimation(at: CACurrentMediaTime())
+                try await Task.sleep(nanoseconds: 16_000_000)
             }
         }
         func scene(_ name: String, _ title: String) {
-            scenes.append(["name": name, "title": title, "start": CACurrentMediaTime() - began,
+            scenes.append(["name": name, "title": title, "start": Date().timeIntervalSince1970 - began,
                            "crop": [iv.islandRect.minX, 0, iv.islandRect.width, iv.islandRect.height]])
         }
-        func still(_ name: String, full: Bool = false) throws {
-            let cg = try XCTUnwrap(image()), scale = CGFloat(cg.width) / size.width
+        func still(_ name: String, full: Bool = false) async throws {
+            let cg = try await image(), scale = CGFloat(cg.width) / size.width
             let rect = full ? CGRect(origin: .zero, size: size) : iv.islandRect.insetBy(dx: -24, dy: -18).intersection(CGRect(origin: .zero, size: size))
             let cropped = try XCTUnwrap(cg.cropping(to: CGRect(x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale)))
             try XCTUnwrap(NSBitmapImageRep(cgImage: cropped).representation(using: .png, properties: [:])).write(to: stills.appendingPathComponent(name + ".png"))
         }
-        func show(_ c: NSView & CardContent, _ tab: CardKind?, _ name: String, _ title: String) throws {
+        func show(_ c: NSView & CardContent, _ tab: CardKind?, _ name: String, _ title: String) async throws {
             floating?.removeFromSuperview(); floating = nil; iv.isHidden = false
             c.setFrameSize(NSSize(width: c.cardWidth, height: 400)); c.layoutSubtreeIfNeeded()
             iv.present(c, size: NSSize(width: min(c.cardWidth, 1200), height: min(c.desiredHeight, Isle.maxContentHeight)), direction: 1, animated: true)
             iv.activeTab = tab
-            scene(name, title); run(1.2); try still(name); run(1.5)
+            scene(name, title); try await run(1.2); try await still(name); try await run(1.5)
         }
-        func float(_ view: NSView, _ name: String, _ title: String) throws {
+        func float(_ view: NSView, _ name: String, _ title: String) async throws {
             iv.close(animated: false); iv.isHidden = true; floating?.removeFromSuperview()
             view.setFrameOrigin(NSPoint(x: (size.width - view.frame.width) / 2, y: max(40, (size.height - view.frame.height) / 2)))
             root.addSubview(view); floating = view
-            scene(name, title); run(1.0); try still(name, full: true); run(1.5)
+            scene(name, title); try await run(1.0); try await still(name, full: true); try await run(ProcessInfo.processInfo.environment["ZERA_V2_MEDIA_ONLY"] == "water" ? 2.5 : 1.5)
         }
+        if ProcessInfo.processInfo.environment["ZERA_V2_MEDIA_ONLY"] == "water" {
+            let water = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
+            water.detail = "4 of 8 glasses today"; water.begin()
+            try await float(water, "water", "A small water break")
+        } else {
         SystemVitals.shared.simulate()
         GitHubService.shared.preview(login: "you", pulls: samplePRs())
         ClipboardStore.shared.preview([
@@ -1254,10 +1258,10 @@ final class ScreenRenderTests: XCTestCase {
             .init(id: "demo-claude", provider: "claude", providerName: "Claude", title: "Polish the preferences", project: "~/Projects/Studio", activity: "Reading Settings.swift", state: .working, source: .claude("demo-claude")),
             .init(id: "demo-codex", provider: "codex", providerName: "Codex", title: "Review the new layout", project: "~/Projects/Studio", activity: "Run the native checks", state: .waiting, source: .managedCodex("demo-codex"))]
         // The physical notch stays empty of labels; all readable content is below it.
-        iv.close(animated: false); scene("closed", "The notch"); run(1.0)
-        iv.peek(); scene("navigation", "One notch, your whole day"); run(1.2); try still("navigation"); run(1.0)
-        try show(HomeCard(), .home, "home", "Home")
-        try show(AgentsView(snapshot: { entries }), .claude, "agents", "Claude and Codex")
+        iv.close(animated: false); scene("closed", "The notch"); try await run(1.0)
+        iv.peek(); scene("navigation", "One notch, your whole day"); try await run(1.2); try await still("navigation"); try await run(1.0)
+        try await show(HomeCard(), .home, "home", "Home")
+        try await show(AgentsView(snapshot: { entries }), .claude, "agents", "Claude and Codex")
         // Ordinary files use the real receipt/companion and pour into the actual island.
         let receipt = AndroidTransferCard()
         var file = PhoneTransferState(id: "media-demo", name: "Field notes.pdf")
@@ -1266,56 +1270,62 @@ final class ScreenRenderTests: XCTestCase {
         iv.present(receipt, size: NSSize(width: receipt.cardWidth, height: receipt.desiredHeight), direction: 0, animated: true)
         iv.activeTab = .shelf; iv.setPhoneTransfer(file); iv.companion.awaitPhone(from: 1)
         scene("sharing", "Originals, from your Android")
-        run(0.7)
+        try await run(0.7)
         file.phase = .receiving; iv.companion.catchFromPhone()
         for step in 0...40 {
             file.received = file.total! * Int64(step) / 40
             receipt.update(file); iv.setPhoneTransfer(file)
-            run(0.09)
-            if step == 22 { try still("sharing") }
+            try await run(0.09)
+            if step == 22 { try await still("sharing") }
         }
         file.phase = .saved; receipt.update(file); iv.setPhoneTransfer(file)
-        iv.companion.releasePhone(); iv.companion.react(.success); run(1.2)
+        iv.companion.releasePhone(); iv.companion.react(.success); try await run(1.2)
         iv.setPhoneTransfer(nil)
-        try show(DropFilesView(), .shelf, "shelf", "Your Shelf")
-        try show(ClipboardView(), .clipboard, "clipboard", "Clipboard")
-        try show(TasksCard(store: tasks), .tasks, "tasks", "Tasks")
+        try await show(DropFilesView(), .shelf, "shelf", "Your Shelf")
+        try await show(ClipboardView(), .clipboard, "clipboard", "Clipboard")
+        try await show(TasksCard(store: tasks), .tasks, "tasks", "Tasks")
         if let task = tasks.tasks.first { tasks.focusOn(task.id) }
-        try show(FocusView(store: tasks), .focus, "focus", "One thing at a time")
+        try await show(FocusView(store: tasks), .focus, "focus", "One thing at a time")
         tasks.pause()
-        try show(GitHubCard(), .github, "pull-requests", "Pull requests")
+        try await show(GitHubCard(), .github, "pull-requests", "Pull requests")
         let rs = ReminderService.shared
         rs.save(event: CalendarEvent(title: "Design review", startAt: Date().addingTimeInterval(3600)))
         rs.addOneOff(title: "Send the release notes", at: Date().addingTimeInterval(7200))
-        try show(RemindersView(), .reminders, "reminders", "Your day")
-        try show(AlertsView(), .alerts, "alerts", "What needs you")
+        try await show(RemindersView(), .reminders, "reminders", "Your day")
+        try await show(AlertsView(), .alerts, "alerts", "What needs you")
         let prompter = TeleprompterView(store: scripts); prompter.setMode(.edit)
-        try show(prompter, .teleprompter, "teleprompter", "Your words, within reach")
-        try show(WindowArrangementView(), .arrange, "layouts", "Arrange windows")
+        try await show(prompter, .teleprompter, "teleprompter", "Your words, within reach")
+        try await show(WindowArrangementView(), .arrange, "layouts", "Arrange windows")
         let settings = SettingsCard(defaultKind: .home, showingZera: true, loginEnabled: false)
-        try show(settings, .settings, "settings", "Make it yours")
-        settings.select(.appearance); try show(settings, .settings, "themes", "The same theme, everywhere")
-        settings.select(.notch); try show(settings, .settings, "notch-settings", "Voice and the notch")
+        try await show(settings, .settings, "settings", "Make it yours")
+        settings.select(.appearance); try await show(settings, .settings, "themes", "The same theme, everywhere")
+        settings.select(.notch); try await show(settings, .settings, "notch-settings", "Voice and the notch")
         let export = TaskExportView(store: sampleMonth()); export.frame = NSRect(origin: .zero, size: TaskExportView.size)
         export.span = .all; export.format = .xlsx
-        try float(export, "timesheet", "A week, ready to export")
+        try await float(export, "timesheet", "A week, ready to export")
         let launcher = AppOpenerView(frame: NSRect(x: 0, y: 0, width: 1440, height: 900))
         launcher.prepare(); launcher.previewType("safari")
-        try float(launcher, "launcher", "Open an app")
-        launcher.previewActions(); scene("launcher-actions", "Or run an action"); run(2.2)
+        try await float(launcher, "launcher", "Open an app")
+        launcher.previewActions(); scene("launcher-actions", "Or run an action"); try await run(2.2)
         floating?.removeFromSuperview(); floating = nil; iv.isHidden = false
         let echo = EchoNotchView(frame: NSRect(x: 340, y: 0, width: 760, height: 64))
         echo.notchSize = NSSize(width: 190, height: 34)
         echo.show(EchoContent(symbol: "waveform", keys: "right ⌥", text: "A little less switching.", detail: "Dictation preview", tint: Pal.accent), animated: true)
         iv.close(animated: false); root.addSubview(echo)
-        scene("dictation", "Hold, speak, release"); run(2.7); echo.removeFromSuperview()
+        scene("dictation", "Hold, speak, release"); try await run(2.7); echo.removeFromSuperview()
         let water = WaterVisitView(frame: NSRect(origin: .zero, size: WaterVisitView.size))
         water.detail = "4 of 8 glasses today"; water.begin(at: CACurrentMediaTime() - 2)
-        try float(water, "water", "A small water break")
-        group.wait()
-        try JSONSerialization.data(withJSONObject: times).write(to: out.appendingPathComponent("v2-times.json"))
+        try await float(water, "water", "A small water break")
+        }
+        try await stream.stopCapture()
+        let finish = Date().addingTimeInterval(5)
+        while !recorder.finished && recorder.failure == nil && Date() < finish { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertNil(recorder.failure); XCTAssertTrue(recorder.finished)
         try JSONSerialization.data(withJSONObject: scenes, options: [.prettyPrinted, .sortedKeys]).write(to: out.appendingPathComponent("v2-scenes.json"))
-        print("V2 release capture: \(times.count) frames; \(times.last ?? 0) seconds. Fictional demo data only.")
+        try JSONSerialization.data(withJSONObject: ["start_epoch": began, "end_epoch": Date().timeIntervalSince1970,
+            "requested_fps": 60, "capture": "ScreenCaptureKit; exact fixture window only; fictional data"], options: [.prettyPrinted])
+            .write(to: out.appendingPathComponent("v2-recording.json"))
+        print("V2 release capture: hardware recording, fictional data only")
     }
 
     /// Hardware-records only our fixture windows and the exact newly opened synthetic photo.

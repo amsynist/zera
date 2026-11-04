@@ -1,0 +1,435 @@
+{
+  "duration": 80.03333333333333,
+  "insert_at": 41.554598808288574,
+  "window_duration": 13.383333,
+  "tour_duration": 63.858333,
+  "scenes": [
+    {
+      "crop": [
+        245,
+        0,
+        950,
+        500
+      ],
+      "name": "closed",
+      "start": 0,
+      "title": "The notch",
+      "caption": "Zera v2.",
+      "support": "",
+      "chapter": "THE NOTCH",
+      "end": 1.0577750205993652,
+      "index": 1
+    },
+    {
+      "crop": [
+        245,
+        0,
+        950,
+        500
+      ],
+      "name": "navigation",
+      "start": 1.0577750205993652,
+      "title": "One notch, your whole day",
+      "caption": "Your day. Within reach.",
+      "support": "Move between your tools.",
+      "chapter": "NAVIGATION",
+      "end": 3.440861940383911,
+      "index": 2
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        674
+      ],
+      "name": "home",
+      "start": 3.440861940383911,
+      "title": "Home",
+      "caption": "Start with the essentials.",
+      "support": "Vitals, music and quick actions.",
+      "chapter": "HOME",
+      "end": 6.355506896972656,
+      "index": 3
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        454
+      ],
+      "name": "agents",
+      "start": 6.355506896972656,
+      "title": "Claude and Codex",
+      "caption": "Claude and Codex.",
+      "support": "Activity and requests, together.",
+      "chapter": "AGENTS",
+      "end": 9.280525922775269,
+      "index": 4
+    },
+    {
+      "crop": [
+        360,
+        0,
+        720,
+        308
+      ],
+      "name": "sharing",
+      "start": 9.280525922775269,
+      "title": "Originals, from your Android",
+      "caption": "Originals. Into your notch.",
+      "support": "A receipt with live progress.",
+      "chapter": "ANDROID SHARING",
+      "end": 15.510476112365723,
+      "index": 5
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        548
+      ],
+      "name": "shelf",
+      "start": 15.510476112365723,
+      "title": "Your Shelf",
+      "caption": "Keep it on your Shelf.",
+      "support": "Files and links, within reach.",
+      "chapter": "SHELF",
+      "end": 18.36838388442993,
+      "index": 6
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        482
+      ],
+      "name": "clipboard",
+      "start": 18.36838388442993,
+      "title": "Clipboard",
+      "caption": "Find that last copy.",
+      "support": "Text, links and colors.",
+      "chapter": "CLIPBOARD",
+      "end": 21.2276611328125,
+      "index": 7
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        612
+      ],
+      "name": "tasks",
+      "start": 21.2276611328125,
+      "title": "Tasks",
+      "caption": "Make the next step clear.",
+      "support": "Your work and next step.",
+      "chapter": "TASKS",
+      "end": 24.110044956207275,
+      "index": 8
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        466
+      ],
+      "name": "focus",
+      "start": 24.110044956207275,
+      "title": "One thing at a time",
+      "caption": "One thing at a time.",
+      "support": "A session for this task.",
+      "chapter": "FOCUS",
+      "end": 27.02362298965454,
+      "index": 9
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        518
+      ],
+      "name": "pull-requests",
+      "start": 27.02362298965454,
+      "title": "Pull requests",
+      "caption": "Keep reviews moving.",
+      "support": "Reviews, checks and approvals.",
+      "chapter": "PULL REQUESTS",
+      "end": 29.92294406890869,
+      "index": 10
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        422
+      ],
+      "name": "reminders",
+      "start": 29.92294406890869,
+      "title": "Your day",
+      "caption": "See what is coming.",
+      "support": "Events and reminders.",
+      "chapter": "REMINDERS",
+      "end": 32.82850790023804,
+      "index": 11
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        322
+      ],
+      "name": "alerts",
+      "start": 32.82850790023804,
+      "title": "What needs you",
+      "caption": "Notice what needs you.",
+      "support": "Useful alerts, within reach.",
+      "chapter": "ALERTS",
+      "end": 35.7431378364563,
+      "index": 12
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        674
+      ],
+      "name": "teleprompter",
+      "start": 35.7431378364563,
+      "title": "Your words, within reach",
+      "caption": "Keep your words close.",
+      "support": "Your script, close to camera.",
+      "chapter": "TELEPROMPTER",
+      "end": 38.66011595726013,
+      "index": 13
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        674
+      ],
+      "name": "layouts",
+      "start": 38.66011595726013,
+      "title": "Arrange windows",
+      "caption": "Arrange your windows.",
+      "support": "Choose the space you need.",
+      "chapter": "WINDOW MANAGER",
+      "end": 41.554598808288574,
+      "index": 14
+    },
+    {
+      "name": "windows-overlapping",
+      "start": 41.554598808288574,
+      "caption": "Make room for your work.",
+      "support": "Three disposable native demo windows.",
+      "chapter": "WINDOW MANAGER",
+      "crop": [
+        0,
+        0,
+        1710,
+        1112
+      ],
+      "end": 44.45666790008545,
+      "index": 15
+    },
+    {
+      "name": "windows-main-left",
+      "start": 44.45666790008545,
+      "caption": "Three windows. One layout.",
+      "support": "A main window with two beside it.",
+      "chapter": "WINDOW MANAGER",
+      "crop": [
+        0,
+        0,
+        1710,
+        1112
+      ],
+      "end": 47.96189785003662,
+      "index": 16
+    },
+    {
+      "name": "windows-columns",
+      "start": 47.96189785003662,
+      "caption": "Switch to columns.",
+      "support": "Real native windows move and resize.",
+      "chapter": "WINDOW MANAGER",
+      "crop": [
+        0,
+        0,
+        1710,
+        1112
+      ],
+      "end": 51.46023368835449,
+      "index": 17
+    },
+    {
+      "name": "windows-restore-layout",
+      "start": 51.46023368835449,
+      "caption": "Restore your layout.",
+      "support": "Back to the arrangement you chose.",
+      "chapter": "WINDOW MANAGER",
+      "crop": [
+        0,
+        0,
+        1710,
+        1112
+      ],
+      "end": 54.937931808288575,
+      "index": 18
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        674
+      ],
+      "name": "settings",
+      "start": 54.937931808288575,
+      "title": "Make it yours",
+      "caption": "Make it yours.",
+      "support": "Preferences in the same island.",
+      "chapter": "SETTINGS",
+      "end": 57.850208076293946,
+      "index": 19
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        674
+      ],
+      "name": "themes",
+      "start": 57.850208076293946,
+      "title": "The same theme, everywhere",
+      "caption": "One theme. Everywhere.",
+      "support": "Consistent surfaces and controls.",
+      "chapter": "APPEARANCE",
+      "end": 60.8078468168335,
+      "index": 20
+    },
+    {
+      "crop": [
+        280,
+        0,
+        880,
+        674
+      ],
+      "name": "notch-settings",
+      "start": 60.8078468168335,
+      "title": "Voice and the notch",
+      "caption": "Tune the little details.",
+      "support": "Notch and voice preferences.",
+      "chapter": "NOTCH",
+      "end": 63.76485613232422,
+      "index": 21
+    },
+    {
+      "crop": [
+        200,
+        170,
+        1040,
+        610
+      ],
+      "name": "timesheet",
+      "start": 63.76485613232422,
+      "title": "A week, ready to export",
+      "caption": "Your week. Ready to export.",
+      "support": "Tracked work, ready to export.",
+      "chapter": "TIMESHEETS",
+      "end": 66.65247181301879,
+      "index": 22
+    },
+    {
+      "crop": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "name": "launcher",
+      "start": 66.65247181301879,
+      "title": "Open an app",
+      "caption": "Open an app.",
+      "support": "A shortcut to your apps.",
+      "chapter": "LAUNCHER",
+      "end": 69.37116411572265,
+      "index": 23
+    },
+    {
+      "crop": [
+        0,
+        0,
+        1440,
+        900
+      ],
+      "name": "launcher-actions",
+      "start": 69.37116411572265,
+      "title": "Or run an action",
+      "caption": "Or run an action.",
+      "support": "Commands from the same place.",
+      "chapter": "ACTIONS",
+      "end": 71.77601793652343,
+      "index": 24
+    },
+    {
+      "crop": [
+        300,
+        0,
+        840,
+        380
+      ],
+      "name": "dictation",
+      "start": 71.77601793652343,
+      "title": "Hold, speak, release",
+      "caption": "Hold. Speak. Release.",
+      "support": "Dictation preview \u00b7 setup required.",
+      "chapter": "VOICE",
+      "end": 74.50681713467407,
+      "index": 25
+    },
+    {
+      "crop": [
+        390,
+        310,
+        660,
+        270
+      ],
+      "name": "water",
+      "start": 74.50681713467407,
+      "title": "A small water break",
+      "caption": "A small water break.",
+      "support": "A pause between tasks.",
+      "chapter": "EVERYDAY",
+      "end": 77.24166600000001,
+      "index": 26
+    },
+    {
+      "name": "outro",
+      "start": 77.24166600000001,
+      "caption": "Zera v2. Close at hand.",
+      "support": "Your agents, files, focus and day.",
+      "chapter": "NATIVE MAC COMPANION",
+      "crop": [
+        280,
+        0,
+        880,
+        674
+      ],
+      "end": 80.03333333333333,
+      "index": 27
+    }
+  ]
+}
