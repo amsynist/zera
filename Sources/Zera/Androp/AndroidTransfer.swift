@@ -58,18 +58,22 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
     static let shared = AndroidTransfer()
     private(set) var transfer: PhoneTransferState? { didSet { onTransferChange?(transfer) } }
     var onTransferChange: ((PhoneTransferState?) -> Void)?
-    private(set) var status = "Starting receiver…"
+    static let changed = Notification.Name("ZeraAndroidTransferChanged")
+    private(set) var status = "Receiving is off"
     private(set) var phoneConnected = false
     let pairingCode: String
     var onStatusChange: (() -> Void)?
     private var server: WebSocketServer?
     private var hideWork: DispatchWorkItem?
     private var displayObserver: NSObjectProtocol?
-    private let defaults = UserDefaults.standard
-    var enabled: Bool { defaults.object(forKey: "zera.androp.enabled") as? Bool ?? true }
+    private let defaults: UserDefaults
+    private(set) var isRunning = false
+    var enabled: Bool { defaults.object(forKey: "zera.androp.enabled") as? Bool ?? false }
 
-    override init() {
-        let d = UserDefaults.standard
+    override convenience init() { self.init(defaults: .standard) }
+
+    init(defaults d: UserDefaults) {
+        defaults = d
         let existing = d.string(forKey: "zera.androp.pairingCode")
             ?? d.persistentDomain(forName: "com.androp.mac")?["pairingCode"] as? String
         pairingCode = existing.flatMap { $0.range(of: "^[0-9]{6}$", options: .regularExpression) == nil ? nil : $0 }
@@ -80,6 +84,8 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
 
     func start() {
         guard enabled, server == nil else { return }
+        isRunning = true
+        status = "Starting receiver…"
         let geometry = NotchGeometry.detect()
         // The card follows the phone swipe across the desktop, then drops into the notch island.
         OverlayState.shared.showsFileCards = true
@@ -98,7 +104,8 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
     }
 
     func stop() {
-        hideWork?.cancel()
+        isRunning = false
+        hideWork?.cancel(); hideWork = nil
         server?.delegate = nil
         server?.stop()
         server = nil
@@ -108,7 +115,12 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
         OverlayWindowController.shared.shutdown()
         phoneConnected = false
         status = "Receiving is off"
+        statusChanged()
+    }
+
+    private func statusChanged() {
         onStatusChange?()
+        NotificationCenter.default.post(name: Self.changed, object: self)
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -138,12 +150,21 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
     func reveal() {
         if let url = transfer?.url { NSWorkspace.shared.activateFileViewerSelecting([url]) }
     }
-    func serverDidStart(port: UInt16) { status = "Ready · local Wi-Fi / hotspot"; onStatusChange?() }
-    func serverDidStop() { status = "Receiver unavailable · quit standalone Androp, then toggle receiving"; onStatusChange?() }
-    func clientConnected(endpoint: String) { phoneConnected = true; onStatusChange?() }
-    func clientDisconnected(endpoint: String) { phoneConnected = false; onStatusChange?() }
+    func serverDidStart(port: UInt16) {
+        guard isRunning else { return }
+        status = "Ready · local Wi-Fi / hotspot"; statusChanged() }
+    func serverDidStop() {
+        guard isRunning else { return }
+        status = "Receiver unavailable · quit standalone Androp, then toggle receiving"; statusChanged() }
+    func clientConnected(endpoint: String) {
+        guard isRunning else { return }
+        phoneConnected = true; statusChanged() }
+    func clientDisconnected(endpoint: String) {
+        guard isRunning else { return }
+        phoneConnected = false; statusChanged() }
 
     func didReceiveDragEnter(event: DragEnterEvent) {
+        guard isRunning else { return }
         // A repeated ENTER (the phone caught the item) brings its real name and type.
         var receipt = transfer?.id == event.id ? transfer! : PhoneTransferState(id: event.id, name: event.name)
         let isNew = transfer?.id != event.id
@@ -164,7 +185,7 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
         previews.async { [weak self] in
             let image = Self.image(base64: event.thumbnail)
             DispatchQueue.main.async {
-                guard let self, let image, self.transfer?.id == event.id else { return }
+                guard let self, self.isRunning, let image, self.transfer?.id == event.id else { return }
                 self.transfer?.preview = image
             }
         }
@@ -182,9 +203,11 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
         return NSImage(cgImage: image, size: .zero)
     }
     func didReceiveDragUpdate(event: DragUpdateEvent) {
+        guard isRunning else { return }
         OverlayWindowController.shared.handleDragUpdate(event: event)
     }
     func didReceiveDragRelease(event: DragReleaseEvent) {
+        guard isRunning else { return }
         guard transfer?.id == event.id else { return }
         OverlayWindowController.shared.handleDragRelease(event: event)
         if event.action == .cancel {
@@ -195,10 +218,12 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
         }
     }
     func didReceiveProgress(id: String, received: Int64, total: Int64?) {
+        guard isRunning else { return }
         transfer?.update(id: id, received: received, total: total)
         OverlayWindowController.shared.updateProgress(id: id, received: received, total: total)
     }
     func didSaveFile(id: String, url: URL?, error: String?) {
+        guard isRunning else { return }
         guard transfer?.id == id, transfer?.phase == .receiving else { return }
         transfer?.finish(id: id, url: url, error: error)
         if let url {
@@ -212,7 +237,7 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
 
     /// UI-only preview: never fabricates a successful file receipt or writes a file.
     func preview() {
-        guard transfer == nil else { return }
+        guard isRunning, transfer == nil else { return }
         let id = UUID().uuidString, size: Int64 = 104857600
         didReceiveDragEnter(event: DragEnterEvent(id: id, name: "A little closer.heic", mimeType: "image/heic",
                                                   thumbnail: Self.sampleThumbnail(), edge: .right))

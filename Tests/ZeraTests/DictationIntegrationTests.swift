@@ -48,6 +48,9 @@ final class DictationIntegrationTests: XCTestCase {
             let element = try XCTUnwrap(field, "fixture field must be exposed by AX")
             let target = try XCTUnwrap(DictationInsertionTarget.capture(), "editable native/web field must be captured")
             let originalClipboard = clipboardFingerprint()
+            XCTAssertEqual(target.insert("Must wait for release", allowPaste: false), .unavailable,
+                           "external fields must not rely on an acknowledged-but-ignored AX live write")
+            XCTAssertEqual(attribute(element, kAXValueAttribute) as? String, "")
             let result = target.insert("Synthetic Zera dictation.")
             XCTAssertTrue(result == .inserted || result == .sent)
             try await Task.sleep(nanoseconds: 700_000_000)

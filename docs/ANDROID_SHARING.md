@@ -1,6 +1,6 @@
 # Android sharing inside Zera
 
-Zera owns the native Androp v3 receiver in its process; the separate Androp Mac app is unnecessary. Keep the Android app installed. Use Zera menu → Android sharing to enable receiving, copy the six-digit pairing code, preview arrival, or open the inbox. When possible, the old Androp Mac pairing code is retained. Quit standalone Androp before enabling Zera's receiver: only one app can own port 8989.
+Zera owns the native Androp v3 receiver in its process; the separate Androp Mac app is unnecessary. Keep the Android app installed. Use Zera menu → Extras → Android sharing to enable receiving, copy the six-digit pairing code, preview arrival, or open the inbox. When possible, the old Androp Mac pairing code is retained. Quit standalone Androp before enabling Zera's receiver: only one app can own port 8989.
 
 The phone and Mac need a shared local Wi-Fi or phone-hotspot connection. There is no internet relay and no Bluetooth transport. Traffic uses paired but unencrypted local WebSockets; trusted LAN only.
 
@@ -11,3 +11,9 @@ Originals save in Downloads/Androp with safe collision-free names, incremental S
 AndropKit is a self-contained source snapshot in Packages/AndropKit, exported from the adjacent Androp project with tools/integrate_zera.py; Zera builds without that checkout. Update the snapshot when changing the protocol/core; do not maintain divergent copies. Existing standalone Androp remains available for users without Zera.
 
 Validation: `swift test --package-path Packages/AndropKit` and `swift test --filter AndroidTransferTests`. `ZERA_ANDROP_PORT=18989` plus `ANDROP_INBOX=/private/tmp/test-inbox` isolates a real receiver. `ZERA_ANDROP_PREVIEW=1` holds a UI-only preview for review; it never writes or claims a saved file. The opt-in `ZERA_TEST_ANDROID_INBOX=/private/tmp/zera-native-host-smoke swift test --filter AndroidTransferTests` exercises a real 100 MiB stream through the host and Shelf. Add `ZERA_TEST_ANDROID_RENDER=/absolute/receipt.png` to render the actual island during the transfer.
+
+## Optional receiver lifecycle
+
+Android sharing is off by default on a fresh install. Settings → Extras and the Extras menu use the same persisted enable switch; existing explicit choices and pairing codes remain intact. Off means no receiver listener, Bonjour service, connected phone sessions, transfer timeouts or overlay window. Disabling cancels the network session immediately, aborts partial streams and drains already queued file cleanup; stale callbacks cannot reopen the receipt or add files to Shelf. A file already fully verified and committed before shutdown remains saved. Turning receiving off does not remove earlier originals or reset pairing.
+
+This closes Zera’s sharing endpoint while disabled; it is not a general protection against all attacks on the Mac. When enabled, paired LAN traffic is still unencrypted.

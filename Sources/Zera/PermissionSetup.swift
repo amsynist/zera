@@ -10,7 +10,7 @@ enum PermissionAccess {
         authorized ? .allowed : (determined ? .denied : .undecided)
     }
     static var screenNeeded: Bool {
-        MainActor.assumeIsolated { WindowArrangementService.shared.settings.visualTransitions == true }
+        MainActor.assumeIsolated { WindowArrangementService.shared.enabled && WindowArrangementService.shared.settings.visualTransitions == true }
     }
     static func openPrivacy(_ pane: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") { NSWorkspace.shared.open(url) }
@@ -90,7 +90,7 @@ final class PermissionSetupView: NSView {
         case .screen:
             title.stringValue = "Screen Recording"
             detail.stringValue = "Optional · used only for window image transitions. Native window positioning works without it. Captures stay in memory."
-            status.stringValue = CGPreflightScreenCaptureAccess() ? "Allowed for this process" : (PermissionAccess.screenNeeded ? "Not allowed · macOS may require a restart after granting access" : "Not needed · visual transitions are off")
+            status.stringValue = CGPreflightScreenCaptureAccess() ? "Allowed for this process" : (PermissionAccess.screenNeeded ? "Not allowed · macOS may require a restart after granting access" : "Not needed · window visual transitions are inactive")
             actionButton.setTitleText("Open Screen Recording settings")
         case .speech:
             title.stringValue = "Microphone & speech"

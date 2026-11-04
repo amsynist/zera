@@ -64,3 +64,7 @@ RELEASE with `action: CANCEL` and no data cancels a pending gesture or active st
 For existing v2 clients only, RELEASE may still carry `fullData` base64. That **legacy message path** remains capped at 8 MiB decoded and 12 MiB/frame; it is not used by current native apps, Python simulator or browser lab. v1 clients lacking HELLO remain unsupported.
 
 Default inbox: `~/Downloads/Androp`. `ANDROP_INBOX` selects an isolated test directory. `-listenPort 18989` selects a separate test listener without affecting the production port. Media auto-open is opt-in. Menu preview saves no file.
+
+## Receiver opt-in lifecycle
+
+The Mac host creates the listener and advertises `_androp._tcp` only after receiving is enabled. Stop cancels listener and peer connections, invalidates the session generation, cancels authentication/transfer deadlines and aborts partial streams. Delegate delivery and file-queue completions from an older session cannot affect a subsequent session. Pending cleanup is drained asynchronously; no protocol message, port, pairing-code format or v2/v3 limit changes are introduced.

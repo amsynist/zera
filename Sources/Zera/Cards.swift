@@ -930,6 +930,7 @@ final class SettingsCard: CardBase, CardContent {
         case diagnostics                        // detail of Claude
         case codex                              // appended to preserve existing pane IDs
         case permissions
+        case extras
         var title: String {
             switch self {
             case .general: return "General"
@@ -947,6 +948,7 @@ final class SettingsCard: CardBase, CardContent {
             case .diagnostics: return "Claude diagnostics"
             case .codex: return "Codex"
             case .permissions: return "Permissions & Diagnostics"
+            case .extras: return "Extras"
             }
         }
         var symbol: String {
@@ -966,12 +968,13 @@ final class SettingsCard: CardBase, CardContent {
             case .diagnostics: return "stethoscope"
             case .codex: return "terminal"
             case .permissions: return "hand.raised"
+            case .extras: return "shippingbox"
             }
         }
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
-        var isDetail: Bool { rawValue >= Pane.claude.rawValue && self != .shelf && self != .permissions }
-        static let nav: [Pane] = [.general, .appearance, .notch, .sounds, .clipboard, .shelf, .integrations, .permissions, .shortcuts, .about]
+        var isDetail: Bool { rawValue >= Pane.claude.rawValue && self != .shelf && self != .permissions && self != .extras }
+        static let nav: [Pane] = [.general, .appearance, .notch, .sounds, .clipboard, .shelf, .integrations, .extras, .permissions, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
@@ -1044,7 +1047,7 @@ final class SettingsCard: CardBase, CardContent {
         paneScroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(updateScrollHint), name: NSView.boundsDidChangeNotification, object: paneScroll.contentView)
         for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed,
-                     ClaudeActivityService.changed, ClaudeUsageService.changed, AnthropicAPIClient.configuredChanged] {
+                     ClaudeActivityService.changed, ClaudeUsageService.changed, AnthropicAPIClient.configuredChanged, AndroidTransfer.changed, WindowArrangementService.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(serviceChanged), name: name, object: nil)
         }
         NotificationCenter.default.addObserver(self, selector: #selector(codexSettingsChanged), name: CodexAgentService.changed, object: nil)
@@ -1141,7 +1144,7 @@ final class SettingsCard: CardBase, CardContent {
     private func refreshServicePane() {
         // Only panes that show a service's state need rebuilding. Claude sessions report changes
         // every second, and a rebuild would throw away whatever you're in the middle of.
-        guard [.integrations, .claude, .codex, .github, .calendar, .shelf, .diagnostics].contains(current) else { return }
+        guard [.extras, .integrations, .claude, .codex, .github, .calendar, .shelf, .diagnostics].contains(current) else { return }
         if shortcutRecorder?.isRecording == true { return }
         if let f = tokenField, f.currentEditor() != nil { return }
         if let f = apiKeyField, f.currentEditor() != nil { return }
@@ -1170,6 +1173,7 @@ final class SettingsCard: CardBase, CardContent {
         case .shelf: buildShelf(&s)
         case .diagnostics: buildDiagnostics(&s)
         case .permissions: buildPermissions(&s)
+        case .extras: buildExtras(&s)
         }
         paneHeight = max(120, s.y)
         needsLayout = true
@@ -1302,6 +1306,26 @@ final class SettingsCard: CardBase, CardContent {
     @objc private func keyboardAccessTapped() { GlobalKeys.requestListen() }
     @objc private func copyTranscriptTapped() { Dictation.shared.copyUninsertedText() }
 
+    private func buildExtras(_ s: inout Stack) {
+        hint("Optional modules. Both are off on a fresh install and run only after you enable them.", &s)
+        sectionLabel("Window Manager · Beta", &s)
+        toggleRow("Enable Window Manager", on: WindowArrangementService.shared.enabled, &s) { yes in
+            WindowArrangementService.shared.setEnabled(yes)
+        }
+        hint("Layouts, Zera workspaces and app shortcuts. Accessibility is required. Turning it off restores Zera-hidden windows and releases its shortcuts and observers.", &s)
+        buttonRow("Configure Window Manager…", style: .secondary, status: WindowArrangementService.shared.message, &s, action: #selector(openArrangementTapped))
+        sectionLabel("Android sharing", &s)
+        toggleRow("Receive from Android", on: AndroidTransfer.shared.enabled, &s) { yes in
+            AndroidTransfer.shared.setEnabled(yes)
+        }
+        hint("When off, no receiving port or Bonjour advertisement is active. Turning it off disconnects phones and cancels incoming transfers. Enabled traffic is paired but unencrypted; use trusted Wi-Fi or a hotspot.", &s)
+        buttonRow("Copy pairing code", style: .secondary, status: AndroidTransfer.shared.status, &s, action: #selector(copyExtrasPairing))
+    }
+    @objc private func copyExtrasPairing() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(AndroidTransfer.shared.pairingCode, forType: .string)
+    }
+
     private func buildGeneral(_ s: inout Stack) {
         defaultPopup = popupRow("Tap on Zera opens", items: Self.defaultChoices.map { $0?.title ?? "Nothing" },
                                 selected: Self.defaultChoices.firstIndex(of: defaultKind) ?? 0, &s, action: #selector(defaultChanged))
@@ -1346,7 +1370,6 @@ final class SettingsCard: CardBase, CardContent {
                  + "Health: once when it drops below your mark.", &s)
         }
 
-        buttonRow("Window arrangements (Beta)…", style: .secondary, status: "Optional layouts, workspaces and app shortcuts", &s, action: #selector(openArrangementTapped))
         // The app opener has no tab: Zera brings it down from the notch when you press its shortcut.
         toggleRow("App opener", on: AppOpenerSettings.enabled, &s) { [weak self] on in
             AppOpenerSettings.enabled = on
@@ -2427,7 +2450,8 @@ final class SettingsCard: CardBase, CardContent {
         // v2: the island's own ✕ at notch level closes the lens.
         closeButton.isHidden = true
         var y = headerBottom
-        let navH: CGFloat = 38
+        let navRoom = max(0, bounds.height - headerBottom - Metrics.cardPad)
+        let navH = min(38, max(24, (navRoom - CGFloat(max(0, navRows.count - 1)) * Space.xs) / CGFloat(max(1, navRows.count))))
         for row in navRows {
             row.frame = NSRect(x: x, y: y, width: sidebarW, height: navH)
             y += navH + Space.xs
@@ -2443,7 +2467,7 @@ final class SettingsCard: CardBase, CardContent {
             backButton.frame = NSRect(x: px - Space.s, y: headerBottom + 2, width: bw, height: Metrics.control)
             paneTitle.frame = NSRect(x: px + bw, y: headerBottom + 4, width: pw - bw, height: 24)
         }
-        paneScroll.frame = NSRect(x: px, y: headerBottom + 40, width: pw, height: visiblePaneHeight)
+        paneScroll.frame = NSRect(x: px, y: headerBottom + 40, width: pw, height: min(visiblePaneHeight, max(0, bounds.height - headerBottom - 40 - Metrics.cardPad)))
         pane.frame = NSRect(x: 0, y: 0, width: pw, height: paneHeight)
         let hintWidth = ceil((scrollHint.stringValue as NSString).size(withAttributes: [.font: Typo.secondary]).width)
         let hintX = px + (pw - hintWidth - 18) / 2

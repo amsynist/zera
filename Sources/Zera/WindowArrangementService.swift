@@ -79,6 +79,7 @@ final class WindowArrangementService {
         if let action = pendingShortcut.take(ready: enabled && !busy) { DispatchQueue.main.async { action() } }
     }
     func startIfEnabled() {
+        guard enabled else { return }
         if access.hasRecovery, AXIsProcessTrusted() {
             let apps = appList(all: true), access = access, screens = displays.map(\.frame)
             queue.async { [weak self] in let left = access.recover(apps: apps, displays: screens); DispatchQueue.main.async { [weak self] in
@@ -104,6 +105,7 @@ final class WindowArrangementService {
         post()
     }
     func previewVisualMotion() {
+        guard enabled else { return }
         motionPreview?.cancel(); motionPreview = ArrangeVisualTransition.preview()
         motionPreview?.onClose = { [weak self] in self?.motionPreview = nil }
     }
@@ -123,6 +125,7 @@ final class WindowArrangementService {
             let access = access, apps = appList(all: true)
             queue.async { [weak self] in _ = access.restoreHidden(); let remaining = access.hasRecovery ? access.recover(apps: apps) : 0; DispatchQueue.main.async { [weak self] in
                 guard let self else { return }; self.busy = false; self.hiddenCount = remaining
+                self.windows = []; self.focused = nil; self.canUndo = false; self.undoStack.removeAll()
                 self.message = remaining == 0 ? "Window arrangements are off" : "\(remaining) windows refused restoring; use their Dock menu"
                 self.post()
             } }
@@ -200,6 +203,7 @@ final class WindowArrangementService {
         activatingPID = nil
         visualTicket = nil; visualDeadline?.cancel(); visualDeadline = nil
         visualScene?.cancel(); visualScene = nil
+        motionPreview?.cancel(); motionPreview = nil
         debounce?.cancel(); debounce = nil; resizeExit?.cancel(); resizeExit = nil; resizeMode = false
         hotkeys.removeAll(); modeKeys.removeAll()
         for token in notices { NSWorkspace.shared.notificationCenter.removeObserver(token); NotificationCenter.default.removeObserver(token) }
@@ -217,6 +221,7 @@ final class WindowArrangementService {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
     func refresh(adopt: Bool = false) {
+        guard enabled else { return }
         refreshRequests.include(nil, adopt: adopt)
         debounce?.cancel(); debounce = nil
         flushRefresh()

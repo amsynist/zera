@@ -18,6 +18,30 @@ final class ProductionReadinessTests: XCTestCase {
     }
     private func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + descendants($0) } }
 
+    func testExtrasAreDiscoverableAndDisabledManagerDoesNotScan() {
+        _ = NSApplication.shared
+        let manager = WindowArrangementService.shared
+        XCTAssertFalse(manager.enabled)
+        manager.refresh()
+        manager.previewVisualMotion()
+        XCTAssertFalse(manager.busy)
+        XCTAssertFalse(PermissionAccess.screenNeeded)
+        XCTAssertTrue(manager.currentWindows.isEmpty)
+        XCTAssertEqual(SettingsCard.Pane.permissions.rawValue, 14)
+        XCTAssertEqual(SettingsCard.Pane.extras.rawValue, 15)
+        XCTAssertFalse(SettingsCard.Pane.extras.isDetail)
+        for width: CGFloat in [720, 880] {
+            let card = SettingsCard(defaultKind: .home, showingZera: true, loginEnabled: false)
+            card.frame = NSRect(x: 0, y: 0, width: width, height: 640)
+            card.select(.extras)
+            card.layoutSubtreeIfNeeded()
+            for row in descendants(card).filter({ $0 is NavRow }) {
+                XCTAssertTrue(card.bounds.contains(card.convert(row.bounds, from: row)))
+            }
+            XCTAssertEqual(descendants(card).compactMap { $0 as? Toggle }.count, 2)
+        }
+    }
+
     func testRememberedDestinationsSurviveRelaunchAndIgnoreTransientScreens() throws {
         let suite = "zera.navigation.tests.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

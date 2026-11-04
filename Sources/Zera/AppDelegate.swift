@@ -162,30 +162,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Welcome tour…", action: #selector(showWelcome), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Quit Zera", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        menu.insertItem(androidMenuItem(), at: menu.numberOfItems - 1)
+        let extras = NSMenuItem(title: "Extras", action: nil, keyEquivalent: "")
+        extras.tag = 8988
+        let extrasMenu = NSMenu(title: "Extras")
+        extrasMenu.addItem(withTitle: "Manage Extras…", action: #selector(showExtras), keyEquivalent: "").target = self
+        extrasMenu.addItem(withTitle: "Window Manager (Beta)…", action: #selector(showArrange), keyEquivalent: "").target = self
+        extrasMenu.addItem(androidMenuItem())
+        extras.submenu = extrasMenu
+        menu.insertItem(extras, at: menu.numberOfItems - 1)
         statusItem.menu = menu
     }
 
     private func androidMenuItem() -> NSMenuItem {
         let root = NSMenuItem(title: "Android sharing", action: nil, keyEquivalent: "")
         let menu = NSMenu()
+        menu.autoenablesItems = false
         let status = NSMenuItem(title: AndroidTransfer.shared.status, action: nil, keyEquivalent: "")
-        status.tag = 89890
+        status.tag = 89890; status.isEnabled = false
         menu.addItem(status)
         let toggle = menu.addItem(withTitle: "Receive from Android", action: #selector(toggleAndroidSharing), keyEquivalent: "")
         toggle.target = self; toggle.tag = 89891
         menu.addItem(withTitle: "Copy pairing code · \(AndroidTransfer.shared.pairingCode)", action: #selector(copyAndroidPairingCode), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Open received files", action: #selector(openAndroidInbox), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Preview arrival", action: #selector(previewAndroidArrival), keyEquivalent: "").target = self
+        let preview = menu.addItem(withTitle: "Preview arrival", action: #selector(previewAndroidArrival), keyEquivalent: "")
+        preview.target = self; preview.tag = 89892
         root.submenu = menu
         root.tag = 8989
         return root
     }
     private func refreshAndroidMenu() {
         let service = AndroidTransfer.shared
-        let menu = statusItem?.menu?.item(withTag: 8989)?.submenu
+        let menu = statusItem?.menu?.item(withTag: 8988)?.submenu?.item(withTag: 8989)?.submenu
         menu?.item(withTag: 89890)?.title = service.phoneConnected ? "Phone connected · \(service.status)" : service.status
         menu?.item(withTag: 89891)?.state = service.enabled ? .on : .off
+        menu?.item(withTag: 89892)?.isEnabled = service.isRunning
     }
     @objc private func toggleAndroidSharing() {
         AndroidTransfer.shared.setEnabled(!AndroidTransfer.shared.enabled)
@@ -251,6 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return true
     }
 
+    @objc private func showExtras() { controller.showExtras() }
     @objc private func showArrange() { controller.show(.arrange) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let manager = WindowArrangementService.shared

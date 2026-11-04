@@ -170,9 +170,9 @@ final class WindowArrangementView: NSView, @preconcurrency CardContent {
             footer.addSubview(rotate)
             rotate.frame = CGRect(x: 100, y: 0, width: 88, height: Metrics.control)
             let sample = button("Preview motion") { [weak self] in self?.service.previewVisualMotion() }
-            sample.isEnabled = !service.busy
+            sample.isEnabled = service.enabled && !service.busy
             footer.addSubview(sample); sample.frame = CGRect(x: 200, y: 0, width: 152, height: Metrics.control)
-            let refresh = button("Refresh") { [weak self] in self?.service.refresh() }; refresh.isEnabled = !service.busy
+            let refresh = button("Refresh") { [weak self] in self?.service.refresh() }; refresh.isEnabled = service.enabled && !service.busy
             footer.addSubview(refresh)
             refresh.frame = CGRect(x: width - 100, y: 0, width: 100, height: Metrics.control)
             if count > service.settings.capacity {
