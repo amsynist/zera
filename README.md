@@ -29,17 +29,25 @@ The notch opens into one continuous Obsidian island, with a living companion and
 
 Follow current work, requests, tools and results from the Agents screen. Managed sessions can accept replies and approvals; observed desktop sessions are read-only activity. Connect through your own installed tools and logins. Claude plan usage appears when you enable tracking; it is a plan reading, not a made-up task percentage.
 
+### Window manager. Make room for your work.
+
+Arrange native app windows in columns, rows, a grid or a main-window layout. Group them into Zera workspaces, choose which apps participate, move between displays and restore a previous arrangement with Undo. These are Zera window groups; they do not create macOS Spaces.
+
+Window arrangements are opt-in and need **Accessibility** access. Optional visual transitions also need Screen Recording. Configure the app scope and shortcuts before enabling: Zera’s matching bindings replace app shortcuts while this feature is active. [Window-manager guide](docs/WINDOW_MANAGER.md).
+
+<img src="site/assets/v2/screens/window-manager.webp" alt="Three disposable native demo windows arranged by Zera’s production layout engine" width="100%">
+
 ### Voice, focus and everyday tools
 
 Hold right **⌥ or ⇧** to dictate with the configured provider. Optional **Murmur** uses an on-device Whisper model after its one-time download. The first use asks for the relevant microphone/speech permissions. Tasks, the focus orb, commit-based timesheets, reminders, water breaks, clipboard history, now playing, weather and optional window layouts round out the day. Some integrations require separate access or setup.
 
 ## See the current app
 
-[Watch the sharing-only film](site/assets/v2/sharing.mp4) · [Watch the complete screen walkthrough](site/assets/v2/walkthrough.mp4) · [Get the Mac wallpaper](site/assets/v2/wallpaper/zera-tidal-5k.jpg)
+[Watch the sharing-only film](site/assets/v2/sharing.mp4) · [Watch the captioned native walkthrough](site/assets/v2/walkthrough.mp4) · [Get the Mac wallpaper](site/assets/v2/wallpaper/zera-tidal-5k.jpg)
 
 <table><tr><td><img src="site/assets/v2/screens/agents.webp" alt="Native Claude and Codex overview with fictional demo tasks"></td><td><img src="site/assets/v2/screens/sharing.webp" alt="The existing notch receives an original document with themed progress"></td></tr><tr><td><img src="site/assets/v2/screens/home.webp" alt="Zera v2 Home and Mac vitals"></td><td><img src="site/assets/v2/screens/shelf.webp" alt="The redesigned Shelf"></td></tr></table>
 
-These are fresh captures from the v2 Swift UI with fictional demo data. The walkthrough covers every primary screen; the short film shows the phone-to-Mac flow. [Media sources and recording steps](docs/MEDIA.md).
+These are fresh captures from the v2 Swift UI with fictional demo data. The 80-second walkthrough has kinetic captions, smooth focus moves and a real native window-layout demo. It covers every primary screen; the separate short film shows the phone-to-Mac flow. [Media sources and recording steps](docs/MEDIA.md).
 
 ## Install
 

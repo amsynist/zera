@@ -47,9 +47,84 @@
     "capture": "Both actual native recordings run for the full film; generated photographic original, animated native fixture wallpaper, no personal desktop capture"
   },
   "walkthrough": {
-    "duration_seconds": 62.42,
+    "duration_seconds": 80.03333333333333,
     "screens": 19,
-    "data": "Fictional fixture tasks, PRs, files, clipboard and vitals"
+    "data": "Fictional fixture tasks, PRs, files, clipboard and vitals",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "video_frames": 4802,
+    "caption_chapters": 27,
+    "burned_in_kinetic_captions": true,
+    "caption_sidecars": [
+      "walkthrough.srt",
+      "walkthrough.vtt"
+    ],
+    "window_manager_demonstration": {
+      "native_windows": 3,
+      "engine": "Production ArrangeLayout and ArrangeWindowAccess; actual Accessibility frame writes",
+      "states": [
+        "overlapping",
+        "main-left",
+        "columns",
+        "restored-main-left"
+      ],
+      "invocation": "Direct native engine fixture; not a recording of clicking every Arrange control",
+      "isolated": true,
+      "settled_frames_verified": true
+    },
+    "water_demonstration": "Separately recorded native view; fixture ticks the animation when the capture window is occluded",
+    "source_speedup": false,
+    "optical_flow": false,
+    "source_summary": {
+      "tour": {
+        "duration": 63.858333,
+        "frames": 3681,
+        "capture": "ScreenCaptureKit exact fixture window only",
+        "source_frames": 3681,
+        "average_actual_frames_per_second": 57.64322097164672,
+        "median_frame_interval_seconds": 0.016666999999999987,
+        "max_frame_interval_seconds": 0.031667
+      },
+      "windows": {
+        "duration": 13.383333,
+        "frames": 763,
+        "capture": "ScreenCaptureKit native wallpaper and new disposable fixture process only",
+        "engine": "Production ArrangeWindowAccess and ArrangeLayout; real AX writes verified",
+        "source_frames": 763,
+        "average_actual_frames_per_second": 57.01120939006748,
+        "median_frame_interval_seconds": 0.016666999999999987,
+        "max_frame_interval_seconds": 0.15
+      },
+      "source_speed": 1,
+      "optical_flow": false,
+      "output_duration": 80.03333333333333,
+      "scenes": 27,
+      "water": {
+        "duration": 3.701667,
+        "source_frames": 210,
+        "average_actual_frames_per_second": 56.731197052571176,
+        "median_frame_interval_seconds": 0.016666999999999987,
+        "max_frame_interval_seconds": 0.068333,
+        "capture": "Same native fixture window; animation explicitly ticked while occluded; replaced blank water scene without changing chapter timing"
+      }
+    },
+    "sha256": "4db0d7368d43174f1c4cb8786fa0f402e211c3003becf7dcfd1b30d710159b9d",
+    "bytes": 20319714,
+    "poster_source_seconds": 45.8,
+    "poster_baked_frames": [
+      0
+    ],
+    "checks": {
+      "errors": 0,
+      "warnings": 0,
+      "contrast_passed": 51,
+      "caption_cues": 27,
+      "full_decode": true,
+      "faststart": true,
+      "audio_peak_dbfs": -11.2,
+      "audio_mean_dbfs": -30.4
+    }
   },
   "apk": {
     "name": "Androp.apk",
