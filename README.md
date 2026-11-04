@@ -2,7 +2,7 @@
 
 <h1 align="center">Zera v2</h1>
 <p align="center"><b>Your Mac companion, right in the notch.</b><br>Agents, files, clipboard, tasks and your day — one hover away.</p>
-<p align="center"><a href="https://github.com/amsynist/zera/releases/latest">Download for Mac</a> · <a href="Androp.apk?raw=1">Download Androp for Android</a> · <a href="https://zera.pravincodes.in/">Website</a> · <a href="site/assets/v2/sharing.mp4">Watch the sharing film</a></p>
+<p align="center"><a href="https://github.com/amsynist/zera/releases/latest">Download for Mac</a> · <a href="Androp.apk?raw=1">Download Androp for Android</a> · <a href="https://zera.pravincodes.in/">Website</a> · <a href="https://cdn.jsdelivr.net/gh/amsynist/zera@assets/sharing.mp4">Watch the sharing film</a></p>
 
 ## A companion in your notch
 
@@ -19,9 +19,7 @@ Window Manager is an optional **Beta** addition. The notch companion and its eve
 
 ### Android sharing. One picture, across two screens.
 
-[![Watch Android-to-Mac sharing: a photo glides from Androp onto the Mac](site/assets/v2/sharing-poster.jpg)](https://zera.pravincodes.in/assets/v2/sharing.mp4)
-
-**[▶ Watch the 20-second Android sharing video](https://zera.pravincodes.in/assets/v2/sharing.mp4)** · Real Androp and Mac photo/file arrival over local Wi-Fi.
+[▶ Play Android sharing video · 20 seconds](https://cdn.jsdelivr.net/gh/amsynist/zera@assets/sharing.mp4)
 
 Open a photo in **Androp**, glide it off the phone’s edge, and it arrives from the matching edge of your Mac. Original files move directly over **local Wi-Fi or a phone hotspot**. **No internet connection or cloud upload is required.**
 
@@ -58,7 +56,7 @@ Configure app scope and shortcuts before enabling: Zera’s matching bindings re
 
 ## See the current app
 
-[Watch the sharing-only film](site/assets/v2/sharing.mp4) · [Watch the captioned native walkthrough](site/assets/v2/walkthrough.mp4) · [Get the Mac wallpaper](site/assets/v2/wallpaper/zera-tidal-5k.jpg)
+[▶ Play Android sharing · 20 seconds](https://cdn.jsdelivr.net/gh/amsynist/zera@assets/sharing.mp4) · [▶ Play the native walkthrough · 80 seconds](https://cdn.jsdelivr.net/gh/amsynist/zera@assets/walkthrough.mp4) · [Get the Mac wallpaper](site/assets/v2/wallpaper/zera-tidal-5k.jpg)
 
 <table><tr><td><img src="site/assets/v2/screens/agents.webp" alt="Native Claude and Codex overview with fictional demo tasks"></td><td><img src="site/assets/v2/screens/sharing.webp" alt="The existing notch receives an original document with themed progress"></td></tr><tr><td><img src="site/assets/v2/screens/home.webp" alt="Zera v2 Home and Mac vitals"></td><td><img src="site/assets/v2/screens/shelf.webp" alt="The redesigned Shelf"></td></tr></table>
 
