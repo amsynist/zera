@@ -306,8 +306,7 @@ final class TaskRowView: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { needsDisplay = true }
     override func mouseExited(with event: NSEvent) { needsDisplay = true }
@@ -390,7 +389,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
     /// Right of Zera in the header: time focused today.
     private let total = TaskPaint()
     private let scroll = NSScrollView()
-    private let doc = OpenerFlipped()
+    private let doc = FlippedView()
     private(set) var rows: [TaskRowView] = []
     private let footLine = TaskPaint()
     private let orbButton = TreeButton()
@@ -959,6 +958,7 @@ final class FocusCardView: NSView {
     private let paint = TaskPaint()
     private let titleLabel = NSTextField(wrappingLabelWithString: "")
     private let pauseButton = TreeButton(), doneButton = TreeButton(), nextButton = TreeButton()
+    private lazy var closeButton = IconButton(symbol: "arrow.down.right.and.arrow.up.left", label: "Collapse focus card", target: self, action: #selector(collapseCard))
     private var rows: [TaskRowView] = []
     private var pulse = false
     private let dial: CGFloat = 132
@@ -987,6 +987,7 @@ final class FocusCardView: NSView {
         nextButton.key = "⇥"
         nextButton.onClick = { [weak self] in self?.store.next() }
         [pauseButton, doneButton, nextButton].forEach(glass.addSubview)
+        glass.addSubview(closeButton)
         reload()
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -1029,6 +1030,7 @@ final class FocusCardView: NSView {
         super.layout()
         let w = glass.bounds.width
         paint.frame = glass.bounds
+        closeButton.frame = closeRect
         // The title and the two lines under it, centred on the ring.
         let tw = w - dial - 54
         let th = min(66, ceil(titleLabel.sizeThatFits(NSSize(width: tw, height: 200)).height))
@@ -1055,12 +1057,8 @@ final class FocusCardView: NSView {
 
     private func paintCard(_ r: NSRect) {
         let f = store.focus
-        let label = f == nil ? "TODAY" : (store.isRunning ? "FOCUSING" : "PAUSED")
+        let label = f == nil ? "Today" : (store.isRunning ? "Focusing" : "Paused")
         drawText(label, sectionFont, store.isRunning ? Neon.cyan : Neon.textDim, in: NSRect(x: 20, y: 18, width: 200, height: 16), kern: Typo.sectionKern)
-        let cr = closeRect.insetBy(dx: 0.5, dy: 0.5)
-        let cp = NSBezierPath(roundedRect: cr, xRadius: 8, yRadius: 8)
-        Neon.chip.setFill(); cp.fill(); Neon.chipEdge.setStroke(); cp.lineWidth = 1; cp.stroke()
-        Neon.symbol("arrow.down.right.and.arrow.up.left", in: cr, size: 10, color: Neon.glyph)
 
         let c = NSPoint(x: 18 + dial / 2, y: 44 + dial / 2)
         FocusRing.draw(center: c, outer: dial / 2 - 4, outerWidth: 5, inner: dial / 2 - 16, innerWidth: 7,
@@ -1081,7 +1079,7 @@ final class FocusCardView: NSView {
                  in: NSRect(x: x, y: ty, width: sw, height: 16))
         drawText("\(TaskTime.short(store.focusedToday)) focused", .systemFont(ofSize: 12), Neon.textDim, in: NSRect(x: x, y: ty + 20, width: sw, height: 16))
 
-        drawText("UP NEXT", sectionFont, Neon.textDim, in: NSRect(x: 20, y: upNextTop, width: 120, height: 16), kern: Typo.sectionKern)
+        drawText("Up next", sectionFont, Neon.textDim, in: NSRect(x: 20, y: upNextTop, width: 120, height: 16), kern: Typo.sectionKern)
         if rows.isEmpty {
             let hint = shortcutLabel.map { "Nothing else today. \($0) adds one." } ?? "Nothing else today."
             drawText(hint, Typo.body, Neon.textDim, in: NSRect(x: 20, y: upNextTop + 30, width: r.width - 40, height: 18))
@@ -1097,9 +1095,7 @@ final class FocusCardView: NSView {
         onFinished?(done)
     }
 
-    override func mouseUp(with event: NSEvent) {
-        if closeRect.contains(glass.convert(event.locationInWindow, from: nil)) { onClose?() }
-    }
+    @objc private func collapseCard() { onClose?() }
 
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
@@ -1207,8 +1203,7 @@ final class QuickAddView: NSView, NSTextFieldDelegate {
 // MARK: - Export
 
 /// A choice in the export window: a range chip or a format tile.
-final class TaskChoice: NSView {
-    var title: String
+final class TaskChoice: NSButton {
     var subtitle: String?
     var selected = false { didSet { needsDisplay = true; setAccessibilityValue(selected ? "selected" : "") } }
     /// False for segments sitting in a track whose sliding indicator shows the choice.
@@ -1216,12 +1211,16 @@ final class TaskChoice: NSView {
     var onClick: (() -> Void)?
     private var hovered = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     init(_ title: String, _ subtitle: String? = nil) {
-        self.title = title
         self.subtitle = subtitle
         super.init(frame: .zero)
+        self.title = title
+        isBordered = false
+        setButtonType(.momentaryChange)
+        target = self; action = #selector(activate)
         setAccessibilityElement(true)
         setAccessibilityRole(.radioButton)
         setAccessibilityLabel(title)
@@ -1229,6 +1228,7 @@ final class TaskChoice: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {
+        defer { drawControlFocus() }
         // On its own (Times / Repos) a choice is a filled pill chip; in a track, a flat segment.
         let radius: CGFloat = subtitle == nil ? (drawsSelection ? bounds.height / 2 : Radius.m - 1) : Radius.m
         let p = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
@@ -1252,17 +1252,17 @@ final class TaskChoice: NSView {
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
-    // Segments pick on press, like every segmented control; tiles on release.
-    override func mouseDown(with event: NSEvent) { if subtitle == nil { onClick?() } }
-    override func mouseUp(with event: NSEvent) {
-        if subtitle != nil, bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+    @objc private func activate() { onClick?() }
+    override func accessibilityPerformPress() -> Bool {
+        guard isEnabled else { return false }
+        window?.makeFirstResponder(self)
+        performClick(nil)
+        return true
     }
-    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
@@ -1736,9 +1736,8 @@ enum TaskMotion {
 // MARK: - Projects
 
 /// One project in the bar: a capsule with its name (a dot marks the default).
-final class ProjectChip: NSView {
+final class ProjectChip: NSButton {
     let name: String?            // nil: All
-    var title: String { didSet { needsDisplay = true } }
     var selected = false { didSet { needsDisplay = true; setAccessibilityValue(selected ? "selected" : "") } }
     var isDefault = false { didSet { needsDisplay = true } }
     /// Linked to a code folder: a small branch shows.
@@ -1754,12 +1753,16 @@ final class ProjectChip: NSView {
     private var hovered = false { didSet { needsDisplay = true } }
     private static let font = Typo.chip
     override var isFlipped: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     init(name: String?, title: String) {
         self.name = name
-        self.title = title
         super.init(frame: .zero)
+        self.title = title
+        isBordered = false
+        setButtonType(.momentaryChange)
+        target = self; action = #selector(activate)
         setAccessibilityElement(true)
         setAccessibilityRole(.radioButton)
         setAccessibilityLabel(title)
@@ -1771,6 +1774,7 @@ final class ProjectChip: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        defer { drawControlFocus() }
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let p = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
         // v2 chips are filled pills with no outline; the selected look is the accent wash.
@@ -1808,15 +1812,18 @@ final class ProjectChip: NSView {
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    @objc private func activate() { onClick?() }
     override func rightMouseDown(with event: NSEvent) { onMenu?(event) }
-    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
+    override func accessibilityPerformPress() -> Bool {
+        guard isEnabled else { return false }
+        window?.makeFirstResponder(self)
+        performClick(nil)
+        return true
+    }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
 
@@ -1855,7 +1862,7 @@ final class ProjectBar: NSView, NSTextFieldDelegate {
     var onSync: ((String) -> Void)?
     var onRebuild: ((String, Int) -> Void)?
     private let scroll = NSScrollView()
-    private let doc = OpenerFlipped()
+    private let doc = FlippedView()
     private var chips: [ProjectChip] = []
     private let editBox = TaskPaint()
     private let editField = TaskField(placeholder: "Project name", size: 12.5)
@@ -2164,8 +2171,7 @@ final class TimesheetDayView: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { needsDisplay = true }
     override func mouseExited(with event: NSEvent) { needsDisplay = true }

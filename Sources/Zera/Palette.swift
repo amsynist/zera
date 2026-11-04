@@ -16,8 +16,8 @@ enum Space {
 
 enum Radius {
     static let s: CGFloat = 6      // chips, badges
-    static let m: CGFloat = 12     // buttons, fields, tabs
-    static let l: CGFloat = 16     // rows, tiles
+    static let m: CGFloat = 8      // buttons, fields, tabs
+    static let l: CGFloat = 12     // rows, tiles
     static let card: CGFloat = 18  // the card itself
 }
 
@@ -159,29 +159,29 @@ enum Typo {
     static let control = NSFont.systemFont(ofSize: 13, weight: .medium)
     /// Dashboard readings: stable digit widths, with the same quiet weight as controls.
     static let metricValue = NSFont.monospacedDigitSystemFont(ofSize: 24, weight: .medium)
-    static let title = NSFont.systemFont(ofSize: 15, weight: .bold)
+    static let title = NSFont.systemFont(ofSize: 15, weight: .medium)
     static let body = NSFont.systemFont(ofSize: 12.5, weight: .regular)
     static let bodyMedium = NSFont.systemFont(ofSize: 12.5, weight: .medium)
     static let bodyStrong = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     static let secondary = NSFont.systemFont(ofSize: 11.5, weight: .regular)
     static let caption = NSFont.systemFont(ofSize: 11, weight: .regular)
     static let button = NSFont.systemFont(ofSize: 13, weight: .medium)
-    static let badge = NSFont.systemFont(ofSize: 10.5, weight: .bold)
+    static let badge = NSFont.systemFont(ofSize: 11, weight: .medium)
     static let nav = NSFont.systemFont(ofSize: 12, weight: .medium)
     static let mono = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .medium)
-    /// Compact uppercase branch labels, shared by both opener styles.
+    /// Compact branch labels, shared by both opener styles.
     static let branchLabel = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold)
-    static let branchKern: CGFloat = 1.1
+    static let branchKern: CGFloat = 0
 
     // v2: the seven roles every screen shares.
-    /// v2: the lens title — large and tight, like the design's display face.
-    static let screenTitle = NSFont.systemFont(ofSize: 25, weight: .bold)
+    /// The screen title uses size and space, rather than a heavier weight, for hierarchy.
+    static let screenTitle = NSFont.systemFont(ofSize: 24, weight: .medium)
     static let screenSubtitle = NSFont.systemFont(ofSize: 13, weight: .regular)
     /// The line under a banner's headline.
     static let bannerDetail = NSFont.systemFont(ofSize: 13, weight: .regular)
-    /// Upper-cased with `sectionKern`.
-    static let sectionLabel = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
-    static let sectionKern: CGFloat = 0.8
+    /// Sentence-case section labels share one weight and baseline.
+    static let sectionLabel = NSFont.systemFont(ofSize: 12, weight: .medium)
+    static let sectionKern: CGFloat = 0
     static let rowTitle = NSFont.systemFont(ofSize: 14, weight: .medium)
     static let rowTitleStrong = NSFont.systemFont(ofSize: 14, weight: .semibold)
     static let meta = NSFont.systemFont(ofSize: 12.5, weight: .regular)
@@ -189,83 +189,70 @@ enum Typo {
     static let chip = NSFont.systemFont(ofSize: 13, weight: .medium)
     static let count = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
 
-    /// A section label ("NEEDS YOU", "TO DO · 4"): upper-cased, quiet, slightly spaced.
+    /// Preserve the supplied casing, including product names and acronyms.
     static func sectionText(_ text: String, color: NSColor? = nil) -> NSAttributedString {
-        NSAttributedString(string: text.uppercased(), attributes: [
+        NSAttributedString(string: text, attributes: [
             .font: sectionLabel, .foregroundColor: color ?? Pal.textTertiary, .kern: sectionKern])
     }
 }
 
-/// Light / dark / follow-the-system, chosen in Settings → Appearance.
-enum Appearance: Int, CaseIterable {
-    case system, light, dark
-    var title: String {
-        switch self {
-        case .system: return "System"
-        case .light: return "Light"
-        case .dark: return "Dark"
-        }
-    }
-}
-
-/// Semantic colours, from the chosen theme (Settings → Appearance; see `ThemeStore`). The notch
-/// island is always dark. (The light values remain for the icon tool and older renders.)
-/// Surfaces are opaque so stacking never washes out.
+/// Semantic colours, from the chosen theme (Settings → Appearance; see `ThemeStore`). Zera only
+/// has a dark look — every screen lives in the black notch island — so each colour forwards to
+/// the theme. Surfaces are opaque so stacking never washes out.
 struct Palette {
-    let isDark: Bool
     private var t: ZeraTheme { ThemeStore.shared.current }
 
     // Card chrome — the theme's glass, top to bottom.
-    var cardTop: NSColor { isDark ? t.glassTop.withAlphaComponent(0.97) : rgb(0.955, 0.950, 0.995, 0.97) }
-    var cardBottom: NSColor { isDark ? t.glassBottom.withAlphaComponent(0.97) : rgb(0.925, 0.915, 0.985, 0.98) }
+    var cardTop: NSColor { t.glassTop.withAlphaComponent(0.97) }
+    var cardBottom: NSColor { t.glassBottom.withAlphaComponent(0.97) }
     /// Hairline edges: soft, so rows and fields read as glass, not as outlines.
-    var border: NSColor { isDark ? t.border : rgb(0.36, 0.26, 0.70, 0.14) }
-    var blurMaterial: NSVisualEffectView.Material { isDark ? .hudWindow : .popover }
-    var nsAppearance: NSAppearance? { NSAppearance(named: isDark ? .darkAqua : .aqua) }
+    var border: NSColor { t.border }
+    var blurMaterial: NSVisualEffectView.Material { .hudWindow }
+    var nsAppearance: NSAppearance? { NSAppearance(named: .darkAqua) }
 
     // Text — then muted for metadata.
-    var text: NSColor { isDark ? t.text : rgb(0.14, 0.12, 0.30) }
+    var text: NSColor { t.text }
     func text(_ alpha: CGFloat) -> NSColor { text.withAlphaComponent(alpha) }
-    var textSecondary: NSColor { isDark ? t.textSecondary : text(0.64) }
-    var textTertiary: NSColor { isDark ? t.textTertiary : text(0.44) }
+    var textSecondary: NSColor { t.textSecondary }
+    var textTertiary: NSColor { t.textTertiary }
 
     // Surfaces — neutral steps above the glass.
-    var surface: NSColor { isDark ? t.surface : rgb(1, 1, 1, 0.82) }
-    var surfaceHover: NSColor { isDark ? t.surfaceHover : rgb(0.93, 0.91, 1.0) }
-    var surfaceStrong: NSColor { isDark ? t.surfaceStrong : rgb(0.88, 0.86, 0.98) }
-    var surfacePressed: NSColor { isDark ? t.glassBottom : rgb(0.85, 0.83, 0.96) }
-    var field: NSColor { isDark ? t.field : rgb(1, 1, 1) }
-    var fieldBorder: NSColor { isDark ? t.border : rgb(0.36, 0.26, 0.70, 0.14) }
-    var divider: NSColor { isDark ? t.divider : rgb(0.36, 0.26, 0.70, 0.10) }
-    var codeBox: NSColor { isDark ? (t.glassBottom.blended(withFraction: 0.35, of: .black) ?? t.glassBottom) : rgb(0.16, 0.14, 0.32) }
-    var codeText: NSColor { isDark ? (t.success.blended(withFraction: 0.55, of: t.text) ?? t.text) : rgb(0.85, 0.95, 0.85) }
+    var surface: NSColor { t.surface }
+    var surfaceHover: NSColor { t.surfaceHover }
+    var surfaceStrong: NSColor { t.surfaceStrong }
+    var surfacePressed: NSColor { t.glassBottom }
+    var field: NSColor { t.field }
+    var fieldBorder: NSColor { t.border }
+    var divider: NSColor { t.divider }
+    var codeBox: NSColor { t.glassBottom.blended(withFraction: 0.35, of: .black) ?? t.glassBottom }
+    var codeText: NSColor { t.success.blended(withFraction: 0.55, of: t.text) ?? t.text }
 
     // Accent — main actions, the selected tab, toggles; a gradient from `accent` to `accentDeep`.
-    var accent: NSColor { isDark ? t.accent : rgb(0.447, 0.310, 0.980) }
+    var accent: NSColor { t.accent }
     /// The accent washed into the surface: selected chips, tabs and rows.
-    var accentSoft: NSColor { isDark ? (t.surface.blended(withFraction: 0.16, of: t.accent) ?? t.surface) : rgb(0.88, 0.84, 1.0) }
+    var accentSoft: NSColor { t.surface.blended(withFraction: 0.16, of: t.accent) ?? t.surface }
     /// Water keeps its blue identity across themes; the surrounding glass remains themed.
     var water: NSColor { rgb(0.24, 0.67, 0.98) }
     var waterDeep: NSColor { rgb(0.08, 0.39, 0.82) }
     /// The far end of the accent gradient.
-    var accentDeep: NSColor { isDark ? t.accentDeep : rgb(0.560, 0.300, 0.960) }
+    var accentDeep: NSColor { t.accentDeep }
     /// Edge for selected / highlighted surfaces.
-    var accentBorder: NSColor { accent.withAlphaComponent(isDark ? 0.55 : 0.45) }
+    var accentBorder: NSColor { accent.withAlphaComponent(0.55) }
     /// The theme's second colour, paired with the accent.
-    var highlight: NSColor { isDark ? t.highlight : rgb(0.95, 0.45, 0.35) }
+    var highlight: NSColor { t.highlight }
     /// List rows on the island: one step up from the glass.
-    var surfaceRow: NSColor { isDark ? t.row : rgb(1, 1, 1, 0.74) }
+    var surfaceRow: NSColor { t.row }
     /// Raised panels (insight card, speech bubble).
-    var surfaceElevated: NSColor { isDark ? t.surfaceHover : rgb(1, 1, 1, 0.96) }
+    var surfaceElevated: NSColor { t.surfaceHover }
     /// Text and icons on a filled accent.
-    var onAccent: NSColor { isDark ? t.onAccent : .white }
-    var success: NSColor { isDark ? t.success : rgb(0.21, 0.89, 0.67) }
-    var warning: NSColor { isDark ? t.warning : rgb(1.00, 0.74, 0.26) }
-    var danger: NSColor { isDark ? t.danger : rgb(1.00, 0.33, 0.41) }
-    var info: NSColor { isDark ? t.info : rgb(0.30, 0.74, 1.00) }
-    var muted: NSColor { isDark ? t.textTertiary : rgb(0.60, 0.58, 0.74) }
+    var onAccent: NSColor { t.onAccent }
+    var success: NSColor { t.success }
+    var warning: NSColor { t.warning }
+    var danger: NSColor { t.danger }
+    var info: NSColor { t.info }
+    var muted: NSColor { t.textTertiary }
     /// The island's outline and glow.
-    var edge: NSColor { isDark ? t.edge : rgb(0.36, 0.26, 0.70, 0.30) }
+    var edge: NSColor { t.edge }
 
     // Fixed identity colours for icon tiles (same in every theme so they stay recognisable)
     var tileGitHub: NSColor { rgb(0.20, 0.20, 0.27) }
@@ -281,29 +268,10 @@ struct Palette {
 
     // MARK: Current palette
 
+    /// Posted when the theme changes; every screen repaints.
     nonisolated static let changed = Notification.Name("ZeraPaletteChanged")
-    private static let key = "zera.appearance"
 
-    static var appearance: Appearance {
-        get { Appearance(rawValue: UserDefaults.standard.integer(forKey: key)) ?? .system }
-        set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: key)
-            // Deferred so the control that changed it finishes its own event first.
-            DispatchQueue.main.async { NotificationCenter.default.post(name: changed, object: nil) }
-        }
-    }
-
-
-    /// Always the dark navy look: every screen lives in the notch island, beside the dark wings.
-    static var current: Palette { Palette(isDark: true) }
-
-    /// Call once at launch so "System" follows the macOS switch live.
-    static func observeSystem() {
-        DistributedNotificationCenter.default().addObserver(forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
-                                                            object: nil, queue: .main) { _ in
-            if appearance == .system { NotificationCenter.default.post(name: changed, object: nil) }
-        }
-    }
+    static var current: Palette { Palette() }
 }
 
 var Pal: Palette { Palette.current }
@@ -346,18 +314,9 @@ extension Palette {
             path.lineWidth = 1; path.stroke()
             return text.withAlphaComponent(enabled ? 1 : 0.55)
         case .accent:
-            // Keep all paint inside the rounded silhouette. A blurred shadow drawn into a
-            // layer-backed control is clipped by its rectangular backing and leaves a patch
-            // around the corners. Depth comes from the quiet surface gradient and edge.
-            let mix: CGFloat = pressed && enabled ? 0.16 : (lit ? 0.28 : 0.22)
-            let top = (surfaceElevated.blended(withFraction: mix, of: accent) ?? surfaceElevated).withAlphaComponent(dim)
-            let bottom = (surface.blended(withFraction: mix * 0.65, of: accentDeep) ?? surface).withAlphaComponent(dim)
-            NSGraphicsContext.saveGraphicsState()
-            path.addClip()
-            let flipped = NSGraphicsContext.current?.isFlipped ?? false
-            NSGradient(starting: top, ending: bottom)?.draw(in: path, angle: flipped ? -90 : 90)
-            NSGraphicsContext.restoreGraphicsState()
-            accent.withAlphaComponent((lit ? 0.45 : 0.30) * dim).setStroke()
+            let fill = pressed && enabled ? surfacePressed : (lit ? surfaceStrong : surfaceElevated)
+            fill.withAlphaComponent(dim).setFill(); path.fill()
+            accent.withAlphaComponent((lit ? 0.5 : 0.28) * dim).setStroke()
             path.lineWidth = 1; path.stroke()
             return text.withAlphaComponent(enabled ? 1 : 0.55)
         case .success:
@@ -378,11 +337,10 @@ extension Palette {
 // MARK: - The selected look
 
 extension Palette {
-    /// One "selected" look everywhere — chips, list rows, settings nav, theme rows: a soft wash of
-    /// the accent with an accent edge, no glow. Primary actions keep the filled gradient; a
-    /// selection never does, so "what's chosen" and "what to do" never look alike.
-    var selectedFill: NSColor { accent.withAlphaComponent(0.14) }
-    var selectedEdge: NSColor { accent.withAlphaComponent(0.4) }
+    /// Shared solid selection background for chips, list rows, navigation and theme rows.
+    /// Overlays use GlideWash's translucent variant so labels remain visible.
+    var selectedFill: NSColor { surfaceStrong }
+    var selectedEdge: NSColor { border }
 
     func drawSelected(_ path: NSBezierPath) {
         selectedFill.setFill(); path.fill()
@@ -414,6 +372,11 @@ extension Palette {
 /// Honour the system "Reduce motion" switch: no sway, no cross-fades, instant panels.
 enum Motion {
     static var reduced: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    static let selectionDuration: TimeInterval = 0.3
+    static func selectionProgress(_ t: Double) -> Double {
+        let p = min(1, max(0, t))
+        return 1 - pow(1 - p, 3)
+    }
     static func duration(_ d: TimeInterval) -> TimeInterval { reduced ? 0 : d }
 }
 
@@ -434,7 +397,7 @@ final class CardButton: NSButton {
         self.action = action
         isBordered = false
         setButtonType(.momentaryChange)
-        focusRingType = .none
+        focusRingType = .exterior
         // We draw icon and title ourselves (see `draw`), as one centred group.
         imagePosition = .noImage
         self.title = ""
@@ -519,13 +482,13 @@ final class CardButton: NSButton {
             x += iconWidth + Self.iconGap
         }
         let th = ceil(Typo.button.ascender - Typo.button.descender) + 2
-        (titleText as NSString).draw(in: NSRect(x: x, y: (bounds.height - th) / 2, width: textW, height: th), withAttributes: attrs)
+        (titleText as NSString).draw(in: NSRect(x: x, y: (bounds.height - th) / 2, width: max(0, textW), height: th), withAttributes: attrs)
+        drawControlFocus()
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -572,12 +535,12 @@ final class IconButton: NSButton {
             NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1)).fill()
         }
         super.draw(dirtyRect)
+        drawControlFocus()
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -586,12 +549,12 @@ final class IconButton: NSButton {
 
 /// Segmented pill tabs: the same look and gliding indicator as the island's segmented controls.
 final class PillTabs: NSView {
-    var titles: [String] { didSet { needsDisplay = true } }
+    var titles: [String] { didSet { needsDisplay = true; needsLayout = true } }
     var selected = 0 {
         didSet {
             guard selected != oldValue else { return }
             indicator.move(to: slot(selected), animated: true)
-            needsDisplay = true
+            needsDisplay = true; needsLayout = true
         }
     }
     var onSelect: ((Int) -> Void)?
@@ -599,6 +562,7 @@ final class PillTabs: NSView {
     var switches: (() -> [NSView])?
     private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
     private lazy var indicator = SlidingIndicator(view: self)
+    private lazy var targets = SegmentTargets(owner: self)
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -606,10 +570,22 @@ final class PillTabs: NSView {
     init(titles: [String]) {
         self.titles = titles
         super.init(frame: .zero)
+        setAccessibilityElement(true)
         setAccessibilityRole(.tabGroup)
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        targets.update(labels: titles, selected: [selected], frame: slot) { [weak self] index in
+            guard let self else { return }
+            let old = self.selected
+            self.selected = index
+            self.onSelect?(index)
+            if let views = self.switches?() { Motion.tabSwitch(views, from: old, to: index) }
+        }
+    }
 
     private func slot(_ i: Int) -> NSRect {
         let n = CGFloat(max(1, titles.count)), inset = Metrics.segmentInset
@@ -833,9 +809,11 @@ final class IconTile: NSView {
 }
 
 /// On/off switch in the accent colour. 40 × 22.
-final class Toggle: NSView {
-    var isOn = false { didSet { needsDisplay = true; setAccessibilityValue(isOn ? "on" : "off") } }
-    var isEnabled = true { didSet { needsDisplay = true } }
+final class Toggle: NSButton {
+    var isOn: Bool {
+        get { state == .on }
+        set { state = newValue ? .on : .off; needsDisplay = true }
+    }
     var onChange: ((Bool) -> Void)?
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -843,30 +821,36 @@ final class Toggle: NSView {
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 40, height: 22))
+        title = ""
+        isBordered = false
+        setButtonType(.switch)
+        setAccessibilityElement(true)
         setAccessibilityRole(.checkBox)
+        target = self
+        action = #selector(changed)
     }
     required init?(coder: NSCoder) { fatalError() }
+    @objc private func changed() { onChange?(isOn) }
+
+    override func accessibilityValue() -> Any? { NSNumber(value: isOn) }
+    override func accessibilityPerformPress() -> Bool {
+        guard isEnabled else { return false }
+        performClick(nil)
+        return true
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        let track = NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2)
-        if isOn {
-            NSGradient(starting: p.accent.withAlphaComponent(isEnabled ? 1 : 0.45), ending: p.accentDeep.withAlphaComponent(isEnabled ? 1 : 0.45))?.draw(in: track, angle: 0)
-        } else {
-            p.surfaceStrong.withAlphaComponent(isEnabled ? 1 : 0.45).setFill(); track.fill()
-            p.divider.setStroke(); track.lineWidth = 1; track.stroke()
-        }
-        let d = bounds.height - 4
-        NSColor.white.setFill()
-        NSBezierPath(ovalIn: NSRect(x: isOn ? bounds.maxX - d - 2 : 2, y: 2, width: d, height: d)).fill()
+        let dim: CGFloat = isEnabled ? 1 : 0.4
+        let box = bounds.insetBy(dx: 1, dy: 1)
+        let track = NSBezierPath(roundedRect: box, xRadius: box.height / 2, yRadius: box.height / 2)
+        (isOn ? p.accent : p.surfaceStrong).withAlphaComponent(dim).setFill(); track.fill()
+        p.border.withAlphaComponent(dim).setStroke(); track.lineWidth = 1; track.stroke()
+        let d = box.height - 4
+        NSColor.white.withAlphaComponent(dim).setFill()
+        NSBezierPath(ovalIn: NSRect(x: isOn ? box.maxX - d - 2 : box.minX + 2, y: box.minY + 2, width: d, height: d)).fill()
+        drawControlFocus(radius: box.height / 2)
     }
-
-    override func mouseDown(with event: NSEvent) {
-        guard isEnabled else { return }
-        isOn.toggle()
-        onChange?(isOn)
-    }
-    override func resetCursorRects() { if isEnabled { addCursorRect(bounds, cursor: .pointingHand) } }
 }
 
 /// Small coloured dot + label for connection states.

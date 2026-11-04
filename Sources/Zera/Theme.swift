@@ -62,6 +62,11 @@ func byteString(_ bytes: Int64) -> String {
 final class FloatingPanel: NSPanel {
     /// Whether this panel may take keyboard focus (the shelf does, for ⎋ and ⌫).
     var keyable = false
+    /// Only screen-edge overlays may extend through the menu-bar safe area.
+    var edgeAnchored = false
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        edgeAnchored ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
     /// Window-scoped commands that must also work when a control takes first responder.
     var onKeyDown: ((NSEvent) -> Bool)?
 
@@ -83,6 +88,7 @@ final class FloatingPanel: NSPanel {
                               styleMask: [.borderless, .nonactivatingPanel],
                               backing: .buffered, defer: false)
         p.keyable = keyable
+        p.autorecalculatesKeyViewLoop = keyable
         p.isFloatingPanel = true
         p.level = level
         p.hidesOnDeactivate = false
@@ -92,6 +98,26 @@ final class FloatingPanel: NSPanel {
         p.hasShadow = true
         p.animationBehavior = .none
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        // Out of screen shares and recordings during calls (or always), per Settings.
+        ShareShield.shared.register(p)
         return p
+    }
+}
+
+
+// MARK: - Shared view helpers
+
+/// A plain container whose y axis runs downwards, for scroll documents and stacked layouts.
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+extension NSView {
+    /// The one tracking area every hoverable row, tile and button uses: enter/exit events over
+    /// the visible part of the view, whether or not Zera is the active app. Call from
+    /// `updateTrackingAreas()` after `super`.
+    func resetHoverTracking() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
 }

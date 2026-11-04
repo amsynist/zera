@@ -40,7 +40,7 @@ private func shortPath(_ path: String) -> String {
 }
 
 private func sessionTitle(_ s: ClaudeSession) -> String {
-    s.title.isEmpty ? "New session in \(s.folderName)" : s.title
+    s.title.isEmpty ? "Session in \(s.folderName)" : s.title
 }
 
 private func sessionMeta(_ s: ClaudeSession, agents: Bool = false) -> String {
@@ -233,7 +233,7 @@ final class SessionIconTile: NSView {
             return
         }
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: bounds.width * 0.26, yRadius: bounds.width * 0.26)
-        (p.isDark ? p.surfaceStrong : p.tileGitHub).setFill(); path.fill()
+        p.surfaceStrong.setFill(); path.fill()
         NSColor.white.withAlphaComponent(0.12).setStroke(); path.lineWidth = 1; path.stroke()
         drawIcon(icon(symbol, bounds.width * 0.38, .semibold, tint), centeredIn: bounds)
     }
@@ -298,7 +298,7 @@ final class ClaudeSessionRow: NSView {
         title.stringValue = sessionTitle(s)
         title.toolTip = s.fullPrompt.isEmpty ? nil : s.fullPrompt
         title.textColor = kind == .completed && !selected ? p.text(0.85) : p.text
-        meta.stringValue = sessionMeta(s, agents: ClaudeActivityService.shared.showAgents)
+        meta.stringValue = sessionMeta(s, agents: ClaudeActivityService.shared.showAgents) + (s.status == .running ? s.steps.last.map { " · " + $0.text } ?? " · Thinking" : "")
         let c = sessionChip(s)
         chip.set(symbol: c.symbol, text: c.text, color: c.color)
         switch kind {
@@ -308,7 +308,7 @@ final class ClaudeSessionRow: NSView {
             bar.set(progress: s.hasRealProgress ? s.progress : nil, tone: nil, running: !s.stopRequested)
             percent.stringValue = s.hasRealProgress ? "\(Int((s.progress * 100).rounded()))%" : ""
             note.isHidden = true
-            action.isHidden = s.stopRequested
+            action.isHidden = s.stopRequested || s.monitoredOnly
             action.style = .destructive
             action.setSymbol("stop.fill")
             action.toolTip = "Stop — Claude halts at its next step"
@@ -335,7 +335,7 @@ final class ClaudeSessionRow: NSView {
         }
         action.setTitleText("")
         action.setAccessibilityLabel(kind == .waiting ? "Review approval" : "Stop session")
-        setAccessibilityLabel("\(title.stringValue), \(c.text), \(time.stringValue)")
+        setAccessibilityLabel("\(title.stringValue), \(c.text), \(meta.stringValue), \(time.stringValue)")
         needsLayout = true
     }
 
@@ -411,8 +411,7 @@ final class ClaudeSessionRow: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -671,7 +670,7 @@ final class ClaudeActivityConsole: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.l, yRadius: Radius.l)
-        (p.isDark ? p.codeBox.withAlphaComponent(0.85) : p.codeBox).setFill(); box.fill()
+        p.codeBox.withAlphaComponent(0.85).setFill(); box.fill()
         p.border.setStroke(); box.lineWidth = 1; box.stroke()
 
         let textColor = p.text.withAlphaComponent(0.9)
@@ -919,12 +918,15 @@ final class SessionInfoRow: NSView {
 final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
     var onHeightChange: (() -> Void)?
     var onEscape: (() -> Void)?
+    var onBackToAgents: (() -> Void)?
     var say: ((String, ZeraMood) -> Void)?
     var onOpenSettings: (() -> Void)?
     /// Explicit only: opens Claude Code (desktop app, or Terminal running `claude`).
     var onNewSession: (() -> Void)?
+    var onOpenClaudeCode: (() -> Void)?
     /// Opens Zera's approval card for a waiting request.
     var onReviewApproval: (() -> Void)?
+    var onReviewSessionApproval: ((String) -> Void)?
     /// Hand Zera a session brief and a question about it.
     var onAsk: ((URL, String) -> Void)?
 
@@ -1191,7 +1193,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
 
     private func pendingCommand(for s: ClaudeSession) -> String? {
         let pending = ClaudeHookService.shared.pending
-        return pending.first { $0.sessionID == s.id }?.command ?? (s.status == .waiting ? pending.first?.command : nil)
+        return pending.first { $0.sessionID == s.id }?.command
     }
 
     // MARK: Reload
@@ -1245,7 +1247,9 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
                 let id = s.id
                 r.onSelect = { [weak self] in self?.select(id) }
                 r.onStop = { [weak self] in self?.stop(id) }
-                r.onReview = { [weak self] in self?.onReviewApproval?() }
+                r.onReview = { [weak self] in
+                    if let action = self?.onReviewSessionApproval { action(id) } else { self?.onReviewApproval?() }
+                }
                 r.onMenu = { [weak self] v in self?.showRowMenu(id, from: v) }
                 list.addSubview(r)
                 rows[s.id] = r
@@ -1315,7 +1319,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         sessionMetaLabel.stringValue = sessionMeta(s, agents: svc.showAgents)
 
         let kind: Int
-        if s.stopRequested { kind = -1 }
+        if s.stopRequested || s.monitoredOnly { kind = -1 }
         else {
             switch s.status {
             case .running: kind = 0
@@ -1627,6 +1631,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         reload()
     }
 
+    func openSession(_ id: String) { select(id) }
     @objc private func backTapped() { setExpanded(false) }
     @objc private func collapseTapped() { setExpanded(false) }
 
@@ -1652,7 +1657,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         guard let s = selected else { return }
         switch primaryKind {
         case 0: stop(s.id)
-        case 1: onReviewApproval?()
+        case 1: if let action = onReviewSessionApproval { action(s.id) } else { onReviewApproval?() }
         default: onNewSession?()
         }
     }
@@ -1684,7 +1689,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         if s.isActive && !s.stopRequested {
             items.append(ClosureMenuItem("Stop at next step", symbol: "stop.fill") { [weak self] in self?.stop(id) })
         }
-        items.append(ClosureMenuItem("Open Claude Code", symbol: "terminal") { [weak self] in self?.onNewSession?() })
+        items.append(ClosureMenuItem("Open Claude Code", symbol: "terminal") { [weak self] in self?.onOpenClaudeCode?() })
         items.append(ClosureMenuItem("Remove from list", symbol: "xmark.circle") { [weak self] in
             ClaudeActivityService.shared.remove(s)
             if self?.selectedID == id { self?.selectedID = nil }

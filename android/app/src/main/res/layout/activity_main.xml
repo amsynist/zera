@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootContainer" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#101A1C">
+    <!-- A gallery first: your photos and videos fill the screen. -->
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="56dp" android:paddingStart="18dp" android:paddingEnd="6dp" android:gravity="center_vertical">
+            <ImageView android:layout_width="26dp" android:layout_height="26dp" android:src="@drawable/ic_androp" android:importantForAccessibility="no" />
+            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="androp" android:textSize="21sp" android:textColor="#EDF3E9" android:letterSpacing="-0.04" android:layout_marginStart="8dp" />
+            <TextView android:id="@+id/tvStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="○  OFFLINE" android:textSize="10sp" android:letterSpacing="0.06" android:textColor="#C4ECDD" android:background="@drawable/chip" android:paddingHorizontal="12dp" android:paddingVertical="9dp" android:accessibilityLiveRegion="polite" android:clickable="true" android:focusable="true" />
+            <TextView android:id="@+id/btnSettings" android:layout_width="48dp" android:layout_height="48dp" android:gravity="center" android:text="⋯" android:textSize="24sp" android:textColor="#C4ECDD" android:contentDescription="Settings" android:clickable="true" android:focusable="true" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/tabs" android:layout_width="match_parent" android:layout_height="44dp" android:layout_marginHorizontal="16dp" android:layout_marginTop="4dp" android:padding="4dp" android:background="@drawable/chip">
+            <TextView android:id="@+id/tabPhotos" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:gravity="center" android:text="Photos" android:textSize="13sp" android:clickable="true" android:focusable="true" />
+            <TextView android:id="@+id/tabFiles" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:gravity="center" android:text="Files" android:textSize="13sp" android:clickable="true" android:focusable="true" />
+        </LinearLayout>
+        <TextView android:id="@+id/tvHint" style="@style/Androp.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingHorizontal="20dp" android:paddingTop="12dp" android:paddingBottom="10dp" android:text="Press and hold, then glide it off any edge to your Mac." android:textSize="12sp" android:accessibilityLiveRegion="polite" />
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+            <FrameLayout android:id="@+id/photosPane" android:layout_width="match_parent" android:layout_height="match_parent">
+                <GridView android:id="@+id/mediaGrid" android:layout_width="match_parent" android:layout_height="match_parent" android:paddingHorizontal="12dp" android:paddingBottom="24dp" android:numColumns="3" android:horizontalSpacing="6dp" android:verticalSpacing="6dp" android:stretchMode="columnWidth" android:scrollbars="none" android:clipToPadding="false" android:visibility="gone" />
+                <LinearLayout android:id="@+id/mediaEmpty" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="center" android:orientation="vertical" android:padding="32dp" android:gravity="center">
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="Your photos.\nAlready there." android:fontFamily="serif" android:textSize="34sp" android:textColor="#EDF3E9" android:letterSpacing="-0.03" />
+                    <TextView style="@style/Androp.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center" android:text="Hold one and glide it off any edge. It lands on your Mac." />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/btnMedia" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="22dp" android:text="Show my photos and videos" android:textAllCaps="false" android:textSize="14sp" android:textColor="#122920" app:backgroundTint="#C4ECDD" app:cornerRadius="16dp" />
+                </LinearLayout>
+            </FrameLayout>
+            <LinearLayout android:id="@+id/filesPane" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone">
+                <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:clipToPadding="false" android:paddingHorizontal="16dp">
+                    <LinearLayout android:id="@+id/places" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
+                </HorizontalScrollView>
+                <TextView android:id="@+id/filesPath" style="@style/Androp.Eyebrow" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingHorizontal="20dp" android:paddingTop="12dp" android:maxLines="1" android:ellipsize="start" android:visibility="gone" />
+                <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="6dp">
+                    <ListView android:id="@+id/filesList" android:layout_width="match_parent" android:layout_height="match_parent" android:divider="@null" android:paddingBottom="24dp" android:clipToPadding="false" android:scrollbars="none" />
+                    <LinearLayout android:id="@+id/filesEmpty" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="center" android:orientation="vertical" android:padding="32dp" android:gravity="center" android:visibility="gone">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="Every file.\nOne glide away." android:fontFamily="serif" android:textSize="34sp" android:textColor="#EDF3E9" android:letterSpacing="-0.03" />
+                        <TextView style="@style/Androp.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center" android:text="Downloads, documents, archives: Androp needs access to your files to show them here." />
+                        <com.google.android.material.button.MaterialButton android:id="@+id/btnFiles" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="22dp" android:text="Allow access to files" android:textAllCaps="false" android:textSize="14sp" android:textColor="#122920" app:backgroundTint="#C4ECDD" app:cornerRadius="16dp" />
+                    </LinearLayout>
+                </FrameLayout>
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- One photo, full screen: the photo itself is what you swipe off an edge. -->
+    <FrameLayout android:id="@+id/viewer" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#000000" android:clickable="true" android:focusable="true" android:clipChildren="false" android:visibility="gone">
+        <ImageView android:id="@+id/dragCard" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_gravity="center" android:scaleType="centerCrop" android:elevation="10dp" android:clickable="true" android:focusable="true" android:contentDescription="Photo. Glide it off any edge to send it to your Mac." />
+        <TextView android:id="@+id/viewerClose" android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="top|start" android:layout_margin="8dp" android:gravity="center" android:text="✕" android:textSize="20sp" android:textColor="#EDF3E9" android:contentDescription="Back to photos" android:clickable="true" android:focusable="true" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="bottom" android:orientation="vertical" android:gravity="center" android:padding="20dp">
+            <TextView android:id="@+id/viewerName" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:textColor="#EDF3E9" android:textSize="13sp" android:maxLines="1" android:ellipsize="middle" />
+            <TextView android:id="@+id/viewerSend" android:layout_width="wrap_content" android:layout_height="48dp" android:gravity="center" android:paddingHorizontal="18dp" android:text="Glide off any edge  ·  or tap to send" android:textSize="11sp" android:letterSpacing="0.06" android:textColor="#C4ECDD" android:clickable="true" android:focusable="true" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- Pairing and edge sharing, out of the gallery's way. -->
+    <ScrollView android:id="@+id/settings" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#101A1C" android:clickable="true" android:focusable="true" android:visibility="gone">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="24dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+                <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Settings" android:fontFamily="serif" android:textSize="30sp" android:textColor="#EDF3E9" />
+                <TextView android:id="@+id/settingsClose" android:layout_width="48dp" android:layout_height="48dp" android:gravity="center" android:text="✕" android:textSize="20sp" android:textColor="#EDF3E9" android:contentDescription="Close settings" android:clickable="true" android:focusable="true" />
+            </LinearLayout>
+            <TextView style="@style/Androp.Eyebrow" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="22dp" android:text="YOUR MAC" />
+            <TextView android:id="@+id/connectionStatus" style="@style/Androp.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Start Androp on your Mac. Enter its local address and the code in its menu bar." android:accessibilityLiveRegion="polite" />
+            <EditText android:id="@+id/etHost" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="12dp" android:hint="Mac IP or hostname" android:textColor="#EDF3E9" android:textColorHint="#96ADA4" android:inputType="textUri" android:singleLine="true" android:textSize="14sp" android:paddingHorizontal="12dp" android:background="@drawable/panel" android:importantForAutofill="no" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center_vertical">
+                <EditText android:id="@+id/etCode" android:layout_width="0dp" android:layout_weight="1" android:layout_height="52dp" android:hint="6-digit code" android:textColor="#EDF3E9" android:textColorHint="#96ADA4" android:inputType="numberPassword" android:maxLength="6" android:textSize="14sp" android:paddingHorizontal="12dp" android:background="@drawable/panel" android:importantForAutofill="no" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/btnConnect" android:layout_width="wrap_content" android:layout_height="52dp" android:layout_marginStart="12dp" android:text="Connect" android:textAllCaps="false" android:textColor="#122920" app:backgroundTint="#C4ECDD" app:cornerRadius="14dp" />
+            </LinearLayout>
+            <TextView style="@style/Androp.Eyebrow" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="30dp" android:text="FROM OTHER APPS" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/panel" android:padding="18dp" android:layout_marginTop="10dp">
+                <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/overlaySwitch" android:layout_width="match_parent" android:layout_height="48dp" android:text="Share from the edge" android:textSize="15sp" android:textColor="#EDF3E9" />
+                <TextView style="@style/Androp.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Drag a photo from another app onto any edge: Androp catches it there, then push it across to your Mac." android:textSize="12sp" />
+                <TextView android:id="@+id/edgeStatus" style="@style/Androp.Body" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="All four edges · receiver off" android:textColor="#C4ECDD" android:accessibilityLiveRegion="polite" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/btnTestEdge" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="8dp" android:text="Test edge connection" android:textAllCaps="false" android:textColor="#C4ECDD" app:backgroundTint="#223933" app:cornerRadius="12dp" />
+            </LinearLayout>
+            <TextView style="@style/Androp.Eyebrow" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="28dp" android:gravity="center" android:text="YOUR WI-FI. YOUR DEVICES. YOUR FLOW." android:textSize="8sp" />
+        </LinearLayout>
+    </ScrollView>
+    <com.androp.ui.EdgeRippleView android:id="@+id/edgeRipple" android:layout_width="match_parent" android:layout_height="match_parent" android:clickable="false" android:focusable="false" />
+</FrameLayout>

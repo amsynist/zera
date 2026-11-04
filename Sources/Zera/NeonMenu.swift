@@ -123,11 +123,12 @@ final class NeonMenu: NSObject {
 }
 
 final class NeonMenuView: NSView {
-    static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
-    var items: [NeonMenuItem] = [] { didSet { needsDisplay = true } }
+    static let font = Typo.control
+    var items: [NeonMenuItem] = [] { didSet { rebuildTargets(); needsDisplay = true; needsLayout = true } }
     var cursor: Int? { didSet { needsDisplay = true } }
     var onChoose: ((NeonMenuItem) -> Void)?
     private let m: CGFloat = 22, pad: CGFloat = 6
+    private var targets: [(Int, ControlActionTarget)] = []
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -138,6 +139,27 @@ final class NeonMenuView: NSView {
         setAccessibilityRole(.menu)
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    private func rebuildTargets() {
+        targets.forEach { $0.1.removeFromSuperview() }
+        targets = items.enumerated().compactMap { index, item in
+            guard item.kind == .action else { return nil }
+            let button = ControlActionTarget(label: item.title, role: .menuItem)
+            button.setAccessibilityLabel(item.title)
+            button.setAccessibilityValue(NSNumber(value: item.checked))
+            button.onPress = { [weak self] in self?.onChoose?(item) }
+            button.onHover = { [weak self] on in if on { self?.cursor = index } }
+            addSubview(button)
+            return (index, button)
+        }
+        setAccessibilityChildren(targets.map { $0.1 })
+    }
+
+    override func layout() {
+        super.layout()
+        let frames = rects()
+        for (index, button) in targets { button.frame = frames[index] }
+    }
 
     private var glass: NSRect { bounds.insetBy(dx: m, dy: m) }
 

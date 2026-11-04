@@ -44,14 +44,18 @@ final class NavigationStateTests: XCTestCase {
                 RunLoop.main.run(until: Date().addingTimeInterval(0.85))
                 island.layoutSubtreeIfNeeded()
                 let tabs = descendants(island).compactMap { $0 as? IslandTab }
-                XCTAssertEqual(tabs.count, 8)
+                XCTAssertEqual(tabs.count, 10)
+                XCTAssertEqual(Set(tabs.map(\.kind)), Set(Isle.leftTabs + Isle.rightTabs))
+                XCTAssertTrue(tabs.contains { $0.kind == .github })
+                XCTAssertTrue(tabs.contains { $0.kind == .tasks })
                 var activated: [CardKind] = []
                 island.onTab = { activated.append($0) }
                 let figure = NSRect(x: 418, y: band, width: 64, height: 84)
                 for (i, tab) in tabs.enumerated() {
                     XCTAssertTrue(tab.accessibilityPerformPress())
-                    XCTAssertFalse(tab.frame.intersects(figure))
-                    if style == .tiles { XCTAssertTrue(island.islandRect.contains(tab.frame)) }
+                    // The notch bar is for Zera living in the notch: there is no hanging figure to clear.
+                    if style != .bar { XCTAssertFalse(tab.frame.intersects(figure)) }
+                    if style == .tiles || style == .bar { XCTAssertTrue(island.islandRect.contains(tab.frame)) }
                     for other in tabs.dropFirst(i + 1) {
                         let a = style == .tiles ? tab.frame : tab.disc.offsetBy(dx: tab.frame.minX, dy: tab.frame.minY)
                         let b = style == .tiles ? other.frame : other.disc.offsetBy(dx: other.frame.minX, dy: other.frame.minY)
@@ -71,6 +75,46 @@ final class NavigationStateTests: XCTestCase {
                 }
                 island.close(animated: false)
                 window.contentView = nil
+            }
+        }
+    }
+
+    @MainActor
+    func testPRsAndTasksHaveIndependentSelectionAndFitCompactNavigation() throws {
+        _ = NSApplication.shared
+        XCTAssertEqual(Isle.tab(for: .github), .github)
+        XCTAssertEqual(Isle.tab(for: .tasks), .tasks)
+        XCTAssertFalse(Isle.offRail.contains(.github)); XCTAssertFalse(Isle.offRail.contains(.tasks))
+        for width: CGFloat in [720, 900, 1200] {
+            for style in HoverMenuStyle.allCases {
+                let island = IslandView(frame: NSRect(x: 0, y: 0, width: width, height: 800))
+                island.centerX = width / 2; island.band = 34; island.notchWidth = 190; island.hoverStyle = style
+                let window = NSWindow(contentRect: island.frame, styleMask: .borderless, backing: .buffered, defer: false)
+                window.contentView = island
+                island.peek()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.85))
+                island.layoutSubtreeIfNeeded()
+                let tabs = descendants(island).compactMap { $0 as? IslandTab }
+                for (i, tab) in tabs.enumerated() {
+                    XCTAssertTrue(island.bounds.contains(tab.frame), "\(width), \(style), \(tab.kind)")
+                    for other in tabs.dropFirst(i + 1) { XCTAssertFalse(tab.frame.intersects(other.frame), "hover targets must not overlap") }
+                }
+                let pr = try XCTUnwrap(tabs.first { $0.kind == .github })
+                let tasks = try XCTUnwrap(tabs.first { $0.kind == .tasks })
+                XCTAssertEqual(pr.accessibilityLabel(), "Pull requests")
+                island.present(NSView(), size: NSSize(width: min(880, width - 24), height: 400), direction: 0, animated: false)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.9))
+                island.layoutSubtreeIfNeeded()
+                for (i, tab) in tabs.enumerated() {
+                    XCTAssertTrue(island.islandRect.contains(tab.frame), "open rail must fit its screen")
+                    for other in tabs.dropFirst(i + 1) { XCTAssertFalse(tab.frame.intersects(other.frame)) }
+                }
+                island.activeTab = .github
+                XCTAssertTrue(pr.isOn); XCTAssertFalse(tabs.first { $0.kind == .alerts }!.isOn)
+                island.activeTab = .tasks
+                XCTAssertTrue(tasks.isOn); XCTAssertFalse(tabs.first { $0.kind == .focus }!.isOn); XCTAssertFalse(pr.isOn)
+                island.counts[.github] = 3; XCTAssertEqual(pr.count, 3)
+                island.close(animated: false); window.contentView = nil
             }
         }
     }

@@ -51,7 +51,7 @@ final class SlidingIndicator {
         target = r
         start = CACurrentMediaTime()
         if timer == nil {
-            let t = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in self?.tick() }
+            let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.tick() }
             RunLoop.main.add(t, forMode: .common)
             timer = t
         }
@@ -73,9 +73,14 @@ final class SlidingIndicator {
     }
 
     private func tick() {
-        let t = (CACurrentMediaTime() - start) / Spring.duration
-        rect = Spring.lerp(from, target, Spring.curve(t))
-        view?.needsDisplay = true
+        guard let view, view.window?.isVisible == true, !view.isHiddenOrHasHiddenAncestor, !Motion.reduced else {
+            timer?.invalidate(); timer = nil
+            snap(to: target)
+            return
+        }
+        let t = (CACurrentMediaTime() - start) / Motion.selectionDuration
+        rect = Spring.lerp(from, target, Motion.selectionProgress(t))
+        view.needsDisplay = true
         if t >= 1 { rect = target; timer?.invalidate(); timer = nil }
     }
 }
@@ -250,6 +255,9 @@ final class GlideWash: NSView {
         let rect = indicator.rect.insetBy(dx: 0.5, dy: 0.5)
         let corner = radius ?? rect.height / 2
         let path = NSBezierPath(roundedRect: rect, xRadius: corner, yRadius: corner)
-        if edged { Pal.drawSelected(path) } else { Pal.accent.withAlphaComponent(0.16).setFill(); path.fill() }
+        // This view sits above its siblings' drawing. An opaque selected surface would
+        // erase project names and format labels; use a neutral translucent overlay here.
+        Pal.text.withAlphaComponent(0.12).setFill(); path.fill()
+        if edged { Pal.text.withAlphaComponent(0.12).setStroke(); path.lineWidth = 0.5; path.stroke() }
     }
 }

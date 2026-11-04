@@ -124,7 +124,7 @@ final class AnthropicAPIClient {
 
     /// Cheap check: lists models (no tokens spent). Returns the model ids.
     func testConnection(key: String? = nil) async throws -> [String] {
-        guard let k = key ?? KeychainStore.read(.apiKey), !k.isEmpty else { throw AnthropicAPIError.noKey }
+        guard let k = key ?? KeychainStore.read(.apiKey, interactive: true), !k.isEmpty else { throw AnthropicAPIError.noKey }
         var r = request("v1/models", key: k)
         r.httpMethod = "GET"
         let (data, resp): (Data, URLResponse)
@@ -149,7 +149,7 @@ final class AnthropicAPIClient {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    guard let key = KeychainStore.read(.apiKey), !key.isEmpty else { throw AnthropicAPIError.noKey }
+                    guard let key = KeychainStore.read(.apiKey, interactive: true), !key.isEmpty else { throw AnthropicAPIError.noKey }
                     var r = request("v1/messages", key: key)
                     r.httpMethod = "POST"
                     let body: [String: Any] = ["model": model, "max_tokens": maxTokens, "stream": true,

@@ -323,8 +323,7 @@ final class AgendaRow: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -370,21 +369,22 @@ final class DayHeader: NSView {
 /// A row of small rounded choices (filters, weekdays, intervals). Single or multiple selection.
 final class ChoiceChips: NSView {
     struct Item { let title: String; var dot: NSColor? = nil; var symbol: String? = nil }
-    var items: [Item] { didSet { needsDisplay = true; invalidateIntrinsicContentSize() } }
+    var items: [Item] { didSet { needsDisplay = true; needsLayout = true; invalidateIntrinsicContentSize() } }
     var selection: Set<Int> = [0] {
         didSet {
             guard selection != oldValue else { return }
             // One choice: the wash glides to it, like a segmented control's pill.
             if !multiple, let i = selection.min(), items.indices.contains(i) { indicator.move(to: slot(i), animated: true) }
-            needsDisplay = true
+            needsDisplay = true; needsLayout = true
         }
     }
-    var multiple = false
+    var multiple = false { didSet { needsLayout = true } }
     /// What each choice shows: after a switch these page in from the side you moved toward.
     var switches: (() -> [NSView])?
     private lazy var indicator = SlidingIndicator(view: self)
+    private lazy var targets = SegmentTargets(owner: self)
     /// Equal-width chips filling the row instead of sized to their text.
-    var fill = false
+    var fill = false { didSet { needsLayout = true } }
     var onChange: ((Set<Int>) -> Void)?
     private var hoverIndex: Int? { didSet { if hoverIndex != oldValue { needsDisplay = true } } }
     private static let font = Typo.chip
@@ -394,9 +394,28 @@ final class ChoiceChips: NSView {
     init(items: [Item]) {
         self.items = items
         super.init(frame: .zero)
+        setAccessibilityElement(true)
         setAccessibilityRole(.radioGroup)
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        targets.update(labels: items.map(\.title), selected: selection, multiple: multiple, frame: slot) { [weak self] index in
+            self?.choose(index)
+        }
+    }
+
+    private func choose(_ index: Int) {
+        let old = selectedIndex
+        if multiple {
+            if selection.contains(index) {
+                if selection.count > 1 { selection.remove(index) }
+            } else { selection.insert(index) }
+        } else { selection = [index] }
+        onChange?(selection)
+        if !multiple, let views = switches?() { Motion.tabSwitch(views, from: old, to: index) }
+    }
 
     private func naturalWidth(_ it: Item) -> CGFloat {
         let t = ceil((it.title as NSString).size(withAttributes: [.font: Self.font]).width)
@@ -416,10 +435,10 @@ final class ChoiceChips: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
-        for (i, it) in items.enumerated() {
+        for i in items.indices {
             let r = slot(i).insetBy(dx: 0.5, dy: 0.5)
             let on = selection.contains(i)
-            let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+            let path = NSBezierPath(roundedRect: r, xRadius: Radius.m, yRadius: Radius.m)
             if on && !multiple {
                 // The base only; the gliding wash is drawn over it below.
                 p.surface.setFill(); path.fill()
@@ -428,6 +447,16 @@ final class ChoiceChips: NSView {
             } else {
                 (hoverIndex == i ? p.surfaceHover : p.surface).setFill(); path.fill()
             }
+        }
+        if !multiple, let i = selection.min(), items.indices.contains(i) {
+            indicator.settle(at: slot(i))
+            let r = indicator.rect.insetBy(dx: 0.5, dy: 0.5)
+            p.drawSelected(NSBezierPath(roundedRect: r, xRadius: Radius.m, yRadius: Radius.m))
+        }
+        // Draw labels last: the opaque selected surface must never cover the chosen title.
+        for (i, it) in items.enumerated() {
+            let r = slot(i).insetBy(dx: 0.5, dy: 0.5)
+            let on = selection.contains(i)
             let color: NSColor = on ? p.accent : p.textSecondary
             let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color]
             let tw = ceil((it.title as NSString).size(withAttributes: attrs).width)
@@ -444,11 +473,6 @@ final class ChoiceChips: NSView {
             }
             let th = ceil(Self.font.ascender - Self.font.descender) + 1
             (it.title as NSString).draw(in: NSRect(x: x, y: r.midY - th / 2, width: tw + 1, height: th), withAttributes: attrs)
-        }
-        if !multiple, let i = selection.min(), items.indices.contains(i) {
-            indicator.settle(at: slot(i))
-            let r = indicator.rect.insetBy(dx: 0.5, dy: 0.5)
-            p.drawSelected(NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2))
         }
     }
 
@@ -614,8 +638,7 @@ final class PickerBox: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+        resetHoverTracking()
     }
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
@@ -707,7 +730,10 @@ final class FormCanvas: NSView {
         let l = Line(columns, height: height)
         lines.append(l)
         for c in columns {
-            if let lb = c.label { addSubview(lb) }
+            if let lb = c.label {
+                addSubview(lb)
+                c.controls.first?.view.setAccessibilityLabel(lb.stringValue)
+            }
             c.controls.forEach { addSubview($0.view) }
         }
         return l
@@ -793,7 +819,7 @@ final class DetailInfoRow: NSView {
         let p = Pal
         let r = NSRect(x: 0, y: 6, width: 32, height: 32)
         let path = NSBezierPath(roundedRect: r, xRadius: 9, yRadius: 9)
-        tint.withAlphaComponent(p.isDark ? 0.18 : 0.14).setFill(); path.fill()
+        tint.withAlphaComponent(0.18).setFill(); path.fill()
         drawCentered(symbolImage(symbol, 13, .semibold, tint), in: r)
     }
 }
