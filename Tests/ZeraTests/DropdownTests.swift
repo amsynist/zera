@@ -4,6 +4,16 @@ import XCTest
 
 @MainActor
 final class DropdownTests: XCTestCase {
+    func testNativeSelectionFinishesPresentationBeforeRefreshingControls() {
+        var menuOpen = true
+        var refreshed = false
+        let menu = ZeraDropdown.nativeMenu(for: [DropdownItem(title: "Workspace 8") {
+            XCTAssertFalse(menuOpen, "selection callbacks must be able to refresh controls immediately")
+            if !menuOpen { refreshed = true }
+        }], beforeAction: { menuOpen = false })
+        menu.performActionForItem(at: 0)
+        XCTAssertTrue(refreshed)
+    }
     func testNativeMenuRetainsActionsAndCheckedState() {
         var picked = 0
         let menu = ZeraDropdown.nativeMenu(for: [

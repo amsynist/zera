@@ -13,7 +13,7 @@ Zera lives at the top of your Mac. Hover to open one shared island for Home, Age
 - Dictate into editable fields, run focus sessions and keep reminders close.
 - Reach Settings directly and return to the screen where you left off.
 
-Window Manager is an optional **Beta** addition under **Settings → Extras**, alongside Android sharing. Both are off on a fresh install; enable only the extras you want. The notch companion and its everyday tools remain Zera’s core.
+**App Shortcuts** and Android sharing are optional additions under **Settings → Extras**. Both are off on a fresh install; enable only the extras you want. The notch companion and its everyday tools remain Zera’s core.
 
 ## What’s new in Zera v2
 
@@ -42,17 +42,17 @@ Follow current work, requests, tools and results from the Agents screen. Managed
 
 Settings is one click from the notch hover controls. **Remember Last Screen** is enabled by default: returning to the notch restores your screen, filters and timesheet range, including Yesterday. Turn it off in Settings → General to use the default landing behavior. Timesheet export now stays inside the shared island, with Back to Tasks.
 
-First-run setup guides optional Accessibility, speech and model access. **Settings → Permissions & Diagnostics** is the single repair area; Screen Recording is needed only for optional window image transitions. Murmur and Apple speech are explicit provider choices. Dictation stays bound to the original editable field and avoids secure input; unsupported or changed fields leave a recoverable transcript in Diagnostics without replacing your clipboard.
+First-run setup guides optional Accessibility, speech and model access. **Settings → Permissions & Diagnostics** is the single repair area; Zera does not require Screen Recording. Murmur and Apple speech are explicit provider choices. Dictation stays bound to the original editable field and avoids secure input; unsupported or changed fields leave a recoverable transcript in Diagnostics without replacing your clipboard.
 
 ### Voice, focus and everyday tools
 
-Hold right **⌥ or ⇧** to dictate with the configured provider. Optional **Murmur** uses an on-device Whisper model after its one-time download. The first use asks for the relevant microphone/speech permissions. Tasks, the focus orb, commit-based timesheets, reminders, water breaks, clipboard history, now playing, weather and optional window layouts round out the day. Some integrations require separate access or setup.
+Hold right **⌥ or ⇧** to dictate with the configured provider. Optional **Murmur** uses an on-device Whisper model after its one-time download. The first use asks for the relevant microphone/speech permissions. Tasks, the focus orb, commit-based timesheets, reminders, water breaks, clipboard history, now playing, weather and app-opening shortcuts round out the day. Some integrations require separate access or setup.
 
-### Optional addition: Window Manager (Beta)
+### Optional addition: App Shortcuts
 
-Try columns, rows, grids and Zera workspace groups. This new feature is still being refined. It is opt-in and requires **Accessibility**; optional visual transitions also require Screen Recording and macOS 14 or later. Zera workspace groups do not create macOS Spaces.
+Open **Settings → Extras → App Shortcuts**, add an application and record the keys you want. A shortcut opens the app or activates its existing process. App choices and bindings migrate from the retired window manager; layouts, workspaces, window gestures and dock previews have been removed. App Shortcuts needs no Accessibility or Screen Recording permission.
 
-Configure app scope and shortcuts before enabling: Zera’s matching bindings replace app shortcuts while active. [Window-manager guide](docs/WINDOW_MANAGER.md).
+Use a separate window manager such as [OmniWM](https://omniwm.app/) for scrolling or tiled layouts. Zera does not bundle or control it. [App Shortcuts guide](docs/APP_SHORTCUTS.md).
 
 ## See the current app
 
@@ -60,7 +60,7 @@ Configure app scope and shortcuts before enabling: Zera’s matching bindings re
 
 <table><tr><td><img src="site/assets/v2/screens/agents.webp" alt="Native Claude and Codex overview with fictional demo tasks"></td><td><img src="site/assets/v2/screens/sharing.webp" alt="The existing notch receives an original document with themed progress"></td></tr><tr><td><img src="site/assets/v2/screens/home.webp" alt="Zera v2 Home and Mac vitals"></td><td><img src="site/assets/v2/screens/shelf.webp" alt="The redesigned Shelf"></td></tr></table>
 
-These are fresh captures from the v2 Swift UI with fictional demo data. The 80-second walkthrough has kinetic captions, smooth focus moves and a real native window-layout demo. It covers every primary screen; the separate short film shows the phone-to-Mac flow. [Media sources and recording steps](docs/MEDIA.md).
+These are fresh captures from the v2 Swift UI with fictional demo data. The 80-second walkthrough has kinetic captions, smooth focus moves and an earlier window-layout demo (the window manager has since been removed). It covers every primary screen; the separate short film shows the phone-to-Mac flow. [Media sources and recording steps](docs/MEDIA.md).
 
 ## Install
 
@@ -91,7 +91,7 @@ swift test
 swift test --package-path Packages/AndropKit
 ```
 
-The Mac app uses Swift, AppKit/SwiftUI, Network.framework and the pinned WhisperKit dependency. `VERSION` defines the local release version; CI can override it with `ZERA_VERSION`. The build uses the project’s stable local signing identity when configured, Developer ID when explicitly supplied, and ad-hoc signing otherwise. Signing alone is not notarization.
+The Mac app uses Swift, AppKit/SwiftUI, Network.framework and pinned WhisperKit. `VERSION` defines the local release version; CI can override it with `ZERA_VERSION`. The build uses the project’s stable local signing identity when configured, Developer ID when explicitly supplied, and ad-hoc signing otherwise. Signing alone is not notarization.
 
 The self-contained Android source is in [android/](android/README.md), and the native receiver package in [Packages/AndropKit](Packages/AndropKit). No adjacent private checkout is required to build Zera. [Agent/project guide](AGENTS.md) · [v2 release notes](docs/releases/v2.0.0.md).
 
