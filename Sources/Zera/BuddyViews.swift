@@ -383,8 +383,8 @@ enum CardKind: Int, CaseIterable {
     case teleprompter
     /// The focus session: one task, a ring, and what's up next.
     case focus
-    /// Optional native window layouts and Zera workspaces. Appended for saved IDs.
-    case arrange
+    /// Optional app-opening shortcuts. Preserves the former window-layout screen ID.
+    case appShortcuts // Retains the retired arranger’s persisted raw value.
     /// In-flight Android original, inside the existing notch island.
     case phoneTransfer
     case taskExport
@@ -407,7 +407,7 @@ enum CardKind: Int, CaseIterable {
         case .teleprompter: return "Teleprompter"
         case .focus: return "Focus"
         case .phoneTransfer: return "From your phone"
-        case .arrange: return "Arrange (Beta)"
+        case .appShortcuts: return "App Shortcuts"
         case .taskExport: return "Timesheet export"
         }
     }
@@ -428,7 +428,7 @@ enum CardKind: Int, CaseIterable {
         case .teleprompter: return "text.alignleft"
         case .focus: return "scope"
         case .phoneTransfer: return "iphone.and.arrow.forward"
-        case .arrange: return "rectangle.3.group"
+        case .appShortcuts: return "keyboard"
         case .taskExport: return "tablecells"
         }
     }

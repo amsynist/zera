@@ -16,7 +16,7 @@ final class NotchNavigation {
     static func isDestination(_ kind: CardKind) -> Bool {
         switch kind {
         case .home, .shelf, .github, .settings, .claude, .clipboard, .tasks,
-             .alerts, .reminders, .teleprompter, .focus, .arrange, .taskExport: return true
+             .alerts, .reminders, .teleprompter, .focus, .appShortcuts, .taskExport: return true
         default: return false
         }
     }

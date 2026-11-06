@@ -4,13 +4,10 @@ import AVFoundation
 import Speech
 
 enum PermissionAccess {
-    enum Kind { case accessibility, screen, speech }
+    enum Kind { case accessibility, speech }
     enum Status: String { case allowed = "Allowed", undecided = "Not requested", denied = "Not allowed" }
     static func status(authorized: Bool, determined: Bool) -> Status {
         authorized ? .allowed : (determined ? .denied : .undecided)
-    }
-    static var screenNeeded: Bool {
-        MainActor.assumeIsolated { WindowArrangementService.shared.enabled && WindowArrangementService.shared.settings.visualTransitions == true }
     }
     static func openPrivacy(_ pane: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") { NSWorkspace.shared.open(url) }
@@ -83,15 +80,10 @@ final class PermissionSetupView: NSView {
         switch kind {
         case .accessibility:
             title.stringValue = "Accessibility"
-            detail.stringValue = "Optional · arrange windows and insert dictation into editable fields. Enable Zera in System Settings; access can’t be granted here."
+            detail.stringValue = "Optional · insert dictation into editable fields. Enable Zera in System Settings; access can’t be granted here."
             let allowed = AXIsProcessTrusted()
-            status.stringValue = allowed ? "Allowed · window and text access is ready" : "Not allowed · existing grants may need Zera to be restarted after an update"
+            status.stringValue = allowed ? "Allowed · text access is ready" : "Not allowed · existing grants may need Zera to be restarted after an update"
             actionButton.setTitleText(allowed ? "Open Accessibility settings" : "Set up Accessibility")
-        case .screen:
-            title.stringValue = "Screen Recording"
-            detail.stringValue = "Optional · used only for window image transitions. Native window positioning works without it. Captures stay in memory."
-            status.stringValue = CGPreflightScreenCaptureAccess() ? "Allowed for this process" : (PermissionAccess.screenNeeded ? "Not allowed · macOS may require a restart after granting access" : "Not needed · window visual transitions are inactive")
-            actionButton.setTitleText("Open Screen Recording settings")
         case .speech:
             title.stringValue = "Microphone & speech"
             detail.stringValue = "Optional · hold the dictation key to speak, release to insert into the original field. Choose a provider; Murmur needs one model download."
@@ -114,10 +106,6 @@ final class PermissionSetupView: NSView {
         case .accessibility:
             if AXIsProcessTrusted() { PermissionAccess.openPrivacy("Privacy_Accessibility") }
             else { _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) }
-        case .screen:
-            // Never request capture for a disabled feature.
-            if PermissionAccess.screenNeeded && !CGPreflightScreenCaptureAccess() { _ = CGRequestScreenCaptureAccess() }
-            else { PermissionAccess.openPrivacy("Privacy_ScreenCapture") }
         case .speech:
             if Murmur.shared.useForDictation {
                 if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined { MurmurRecorder.askForMic { [weak self] _ in self?.refresh() } }

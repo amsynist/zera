@@ -17,20 +17,7 @@ Normal `swift test` skips recording. The full kinetic walkthrough inserts a sepa
 
 ## Record real window arrangements
 
-The capture fixture is `Tests/Fixtures/WindowMedia/main.swift`, a tiny native app with three disposable windows (notes, a code sample and the generated coast image). Build it inside a `.app` with bundle ID `io.github.amsynist.zera.media-windows`, executable `Fixture` and `NSHighResolutionCapable=true`; no network, documents or account data are used. The test invokes production `ArrangeLayout` and `ArrangeWindowAccess.apply`, rather than creating browser rectangles or claiming to click controls it does not click. It verifies native Accessibility frame writes after a settling delay.
-
-```sh
-CFFIXED_USER_HOME="$PWD/.build/v2-media-home" \
-  ZERA_RENDER_SCREENS="$PWD/.build/v2-window-media" \
-  ZERA_V2_WINDOW_MEDIA=1 \
-  ZERA_WINDOW_MEDIA_APP="/absolute/path/to/Window Media.app" \
-  ZERA_WINDOW_MEDIA_PHOTO="/absolute/path/to/00-coast.png" \
-  swift test --filter WindowMediaTests/testRecordNativeWindowLayouts
-```
-
-Existing Accessibility and Screen Recording access are required. The filter contains only the new fixture process and its native wallpaper window. If AeroSpace is already running, optional `ZERA_MEDIA_AEROSPACE_CLI=/absolute/path/to/aerospace` changes only the new fixture windows to floating in AeroSpace; it never disables that manager globally or changes existing user windows. The background sits below ordinary windows and joins the current Space. The first take was rejected because AeroSpace retiled the demo; the final take visibly and numerically proves overlapping → main-left → columns → restored main-left. All disposable windows terminate after recording. The production Zera feature still refuses activation while AeroSpace is running.
-
-The final source includes 763 real frames over 13.383 seconds (~57fps), with a median 16.667ms interval and a longest 150ms gap. The continuous app source has 3,681 real frames over 63.858 seconds (~57.6fps), with a longest 31.667ms gap. These are capture measurements, not a universal app-performance guarantee. The exact output and caption timeline, source evidence and encoded proof are retained under `docs/media/v2/walkthrough/`. See WINDOW_MANAGER.md for the user-facing feature/setup guide.
+The window-layout chapter in the existing film is historical. Its recorder, disposable window fixture and production arranger were removed together with Zera’s window manager. That chapter is not evidence of a feature in the current app. The retained source evidence and encoded proof under `docs/media/v2/walkthrough/` describe the earlier take. See [App Shortcuts](APP_SHORTCUTS.md) for the current optional Extra.
 
 ## Phone-to-Mac hero
 

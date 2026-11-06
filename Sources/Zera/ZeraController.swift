@@ -302,7 +302,7 @@ final class ZeraController: NSObject {
         }
         island.onSearch = { [weak self] in
             self?.suppressUntil = .distantPast
-            self?.show(.arrange)
+            self?.show(.appShortcuts)
         }
         island.deck.onOpen = { [weak self] kind in
             guard let self = self else { return }
@@ -2237,7 +2237,7 @@ final class ZeraController: NSObject {
             s.onReturn = { [weak self] in
                 self?.show(NotchNavigation.shared.settingsReturn)
             }
-            s.onOpenArrangement = { [weak self] in self?.show(.arrange) }
+            s.onOpenAppShortcuts = { [weak self] in self?.show(.appShortcuts) }
             s.onOpenAgents = { [weak self] in self?.show(.claude) }
             s.onDefaultChanged = { [weak self] k in self?.defaultCard = k }
             s.onHoverMenuChanged = { [weak self] style in self?.island.hoverStyle = style }
@@ -2293,13 +2293,9 @@ final class ZeraController: NSObject {
         case .teleprompter:
             let t = TeleprompterView()
             c = t
-        case .arrange:
+        case .appShortcuts:
             c = MainActor.assumeIsolated {
-                let view = WindowArrangementView()
-                view.onOpenPermissions = { [weak self] in
-                    self?.show(.settings)
-                    (self?.cards[.settings] as? SettingsCard)?.select(.permissions)
-                }
+                let view = AppShortcutsView()
                 return view
             }
         case .focus:
@@ -2488,7 +2484,7 @@ final class ZeraController: NSObject {
         case .alerts: (cards[.alerts] as? AlertsView)?.willShow()
         case .teleprompter: (cards[.teleprompter] as? TeleprompterView)?.willShow()
         case .focus: (cards[.focus] as? FocusView)?.willShow()
-        case .arrange: MainActor.assumeIsolated { (cards[.arrange] as? WindowArrangementView)?.willShow() }
+        case .appShortcuts: MainActor.assumeIsolated { (cards[.appShortcuts] as? AppShortcutsView)?.willShow() }
         }
 
         if !cardVisible { islandVisited = false }

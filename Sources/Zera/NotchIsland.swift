@@ -44,7 +44,7 @@ enum Isle {
     static let leftTabs: [CardKind] = [.home, .claude, .github, .alerts, .clipboard]
     static let rightTabs: [CardKind] = [.shelf, .tasks, .reminders, .teleprompter, .focus]
     /// Screens that open without a tab of their own at the notch.
-    static let offRail: [CardKind] = [.settings, .arrange, .phoneTransfer]
+    static let offRail: [CardKind] = [.settings, .appShortcuts, .phoneTransfer]
 
     /// Which tab lights up for a screen that has none of its own.
     static func tab(for kind: CardKind) -> CardKind {
@@ -54,7 +54,7 @@ enum Isle {
         case .approval: return .claude
         case .reminderAlert: return .reminders
         case .toast: return .alerts
-        case .settings, .arrange: return .home
+        case .settings, .appShortcuts: return .home
         default: return kind
         }
     }
@@ -90,7 +90,7 @@ enum Isle {
         case .clipboard: return "hang_upsidedown"
         case .tasks, .focus: return "hang_smile"
         case .alerts: return "hang_peek"
-        case .teleprompter, .arrange, .taskExport: return "hang_think"
+        case .teleprompter, .appShortcuts, .taskExport: return "hang_think"
         }
     }
 }
@@ -172,13 +172,13 @@ final class IslandView: NSView {
     /// Live rings on the nodes: CPU on Home, the session on Claude, the next event on Reminders…
     var instruments: [CardKind: IslandInstrument] = [:] { didSet { tabs.forEach { $0.instrument = instruments[$0.kind] } } }
     var onClose: (() -> Void)?
-    /// Arrange replaces the redundant search node; Option-Space still opens apps.
+    /// App Shortcuts complements the launcher; Option-Space still opens apps.
     var onSearch: (() -> Void)?
     private let closeButton = IslandClose()
     /// Settings left the rail (Glance-style eight tabs); the gear on the band opens it.
     private let settingsButton = IslandClose(symbol: "gearshape", label: "Settings", tip: "Settings (⌘,)")
     var onSettings: (() -> Void)?
-    private let searchNode = IslandClose(symbol: "rectangle.3.group", label: "Arrange windows (Beta)", tip: "Arrange windows and workspaces (Beta)", accent: true)
+    private let searchNode = IslandClose(symbol: "keyboard", label: "App Shortcuts", tip: "Configure app-opening shortcuts", accent: true)
 
     /// The island's current shape, in view coordinates.
     private(set) var islandRect = NSRect.zero
@@ -1090,7 +1090,7 @@ final class IslandClose: NSButton {
             (hovered ? t.glassTop : t.glassBottom).setFill(); p.fill()
             (hovered ? t.accent.withAlphaComponent(0.6) : t.border).setStroke(); p.lineWidth = 0.75; p.stroke()
             Neon.symbol(symbol, in: NSRect(x: 12, y: 9, width: 20, height: 20), size: 15, weight: .regular, color: Neon.textDim)
-            ("Arrange windows and workspaces (Beta)" as NSString).draw(at: NSPoint(x: 42, y: 11),
+            ("App Shortcuts" as NSString).draw(at: NSPoint(x: 42, y: 11),
                 withAttributes: [.font: Typo.control, .foregroundColor: Neon.textDim])
             return
         }
