@@ -23,7 +23,7 @@ final class AndroidTransferTests: XCTestCase {
         receiver.stop()
         XCTAssertFalse(receiver.isRunning)
         XCTAssertEqual(AndroidTransfer(defaults: defaults).pairingCode, receiver.pairingCode)
-        XCTAssertFalse(ArrangeSettings().enabled)
+        XCTAssertFalse(AppShortcutPreferences().enabled)
     }
 
     func testReceiptNeedsFinalSaveAndIgnoresStaleEvents() {

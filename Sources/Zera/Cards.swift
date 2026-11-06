@@ -916,7 +916,7 @@ final class SettingsCard: CardBase, CardContent {
     var onOpenerShortcutRecording: ((Bool) -> Void)?
     var onOpenerEnabledChanged: ((Bool) -> Void)?
     var onOpenAgents: (() -> Void)?
-    var onOpenArrangement: (() -> Void)?
+    var onOpenAppShortcuts: (() -> Void)?
     /// Quick add for Tasks (nil = off), and the menu bar item / orb switches.
     var tasksShortcut: HotKeyShortcut? = TasksSettings.defaultShortcut
     var onTasksShortcutChanged: ((HotKeyShortcut?) -> Bool)?
@@ -1047,7 +1047,7 @@ final class SettingsCard: CardBase, CardContent {
         paneScroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(updateScrollHint), name: NSView.boundsDidChangeNotification, object: paneScroll.contentView)
         for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed,
-                     ClaudeActivityService.changed, ClaudeUsageService.changed, AnthropicAPIClient.configuredChanged, AndroidTransfer.changed, WindowArrangementService.changed] {
+                     ClaudeActivityService.changed, ClaudeUsageService.changed, AnthropicAPIClient.configuredChanged, AndroidTransfer.changed, AppShortcuts.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(serviceChanged), name: name, object: nil)
         }
         NotificationCenter.default.addObserver(self, selector: #selector(codexSettingsChanged), name: CodexAgentService.changed, object: nil)
@@ -1288,7 +1288,7 @@ final class SettingsCard: CardBase, CardContent {
     private func buildPermissions(_ s: inout Stack) {
         hint("Access is optional and checked live. If macOS asks you to restart Zera, quit and reopen the same signed app. Revoking access never deletes your data.", &s)
         buttonRow("Keyboard monitoring…", style: .secondary, status: GlobalKeys.keysAllowed ? "Allowed · global dictation and feedback shortcuts are available" : "Optional · monitor global keys for dictation and Command Echo", &s, action: #selector(keyboardAccessTapped))
-        for kind in [PermissionAccess.Kind.accessibility, .screen, .speech] {
+        for kind in [PermissionAccess.Kind.accessibility, .speech] {
             let view = PermissionSetupView(kind: kind)
             pane.addSubview(view)
             s.place(view, height: view.preferredHeight, gap: Space.xl)
@@ -1308,12 +1308,12 @@ final class SettingsCard: CardBase, CardContent {
 
     private func buildExtras(_ s: inout Stack) {
         hint("Optional modules. Both are off on a fresh install and run only after you enable them.", &s)
-        sectionLabel("Window Manager · Beta", &s)
-        toggleRow("Enable Window Manager", on: WindowArrangementService.shared.enabled, &s) { yes in
-            WindowArrangementService.shared.setEnabled(yes)
+        sectionLabel("App Shortcuts", &s)
+        toggleRow("Enable App Shortcuts", on: AppShortcuts.shared.preferences.enabled, &s) { yes in
+            _ = AppShortcuts.shared.update { $0.enabled = yes }
         }
-        hint("Layouts, Zera workspaces and app shortcuts. Accessibility is required. Turning it off restores Zera-hidden windows and releases its shortcuts and observers.", &s)
-        buttonRow("Configure Window Manager…", style: .secondary, status: WindowArrangementService.shared.message, &s, action: #selector(openArrangementTapped))
+        hint("Choose your own shortcuts to open or focus applications. No Accessibility access is needed. Your window manager controls layouts and workspaces.", &s)
+        buttonRow("Configure App Shortcuts…", style: .secondary, status: AppShortcuts.shared.message, &s, action: #selector(openAppShortcutsTapped))
         sectionLabel("Android sharing", &s)
         toggleRow("Receive from Android", on: AndroidTransfer.shared.enabled, &s) { yes in
             AndroidTransfer.shared.setEnabled(yes)
@@ -2240,7 +2240,7 @@ final class SettingsCard: CardBase, CardContent {
         say?("Hover menu: \(style.title)", .happy)
     }
 
-    @objc private func openArrangementTapped() { onOpenArrangement?() }
+    @objc private func openAppShortcutsTapped() { onOpenAppShortcuts?() }
     @objc private func openerStyleChanged(_ pop: ZeraSelect) {
         AppOpenerSettings.style = AppOpenerSettings.Style(rawValue: pop.selectedIndex) ?? .orbit
         say?(AppOpenerSettings.style == .orbit ? "the opener comes down in the middle now ✨" : "back to the classic tree 🌳", .happy)

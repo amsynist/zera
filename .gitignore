@@ -1,4 +1,6 @@
 .build/
+*.profraw
+*.profdata
 dist/
 .DS_Store
 .vscode/

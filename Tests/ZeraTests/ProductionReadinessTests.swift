@@ -18,15 +18,8 @@ final class ProductionReadinessTests: XCTestCase {
     }
     private func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + descendants($0) } }
 
-    func testExtrasAreDiscoverableAndDisabledManagerDoesNotScan() {
+    func testExtrasAreDiscoverableWithoutScreenCapture() {
         _ = NSApplication.shared
-        let manager = WindowArrangementService.shared
-        XCTAssertFalse(manager.enabled)
-        manager.refresh()
-        manager.previewVisualMotion()
-        XCTAssertFalse(manager.busy)
-        XCTAssertFalse(PermissionAccess.screenNeeded)
-        XCTAssertTrue(manager.currentWindows.isEmpty)
         XCTAssertEqual(SettingsCard.Pane.permissions.rawValue, 14)
         XCTAssertEqual(SettingsCard.Pane.extras.rawValue, 15)
         XCTAssertFalse(SettingsCard.Pane.extras.isDetail)
@@ -123,22 +116,7 @@ final class ProductionReadinessTests: XCTestCase {
         }
     }
 
-    func testUsableDisplayGeometryUsesRealDockAndMenuBarInsets() {
-        for frame in [CGRect(x: 0, y: 0, width: 1512, height: 982), CGRect(x: -1920, y: -200, width: 1920, height: 1080)] {
-            for visible in [frame.insetBy(dx: 0, dy: 24), CGRect(x: frame.minX + 72, y: frame.minY + 38, width: frame.width - 72, height: frame.height - 38)] {
-                let display = ArrangeDisplay(id: "fixture", name: "Fixture", frame: frame, visible: visible, main: true)
-                XCTAssertEqual(display.area, visible.insetBy(dx: 8, dy: 8))
-                for count in 2...4 {
-                    for layout in [ArrangeLayout.columns, .rows, .grid] {
-                        let frames = layout.frames(count: count, in: display.area)
-                        XCTAssertEqual(frames.count, count)
-                        XCTAssertTrue(frames.allSatisfy { display.area.contains($0) })
-                        for (i, r) in frames.enumerated() { XCTAssertTrue(frames.dropFirst(i + 1).allSatisfy { !r.intersects($0) }) }
-                    }
-                }
-            }
-        }
-    }
+
 
     func testInsertionRejectsSecureDisabledAndUnknownControls() {
         XCTAssertTrue(DictationInsertionTarget.permitsInsertion(role: kAXTextFieldRole, subrole: nil, enabled: true, writable: false))
@@ -159,19 +137,7 @@ final class ProductionReadinessTests: XCTestCase {
         XCTAssertEqual(SettingsCard.Pane.codex.rawValue, 13)
     }
 
-    func testNativeDesktopChangeStopsRemainingWritesAndRollback() {
-        let epoch = ArrangeOperationEpoch(), ticket = epoch.ticket()
-        let windows = (0..<3).map { i in ArrangeWindow(id: "\(i)", app: "Fixture", bundle: "fixture", title: "Synthetic", pid: 42, frame: CGRect(x: i * 300, y: 40, width: 300, height: 400), workspace: 1, minimized: false) }
-        let targets = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0.frame.offsetBy(dx: 10, dy: 20)) })
-        var writes = 0
-        let error = ArrangeTransaction.apply(windows: windows, active: [1], frames: targets, read: { id in
-            windows.first { $0.id == id }.map { ($0.frame, false) }
-        }, setFrame: { _, frame in
-            writes += 1; epoch.invalidate(); return frame
-        }, setMinimized: { _, _ in XCTFail("No minimize is needed"); return true }, isCurrent: { epoch.matches(ticket) })
-        XCTAssertNotNil(error)
-        XCTAssertEqual(writes, 1, "No later write or rollback may run after leaving the desktop")
-    }
+
 
     func testRememberedClipboardAndReminderFiltersKeepTheirContext() throws {
         let previous = NotchNavigation.shared.remembersScreen

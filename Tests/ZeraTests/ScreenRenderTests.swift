@@ -91,6 +91,21 @@ final class ScreenRenderTests: XCTestCase {
 
     // MARK: Renders
 
+    func testRenderAppShortcuts() throws {
+        let defaults = UserDefaults(suiteName: "AppShortcutRender.\(UUID())")!
+        let service = AppShortcuts(defaults: defaults)
+        service.update { $0.apps = [
+            .init(name: "Ghostty", bundle: "com.mitchellh.ghostty", path: "/Applications/Ghostty.app", shortcut: .init(keyCode: 13, modifiers: 256, key: "W")),
+            .init(name: "Safari", bundle: "com.apple.Safari", path: "/Applications/Safari.app", shortcut: .init(keyCode: 1, modifiers: 2304, key: "S")),
+            .init(name: "Notes", bundle: "com.apple.Notes", path: "/System/Applications/Notes.app")
+        ] }
+        island(AppShortcutsView(service: service), tab: .appShortcuts, "app-shortcuts")
+    }
+
+
+
+
+
     func testRenderLiveIslandOutlineStyles() throws {
         guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else { throw XCTSkip("use a disposable home") }
         let saved = NotchLightStyle.current
@@ -136,13 +151,7 @@ final class ScreenRenderTests: XCTestCase {
         let modelView = try XCTUnwrap(speechModel.window?.contentView)
         speechModel.window?.contentView = nil
         shot(modelView, "production-speech-model")
-        let arrangements = WindowArrangementView()
-        func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + descendants($0) } }
-        let pages = try XCTUnwrap(descendants(arrangements).compactMap { $0 as? PillTabs }.first)
-        for page in 0...2 {
-            pages.onSelect?(page)
-            island(arrangements, tab: .home, "production-arrange-\(page)")
-        }
+        island(AppShortcutsView(), tab: .appShortcuts, "production-app-shortcuts")
     }
 
     /// Opt-in native audit of newer destinations and every settings pane. Uses a disposable
@@ -1352,7 +1361,7 @@ final class ScreenRenderTests: XCTestCase {
         try await show(AlertsView(), .alerts, "alerts", "What needs you")
         let prompter = TeleprompterView(store: scripts); prompter.setMode(.edit)
         try await show(prompter, .teleprompter, "teleprompter", "Your words, within reach")
-        try await show(WindowArrangementView(), .arrange, "layouts", "Arrange windows")
+        try await show(AppShortcutsView(), .appShortcuts, "app-shortcuts", "Open your apps")
         let settings = SettingsCard(defaultKind: .home, showingZera: true, loginEnabled: false)
         try await show(settings, .settings, "settings", "Make it yours")
         settings.select(.appearance); try await show(settings, .settings, "themes", "The same theme, everywhere")
