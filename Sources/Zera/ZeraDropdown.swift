@@ -266,19 +266,25 @@ final class ZeraDropdown {
     private func showNative(_ items: [DropdownItem], below anchor: NSView) {
         dismiss()
         guard anchor.window != nil else { return }
-        let menu = Self.nativeMenu(for: items)
+        let menu = Self.nativeMenu(for: items, beforeAction: { [weak self] in
+            // Like the glass menu, finish presentation before invoking the choice.
+            // Otherwise screens guarding against rebuilding an open menu retain
+            // the previous selection's controls after the native menu disappears.
+            self?.nativeMenu = nil
+            self?.anchor = nil
+        })
         nativeMenu = menu
         self.anchor = anchor
         menu.popUp(positioning: nil, at: NSPoint(x: anchor.bounds.minX, y: anchor.isFlipped ? anchor.bounds.maxY : anchor.bounds.minY), in: anchor)
         if nativeMenu === menu { nativeMenu = nil; self.anchor = nil }
     }
 
-    static func nativeMenu(for items: [DropdownItem]) -> NSMenu {
+    static func nativeMenu(for items: [DropdownItem], beforeAction: (() -> Void)? = nil) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
         for item in items {
             if item.isSeparator { menu.addItem(.separator()); continue }
-            let handler = NativeDropdownAction(item.action)
+            let handler = NativeDropdownAction { beforeAction?(); item.action() }
             let row = NSMenuItem(title: item.title, action: #selector(NativeDropdownAction.pick(_:)), keyEquivalent: "")
             row.target = handler
             row.representedObject = handler

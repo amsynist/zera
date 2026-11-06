@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Dictation.shared.start()
         Murmur.shared.start()
         AgentWatch.shared.start()
-        WindowArrangementService.shared.startIfEnabled()
+        AppShortcuts.shared.start()
         LyricsService.shared.start()
         NowPlayingService.shared.start()
         WeatherService.shared.start()
@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                 ("Alerts", #selector(showAlerts)), ("Clipboard", #selector(showClipboard)),
                                 ("Shelf", #selector(showShelf)), ("Reminders", #selector(showReminders)),
                                 ("Focus", #selector(showFocus)), ("Teleprompter", #selector(showTeleprompter)),
-                                ("Tasks", #selector(showTasks)), ("Pull requests", #selector(showGitHub)), ("Arrange windows (Beta)", #selector(showArrange))] {
+                                ("Tasks", #selector(showTasks)), ("Pull requests", #selector(showGitHub)), ("App Shortcuts", #selector(showAppShortcuts))] {
             view.addItem(withTitle: title, action: action, keyEquivalent: "").target = self
         }
         for menu in [application, edit, view] {
@@ -166,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         extras.tag = 8988
         let extrasMenu = NSMenu(title: "Extras")
         extrasMenu.addItem(withTitle: "Manage Extras…", action: #selector(showExtras), keyEquivalent: "").target = self
-        extrasMenu.addItem(withTitle: "Window Manager (Beta)…", action: #selector(showArrange), keyEquivalent: "").target = self
+        extrasMenu.addItem(withTitle: "App Shortcuts…", action: #selector(showAppShortcuts), keyEquivalent: "").target = self
         extrasMenu.addItem(androidMenuItem())
         extras.submenu = extrasMenu
         menu.insertItem(extras, at: menu.numberOfItems - 1)
@@ -262,13 +262,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func showExtras() { controller.showExtras() }
-    @objc private func showArrange() { controller.show(.arrange) }
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let manager = WindowArrangementService.shared
-        guard manager.enabled || manager.hiddenCount > 0 || manager.busy else { return .terminateNow }
-        manager.prepareForTermination { NSApp.reply(toApplicationShouldTerminate: true) }
-        return .terminateLater
-    }
+    @objc private func showAppShortcuts() { controller.show(.appShortcuts) }
+
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
@@ -276,6 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// clipboard change still waiting for its debounced save is written now.
     func applicationWillTerminate(_ notification: Notification) {
         controller.prepareForTermination()
+        AppShortcuts.shared.stop()
         TeleprompterStore.shared.flush()
         Dictation.shared.cancel(resumeApprovals: false)
         AndroidTransfer.shared.stop()

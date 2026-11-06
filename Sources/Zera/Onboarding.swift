@@ -141,7 +141,7 @@ private final class OnboardingView: NSView {
     private let tint = CAGradientLayer()
     private let rim = CALayer()
     private let pageHost = FlippedView()
-    private let dots = PageDots(count: 5)
+    private let dots = PageDots(count: 4)
     private let back: CardButton
     private let next: CardButton
     private let skipButton: CardButton
@@ -197,7 +197,7 @@ private final class OnboardingView: NSView {
         switch i {
         case 0: p = WelcomePage()
         case 1: p = AccessPage(kind: .accessibility)
-        case 2: p = AccessPage(kind: .screen)
+        case 2: p = AccessPage(kind: .speech) // Reserved persisted step; show() skips it.
         case 3: p = AccessPage(kind: .speech)
         default:
             p = DonePage()
@@ -208,14 +208,16 @@ private final class OnboardingView: NSView {
 
     // MARK: Paging
 
-    private func show(_ i: Int, direction: CGFloat, animated: Bool) {
+    private func show(_ savedIndex: Int, direction: CGFloat, animated: Bool) {
+        // Keep persisted IDs stable after removing the Screen Recording step.
+        let i = savedIndex == 2 ? 3 : savedIndex
         guard pages.indices.contains(i), !transitioning else { return }
         let old = current
         let new = page(i)
         index = i
         if !OnboardingState.done { OnboardingState.step = i }
         current = new
-        dots.selected = i
+        dots.selected = i >= 3 ? i - 1 : i
         back.isHidden = i == 0
         next.setTitleText(i == pages.count - 1 ? "Open Zera" : i == 0 ? "Get Started" : "Continue")
         skipButton.isHidden = i == pages.count - 1
@@ -264,7 +266,7 @@ private final class OnboardingView: NSView {
 
     @objc private func backTapped() {
         SoundService.shared.play(.tab)
-        let previous = index == 3 && !PermissionAccess.screenNeeded ? 1 : index - 1
+        let previous = index == 3 ? 1 : index - 1
         show(previous, direction: -1, animated: true)
     }
 
@@ -273,7 +275,7 @@ private final class OnboardingView: NSView {
         SoundService.shared.play(.tab)
         var nextStep = index + 1
         if nextStep == 1, AXIsProcessTrusted() { nextStep += 1 }
-        if nextStep == 2, !PermissionAccess.screenNeeded || CGPreflightScreenCaptureAccess() { nextStep += 1 }
+        if nextStep == 2 { nextStep += 1 }
         show(nextStep, direction: 1, animated: true)
     }
 

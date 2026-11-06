@@ -96,7 +96,7 @@ final class GlobalHotKey {
         Self.nextID += 1
         let hotKeyID = EventHotKeyID(signature: OSType(0x5A455241), id: id)   // 'ZERA'
         var out: EventHotKeyRef?
-        let status = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, hotKeyID, GetApplicationEventTarget(), 0, &out)
+        let status = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, hotKeyID, GetApplicationEventTarget(), OptionBits(kEventHotKeyExclusive), &out)
         guard status == noErr, let r = out else {
             Diag.log("hotkey registration failed: key \(shortcut.keyCode), modifiers \(shortcut.modifiers), status \(status)")
             return nil
@@ -119,8 +119,11 @@ final class GlobalHotKey {
             let err = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
                                         nil, MemoryLayout<EventHotKeyID>.size, nil, &hk)
             guard err == noErr else { return err }
-            let id = hk.id
-            DispatchQueue.main.async { GlobalHotKey.handlers[id]?() }
+            guard hk.signature == OSType(0x5A455241), let handler = GlobalHotKey.handlers[hk.id] else { return OSStatus(eventNotHandledErr) }
+            // Carbon delivers on the application event loop. Keep a hotkey action
+            // in that user-input turn instead of queueing it behind another redraw.
+            if Thread.isMainThread { handler() }
+            else { DispatchQueue.main.async(execute: handler) }
             return noErr
         }, 1, &spec, nil, nil)
     }
@@ -150,7 +153,12 @@ final class ShortcutRecorder: NSView {
         }
     }
     private var keyLossObserver: NSObjectProtocol?
-    deinit { if let keyLossObserver { NotificationCenter.default.removeObserver(keyLossObserver) } }
+    deinit {
+        // Destruction may bypass viewDidHide/viewWillMove. Every recording start
+        // must be balanced so global shortcuts are never left suspended.
+        if recording { onRecording?(false) }
+        if let keyLossObserver { NotificationCenter.default.removeObserver(keyLossObserver) }
+    }
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         if recording, newWindow !== window { stop() }
         super.viewWillMove(toWindow: newWindow)
