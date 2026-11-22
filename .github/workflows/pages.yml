@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -28,5 +29,20 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
+      - name: Wait for the uploaded Pages artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Pages deploys by looking up the artifact through the Actions API.
+          # The upload can finish before the artifact appears in that listing.
+          for attempt in {1..15}; do
+            if available=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=github-pages" \
+              --jq 'any(.artifacts[]; .name == "github-pages" and (.expired | not))') && [ "$available" = true ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::The uploaded Pages artifact is still missing from the Actions API."
+          exit 1
       - id: deployment
         uses: actions/deploy-pages@v5
