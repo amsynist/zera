@@ -267,7 +267,7 @@ final class NotchBuddyView: NSView, ZeraAnimating {
     }
 
     private func drawText(_ s: String, at p: CGPoint, color: NSColor, size: CGFloat) {
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium), .foregroundColor: color]
+        let attrs: [NSAttributedString.Key: Any] = [.font: ZFont.digits(ofSize: size, weight: .medium), .foregroundColor: color]
         let str = s as NSString
         let sz = str.size(withAttributes: attrs)
         str.draw(at: NSPoint(x: p.x, y: p.y - sz.height / 2), withAttributes: attrs)

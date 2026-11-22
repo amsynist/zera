@@ -113,6 +113,7 @@ final class PullRequestRow: NSView {
 
         let st = prStatus(pr)
         chip.set(symbol: st.symbol, text: st.text, color: st.color)
+        tile.show(number: pr.number, tone: st.color)
         addSubview(chip)
         avatars.people = pr.reviewers.isEmpty ? [] : pr.reviewers
         avatars.ring = p.surfaceRow
@@ -361,7 +362,7 @@ final class PRDetailView: NSView {
         panel.addSubview(checksCaption)
         for c in pr.failing.prefix(3) {
             let l = NSTextField(labelWithString: "")
-            let s = NSMutableAttributedString(string: "✕  ", attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .bold), .foregroundColor: p.danger])
+            let s = NSMutableAttributedString(string: "✕  ", attributes: [.font: ZFont.ui(ofSize: 12, weight: .bold), .foregroundColor: p.danger])
             s.append(NSAttributedString(string: c.name, attributes: [.font: Typo.bodyStrong, .foregroundColor: p.text]))
             if !c.title.isEmpty { s.append(NSAttributedString(string: "  —  \(c.title)", attributes: [.font: Typo.body, .foregroundColor: p.textSecondary])) }
             l.attributedStringValue = s

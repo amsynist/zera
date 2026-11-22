@@ -224,7 +224,7 @@ final class SessionIconTile: NSView {
                 tint.setStroke(); arc.stroke()
             }
             if let t = ringText, !t.isEmpty {
-                let a: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: t.count > 2 ? 10 : 11, weight: .bold), .foregroundColor: p.text]
+                let a: [NSAttributedString.Key: Any] = [.font: ZFont.digits(ofSize: t.count > 2 ? 10 : 11, weight: .bold), .foregroundColor: p.text]
                 let sz = (t as NSString).size(withAttributes: a)
                 (t as NSString).draw(at: NSPoint(x: c.x - sz.width / 2, y: c.y - sz.height / 2), withAttributes: a)
             } else {
@@ -424,7 +424,7 @@ final class ClaudeSessionRow: NSView {
 /// "60%  Analyzing files…  ▓▓▓▓░░  3m 24s elapsed / ETA ~ 1m 30s". The big number appears only
 /// with a real plan; otherwise a state glyph sits in its place and the bar is indeterminate.
 final class ClaudeSessionProgress: NSView {
-    private let big = label(NSFont.systemFont(ofSize: 28, weight: .bold), Pal.text)
+    private let big = label(ZFont.ui(ofSize: 28, weight: .bold), Pal.text)
     private let glyph = NSImageView()
     private let spinner = NSProgressIndicator()
     private let stage = label(Typo.rowTitle, Pal.text)
@@ -620,7 +620,7 @@ final class ClaudeActivityConsole: NSView {
     private var expandButton: GHSquareButton!
     var expanded = false { didSet { expandButton.toolTip = expanded ? "Collapse" : "Expand" } }
     override var isFlipped: Bool { true }
-    private static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    private static let font = ZFont.mono(ofSize: 12, weight: .regular)
     private static let lineH: CGFloat = 22
 
     override init(frame: NSRect) {
@@ -740,7 +740,7 @@ final class ClaudeTaskDetails: NSView {
             [iv, k, v].forEach { addSubview($0) }
             rows.append(Row(icon: iv, key: k, value: v))
         }
-        rows[1].value.font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular)
+        rows[1].value.font = ZFont.mono(ofSize: 12.5, weight: .regular)
         rows[1].value.lineBreakMode = .byTruncatingHead
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -803,9 +803,9 @@ final class ClaudeFollowUpInput: NSView {
         c.padding = 0
         c.isEditable = true; c.isSelectable = true; c.isScrollable = true; c.wraps = false
         c.placeholderAttributedString = NSAttributedString(string: "Ask Claude about this session…",
-                                                           attributes: [.foregroundColor: p.textTertiary, .font: NSFont.systemFont(ofSize: 13.5)])
+                                                           attributes: [.foregroundColor: p.textTertiary, .font: ZFont.ui(ofSize: 13.5)])
         field.cell = c
-        field.font = NSFont.systemFont(ofSize: 13.5)
+        field.font = ZFont.ui(ofSize: 13.5)
         field.textColor = p.text
         field.isBordered = false
         field.isBezeled = false
@@ -825,7 +825,7 @@ final class ClaudeFollowUpInput: NSView {
 
     func setPlaceholder(_ text: String) {
         (field.cell as? NSTextFieldCell)?.placeholderAttributedString = NSAttributedString(
-            string: text, attributes: [.foregroundColor: Pal.textTertiary, .font: NSFont.systemFont(ofSize: 13.5)])
+            string: text, attributes: [.foregroundColor: Pal.textTertiary, .font: ZFont.ui(ofSize: 13.5)])
         field.setAccessibilityLabel(text)
     }
 

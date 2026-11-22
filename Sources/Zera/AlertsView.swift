@@ -608,6 +608,9 @@ final class AlertRow: NSView {
     var onTap: (() -> Void)?
     var onDismiss: (() -> Void)?
     private let tile: IconTile
+    /// Signal: alerts read like a log tail: the time, a level word in the alert's colour, the line.
+    private let stamp = NSTextField(labelWithString: "")
+    private let level = NSTextField(labelWithString: "")
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let when = NSTextField(labelWithString: "")
@@ -630,7 +633,17 @@ final class AlertRow: NSView {
         super.init(frame: .zero)
         let p = Pal
         roundLayer(Radius.l)
+        tile.isHidden = true
         addSubview(tile)
+        stamp.stringValue = Self.clock.string(from: a.date)
+        stamp.font = ZFont.mono(ofSize: 11, weight: .regular)
+        stamp.textColor = Signal.faint
+        addSubview(stamp)
+        let lv = Self.level(for: a)
+        level.stringValue = lv.word
+        level.font = ZFont.mono(ofSize: 11, weight: .bold)
+        level.textColor = lv.color
+        addSubview(level)
         title.stringValue = a.title
         title.font = a.isActionable ? Typo.rowTitleStrong : Typo.rowTitle
         title.textColor = p.text
@@ -662,6 +675,25 @@ final class AlertRow: NSView {
     /// "2 min ago" is redone each time the list shows.
     func refreshTime() { when.stringValue = relativeTime(alert.date) }
 
+    private static let clock: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm"; return f }()
+
+    /// The log level: waiting on you is WAIT; otherwise read from the alert's colour (red FAIL,
+    /// green DONE, amber WARN), else INFO. The word always comes with the colour.
+    static func level(for a: ZeraAlert) -> (word: String, color: NSColor) {
+        let p = Pal
+        if a.isActionable { return ("WAIT", p.warning) }
+        guard let c = a.tint.usingColorSpace(.sRGB) else { return ("INFO", p.info) }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, al: CGFloat = 0
+        c.getHue(&h, saturation: &s, brightness: &b, alpha: &al)
+        guard s > 0.3 else { return ("INFO", p.info) }
+        switch h {
+        case ..<0.04, 0.93...: return ("FAIL", p.danger)
+        case 0.04..<0.17: return ("WARN", p.warning)
+        case 0.17..<0.45: return ("DONE", p.success)
+        default: return ("INFO", a.tint)
+        }
+    }
+
     private func restyle() {
         let p = Pal
         layer?.backgroundColor = (hovered ? p.surfaceHover : p.surfaceRow).cgColor
@@ -676,13 +708,15 @@ final class AlertRow: NSView {
         let w = bounds.width, h = bounds.height, mid = (h / 2).rounded()
         let ts = RowTier.standard.tile
         tile.frame = NSRect(x: Space.m, y: mid - ts / 2, width: ts, height: ts)
+        stamp.frame = NSRect(x: Space.m, y: mid - 8, width: 44, height: 16)
+        level.frame = NSRect(x: Space.m + 48, y: mid - 8, width: 42, height: 16)
         let db = Metrics.rowButton
         dismiss.frame = NSRect(x: w - Space.m - db, y: mid - db / 2, width: db, height: db)
         let tw: CGFloat = when.stringValue.isEmpty ? 0
             : min(120, ceil((when.stringValue as NSString).size(withAttributes: [.font: Typo.caption]).width) + 4)
         when.frame = NSRect(x: w - Space.m - tw, y: mid - 7, width: tw, height: 14)
         let right = w - Space.m - max(tw, db) - Space.m
-        let textX = tile.frame.maxX + Space.m
+        let textX = level.frame.maxX + Space.s
         let textW = max(20, right - textX)
         if detail.stringValue.isEmpty {
             title.frame = NSRect(x: textX, y: mid - 9, width: textW, height: 18)

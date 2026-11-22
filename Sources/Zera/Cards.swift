@@ -903,6 +903,8 @@ final class SettingsCard: CardBase, CardContent {
     var onReturn: (() -> Void)?
     /// Settings › In full-screen apps changed.
     var onFullScreenHideChanged: (() -> Void)?
+    /// Settings › Agents › Wings while working changed.
+    var onAgentWingsHideChanged: (() -> Void)?
     var onShowZeraChanged: ((Bool) -> Void)?
     var onHoverMenuChanged: ((HoverMenuStyle) -> Void)?
     /// The shortcut that opens Clipboard from any app.
@@ -931,6 +933,8 @@ final class SettingsCard: CardBase, CardContent {
         case codex                              // appended to preserve existing pane IDs
         case permissions
         case extras
+        /// Claude Code, Codex and future agents: shared options, then a tab per agent. Appended: pane IDs persist.
+        case agents
         var title: String {
             switch self {
             case .general: return "General"
@@ -941,7 +945,7 @@ final class SettingsCard: CardBase, CardContent {
             case .integrations: return "Integrations"
             case .shortcuts: return "Shortcuts"
             case .about: return "About"
-            case .claude: return "Claude Code"
+            case .claude: return "Claude assistant"
             case .github: return "GitHub"
             case .calendar: return "Calendar"
             case .shelf: return "Shelf"
@@ -949,6 +953,7 @@ final class SettingsCard: CardBase, CardContent {
             case .codex: return "Codex"
             case .permissions: return "Permissions & Diagnostics"
             case .extras: return "Extras"
+            case .agents: return "Agents"
             }
         }
         var symbol: String {
@@ -969,6 +974,7 @@ final class SettingsCard: CardBase, CardContent {
             case .codex: return "terminal"
             case .permissions: return "hand.raised"
             case .extras: return "shippingbox"
+            case .agents: return "person.2.fill"
             }
         }
         /// Where ‹ Back goes.
@@ -987,7 +993,12 @@ final class SettingsCard: CardBase, CardContent {
     private let paneScroll = NSScrollView()
     private let scrollHint = NSTextField(labelWithString: "Scroll for more")
     private let scrollArrow = NSTextField(labelWithString: "↓")
-    private(set) var current: Pane = Pane(rawValue: NotchNavigation.shared.integer("settings.pane")) ?? .general
+    private(set) var current: Pane = {
+        let p = Pane(rawValue: NotchNavigation.shared.integer("settings.pane")) ?? .general
+        return p == .codex ? .agents : p      // Codex now lives on the Agents pane
+    }()
+    /// Which agent's tab the Agents pane shows.
+    private var agentTab = AgentTab(rawValue: NotchNavigation.shared.integer("settings.agentTab")) ?? .claude
     private var defaultKind: CardKind?
     private let showingZera: Bool
     private let sidebarW: CGFloat = 180
@@ -1073,7 +1084,16 @@ final class SettingsCard: CardBase, CardContent {
         min(paneHeight, Isle.maxContentHeight - headerBottom - 40 - Metrics.cardPad)
     }
 
-    func select(_ p: Pane) {
+    /// Opens the Agents pane on one agent's tab.
+    func selectAgent(_ tab: AgentTab) {
+        agentTab = tab
+        NotchNavigation.shared.set(tab.rawValue, for: "settings.agentTab")
+        if current == .agents { rebuildPane() } else { select(.agents) }
+    }
+
+    func select(_ requested: Pane) {
+        var p = requested
+        if p == .codex { agentTab = .codex; NotchNavigation.shared.set(AgentTab.codex.rawValue, for: "settings.agentTab"); p = .agents }
         // A detail pane (Claude, GitHub…) comes in like a page and Back reverses it; switching
         // between sidebar panes just settles the new one in.
         if p != current, window != nil {
@@ -1167,7 +1187,7 @@ final class SettingsCard: CardBase, CardContent {
         case .shortcuts: buildShortcuts(&s)
         case .about: buildAbout(&s)
         case .claude: buildClaude(&s)
-        case .codex: buildCodex(&s)
+        case .codex, .agents: buildAgents(&s)
         case .github: buildGitHub(&s)
         case .calendar: buildCalendar(&s)
         case .shelf: buildShelf(&s)
@@ -1385,7 +1405,7 @@ final class SettingsCard: CardBase, CardContent {
         }
         recorder.onRecording = { [weak self] on in self?.onOpenerShortcutRecording?(on) }
         settingRow("Open apps with", &s, control: recorder, controlWidth: 150)
-        let style = popupRow("Opener style", items: ["Orbit (centred)", "Classic tree"], selected: AppOpenerSettings.style.rawValue, &s,
+        let style = popupRow("Opener style", items: ["Orbit (centred)", "Classic tree", "Minimal (centred)"], selected: AppOpenerSettings.style.rawValue, &s,
                              action: #selector(openerStyleChanged))
         style.isEnabled = AppOpenerSettings.enabled
         toggleRow("Show running apps first", on: AppOpenerSettings.runningFirst, &s, enabled: AppOpenerSettings.enabled) { on in
@@ -1487,6 +1507,11 @@ final class SettingsCard: CardBase, CardContent {
         }
     }
 
+    @objc private func agentWingsHideChanged(_ sender: ZeraSelect) {
+        AgentWingsAutoHide.delay = AgentWingsAutoHide.choices[max(0, min(AgentWingsAutoHide.choices.count - 1, sender.selectedIndex))]
+        onAgentWingsHideChanged?()
+    }
+
     static let replyWindows = [0, 10, 20, 30, 60]
     @objc private func replyWindowChanged(_ sender: ZeraSelect) {
         ClaudeActivityService.shared.replyWindow = Self.replyWindows[max(0, sender.selectedIndex)]
@@ -1526,6 +1551,26 @@ final class SettingsCard: CardBase, CardContent {
 
     private func buildAppearance(_ s: inout Stack) {
         let store = ThemeStore.shared
+        // Glass: the same two controls as Ghostty's background-opacity and background-blur.
+        sectionLabel("Glass", &s)
+        let opacity = NSSlider(value: Double(GlassSettings.opacity), minValue: Double(GlassSettings.opacityRange.lowerBound),
+                               maxValue: Double(GlassSettings.opacityRange.upperBound), target: self, action: #selector(glassOpacityChanged(_:)))
+        opacity.isContinuous = true
+        opacity.isEnabled = !GlassSettings.reduceTransparency
+        opacity.setAccessibilityLabel("Background opacity")
+        settingRow("Background opacity", &s, control: opacity, controlWidth: 180)
+        let blur = NSSlider(value: Double(GlassSettings.blur), minValue: 0, maxValue: 100, target: self, action: #selector(glassBlurChanged(_:)))
+        blur.isContinuous = true
+        blur.isEnabled = !GlassSettings.reduceTransparency
+        blur.setAccessibilityLabel("Background blur")
+        settingRow("Background blur", &s, control: blur, controlWidth: 180)
+        hint(GlassSettings.reduceTransparency
+             ? "Reduce transparency is on in System Settings, so every surface is solid."
+             : "Like Ghostty's background-opacity and background-blur. Full opacity is solid; no blur shows the desktop sharp behind the tint.", &s)
+        popupRow("Interface font", items: ZFont.Family.allCases.map(\.title),
+                 selected: ZFont.Family.allCases.firstIndex(of: ZFont.chosenFamily) ?? 0, &s, action: #selector(fontFamilyChanged(_:)))
+        hint(ZFont.chosenFamily == ZFont.family ? "JetBrains Mono is bundled with Zera, as in Ghostty X."
+             : "Zera uses the new font the next time it opens.", &s)
         sectionLabel("Notch border & glow", &s)
         let picker = NotchLightPicker()
         picker.onChange = { NotchLightStyle.current = $0 }
@@ -1603,13 +1648,9 @@ final class SettingsCard: CardBase, CardContent {
                  &s, action: #selector(edgeThicknessChanged(_:)))
         buttonRow("Try the light", style: .tertiary, status: EdgeLight.shared.style.blurb, &s, action: #selector(edgePreviewTapped))
         toggleRow("Light takes your wallpaper's colour", on: WallpaperTint.shared.enabled, &s) { on in WallpaperTint.shared.enabled = on }
-        toggleRow("Keep the Mac awake while Claude works (the screen still sleeps)", on: AwakeKeeper.shared.enabled, &s) { on in AwakeKeeper.shared.enabled = on }
         popupRow("Screen sharing", items: ["Always visible", "Hide during calls", "Always hide"],
                  selected: ShareShield.shared.mode.rawValue, &s, action: #selector(shareShieldChanged(_:)))
         sectionLabel("Voice", &s)
-        toggleRow("Answer Claude's permission cards by voice (\u{201C}approve\u{201D}, \u{201C}deny\u{201D}, \u{201C}open\u{201D})", on: VoiceApproval.shared.enabled, &s) { on in
-            VoiceApproval.shared.enabled = on
-        }
         toggleRow("Hold a key to dictate, release to type it", on: Dictation.shared.enabled, &s) { on in
             Dictation.shared.enabled = on
         }
@@ -1620,17 +1661,7 @@ final class SettingsCard: CardBase, CardContent {
             Dictation.shared.typesLive = on
         }
         hint("Editors that don’t support live text insertion receive the full transcript when you release the dictation key.", &s)
-        sectionLabel("Other agents", &s)
-        toggleRow("Follow Codex and Cursor in the notch", on: AgentWatch.shared.enabled, &s) { on in AgentWatch.shared.enabled = on }
-        if AgentWatch.cursorConnected {
-            buttonRow("Disconnect Cursor", style: .secondary, status: "Cursor's agent reports start, edits and stop to Zera", &s, action: #selector(cursorTapped))
-            toggleRow("Approve Cursor's terminal commands from the notch", on: AgentWatch.cursorApprovals, &s) { on in
-                do { try AgentWatch.setCursorApprovals(on) } catch { NSSound.beep() }
-            }
-            hint("Each command Cursor's agent wants to run waits for Approve or Reject on the notch (or your voice). If Zera isn't running, or nobody answers in 2 minutes, Cursor asks as usual.", &s)
-        } else {
-            buttonRow("Connect Cursor", style: .secondary, status: "Adds three read-only hooks to ~/.cursor/hooks.json (backup kept)", &s, action: #selector(cursorTapped))
-        }
+        hint("Agent options (the wings, keeping the Mac awake, Codex and Cursor) are under Integrations › Agents.", &s)
         sectionLabel("Music", &s)
         toggleRow("Synced lyrics on the music tile (asks lrclib.net)", on: LyricsService.shared.enabled, &s) { on in LyricsService.shared.enabled = on }
         toggleRow("A wave along the notch while music plays", on: MusicWave.enabled, &s) { on in MusicWave.enabled = on }
@@ -1761,16 +1792,17 @@ final class SettingsCard: CardBase, CardContent {
         if ClaudeActivityService.shared.isInstalled { features.append("Live progress") }
         if hook.isInstalled { features.append("Approvals") }
         if ClaudeUsageService.shared.isInstalled { features.append("Usage") }
-        let claudeState: ConnectionState = features.isEmpty ? assistantState : .connected
-        let claudeDetail = features.isEmpty ? assistantDetail : features.joined(separator: " · ")
-        integrationRow(symbol: "sparkles", color: p.tileClaude, title: "Claude Code",
-                       state: claudeState, detail: claudeDetail,
+        let codex = MainActor.assumeIsolated { CodexAgentService.shared.ready }
+        var agentsOn: [String] = []
+        if !features.isEmpty { agentsOn.append("Claude Code: " + features.joined(separator: ", ").lowercased()) }
+        if codex { agentsOn.append("Codex") }
+        integrationRow(symbol: "person.2.fill", color: p.accent, title: "Agents",
+                       state: agentsOn.isEmpty ? .disconnected : .connected,
+                       detail: agentsOn.isEmpty ? "Claude Code and Codex: progress, replies, approvals" : agentsOn.joined(separator: " · "),
+                       on: false, enabled: false, toggle: false, &s, pane: .agents) { _ in }
+        integrationRow(symbol: "sparkles", color: p.tileClaude, title: "Claude assistant",
+                       state: assistantState, detail: "Summarize, Explain, Ask · " + assistantDetail,
                        on: false, enabled: false, toggle: false, &s, pane: .claude) { _ in }
-        let codex = MainActor.assumeIsolated { (CodexAgentService.shared.ready, CodexAgentService.shared.connection) }
-        integrationRow(symbol: "terminal", color: p.info, title: "Codex",
-                       state: codex.0 ? .connected : .disconnected,
-                       detail: codex.0 ? "Managed sessions connected" : "Chat monitoring, replies and approvals",
-                       on: false, enabled: false, toggle: false, &s, pane: .codex) { _ in }
         let ghState: ConnectionState = gh.isConnected ? ((gh.lastError?.contains("401") ?? false) ? .error : .connected) : .disconnected
         integrationRow(symbol: "arrow.triangle.pull", color: p.tileGitHub, title: "GitHub",
                        state: ghState, detail: gh.isConnected ? "@\(gh.login ?? "")" : "PRs, CI, approvals",
@@ -1796,22 +1828,141 @@ final class SettingsCard: CardBase, CardContent {
         s.place(add, height: Metrics.button, gap: Space.m)
     }
 
-    private func buildCodex(_ s: inout Stack) {
+    // MARK: Agents pane
+
+    /// Settings shared by every agent, then a tab per agent with the same sections (Connection, Sessions
+    /// in Zera, Live progress, Approvals) plus the few only that agent has.
+    private func buildAgents(_ s: inout Stack) {
+        sectionLabel("All agents", &s)
+        buttonRow("Open Agents", style: .primary, status: "Running work, recent sessions and approvals", &s, action: #selector(openAgentsTapped))
+        let wings = popupRow("Wings while working", items: AgentWingsAutoHide.titles,
+                             selected: AgentWingsAutoHide.choices.firstIndex(of: AgentWingsAutoHide.delay) ?? 0, &s,
+                             action: #selector(agentWingsHideChanged(_:)))
+        wings.toolTip = "How long the wings stay up once an agent starts working"
+        hint("The wings show when a Claude Code or Codex turn starts, then tuck away. They come back when an agent needs "
+             + "your approval, when a turn finishes, or when you open Agents.", &s)
+        toggleRow("Keep the Mac awake while an agent works (the screen still sleeps)", on: AwakeKeeper.shared.enabled, &s) { on in
+            AwakeKeeper.shared.enabled = on
+        }
+        toggleRow("Follow desktop chats (Codex and Cursor apps)", on: AgentWatch.shared.enabled, &s) { [weak self] on in
+            AgentWatch.shared.enabled = on; self?.rebuildPane()
+        }
+        hint("Shows current work from chats in the Codex and Cursor apps. Replies and approvals in those chats stay in their own app.", &s)
+
+        s.y += Space.l
+        let tabs = PillTabs(titles: AgentTab.allCases.map(\.title))
+        tabs.selected = agentTab.rawValue
+        tabs.onSelect = { [weak self] i in
+            guard let self = self, let tab = AgentTab(rawValue: i) else { return }
+            let old = self.agentTab
+            self.agentTab = tab
+            NotchNavigation.shared.set(i, for: "settings.agentTab")
+            self.rebuildPane()
+            for v in self.pane.subviews where v.frame.minY > tabs.frame.maxY { Motion.page(v, forward: tab.rawValue > old.rawValue) }
+        }
+        pane.addSubview(tabs)
+        s.place(tabs, height: Metrics.segment, gap: Space.s)
+        switch agentTab {
+        case .claude: buildClaudeAgent(&s)
+        case .codex: buildCodexAgent(&s)
+        }
+
+        // Cursor reports in, but has no tab of its own yet.
+        sectionLabel("Cursor", &s)
+        if AgentWatch.cursorConnected {
+            buttonRow("Disconnect Cursor", style: .secondary, status: "Cursor's agent reports start, edits and stop to Zera", &s, action: #selector(cursorTapped))
+            toggleRow("Approve Cursor's terminal commands from the notch", on: AgentWatch.cursorApprovals, &s) { on in
+                do { try AgentWatch.setCursorApprovals(on) } catch { NSSound.beep() }
+            }
+            hint("Each command Cursor's agent wants to run waits for Approve or Reject on the notch (or your voice). If Zera isn't running, or nobody answers in 2 minutes, Cursor asks as usual.", &s)
+        } else {
+            buttonRow("Connect Cursor", style: .secondary, status: "Adds three read-only hooks to ~/.cursor/hooks.json (backup kept)", &s, action: #selector(cursorTapped))
+        }
+    }
+
+    private func buildClaudeAgent(_ s: inout Stack) {
+        let cli = ClaudeCLI.shared.info, hook = ClaudeHookService.shared, act = ClaudeActivityService.shared
+        sectionLabel("Connection", &s)
+        let (state, detail): (ConnectionState, String) = {
+            switch cli.status {
+            case .connected: return (.connected, "Claude Code" + (cli.version.map { " \($0)" } ?? "") + " · your sign-in")
+            case .checking: return (.connecting, "Checking Claude Code")
+            case .unknown: return (.disconnected, "Claude Code not checked yet")
+            case .notDetected: return (.disconnected, "Claude Code not found")
+            case .needsAuth: return (.needsAuth, "Claude Code needs sign-in")
+            case .programmaticUnavailable: return (.error, "Claude Code can't run in the background")
+            }
+        }()
+        statusLine(state, detail: detail, &s)
+        hint("Sessions and hooks use your Claude Code sign-in. Zera never sees the token. The executable and diagnostics are under Claude assistant.", &s)
+
+        sectionLabel("Sessions in Zera", &s)
+        let saved = MainActor.assumeIsolated { ClaudeAgentService.shared.threads.count }
+        kvRow("Saved sessions", String(saved), &s)
+        hint("Choose New in Agents, then a project. Conversations stay with the project you choose.", &s)
+
+        sectionLabel("Live progress", &s)
+        statusLine(act.isInstalled ? .connected : .disconnected,
+                   detail: act.isInstalled ? (act.active.isEmpty ? "no session running" : "\(act.active.count) session\(act.active.count == 1 ? "" : "s") running") : "see Reading → Editing → Running → Done as it happens", &s)
+        buttonRow(act.isInstalled ? "Stop following" : "Follow Claude's work", style: act.isInstalled ? .secondary : .primary,
+                  status: act.isInstalled ? "Non-blocking hooks; nothing is sent anywhere" : "Adds non-blocking hooks to ~/.claude/settings.json", &s, action: #selector(activityTapped))
+        if act.isInstalled {
+            let windows = Self.replyWindows
+            let pop = popupRow("Reply when done", items: windows.map { $0 == 0 ? "Off" : "Wait \($0) s" },
+                               selected: windows.firstIndex(of: act.replyWindow) ?? 2, &s, action: #selector(replyWindowChanged(_:)))
+            pop.toolTip = "A finished session waits this long for a reply from the wings; typing one pauses the countdown"
+            hint("When Claude finishes, the wings show Reply for a few seconds: type a follow-up and Claude carries on in the "
+                 + "same session. Sessions the wings aren't showing are never held.", &s)
+            toggleRow("Follow each subagent on its own", on: act.showAgents, &s) { on in ClaudeActivityService.shared.showAgents = on }
+            hint("When Claude hands work to subagents, each gets its own timeline on the session's Agents tab: what it was asked, "
+                 + "what it's doing now, what it reported back. Off, their steps join the session's.", &s)
+        }
+
+        sectionLabel("Approvals", &s)
+        statusLine(hook.isInstalled ? .connected : .disconnected,
+                   detail: hook.isInstalled ? (hook.pending.isEmpty ? "Permission prompts show up here" : "\(hook.pending.count) waiting") : "approve commands from Zera instead of the terminal", &s)
+        buttonRow(hook.isInstalled ? "Remove hook" : "Install hook", style: hook.isInstalled ? .secondary : .primary,
+                  status: hook.isInstalled ? "Restart open Claude Code sessions after changes" : "Adds a PermissionRequest hook to ~/.claude/settings.json", &s, action: #selector(claudeTapped))
+        toggleRow("Answer permission cards by voice (\u{201C}approve\u{201D}, \u{201C}deny\u{201D}, \u{201C}open\u{201D})", on: VoiceApproval.shared.enabled, &s) { on in
+            VoiceApproval.shared.enabled = on
+        }
+
+        sectionLabel("Usage · plan limits", &s)
+        let use = ClaudeUsageService.shared
+        statusLine(use.isInstalled ? .connected : .disconnected,
+                   detail: use.isInstalled ? (use.usage.map { "\($0.summary) · \(relativeTime($0.readAt))" } ?? "after Claude's next reply")
+                                           : "your 5-hour and weekly limits, as /usage shows them", &s)
+        buttonRow(use.isInstalled ? "Stop tracking usage" : "Track usage", style: use.isInstalled ? .secondary : .primary,
+                  status: use.isInstalled ? "Your own status line is put back as it was" : "Sets a status line in ~/.claude/settings.json; yours keeps running", &s, action: #selector(usageTapped))
+        if use.isInstalled {
+            toggleRow("Show on Home", on: use.showOnHome, &s) { on in ClaudeUsageService.shared.showOnHome = on }
+            toggleRow("Show in Claude sessions", on: use.showInSessions, &s) { on in ClaudeUsageService.shared.showInSessions = on }
+        }
+        hint("Claude Code hands its status line the same numbers as /usage after each reply (Pro and Max plans). Zera keeps "
+             + "only the percentages and reset times, and never touches your Claude login.", &s)
+    }
+
+    private func buildCodexAgent(_ s: inout Stack) {
         let state = MainActor.assumeIsolated { (CodexAgentService.shared.ready, CodexAgentService.shared.connection, CodexAgentService.shared.threads.count) }
         sectionLabel("Connection", &s)
         statusLine(state.0 ? .connected : (state.1 == "Connecting…" ? .connecting : .disconnected), detail: ["Not connected", "Disconnected"].contains(state.1) ? "Connect sessions created in Zera" : state.0 ? "Codex CLI sign-in" : state.1 == "Connecting…" ? "Waiting for Codex" : state.1, &s)
-        hint("Uses your existing Codex CLI sign-in. Zera does not copy or store your login credentials.", &s)
         buttonRow(state.0 ? "Disconnect managed sessions" : state.1 == "Connecting…" ? "Cancel connection" : "Connect Codex", style: state.0 || state.1 == "Connecting…" ? .secondary : .primary,
                   status: "Replies and approvals for sessions created in Zera", &s, action: #selector(codexConnectionTapped))
-        sectionLabel("Existing chats", &s)
-        toggleRow("Follow Codex and Cursor activity", on: AgentWatch.shared.enabled, &s) { [weak self] on in
-            AgentWatch.shared.enabled = on; self?.rebuildPane()
-        }
-        hint("Shows current work from existing chats. Replies and approval decisions in those chats stay in their original app.", &s)
+        hint("Uses your existing Codex CLI sign-in. Zera does not copy or store your login credentials.", &s)
+
         sectionLabel("Sessions in Zera", &s)
         kvRow("Saved sessions", String(state.2), &s)
-        hint("Choose New in Agents, then select a project. Send replies, stop a turn, and review command or file approvals in that session. Each approval applies only to that request.", &s)
-        buttonRow("Open Agents", style: .primary, status: "Running work, recent sessions and approvals", &s, action: #selector(openAgentsTapped))
+        hint("Choose New in Agents, then a project. Send replies, stop a turn, and review command or file approvals in that session.", &s)
+
+        sectionLabel("Live progress", &s)
+        statusLine(AgentWatch.shared.enabled ? .connected : .disconnected,
+                   detail: AgentWatch.shared.enabled ? "Codex app chats followed" : "Turn on Follow desktop chats above", &s)
+        hint("Sessions created in Zera always show their progress on the wings and in Agents.", &s)
+
+        sectionLabel("Approvals", &s)
+        hint("Approvals for sessions created in Zera show on the wings and in Agents; each applies only to that request. "
+             + "Chats in the Codex app ask in Codex.", &s)
+
         sectionLabel("Sign-in and troubleshooting", &s)
         hint("Install Codex CLI and sign in with `codex login` in Terminal, then connect here. Disconnecting Zera does not sign you out of Codex or close your desktop chats.", &s)
     }
@@ -1865,13 +2016,8 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private func buildClaude(_ s: inout Stack) {
-        let a = ZeraAssistant.shared, cli = ClaudeCLI.shared.info, api = AnthropicAPIClient.shared, hook = ClaudeHookService.shared
+        let a = ZeraAssistant.shared, cli = ClaudeCLI.shared.info, api = AnthropicAPIClient.shared
         let (state, detail) = Self.claudeSummary()
-        sectionLabel("Conversations in Zera", &s)
-        let saved = MainActor.assumeIsolated { ClaudeAgentService.shared.threads.count }
-        kvRow("Saved sessions", String(saved), &s)
-        buttonRow("Open Agents", style: .primary, status: "Start Claude conversations and review their permissions", &s, action: #selector(openAgentsTapped))
-        hint("New conversations use your Claude Code sign-in and stay with the project you choose. Existing sessions remain in the same Agents list.", &s)
         sectionLabel("Assistant connection", &s)
         statusLine(state, detail: detail, &s)
         hint("Summarize, Explain, Extract and Ask run in the background and answer inside Zera — no terminal window, ever.", &s)
@@ -1941,46 +2087,10 @@ final class SettingsCard: CardBase, CardContent {
         toggleRow("Keep Claude's error output for diagnostics", on: a.debugLogging, &s) { on in ZeraAssistant.shared.debugLogging = on }
         buttonRow("Diagnostics", style: .tertiary, status: a.lastRunSummary, &s, action: #selector(diagnosticsTapped))
 
-        sectionLabel("Live progress · Claude Code sessions", &s)
-        let act = ClaudeActivityService.shared
-        statusLine(act.isInstalled ? .connected : .disconnected,
-                   detail: act.isInstalled ? (act.active.isEmpty ? "no session running" : "\(act.active.count) session\(act.active.count == 1 ? "" : "s") running") : "see Reading → Editing → Running → Done as it happens", &s)
-        buttonRow(act.isInstalled ? "Stop following" : "Follow Claude's work", style: act.isInstalled ? .secondary : .primary,
-                  status: act.isInstalled ? "Non-blocking hooks; nothing is sent anywhere" : "Adds non-blocking hooks to ~/.claude/settings.json", &s, action: #selector(activityTapped))
-        if act.isInstalled {
-            let windows = Self.replyWindows
-            let pop = popupRow("Reply when done", items: windows.map { $0 == 0 ? "Off" : "Wait \($0) s" },
-                               selected: windows.firstIndex(of: act.replyWindow) ?? 2, &s, action: #selector(replyWindowChanged(_:)))
-            pop.toolTip = "A finished session waits this long for a reply from the wings; typing one pauses the countdown"
-            hint("When Claude finishes, the wings show Reply for a few seconds: type a follow-up and Claude carries on in the "
-                 + "same session. Sessions the wings aren't showing are never held.", &s)
-            toggleRow("Follow each agent on its own", on: act.showAgents, &s) { on in ClaudeActivityService.shared.showAgents = on }
-            hint("When Claude hands work to agents, each gets its own timeline on the session's Agents tab: what it was asked, "
-                 + "what it's doing now, what it reported back. Off, their steps join the session's. Sessions started before "
-                 + "this was installed pick up agents once restarted.", &s)
-        }
-
-        sectionLabel("Usage · Claude Code plan limits", &s)
-        let use = ClaudeUsageService.shared
-        statusLine(use.isInstalled ? .connected : .disconnected,
-                   detail: use.isInstalled ? (use.usage.map { "\($0.summary) · \(relativeTime($0.readAt))" } ?? "after Claude's next reply")
-                                           : "your 5-hour and weekly limits, as /usage shows them", &s)
-        buttonRow(use.isInstalled ? "Stop tracking usage" : "Track usage", style: use.isInstalled ? .secondary : .primary,
-                  status: use.isInstalled ? "Your own status line is put back as it was" : "Sets a status line in ~/.claude/settings.json; yours keeps running", &s, action: #selector(usageTapped))
-        if use.isInstalled {
-            toggleRow("Show on Home", on: use.showOnHome, &s) { on in ClaudeUsageService.shared.showOnHome = on }
-            toggleRow("Show in Claude sessions", on: use.showInSessions, &s) { on in ClaudeUsageService.shared.showInSessions = on }
-        }
-        hint("Claude Code hands its status line the same numbers as /usage after each reply (Pro and Max plans). Zera keeps "
-             + "only the percentages and reset times, and never touches your Claude login. A project with a status line of its "
-             + "own sends Zera nothing.", &s)
-
-        sectionLabel("Approvals · Claude Code hook", &s)
-        statusLine(hook.isInstalled ? .connected : .disconnected,
-                   detail: hook.isInstalled ? (hook.pending.isEmpty ? "Permission prompts show up here" : "\(hook.pending.count) waiting") : "approve commands from Zera instead of the terminal", &s)
-        buttonRow(hook.isInstalled ? "Remove hook" : "Install hook", style: hook.isInstalled ? .secondary : .primary,
-                  status: hook.isInstalled ? "Restart open Claude Code sessions after changes" : "Adds a PermissionRequest hook to ~/.claude/settings.json", &s, action: #selector(claudeTapped))
+        hint("Claude Code sessions, live progress, approvals and usage are under Integrations › Agents.", &s)
+        buttonRow("Agents settings", style: .tertiary, status: "Claude Code and Codex", &s, action: #selector(openAgentsSettingsTapped))
     }
+    @objc private func openAgentsSettingsTapped() { selectAgent(.claude) }
 
     private func keyRow(_ s: inout Stack) {
         let f = ThemedSecureField(placeholder: "sk-ant-…")
@@ -2098,7 +2208,90 @@ final class SettingsCard: CardBase, CardContent {
         }
     }
 
+    /// A popup row that calls back with the chosen index.
+    private func choiceRow(_ title: String, items: [String], selected: Int, _ s: inout Stack, onChange: @escaping (Int) -> Void) {
+        let pop = ZeraSelect(items)
+        pop.select(max(0, min(items.count - 1, selected)))
+        pop.setAccessibilityLabel(title)
+        pop.onChange = { onChange($0) }
+        let longest = items.map { ($0 as NSString).size(withAttributes: [.font: Typo.control]).width }.max() ?? 0
+        settingRow(title, &s, control: pop, controlWidth: max(150, ceil(longest) + 52))
+    }
+
+    private func buildDailyShelf(_ s: inout Stack) {
+        let d = DailyShelfSettings.current
+        sectionLabel("Daily Shelf", &s)
+        toggleRow("Show the Daily Shelf", on: d.enabled, &s) { [weak self] on in
+            DailyShelfSettings.update { $0.enabled = on }
+            self?.rebuildPane()
+        }
+        hint("Today's links at a screen edge: pull requests, Jira tickets, docs, meetings, sites and notes. Only what you add "
+             + "is there. Drag a link or an Arc tab to the edge, or paste one.", &s)
+        guard d.enabled else { return }
+        let edge = DailyShelfEdge(rawValue: d.edge) ?? .left
+        choiceRow("Screen edge", items: DailyShelfEdge.allCases.map(\.title), selected: d.edge, &s) { [weak self] i in
+            DailyShelfSettings.update { st in
+                st.edge = i
+                if i == DailyShelfEdge.top.rawValue, st.align == DailyShelfAlign.center.rawValue { st.align = DailyShelfAlign.start.rawValue }
+            }
+            self?.rebuildPane()
+        }
+        // Top keeps to the corners, away from the notch.
+        let aligns = DailyShelfAlign.allCases.filter { !(edge == .top && $0 == .center) }
+        choiceRow("Corner", items: aligns.map { $0.title(for: edge) }, selected: aligns.firstIndex { $0.rawValue == d.align } ?? 0, &s) { i in
+            DailyShelfSettings.update { $0.align = aligns[i].rawValue }
+        }
+        choiceRow("Shape", items: ["Island rim", "Floating"], selected: d.attached ? 0 : 1, &s) { i in
+            DailyShelfSettings.update { $0.attached = i == 0 }
+        }
+        func pts(_ v: [Double]) -> [String] { v.map { "\(Int($0)) pt" } }
+        func near(_ v: [Double], _ x: Double) -> Int { v.indices.min { abs(v[$0] - x) < abs(v[$1] - x) } ?? 0 }
+        let W = DailyShelfSettings.widths, mn = DailyShelfSettings.minHeights, mx = DailyShelfSettings.maxHeights, R = DailyShelfSettings.radii
+        choiceRow("Width", items: pts(W), selected: near(W, d.width), &s) { i in DailyShelfSettings.update { $0.width = W[i] } }
+        choiceRow("Min height", items: pts(mn), selected: near(mn, d.minHeight), &s) { i in
+            DailyShelfSettings.update { $0.minHeight = mn[i]; $0.maxHeight = max($0.maxHeight, mn[i]); $0.height = max($0.height, mn[i]) }
+        }
+        choiceRow("Max height", items: pts(mx), selected: near(mx, d.maxHeight), &s) { i in
+            DailyShelfSettings.update { $0.maxHeight = mx[i]; $0.minHeight = min($0.minHeight, mx[i]); $0.height = min($0.height, mx[i]) }
+        }
+        hint("Drag the grip on the shelf's free end to set its height between these two.", &s)
+        choiceRow("Corner radius", items: pts(R), selected: near(R, d.radius), &s) { i in DailyShelfSettings.update { $0.radius = R[i] } }
+        let recorder = ShortcutRecorder()
+        recorder.shortcut = d.effectiveHotKey
+        recorder.onChange = { new in MainActor.assumeIsolated { DailyShelfController.shared.setHotKey(new) } }
+        recorder.onRecording = { on in MainActor.assumeIsolated { DailyShelfController.shared.pauseHotKey(on) } }
+        settingRow("Open and close with", &s, control: recorder, controlWidth: 150)
+        hint("Click the shortcut, then press keys with ⌘, ⌥ or ⌃ (⌫ turns it off). If ⌃Space switches your keyboard "
+             + "input source, pick another one here or turn that off in System Settings › Keyboard › Shortcuts.", &s)
+        choiceRow("Opens on", items: ["Edge hover", "Handle or shortcut"], selected: d.openOnHover ? 0 : 1, &s) { i in
+            DailyShelfSettings.update { $0.openOnHover = i == 0 }
+        }
+        let delays = DailyShelfSettings.hoverDelays
+        choiceRow("Hover delay", items: delays.map { "\($0) ms" }, selected: delays.firstIndex(of: d.hoverDelay) ?? 2, &s) { i in
+            DailyShelfSettings.update { $0.hoverDelay = delays[i] }
+        }
+        toggleRow("Show a handle when hidden", on: d.showHandle, &s) { on in DailyShelfSettings.update { $0.showHandle = on } }
+        toggleRow("Carry open PRs into tomorrow", on: d.carryOpenPRs, &s) { on in DailyShelfSettings.update { $0.carryOpenPRs = on } }
+        let hours = DailyShelfSettings.rolloverHours
+        choiceRow("New day starts at", items: hours.map { String(format: "%d:00", $0) }, selected: hours.firstIndex(of: d.rolloverHour) ?? 3, &s) { i in
+            DailyShelfSettings.update { $0.rolloverHour = hours[i] }
+        }
+        toggleRow("Sort sites with Claude", on: d.sortWithClaude, &s) { on in DailyShelfSettings.update { $0.sortWithClaude = on } }
+        toggleRow("Fill missing site icons from DuckDuckGo", on: d.iconService, &s) { on in DailyShelfSettings.update { $0.iconService = on } }
+        hint("Claude gets only each link's address and title, through your Claude settings. Pull request status uses your "
+             + "GitHub token and only checks the PRs on the shelf. Icons come from each site, then its parent domain; "
+             + "DuckDuckGo is asked only for the public domain name when neither has one. Your own Move to choices are "
+             + "remembered per site.", &s)
+        buttonRow("Show today's file", style: .secondary, status: "~/Library/Application Support/Zera/DailyShelf", &s, action: #selector(showDailyShelfFile))
+        s.y += Space.s
+    }
+    @objc private func showDailyShelfFile() {
+        MainActor.assumeIsolated { NSWorkspace.shared.activateFileViewerSelecting([DailyShelfStore.shared.fileURL]) }
+    }
+
     private func buildShelf(_ s: inout Stack) {
+        buildDailyShelf(&s)
+        sectionLabel("Files on the Shelf", &s)
         let n = ShelfStore.shared.items.count
         statusLine(.connected, detail: n == 0 ? "nothing held" : (n == 1 ? "holding 1 item" : "holding \(n) items"), &s)
         hint("Files are referenced, not copied. Pasted text and images live in a staging folder until you remove them.", &s)
@@ -2195,8 +2388,16 @@ final class SettingsCard: CardBase, CardContent {
         EdgeLight.shared.preview()
     }
 
+    @objc private func glassOpacityChanged(_ sender: NSSlider) { GlassSettings.opacity = CGFloat(sender.doubleValue) }
+    @objc private func glassBlurChanged(_ sender: NSSlider) { GlassSettings.blur = CGFloat(sender.doubleValue) }
+    @objc private func fontFamilyChanged(_ pop: ZeraSelect) {
+        let all = ZFont.Family.allCases
+        ZFont.chosenFamily = all[max(0, min(all.count - 1, pop.selectedIndex))]
+        rebuildPane()
+    }
+
     @objc private func edgeStyleChanged(_ pop: ZeraSelect) {
-        EdgeLight.shared.style = EdgeLightStyle(rawValue: pop.selectedIndex) ?? .glow
+        EdgeLight.shared.style = EdgeLightStyle(rawValue: pop.selectedIndex) ?? .signal
         EdgeLight.shared.preview()
     }
 
@@ -2243,7 +2444,11 @@ final class SettingsCard: CardBase, CardContent {
     @objc private func openAppShortcutsTapped() { onOpenAppShortcuts?() }
     @objc private func openerStyleChanged(_ pop: ZeraSelect) {
         AppOpenerSettings.style = AppOpenerSettings.Style(rawValue: pop.selectedIndex) ?? .orbit
-        say?(AppOpenerSettings.style == .orbit ? "the opener comes down in the middle now ✨" : "back to the classic tree 🌳", .happy)
+        switch AppOpenerSettings.style {
+        case .orbit: say?("the opener comes down in the middle now ✨", .happy)
+        case .tree: say?("back to the classic tree 🌳", .happy)
+        case .minimal: say?("minimal opener, right in the middle", .happy)
+        }
     }
 
     @objc private func menuAppearanceChanged(_ pop: ZeraSelect) {
@@ -2679,10 +2884,10 @@ enum BannerLayout {
         }
         var size: CGFloat = 16
         func fits(_ s: CGFloat) -> Bool {
-            (title.stringValue as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: s, weight: .bold)]).width <= width
+            (title.stringValue as NSString).size(withAttributes: [.font: ZFont.ui(ofSize: s, weight: .bold)]).width <= width
         }
         while size > 14, !fits(size) { size -= 0.5 }
-        title.font = .systemFont(ofSize: size, weight: .bold)
+        title.font = ZFont.ui(ofSize: size, weight: .bold)
         detail.font = Typo.bannerDetail
         title.frame = NSRect(x: x, y: midY - 21, width: max(0, width), height: 21)
         detail.frame = NSRect(x: x, y: midY + 2, width: max(0, width), height: 18)
@@ -2797,5 +3002,16 @@ final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
         dismiss.frame = NSRect(x: bounds.width - x - db, y: BannerLayout.buttonY(db), width: db, height: db)
         primary.frame = NSRect(x: dismiss.frame.minX - Space.s - pw, y: BannerLayout.buttonY(bh), width: pw, height: bh)
         countdownLine.frame = NSRect(x: 0, y: bounds.height - 3, width: bounds.width, height: 3)
+    }
+}
+
+/// The agents Settings › Integrations › Agents has a tab for. A new agent adds a case (raw values persist).
+enum AgentTab: Int, CaseIterable {
+    case claude, codex
+    var title: String {
+        switch self {
+        case .claude: return "Claude Code"
+        case .codex: return "Codex"
+        }
     }
 }

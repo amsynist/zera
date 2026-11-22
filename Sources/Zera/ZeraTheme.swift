@@ -112,7 +112,7 @@ final class ZeraTheme {
     }
 }
 
-// MARK: - The seven built-in themes
+// MARK: - The built-in themes
 
 enum BuiltInThemes {
     struct Def {
@@ -187,7 +187,17 @@ enum BuiltInThemes {
         accent: "#FABD2F", accentDeep: "#FE8019", highlight: "#83A598", onAccent: "#1D2021",
         success: "#B8BB26", warning: "#FE8019", danger: "#FB4934", info: "#83A598"))
 
-    static let all: [Def] = [obsidian, zera, tokyoNight, dracula, catppuccin, nord, rosePine, gruvbox]
+    /// Signal: Ghostty X's look. Deep blue-black glass, a tidal-mint signal colour, status colours
+    /// from the terminal palette. The default.
+    static let signal = Def(id: "signal", name: "Signal", colors: ThemeColors(
+        glassTop: "#0B151D", glassBottom: "#05080B", edge: "#7BE1C266",
+        surface: "#0E1A23", surfaceHover: "#13232D", surfaceStrong: "#1A2D38", row: "#09131A", field: "#060E14",
+        border: "#FFFFFF14", divider: "#FFFFFF0C",
+        text: "#DDE8EE", textSecondary: "#8497A6", textTertiary: "#73889A",
+        accent: "#7BE1C2", accentDeep: "#3FB79C", highlight: "#9B8DF9", onAccent: "#05080B",
+        success: "#9BE36B", warning: "#FFC661", danger: "#FF6F7F", info: "#5AB8FF"))
+
+    static let all: [Def] = [signal, obsidian, zera, tokyoNight, dracula, catppuccin, nord, rosePine, gruvbox]
 }
 
 // MARK: - The store
@@ -225,6 +235,13 @@ final class ThemeStore {
         if !UserDefaults.standard.bool(forKey: "zera.theme.z2Migrated") {
             UserDefaults.standard.set(true, forKey: "zera.theme.z2Migrated")
             UserDefaults.standard.set("obsidian", forKey: Self.key)
+        }
+        // Once: the Signal redesign replaces the previous default look. A theme you picked
+        // yourself (any other built-in or a custom file) stays.
+        if !UserDefaults.standard.bool(forKey: "zera.theme.signalMigrated") {
+            UserDefaults.standard.set(true, forKey: "zera.theme.signalMigrated")
+            let saved = UserDefaults.standard.string(forKey: Self.key)
+            if saved == nil || saved == "obsidian" || saved == "zera" { UserDefaults.standard.set("signal", forKey: Self.key) }
         }
         current = theme(id: UserDefaults.standard.string(forKey: Self.key)) ?? builtIns[0]
         watch()

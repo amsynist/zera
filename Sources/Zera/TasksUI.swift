@@ -132,7 +132,7 @@ private func drawText(_ s: String, _ font: NSFont, _ color: NSColor, in r: NSRec
                                                          options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
 }
 
-private let monoFont = { (size: CGFloat, w: NSFont.Weight) in NSFont.monospacedDigitSystemFont(ofSize: size, weight: w) }
+private let monoFont = { (size: CGFloat, w: NSFont.Weight) in ZFont.digits(ofSize: size, weight: w) }
 
 /// The orb's numbers: DIN Alternate, square and sharp, with every digit the same width so a
 /// ticking clock doesn't jiggle.
@@ -160,13 +160,13 @@ final class TaskField: NSTextField {
         isBordered = false
         drawsBackground = false
         focusRingType = .none
-        font = .systemFont(ofSize: size, weight: .medium)
+        font = ZFont.ui(ofSize: size, weight: .medium)
         textColor = Neon.text
         cell?.usesSingleLineMode = true
         cell?.wraps = false
         cell?.isScrollable = true
         placeholderAttributedString = NSAttributedString(string: placeholder, attributes: [
-            .font: NSFont.systemFont(ofSize: size, weight: .regular), .foregroundColor: Neon.textDim.withAlphaComponent(0.8)])
+            .font: ZFont.ui(ofSize: size, weight: .regular), .foregroundColor: Neon.textDim.withAlphaComponent(0.8)])
         setAccessibilityLabel("New task")
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -263,7 +263,7 @@ final class TaskRowView: NSView {
             // Where it came from: the repo (and how many more), in a cyan capsule.
             let rs = task.repos
             let label = rs[0] + (rs.count > 1 ? " +\(rs.count - 1)" : "")
-            let f = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
+            let f = ZFont.ui(ofSize: 10.5, weight: .semibold)
             let w = min(150, ceil((label as NSString).size(withAttributes: [.font: f]).width) + 14)
             let r = NSRect(x: titleRight - w, y: (bounds.height - 18) / 2, width: w, height: 18)
             let p = NSBezierPath(roundedRect: r, xRadius: 9, yRadius: 9)
@@ -283,7 +283,7 @@ final class TaskRowView: NSView {
             titleRight = dot.minX - 12
         } else if let tag = projectTag {
             // A small capsule left of the time.
-            let f = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
+            let f = ZFont.ui(ofSize: 10.5, weight: .semibold)
             let w = min(110, ceil((tag as NSString).size(withAttributes: [.font: f]).width) + 14)
             let r = NSRect(x: titleRight - w, y: (bounds.height - 18) / 2, width: w, height: 18)
             let p = NSBezierPath(roundedRect: r, xRadius: 9, yRadius: 9)
@@ -440,10 +440,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
             addSubview(c)
         }
         fieldBox.paint = { r in
-            let p = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 12, yRadius: 12)
-            Neon.accent.withAlphaComponent(0.08).setFill(); p.fill()
-            Neon.accent.withAlphaComponent(0.5).setStroke(); p.lineWidth = 1; p.stroke()
-            Neon.symbol("plus", in: NSRect(x: 4, y: 0, width: 28, height: r.height), size: 13, weight: .bold, color: Neon.cyan)
+            SignalDraw.inputBlock(r, caretIn: NSRect(x: 4, y: 0, width: 28, height: r.height))
             let k = NSRect(x: r.width - 34, y: (r.height - 20) / 2, width: 24, height: 20)
             let kp = NSBezierPath(roundedRect: k, xRadius: 5, yRadius: 5)
             Neon.chipEdge.setStroke(); kp.lineWidth = 1; kp.stroke()
@@ -467,7 +464,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
                 drawText("Syncing \(name)", Typo.bodyStrong, Neon.text, in: NSRect(x: 0, y: 0, width: r.width, height: 16), align: .right)
                 SyncRing.bar(NSRect(x: r.width - 132, y: 21, width: 132, height: 4), progress: p.fraction, spin: self.spin)
                 let detail = p.total > 0 ? "\(p.stage) · \(p.done) of \(p.total)" : p.stage + "…"
-                drawText(detail, .systemFont(ofSize: 11), Neon.textDim, in: NSRect(x: 0, y: 28, width: r.width, height: 14), align: .right)
+                drawText(detail, ZFont.ui(ofSize: 11), Neon.textDim, in: NSRect(x: 0, y: 28, width: r.width, height: 14), align: .right)
                 return
             }
             drawText(TaskTime.short(self.store.focusedToday), Typo.metricValue, Neon.text, in: NSRect(x: 0, y: 0, width: r.width, height: 30), align: .right)
@@ -629,7 +626,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         projectBar.selected = shown
         let target = shown ?? store.defaultProject
         field.placeholderAttributedString = NSAttributedString(string: "Add to \(target)… try “Write docs 30m”", attributes: [
-            .font: NSFont.systemFont(ofSize: 14), .foregroundColor: Neon.textDim.withAlphaComponent(0.8)])
+            .font: ZFont.ui(ofSize: 14), .foregroundColor: Neon.textDim.withAlphaComponent(0.8)])
         // Week and Month look back at what got done; to-dos live in Today.
         if viewSpan == .today { section("TO DO · \(open.count)") }
         if viewSpan == .today, open.isEmpty {
@@ -722,9 +719,9 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
                     let dot = NSBezierPath(ovalIn: NSRect(x: 12, y: y + 8, width: 4, height: 4))
                     Neon.cyan.withAlphaComponent(0.7).setFill(); dot.fill()
                     let repo = repos[i]
-                    let rf = NSFont.systemFont(ofSize: 11, weight: .medium)
+                    let rf = ZFont.ui(ofSize: 11, weight: .medium)
                     let rw = repo.isEmpty ? 0 : min(170, ceil((repo as NSString).size(withAttributes: [.font: rf]).width))
-                    drawText(n, .systemFont(ofSize: 12), Neon.text.withAlphaComponent(0.85),
+                    drawText(n, ZFont.ui(ofSize: 12), Neon.text.withAlphaComponent(0.85),
                              in: NSRect(x: 24, y: y, width: r.width - 44 - rw, height: 20))
                     if rw > 0 { drawText(repo, rf, Neon.cyan.withAlphaComponent(0.7), in: NSRect(x: r.width - 10 - rw, y: y, width: rw, height: 20), align: .right) }
                 }
@@ -971,7 +968,7 @@ final class FocusCardView: NSView {
         glass = glassRoot(self, margin: Self.margin, radius: 26)
         paint.paint = { [weak self] r in self?.paintCard(r) }
         glass.addSubview(paint)
-        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        titleLabel.font = ZFont.ui(ofSize: 17, weight: .semibold)
         titleLabel.textColor = Neon.text
         titleLabel.maximumNumberOfLines = 3
         titleLabel.lineBreakMode = .byTruncatingTail
@@ -1064,7 +1061,7 @@ final class FocusCardView: NSView {
         FocusRing.draw(center: c, outer: dial / 2 - 4, outerWidth: 5, inner: dial / 2 - 16, innerWidth: 7,
                        segments: FocusRing.segments(store), progress: f == nil ? 0 : store.progress, pulse: pulse && store.isRunning)
         let clock = f.map { TaskTime.clock(store.spent($0)) } ?? "\(store.doneToday.count)/\(store.today.count)"
-        let big = TaskFont.clock(clock.count > 5 ? 24 : 30), small = NSFont.systemFont(ofSize: 11, weight: .medium)
+        let big = TaskFont.clock(clock.count > 5 ? 24 : 30), small = ZFont.ui(ofSize: 11, weight: .medium)
         let gap: CGFloat = 9, block = big.capHeight + gap + small.capHeight
         drawCap(clock, big, Neon.text, x: c.x, capMid: c.y - block / 2 + big.capHeight / 2)
         drawCap(f.map { $0.estimate > 0 ? "of \($0.estimate) min" : "focused" } ?? "done today", small, Neon.textDim, x: c.x, capMid: c.y + block / 2 - small.capHeight / 2)
@@ -1075,9 +1072,9 @@ final class FocusCardView: NSView {
                      in: NSRect(x: x, y: titleLabel.frame.minY - 20, width: sw, height: 14), kern: Typo.sectionKern)
         }
         let ty = titleLabel.frame.maxY + 10
-        drawText("\(store.doneToday.count) of \(store.today.count) done today", .systemFont(ofSize: 12, weight: .medium), Neon.green,
+        drawText("\(store.doneToday.count) of \(store.today.count) done today", ZFont.ui(ofSize: 12, weight: .medium), Neon.green,
                  in: NSRect(x: x, y: ty, width: sw, height: 16))
-        drawText("\(TaskTime.short(store.focusedToday)) focused", .systemFont(ofSize: 12), Neon.textDim, in: NSRect(x: x, y: ty + 20, width: sw, height: 16))
+        drawText("\(TaskTime.short(store.focusedToday)) focused", ZFont.ui(ofSize: 12), Neon.textDim, in: NSRect(x: x, y: ty + 20, width: sw, height: 16))
 
         drawText("Up next", sectionFont, Neon.textDim, in: NSRect(x: 20, y: upNextTop, width: 120, height: 16), kern: Typo.sectionKern)
         if rows.isEmpty {
@@ -1134,12 +1131,9 @@ final class QuickAddView: NSView, NSTextFieldDelegate {
         // The field: the design's field box, lit as focused (it always is while this is up).
         box.paint = { r in
             let f = r.insetBy(dx: 4, dy: 4)
-            let shape = NSBezierPath(roundedRect: f, xRadius: 14, yRadius: 14)
-            let halo = NSBezierPath(roundedRect: r, xRadius: Radius.card, yRadius: Radius.card)
-            Neon.accent.withAlphaComponent(0.14).setFill(); halo.fill()
+            let shape = NSBezierPath(roundedRect: f, xRadius: Radius.m, yRadius: Radius.m)
             Pal.field.setFill(); shape.fill()
-            Neon.accent.withAlphaComponent(0.6).setStroke(); shape.lineWidth = 1; shape.stroke()
-            Neon.symbol("plus", in: NSRect(x: f.minX + 10, y: f.minY, width: 22, height: f.height), size: 14, weight: .semibold, color: Pal.textTertiary)
+            SignalDraw.inputBlock(f, caretIn: NSRect(x: f.minX + 10, y: f.minY, width: 22, height: f.height))
             Self.key("⏎", at: NSPoint(x: f.maxX - 14, y: f.midY), alignRight: true)
         }
         glass.addSubview(box)
@@ -1155,7 +1149,7 @@ final class QuickAddView: NSView, NSTextFieldDelegate {
     /// A key cap: the design's `.kbd` (dark fill, hairline border, mono).
     @discardableResult
     private static func key(_ k: String, at p: NSPoint, alignRight: Bool = false) -> CGFloat {
-        let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+        let font = ZFont.mono(ofSize: 11, weight: .semibold)
         let w = max(18, ceil((k as NSString).size(withAttributes: [.font: font]).width) + 12)
         let r = NSRect(x: alignRight ? p.x - w : p.x, y: p.y - 9, width: w, height: 18)
         let kp = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
@@ -1168,7 +1162,7 @@ final class QuickAddView: NSView, NSTextFieldDelegate {
     private static func drawHints(in r: NSRect, left: Bool) {
         let items = [("⏎", "add"), ("⇥", "add and focus"), ("esc", "close")]
         let font = Typo.body
-        let kf = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+        let kf = ZFont.mono(ofSize: 11, weight: .semibold)
         let widths = items.map { max(18, ceil(($0.0 as NSString).size(withAttributes: [.font: kf]).width) + 12) + 6
             + ceil(($0.1 as NSString).size(withAttributes: [.font: font]).width) }
         let total = widths.reduce(0, +) + CGFloat(items.count - 1) * 14
@@ -1480,7 +1474,7 @@ final class TaskExportView: NSView {
             wantsLayer = true
             layer?.masksToBounds = true
             glass.frame = NSRect(x: 0, y: -84, width: bounds.width, height: bounds.height + 84)
-            glass.fill = .clear; glass.edge = .clear; glass.glow = 0
+            glass.fill = .clear; glass.edge = .clear; glass.glow = 0; glass.blursBehind = false
             cancelButton.title = "Back to Tasks"
         }
         let w = glass.bounds.width, pad: CGFloat = 24
@@ -1562,7 +1556,7 @@ final class TaskExportView: NSView {
         case .timesheet: note = "Click a day to copy it. ⏎ copies them all."
         case .text: note = "Each day's date, then its tasks numbered."
         }
-        drawText(note, .systemFont(ofSize: 12), Neon.textDim, in: NSRect(x: pad, y: r.height - 58, width: 260, height: 36))
+        drawText(note, ZFont.ui(ofSize: 12), Neon.textDim, in: NSRect(x: pad, y: r.height - 58, width: 260, height: 36))
     }
 
     private func run() {
@@ -1604,8 +1598,8 @@ final class OrbPlusView: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    private static let bigFont = NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .bold)
-    private static let smallFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    private static let bigFont = ZFont.digits(ofSize: 12.5, weight: .bold)
+    private static let smallFont = ZFont.ui(ofSize: 11, weight: .semibold)
 
     override init(frame: NSRect) {
         super.init(frame: NSRect(x: 0, y: 0, width: 200, height: Self.size))
@@ -2133,10 +2127,10 @@ final class TimesheetDayView: NSView {
         wd.dateFormat = "EEE"; dm.dateFormat = "d MMM"
         let today = Calendar.current.isDateInToday(date), yesterday = Calendar.current.isDateInYesterday(date)
         let dayName = today ? "Today" : (yesterday ? "Yesterday" : wd.string(from: date))
-        let nf = NSFont.systemFont(ofSize: 14, weight: .bold)
+        let nf = ZFont.ui(ofSize: 14, weight: .bold)
         let nw = ceil((dayName as NSString).size(withAttributes: [.font: nf]).width)
         drawText(dayName, nf, Neon.text, in: NSRect(x: 14, y: 0, width: nw + 4, height: Self.headH))
-        drawText(dm.string(from: date), .systemFont(ofSize: 12.5, weight: .medium), Neon.textDim, in: NSRect(x: 14 + nw + 6, y: 0, width: 120, height: Self.headH))
+        drawText(dm.string(from: date), ZFont.ui(ofSize: 12.5, weight: .medium), Neon.textDim, in: NSRect(x: 14 + nw + 6, y: 0, width: 120, height: Self.headH))
         // The copy glyph on the right (no box of its own); the day's count or total left of it.
         let cb = NSRect(x: bounds.width - 36, y: (Self.headH - 22) / 2, width: 22, height: 22)
         Neon.symbol(copied ? "checkmark" : "doc.on.doc", in: cb, size: 12, weight: .semibold, color: copied ? Neon.green : (hovered ? Neon.text : Neon.textDim))
@@ -2147,7 +2141,7 @@ final class TimesheetDayView: NSView {
                      in: NSRect(x: cb.minX - 130, y: 0, width: 120, height: Self.headH), align: .right)
         } else {
             let n = "\(rows.count) task\(rows.count == 1 ? "" : "s")"
-            drawText(n, .systemFont(ofSize: 12.5, weight: .medium), Neon.textDim, in: NSRect(x: cb.minX - 130, y: 0, width: 124, height: Self.headH), align: .right)
+            drawText(n, ZFont.ui(ofSize: 12.5, weight: .medium), Neon.textDim, in: NSRect(x: cb.minX - 130, y: 0, width: 124, height: Self.headH), align: .right)
         }
 
         // Tasks: dot · title · repo · time.
@@ -2164,7 +2158,7 @@ final class TimesheetDayView: NSView {
                 right -= tw + 14
             }
             if options.repos, !r.repo.isEmpty {
-                let rf = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
+                let rf = ZFont.ui(ofSize: 10.5, weight: .semibold)
                 let first = r.repo.components(separatedBy: ", ")
                 let label = first[0] + (first.count > 1 ? " +\(first.count - 1)" : "")
                 let w = min(160, ceil((label as NSString).size(withAttributes: [.font: rf]).width) + 14)
@@ -2175,7 +2169,7 @@ final class TimesheetDayView: NSView {
                 drawText(label, rf, Neon.cyan.withAlphaComponent(0.9), in: pr.insetBy(dx: 7, dy: 0), align: .center)
                 right = pr.minX - 10
             }
-            drawText(r.title, .systemFont(ofSize: 13), r.done ? Neon.text : Neon.textDim,
+            drawText(r.title, ZFont.ui(ofSize: 13), r.done ? Neon.text : Neon.textDim,
                      in: NSRect(x: 30, y: y, width: max(0, right - 30), height: Self.lineH))
         }
     }
@@ -2226,7 +2220,7 @@ final class TaskTableView: NSView {
     static let headH: CGFloat = 30
     private static let gap: CGFloat = 14, side: CGFloat = 14
     private static let cellFont = Typo.body
-    private static let digitFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+    private static let digitFont = ZFont.digits(ofSize: 12, weight: .regular)
 
     struct Column { let title: String; let cell: (TaskExport.Row) -> String; let right: Bool; var x: CGFloat = 0; var w: CGFloat = 0 }
     private var rows: [TaskExport.Row] = []

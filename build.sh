@@ -30,6 +30,9 @@ mkdir -p "$APP/Contents/Resources/Sprites"
 cp Resources/Sprites/*.png "$APP/Contents/Resources/Sprites/"
 mkdir -p "$APP/Contents/Resources/Sounds"
 cp Resources/Sounds/*.wav "$APP/Contents/Resources/Sounds/"
+# Signal interface face: JetBrains Mono (OFL), registered by the app at launch (ZFont).
+mkdir -p "$APP/Contents/Resources/Fonts"
+cp Resources/Fonts/*.ttf Resources/Fonts/*.txt "$APP/Contents/Resources/Fonts/"
 cp LICENSE LICENSE-ASSETS.md THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
 # Optional: GitHub's mark for the PR screen (download it yourself from github.com/logos).
 if [ -f Resources/github-mark.png ]; then cp Resources/github-mark.png "$APP/Contents/Resources/"; fi
@@ -73,7 +76,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSLocalNetworkUsageDescription</key><string>Receive original files from your paired Android phone on the same Wi-Fi or hotspot.</string>
   <key>NSBonjourServices</key><array><string>_androp._tcp</string></array>
   <key>NSCalendarsUsageDescription</key><string>Zera shows your events for the next two weeks next to your reminders, warns you before meetings, and adds events to a calendar only when you choose one. Calendar data stays on your Mac.</string>
-  <key>NSAppleEventsUsageDescription</key><string>Zera asks Spotify or Music what is playing to show it on Home with play, pause and skip, and opens a Terminal window running claude for the explicit “Open Claude” action when the Claude app is not installed. Summarize, Explain and Ask never use this.</string>
+  <key>NSAppleEventsUsageDescription</key><string>Zera asks Spotify or Music what is playing to show it on Home with play, pause and skip, and opens a Terminal window running claude for the explicit “Open Claude” action when the Claude app is not installed. When you drag an Arc tab to the Daily Shelf that Arc has not saved yet, Zera asks Arc for that one tab’s link. Summarize, Explain and Ask never use this.</string>
   <key>NSLocationWhenInUseUsageDescription</key><string>Only for the weather on Home, if you turn it on: your location fetches the local forecast and is not stored or sent anywhere else.</string>
   <key>NSLocationUsageDescription</key><string>Only for the weather on Home, if you turn it on: your location fetches the local forecast and is not stored or sent anywhere else.</string>
   <key>NSCalendarsFullAccessUsageDescription</key><string>Zera shows your events for the next two weeks next to your reminders, warns you before meetings, and adds events to a calendar only when you choose one. Calendar data stays on your Mac.</string>

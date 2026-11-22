@@ -101,6 +101,13 @@ final class LiveActivityView: NSView {
     private var rightBody = NSRect.zero
     private var leftPath = NSBezierPath()
     private var rightPath = NSBezierPath()
+    /// Signal glass behind both wings (blur), and the surface that paints them above it.
+    private let glass = SignalGlassView(frame: .zero)
+    private let face = WingFace()
+    /// The wings' own layers (ambient glow, edge energy), above the painted wings.
+    private let fx = SignalLayerView(frame: .zero, flipped: true)
+    private var glassObserver: NSObjectProtocol?
+    override var needsDisplay: Bool { didSet { if needsDisplay { face.needsDisplay = true } } }
 
     /// The right wing's width springs between `rightRun` and `rightAsk`.
     private var rightW: CGFloat = M.rightRun
@@ -116,6 +123,15 @@ final class LiveActivityView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         layer?.masksToBounds = false
+        // The blur sits under the painted wings; the wing body's tint is drawn by `face`.
+        glass.tintColor = .clear
+        addSubview(glass)
+        face.drawer = { [weak self] in self?.drawWings() }
+        addSubview(face)
+        addSubview(fx)
+        glassObserver = NotificationCenter.default.addObserver(forName: GlassSettings.changed, object: nil, queue: .main) { [weak self] _ in
+            self?.needsDisplay = true
+        }
         [ring, leftTitle, leftSub, expand, status, clock, bar, orb, prompt, command, reject, approve, minimize,
          replyButton, replyBox, sendButton].forEach { addSubview($0) }
         replyBox.wantsLayer = true
@@ -160,7 +176,7 @@ final class LiveActivityView: NSView {
         glow.type = .radial
         glow.startPoint = CGPoint(x: 0.5, y: 0.5)
         glow.endPoint = CGPoint(x: 1, y: 1)
-        layer?.addSublayer(glow)
+        fx.layer?.addSublayer(glow)
         for (clip, mask, crisp, bloom) in [(energyClipL, energyMaskL, energyLineL, energyBloomL),
                                            (energyClipR, energyMaskR, energyLineR, energyBloomR)] {
             for (l, w, a) in [(bloom, CGFloat(5), CGFloat(0.35)), (crisp, CGFloat(1.6), CGFloat(1))] {
@@ -176,7 +192,7 @@ final class LiveActivityView: NSView {
             line.startPoint = CGPoint(x: 0, y: 0.5)
             line.endPoint = CGPoint(x: 1, y: 0.5)
             clip.addSublayer(line)
-            layer?.addSublayer(clip)
+            fx.layer?.addSublayer(clip)
         }
         if !Motion.reduced {
             let a = CABasicAnimation(keyPath: "opacity")
@@ -191,7 +207,10 @@ final class LiveActivityView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    deinit { springTimer?.invalidate() }
+    deinit {
+        springTimer?.invalidate()
+        if let glassObserver { NotificationCenter.default.removeObserver(glassObserver) }
+    }
 
     private static func label() -> NSTextField {
         let l = NSTextField(labelWithString: "")
@@ -263,13 +282,13 @@ final class LiveActivityView: NSView {
     }
 
     private func restyle() {
-        leftTitle.font = NSFont.systemFont(ofSize: 14.5, weight: .bold)
+        leftTitle.font = ZFont.ui(ofSize: 14.5, weight: .bold)
         leftTitle.textColor = Neon.text
-        leftSub.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        leftSub.font = ZFont.ui(ofSize: 12, weight: .regular)
         leftSub.textColor = Neon.textDim
-        command.font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .medium)
+        command.font = ZFont.mono(ofSize: 12.5, weight: .medium)
         command.textColor = Neon.text
-        clock.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        clock.font = ZFont.digits(ofSize: 12, weight: .medium)
         clock.textColor = Neon.textDim
     }
 
@@ -405,12 +424,12 @@ final class LiveActivityView: NSView {
     private static func statusLine(_ word: String, detail: String?, strong: Bool = false, warn: Bool = false, good: Bool = false) -> NSAttributedString {
         let tint = warn ? Neon.warning : (good ? Neon.green : Neon.accent)
         let s = NSMutableAttributedString(string: word, attributes: [
-            .font: NSFont.systemFont(ofSize: 13.5, weight: .medium), .foregroundColor: Neon.text.withAlphaComponent(0.9)])
+            .font: ZFont.ui(ofSize: 13.5, weight: .medium), .foregroundColor: Neon.text.withAlphaComponent(0.9)])
         guard let detail = detail else { return s }
         s.append(NSAttributedString(string: "  ·  ", attributes: [
-            .font: NSFont.systemFont(ofSize: 13.5, weight: .bold), .foregroundColor: Neon.textDim]))
+            .font: ZFont.ui(ofSize: 13.5, weight: .bold), .foregroundColor: Neon.textDim]))
         s.append(NSAttributedString(string: detail, attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 13.5, weight: strong ? .semibold : .regular),
+            .font: ZFont.digits(ofSize: 13.5, weight: strong ? .semibold : .regular),
             .foregroundColor: strong ? tint : Neon.textDim]))
         return s
     }
@@ -488,6 +507,14 @@ final class LiveActivityView: NSView {
 
         leftPath = Self.wing(body: leftBody, inward: 1, tip: NSPoint(x: centerX - M.tip, y: mid))
         rightPath = Self.wing(body: rightBody, inward: -1, tip: NSPoint(x: centerX + M.tip, y: mid))
+
+        glass.frame = bounds
+        face.frame = bounds
+        fx.frame = bounds
+        let glassShape = CGMutablePath()
+        if leftBody.width >= M.minWing { glassShape.addPath(leftPath.cgPathCompat) }
+        if rightBody.width >= M.minWing { glassShape.addPath(rightPath.cgPathCompat) }
+        glass.setPath(glassShape)
 
         CATransaction.begin(); CATransaction.setDisableActions(true)
         // A wide, soft oval that fits inside the panel (a taller one was cut flat top and
@@ -611,18 +638,33 @@ final class LiveActivityView: NSView {
 
     // MARK: - Drawing
 
-    override func draw(_ dirtyRect: NSRect) {
+    /// The wings are painted by `face`, above the glass, so the blur can sit beneath them.
+    override func draw(_ dirtyRect: NSRect) {}
+
+    fileprivate func drawWings() {
         if leftBody.width >= M.minWing { drawWing(leftPath, body: leftBody, inward: 1) }
         if rightBody.width >= M.minWing { drawWing(rightPath, body: rightBody, inward: -1) }
     }
 
     private func drawWing(_ path: NSBezierPath, body: NSRect, inward d: CGFloat) {
-        // Dark glass with a deep drop shadow and a soft halo in the state's colour.
-        Neon.glowing(NSColor.black.withAlphaComponent(0.6), blur: 22) { Neon.fillBottom.setFill(); path.fill() }
-        Neon.glowing(stateColor.withAlphaComponent(0.3), blur: 18) { Neon.fillBottom.setFill(); path.fill() }
-        NSGradient(starting: Neon.fillTop.withAlphaComponent(1), ending: Neon.fillBottom.withAlphaComponent(1))?.draw(in: path, angle: -90)
-
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        // Dark glass with a deep drop shadow and a soft halo in the state's colour. Translucent
+        // (Settings › Appearance › Glass): the shadows are knocked out of the wing itself so the
+        // blur behind shows through, and the tint keeps a floor so text stays readable.
+        let translucent = GlassSettings.isTranslucent
+        let tint: CGFloat = translucent ? max(0.82, GlassSettings.effectiveOpacity) : 1
+        if translucent {
+            ctx.saveGState(); ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+            Neon.glowing(NSColor.black.withAlphaComponent(0.6), blur: 22) { Neon.fillBottom.setFill(); path.fill() }
+            Neon.glowing(stateColor.withAlphaComponent(0.3), blur: 18) { Neon.fillBottom.setFill(); path.fill() }
+            ctx.setBlendMode(.clear); ctx.addPath(path.cgPathCompat); ctx.fillPath()
+            ctx.endTransparencyLayer(); ctx.restoreGState()
+        } else {
+            Neon.glowing(NSColor.black.withAlphaComponent(0.6), blur: 22) { Neon.fillBottom.setFill(); path.fill() }
+            Neon.glowing(stateColor.withAlphaComponent(0.3), blur: 18) { Neon.fillBottom.setFill(); path.fill() }
+        }
+        NSGradient(starting: Neon.fillTop.withAlphaComponent(tint), ending: Neon.fillBottom.withAlphaComponent(tint))?.draw(in: path, angle: -90)
+
         // The sinew: the tail toward her takes on the state's colour, so both wings read as
         // one body with her.
         let inner = d > 0 ? body.maxX : body.minX
@@ -1253,7 +1295,7 @@ final class GlowPillButton: NSView {
     private let symbol: String
     private let tint: Tint
     private var hovered = false { didSet { needsDisplay = true } }
-    private static let font = NSFont.systemFont(ofSize: 14.5, weight: .semibold)
+    private static let font = ZFont.ui(ofSize: 14.5, weight: .semibold)
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -1326,7 +1368,7 @@ final class StatusChip: NSView {
     }
     override var isFlipped: Bool { true }
 
-    private var font: NSFont { NSFont.systemFont(ofSize: compact ? 12 : 13, weight: .semibold) }
+    private var font: NSFont { ZFont.ui(ofSize: compact ? 12 : 13, weight: .semibold) }
     private var dotX: CGFloat { compact ? 9 : 11 }      // dot inset; 8pt dot
     private var textX: CGFloat { compact ? 22 : 26 }    // where the label starts
     private var trailing: CGFloat { compact ? 10 : 12 } // after the label
@@ -1366,4 +1408,12 @@ final class StatusChip: NSView {
         color.setFill()
         NSBezierPath(ovalIn: NSRect(x: dotX, y: bounds.midY - dotSize / 2, width: dotSize, height: dotSize)).fill()
     }
+}
+
+/// Paints the agent wings above their glass (see `LiveActivityView.drawWings`). Never takes a click.
+final class WingFace: NSView {
+    var drawer: (() -> Void)?
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) { drawer?() }
 }

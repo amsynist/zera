@@ -583,7 +583,7 @@ final class WeatherWidget: NSView {
         let units = s.units
 
         // Big temperature, then the phrase and place, then hi / lo and feels-like.
-        let bigFont = NSFont.monospacedDigitSystemFont(ofSize: 30, weight: .semibold)
+        let bigFont = ZFont.digits(ofSize: 30, weight: .semibold)
         let big = units.format(snap.temperature)
         let bigSize = (big as NSString).size(withAttributes: [.font: bigFont])
         draw(big, font: bigFont, color: p.text, in: NSRect(x: textX, y: 14, width: ceil(bigSize.width) + 2, height: ceil(bigSize.height)))

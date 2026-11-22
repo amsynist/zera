@@ -12,15 +12,17 @@ import AppKit
 //               ● Running · v27 · /Applications
 //          [ Open Safari ⏎ ] [ Actions ⌘K ] [ Pin ]
 
-/// Colours of the v2 opener, kept local so the other screens retain their theme.
+/// Colours of the opener. Signal: they follow the theme like every other surface, so the
+/// selection, the arc and the main button use the signal colour.
 enum OpenerLook {
-    static let accent = NSColor(srgbRed: 0.59, green: 0.64, blue: 1, alpha: 1)
-    static let surface = NSColor(srgbRed: 0.065, green: 0.07, blue: 0.085, alpha: 1)
-    static let edge = NSColor.white.withAlphaComponent(0.08)
-    static let muted = NSColor(srgbRed: 0.64, green: 0.66, blue: 0.73, alpha: 1)
-    static let text = NSColor.white
-    static let primary = NSColor(srgbRed: 0.20, green: 0.22, blue: 0.28, alpha: 1)
-    static let primaryBottom = NSColor(srgbRed: 0.14, green: 0.16, blue: 0.21, alpha: 1)
+    private static var t: ZeraTheme { ThemeStore.shared.current }
+    static var accent: NSColor { t.accent }
+    static var surface: NSColor { t.glassBottom }
+    static var edge: NSColor { t.border.withAlphaComponent(min(1, t.border.alphaComponent * 1.4)) }
+    static var muted: NSColor { t.textSecondary }
+    static var text: NSColor { t.text }
+    static var primary: NSColor { t.surface.blended(withFraction: 0.18, of: t.accent) ?? t.surfaceStrong }
+    static var primaryBottom: NSColor { t.surface.blended(withFraction: 0.08, of: t.accent) ?? t.surface }
     /// Gentle depth on floating cards; the desktop blur remains a separate native layer.
     static let glassGradient = [
         NSColor(srgbRed: 0.12, green: 0.13, blue: 0.16, alpha: 0.32),
@@ -29,15 +31,15 @@ enum OpenerLook {
     static let width: CGFloat = 720
     static let searchHeight: CGFloat = 52
     static let cardHeight: CGFloat = 76
-    static let cardRadius: CGFloat = 16
-    static let buttonRadius: CGFloat = 8
-    static let tileRadius: CGFloat = 12
-    static let searchFont = NSFont.systemFont(ofSize: 16, weight: .regular)
-    static let detailFont = NSFont.systemFont(ofSize: 16, weight: .semibold)
+    static let cardRadius: CGFloat = Radius.card
+    static let buttonRadius: CGFloat = Radius.m
+    static let tileRadius: CGFloat = Radius.l
+    static let searchFont = ZFont.ui(ofSize: 16, weight: .regular)
+    static let detailFont = ZFont.ui(ofSize: 16, weight: .semibold)
     static let buttonFont = Typo.bodyMedium
     // Classic has a taller field and a dedicated detail pane.
-    static let classicSearchFont = NSFont.systemFont(ofSize: 17, weight: .regular)
-    static let classicDetailFont = NSFont.systemFont(ofSize: 20, weight: .medium)
+    static let classicSearchFont = ZFont.ui(ofSize: 17, weight: .regular)
+    static let classicDetailFont = ZFont.ui(ofSize: 20, weight: .medium)
 }
 
 /// Where an item sits on the arc, `k` steps from the chosen one.
@@ -125,7 +127,7 @@ final class OrbitTile: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    private static let keyFont = NSFont.systemFont(ofSize: 9.5, weight: .bold)
+    private static let keyFont = ZFont.ui(ofSize: 9.5, weight: .bold)
 
     /// The tile's own size at scale 1.
     static func base(_ style: Style) -> NSSize { style == .icon ? NSSize(width: 64, height: 64) : NSSize(width: 168, height: 64) }
@@ -157,14 +159,14 @@ final class OrbitTile: NSView {
             OpenerLook.edge.setStroke(); shape.lineWidth = 1; shape.stroke()
             let pad = 12 * s
             let k = max(0.5, s)
-            let tf = NSFont.systemFont(ofSize: 13 * k, weight: .bold), df = NSFont.monospacedDigitSystemFont(ofSize: 10.5 * k, weight: .medium)
+            let tf = ZFont.ui(ofSize: 13 * k, weight: .bold), df = ZFont.digits(ofSize: 10.5 * k, weight: .medium)
             let lw = b.width - pad * 2
             NSAttributedString(string: title, attributes: [.font: tf, .foregroundColor: Neon.text])
                 .draw(with: NSRect(x: pad, y: b.height / 2 - 17 * s, width: lw - 44 * s, height: 18 * s), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             NSAttributedString(string: detail, attributes: [.font: df, .foregroundColor: OpenerLook.muted])
                 .draw(with: NSRect(x: pad, y: b.height / 2 + 2 * s, width: lw, height: 16 * s), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             if !trailing.isEmpty {
-                let a: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 10.5 * k, weight: .bold), .foregroundColor: Neon.warning]
+                let a: [NSAttributedString.Key: Any] = [.font: ZFont.digits(ofSize: 10.5 * k, weight: .bold), .foregroundColor: Neon.warning]
                 let w = (trailing as NSString).size(withAttributes: a).width
                 (trailing as NSString).draw(at: NSPoint(x: b.width - pad - w, y: 9 * s), withAttributes: a)
             }
@@ -218,7 +220,7 @@ final class OrbitCaption: NSView {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         paragraph.lineBreakMode = .byTruncatingTail
-        let font = NSFont.systemFont(ofSize: chosen ? 14 : 13, weight: chosen ? .semibold : .regular)
+        let font = ZFont.ui(ofSize: chosen ? 14 : 13, weight: chosen ? .semibold : .regular)
         if running {
             Neon.green.setFill()
             NSBezierPath(ovalIn: NSRect(x: bounds.midX - 2.5, y: 0, width: 5, height: 5)).fill()
@@ -231,7 +233,7 @@ final class OrbitCaption: NSView {
             let path = NSBezierPath(roundedRect: badge, xRadius: 6, yRadius: 6)
             NSColor.white.withAlphaComponent(0.06).setFill(); path.fill()
             OpenerLook.edge.setStroke(); path.lineWidth = 1; path.stroke()
-            let keyText = NSAttributedString(string: key, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: OpenerLook.muted])
+            let keyText = NSAttributedString(string: key, attributes: [.font: ZFont.ui(ofSize: 11), .foregroundColor: OpenerLook.muted])
             keyText.draw(at: NSPoint(x: badge.midX - keyText.size().width / 2, y: badge.midY - keyText.size().height / 2))
         }
     }
@@ -364,13 +366,13 @@ final class OpenerVeil: NSView {
 
 /// "Notes" with the letters you typed lit up in cyan.
 func highlighted(_ name: String, _ hits: [Int], size: CGFloat, weight: NSFont.Weight) -> NSAttributedString {
-    let s = NSMutableAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: Neon.text])
+    let s = NSMutableAttributedString(string: name, attributes: [.font: ZFont.ui(ofSize: size, weight: weight), .foregroundColor: Neon.text])
     let chars = Array(name)
     var offset = 0
     for (i, c) in chars.enumerated() {
         let len = String(c).utf16.count
         if hits.contains(i) {
-            s.addAttributes([.foregroundColor: Neon.cyan, .font: NSFont.systemFont(ofSize: size, weight: .bold)],
+            s.addAttributes([.foregroundColor: Neon.cyan, .font: ZFont.ui(ofSize: size, weight: .bold)],
                             range: NSRange(location: offset, length: len))
         }
         offset += len

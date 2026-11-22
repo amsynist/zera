@@ -80,7 +80,7 @@ enum AppOpenerSettings {
     }
     static let defaultShortcut = HotKeyShortcut(keyCode: 49, modifiers: UInt32(2048), key: "Space")   // ⌥Space
     /// The look: the orbit in the middle of a dimmed screen (v2), or the classic tree window.
-    enum Style: Int { case orbit, tree }
+    enum Style: Int { case orbit, tree, minimal }
     private static let styleKey = "appOpener.style"
     static var style: Style {
         get { Style(rawValue: UserDefaults.standard.integer(forKey: styleKey)) ?? .orbit }
@@ -164,12 +164,21 @@ final class AppOpener: NSObject, NSWindowDelegate {
         AppCatalog.shared.current = NSWorkspace.shared.frontmostApplication.flatMap { $0.processIdentifier == getpid() ? nil : $0.bundleURL }
         onOpenChanged?(true)
         let band = max(24, notch.height)
-        let tree = AppOpenerSettings.style == .tree
+        let style = AppOpenerSettings.style
+        let tree = style != .orbit
+        if tree { treeView.minimal = style == .minimal }
         let view: OpenerSurface = tree ? treeView : orbitView
         self.view = view
         wire(view)
         if panel.contentView !== view { panel.contentView = view }
-        if tree {
+        if style == .minimal {
+            // Minimal: a centred command palette, a little above the middle of the screen.
+            let size = NSSize(width: treeView.panelWidth, height: treeView.panelHeight(band: band, availableHeight: screen.height))
+            let y = (screen.midY - size.height / 2 + screen.height * 0.06).rounded()
+            panel.setFrame(NSRect(x: (screen.midX - size.width / 2).rounded(), y: min(screen.maxY - size.height, max(screen.minY, y)),
+                                  width: size.width, height: size.height), display: false)
+            view.ropeX = size.width / 2
+        } else if tree {
             // Classic: a window held by Zera under the notch.
             let size = NSSize(width: TreeOpenerView.panelWidth, height: treeView.panelHeight(band: band, availableHeight: screen.height))
             let x = max(screen.minX, min(screen.maxX - size.width, notch.midX - size.width / 2))
@@ -282,6 +291,8 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private let zera = NSImageView()
     /// Her live eyes, over the picture: they follow the app you're on (see `focusPoint`).
     private let zeraFace = OpenerZeraFace()
+    /// Signal: the shared signal-core companion peeks over the search, as in the notch.
+    private let companion = LivingCompanionView(frame: .zero)
     private let mascotMask = CAGradientLayer()
     /// The dimmed, blurred screen behind it all.
     private let veil = OpenerVeil()
@@ -443,8 +454,8 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
 
         // The same rope her picture holds: a strip of it, repeated all the way up to the notch.
         rope.wantsLayer = true
-        rope.layer?.backgroundColor = (ropePattern().map { NSColor(patternImage: $0) }
-            ?? sprite?.ropeColor ?? NSColor(srgbRed: 0.36, green: 0.23, blue: 0.13, alpha: 1)).cgColor
+        // Signal: her line down from the notch is a lit hairline in the signal colour.
+        rope.layer?.backgroundColor = Pal.accent.withAlphaComponent(0.6).cgColor
         rope.isHidden = true
         addSubview(rope)
         holder.wantsLayer = true
@@ -485,7 +496,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         field.delegate = self
         field.setAccessibilityLabel("App name")
         searchBar.addSubview(field)
-        rightLabel.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold)
+        rightLabel.font = ZFont.mono(ofSize: 10.5, weight: .semibold)
         rightLabel.alignment = .right
         searchBar.addSubview(rightLabel)
 
@@ -571,31 +582,22 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         dPin.labelFont = Typo.bodyMedium
         dPin.onClick = { [weak self] in self?.togglePinChosen() }
         [dPrimary, dSecondary, dPin].forEach { $0.openerAppearance = true; holder.addSubview($0) }
-        dEmpty.font = NSFont.systemFont(ofSize: 14)
+        dEmpty.font = ZFont.ui(ofSize: 14)
         dEmpty.alignment = .center
         holder.addSubview(dEmpty)
 
-        foot.font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
+        foot.font = ZFont.ui(ofSize: 11.5, weight: .medium)
         foot.alignment = .center
         foot.lineBreakMode = .byTruncatingTail
         holder.addSubview(foot)
 
-        // The eyeless picture under a live face, so her eyes can follow the app you're on.
-        let live = ZeraFacePose.available(for: "hang_peek") != nil
-        zera.image = (live ? SpriteLibrary.shared.sprite("hang_peek_base") : nil)?.image ?? sprite?.image
+        // Signal: the same signal-core companion as the notch, standing on the search pill. Her
+        // eyes follow the pointer; the old picture and its live face are no longer used here.
+        zera.image = nil
         zera.imageScaling = .scaleProportionallyUpOrDown
-        if live {
-            zeraFace.frame = zera.bounds
-            zeraFace.autoresizingMask = [.width, .height]
-            zeraFace.target = { [weak self] in self?.focusPoint }
-            zera.addSubview(zeraFace)
-        }
         zera.wantsLayer = true
-        mascotMask.colors = [NSColor.clear.cgColor, NSColor.white.cgColor, NSColor.white.cgColor]
-        mascotMask.locations = [0, 0.28, 1]
-        mascotMask.startPoint = CGPoint(x: 0.5, y: 1)
-        mascotMask.endPoint = CGPoint(x: 0.5, y: 0)
-        zera.layer?.mask = mascotMask
+        zera.layer?.masksToBounds = false
+        zera.addSubview(companion)
         holder.addSubview(zera)
         setAccessibilityRole(.group)
         setAccessibilityLabel("App opener")
@@ -933,7 +935,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             row.symbol = ask ? "exclamationmark.triangle.fill" : a.symbol
             row.tint = ask ? Neon.red : a.tint
             row.titleText = NSAttributedString(string: ask ? (a.confirm ?? a.title) : a.title, attributes: [
-                .font: NSFont.systemFont(ofSize: 13, weight: .regular),
+                .font: ZFont.ui(ofSize: 13, weight: .regular),
                 .foregroundColor: ask ? Neon.red : (a.tint ?? Neon.text)])
             row.accessoryKeycap = true
             row.accessory = ask ? "⏎ confirm" : (a.shortcut?.label ?? (k == leaf ? "⏎" : ""))
@@ -1128,14 +1130,14 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         dName.textColor = Neon.text
         // "● Running · v27.0.1 · /Applications · opened 41 times from Zera"
         let meta = NSMutableAttributedString()
-        let mf = NSFont.systemFont(ofSize: 13, weight: .regular)
+        let mf = ZFont.ui(ofSize: 13, weight: .regular)
         if let (t, c) = status {
-            meta.append(NSAttributedString(string: "●  ", attributes: [.font: NSFont.systemFont(ofSize: 9), .foregroundColor: c, .baselineOffset: 1.5]))
-            meta.append(NSAttributedString(string: t, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .regular), .foregroundColor: c]))
+            meta.append(NSAttributedString(string: "●  ", attributes: [.font: ZFont.ui(ofSize: 9), .foregroundColor: c, .baselineOffset: 1.5]))
+            meta.append(NSAttributedString(string: t, attributes: [.font: ZFont.ui(ofSize: 13, weight: .regular), .foregroundColor: c]))
         }
         for f in facts where !f.isEmpty {
             if meta.length > 0 { meta.append(NSAttributedString(string: "  ·  ", attributes: [.font: mf, .foregroundColor: OpenerLook.muted])) }
-            meta.append(NSAttributedString(string: f, attributes: [.font: f.hasPrefix("pid") ? NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular) : mf,
+            meta.append(NSAttributedString(string: f, attributes: [.font: f.hasPrefix("pid") ? ZFont.mono(ofSize: 11.5, weight: .regular) : mf,
                                                                    .foregroundColor: OpenerLook.muted]))
         }
         let centred = NSMutableParagraphStyle()
@@ -2013,6 +2015,8 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
         veil.frame = bounds
         // Her picture's own rope sits exactly on the drawn one; her paws rest on the search.
         zera.frame = NSRect(x: (c - ropeFraction * OP.zeraW).rounded(), y: cardTop - zeraH + OP.paws, width: OP.zeraW, height: zeraH)
+        let size = (min(zera.bounds.width, zera.bounds.height) * 0.8).rounded()
+        companion.frame = NSRect(x: ((zera.bounds.width - size) / 2).rounded(), y: 0, width: size, height: size)
         mascotMask.frame = zera.bounds
         if rope.layer?.animation(forKey: "grow") == nil {
             rope.frame = NSRect(x: (c - ropeWidth / 2).rounded(), y: 0, width: ropeWidth, height: band + OP.ropeGap + verticalOffset + 14)
@@ -2083,7 +2087,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
             foot.frame = NSRect(x: c - fw / 2, y: card.maxY + 24, width: fw, height: 20)
         } else {
             var y = orbit.frame.maxY + 8
-            let font = NSFont.systemFont(ofSize: 18, weight: .semibold)
+            let font = ZFont.ui(ofSize: 18, weight: .semibold)
             if dName.font != font { dName.font = font }
             dName.frame = NSRect(x: c - 320, y: y, width: 640, height: 30); y += 34
             dMeta.frame = NSRect(x: c - 360, y: y, width: 720, height: 20); y += compact ? 26 : 34
@@ -2248,31 +2252,40 @@ private enum OV {
 /// Keyboard guidance uses the same quiet keycaps as the search and app shortcuts.
 final class OpenerFooter: NSTextField {
     var leadingAligned = false
+    /// Set: drawn as the island's status line, "● LIVE  <title>" on the left, the hints on the right.
+    var liveTitle: String? { didSet { needsDisplay = true } }
     var hints: [([String], String)] = [] { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
         guard !hints.isEmpty else { super.draw(dirtyRect); return }
+        // Signal: the status line's keycaps and quiet mono words.
         let groups = hints
-        let font = NSFont.systemFont(ofSize: 12, weight: .regular)
-        let keyFont = Typo.caption
-        func keyWidth(_ key: String) -> CGFloat { max(20, ceil((key as NSString).size(withAttributes: [.font: keyFont]).width) + 10) }
-        let widths = groups.map { $0.0.reduce(CGFloat(0)) { $0 + keyWidth($1) + 4 } + 2 + ($0.1 as NSString).size(withAttributes: [.font: font]).width }
-        let total = widths.reduce(0, +) + 20 * CGFloat(groups.count - 1)
+        let font = ZFont.mono(ofSize: 10.5, weight: .medium)
+        let keyFont = ZFont.mono(ofSize: 10, weight: .medium)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: OpenerLook.muted, .kern: 0.4]
+        func keyWidth(_ key: String) -> CGFloat { ceil((key as NSString).size(withAttributes: [.font: keyFont]).width) + 10 }
+        let widths = groups.map { $0.0.reduce(CGFloat(0)) { $0 + keyWidth($1) + 4 } + 2 + NSAttributedString(string: $0.1, attributes: attrs).size().width }
+        let total = widths.reduce(0, +) + 18 * CGFloat(groups.count - 1)
         var x = leadingAligned ? 0 : bounds.midX - total / 2
+        if let live = liveTitle {
+            let t = ThemeStore.shared.current
+            NSGraphicsContext.saveGraphicsState()
+            let glow = NSShadow(); glow.shadowColor = t.accent; glow.shadowBlurRadius = 6; glow.set()
+            SignalDraw.dot(at: NSPoint(x: 3, y: bounds.midY), color: t.accent)
+            NSGraphicsContext.restoreGraphicsState()
+            let l = NSAttributedString(string: "LIVE", attributes: [.font: ZFont.mono(ofSize: 10, weight: .semibold), .foregroundColor: t.accent, .kern: 0.5])
+            l.draw(at: NSPoint(x: 13, y: bounds.midY - l.size().height / 2))
+            let n = NSAttributedString(string: live, attributes: [.font: ZFont.mono(ofSize: 10, weight: .medium), .foregroundColor: Signal.faint, .kern: 0.5])
+            n.draw(at: NSPoint(x: 13 + ceil(l.size().width) + 12, y: bounds.midY - n.size().height / 2))
+            x = bounds.maxX - total
+        }
         for (keys, title) in groups {
             for key in keys {
-                let box = NSRect(x: x, y: bounds.midY - 10, width: keyWidth(key), height: 20)
-                let path = NSBezierPath(roundedRect: box, xRadius: 5, yRadius: 5)
-                NSColor.white.withAlphaComponent(0.06).setFill(); path.fill()
-                OpenerLook.edge.setStroke(); path.lineWidth = 1; path.stroke()
-                let attr: [NSAttributedString.Key: Any] = [.font: keyFont, .foregroundColor: OpenerLook.muted]
-                let size = (key as NSString).size(withAttributes: attr)
-                (key as NSString).draw(at: NSPoint(x: box.midX - size.width / 2, y: box.midY - size.height / 2), withAttributes: attr)
-                x += box.width + 4
+                x += SignalDraw.keycap(key, at: NSPoint(x: x, y: (bounds.midY - 9).rounded()), height: 18) + 4
             }
-            let text = NSAttributedString(string: title, attributes: [.font: font, .foregroundColor: OpenerLook.muted])
+            let text = NSAttributedString(string: title, attributes: attrs)
             text.draw(at: NSPoint(x: x + 2, y: bounds.midY - text.size().height / 2))
-            x += 2 + text.size().width + 20
+            x += 2 + text.size().width + 18
         }
     }
 }
@@ -2295,7 +2308,7 @@ final class TreeGroupView: NSView {
             .font: Typo.branchLabel, .foregroundColor: Neon.textDim, .kern: Typo.branchKern])
         if let n = count {
             s.append(NSAttributedString(string: "  · \(n)", attributes: [
-                .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium), .foregroundColor: Neon.textFaint]))
+                .font: ZFont.mono(ofSize: 10.5, weight: .medium), .foregroundColor: Neon.textFaint]))
         }
         label.attributedStringValue = s
         addSubview(label)
@@ -2331,11 +2344,13 @@ final class TreeRowView: NSView {
     var accessoryKeycap = false {
         didSet {
             acc.alignment = accessoryKeycap ? .center : .right
-            if accessoryKeycap { acc.font = NSFont.systemFont(ofSize: 11) }
+            if accessoryKeycap { acc.font = ZFont.ui(ofSize: 11) }
             needsLayout = true; needsDisplay = true
         }
     }
     var running = false { didSet { dot.isHidden = !running } }
+    /// ⌘1…⌘6: a numbered index tile before the icon (minimal opener).
+    var index: Int? { didSet { needsLayout = true; needsDisplay = true } }
     var mono = false
     /// Quit All's switch: on = this app will quit.
     var toggle: Bool? { didSet { needsDisplay = true; needsLayout = true } }
@@ -2355,7 +2370,7 @@ final class TreeRowView: NSView {
         self.style = style
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = style == .leaf ? 9 : 11
+        layer?.cornerRadius = style == .leaf ? Radius.s + 1 : Radius.m
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 1
         iconView.imageScaling = .scaleProportionallyUpOrDown
@@ -2363,11 +2378,11 @@ final class TreeRowView: NSView {
         addSubview(iconView)
         title.lineBreakMode = .byTruncatingTail
         addSubview(title)
-        subLabel.font = NSFont.systemFont(ofSize: 12)
+        subLabel.font = ZFont.ui(ofSize: 12)
         subLabel.textColor = Neon.textDim
         subLabel.lineBreakMode = .byTruncatingTail
         addSubview(subLabel)
-        acc.font = style == .leaf ? NSFont.monospacedSystemFont(ofSize: 11, weight: .medium) : NSFont.systemFont(ofSize: 11.5, weight: .medium)
+        acc.font = style == .leaf ? ZFont.mono(ofSize: 11, weight: .medium) : ZFont.ui(ofSize: 11.5, weight: .medium)
         acc.textColor = Neon.textDim
         acc.alignment = .right
         addSubview(acc)
@@ -2384,8 +2399,9 @@ final class TreeRowView: NSView {
     private func restyle() {
         let accent = tint ?? Neon.accent
         let on = selected && style != .note
-        layer?.backgroundColor = (on ? accent.withAlphaComponent(0.14) : (hovered && style != .note ? Neon.chipHover.withAlphaComponent(0.55) : .clear)).cgColor
-        layer?.borderColor = (on ? accent.withAlphaComponent(0.5) : .clear).cgColor
+        layer?.backgroundColor = (on ? accent.withAlphaComponent(0.11) : (hovered && style != .note ? Neon.chipHover.withAlphaComponent(0.55) : .clear)).cgColor
+        layer?.borderColor = (on ? accent.withAlphaComponent(0.42) : .clear).cgColor
+        needsDisplay = true
         if style == .leaf, let s = symbol {
             let c = tint ?? (selected ? Neon.cyan : Neon.glyph)
             iconView.image = NSImage(systemSymbolName: s, accessibilityDescription: nil)?
@@ -2399,8 +2415,9 @@ final class TreeRowView: NSView {
         super.layout()
         let w = bounds.width, h = bounds.height
         let size: CGFloat = style == .leaf ? 16 : (style == .child ? 24 : 26)
-        iconView.frame = NSRect(x: 8, y: (h - size) / 2, width: size, height: size)
-        let tx: CGFloat = iconView.isHidden ? 10 : 8 + size + (style == .leaf ? 10 : 12)
+        let lead: CGFloat = index == nil ? 0 : 34
+        iconView.frame = NSRect(x: 8 + lead, y: (h - size) / 2, width: size, height: size)
+        let tx: CGFloat = (iconView.isHidden ? 10 : 8 + size + (style == .leaf ? 10 : 12)) + lead
         var right = w - 12
         if toggle != nil { right -= 34 }
         let aw = accessory.isEmpty ? 0 : ceil(acc.attributedStringValue.size().width) + (accessoryKeycap ? 12 : 4)
@@ -2412,6 +2429,19 @@ final class TreeRowView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        if selected && style != .note {
+            let accent = tint ?? Neon.accent
+            NSGraphicsContext.saveGraphicsState()
+            let glow = NSShadow(); glow.shadowColor = accent.withAlphaComponent(0.8); glow.shadowBlurRadius = 5; glow.set()
+            accent.setFill()
+            NSBezierPath(roundedRect: NSRect(x: 0, y: 7, width: 2, height: max(0, bounds.height - 14)), xRadius: 1, yRadius: 1).fill()
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        if let n = index {
+            let accent = tint ?? Neon.accent
+            SignalDraw.indexTile(String(format: "%02d", n), in: NSRect(x: 8, y: (bounds.midY - 10).rounded(), width: 26, height: 20),
+                                 color: selected ? accent : Signal.itemColor(n - 1), filled: selected, radius: 5)
+        }
         if accessoryKeycap && !accessory.isEmpty {
             let box = NSRect(x: acc.frame.minX, y: bounds.midY - 10, width: acc.frame.width, height: 20)
             let path = NSBezierPath(roundedRect: box, xRadius: 5, yRadius: 5)
@@ -2496,21 +2526,20 @@ final class TreeButton: NSView {
         let path = NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius)
         let ink: NSColor
         if openerAppearance && tint == nil {
-            let fill = primary ? OpenerLook.primary : NSColor.white.withAlphaComponent(hovered ? 0.06 : 0)
             if primary {
-                NSGradient(starting: fill.blended(withFraction: hovered ? 0.03 : 0, of: .white) ?? fill,
-                           ending: OpenerLook.primaryBottom)?.draw(in: path, angle: -90)
-            } else { fill.setFill(); path.fill() }
-            (primary ? NSColor.white.withAlphaComponent(0.12) : OpenerLook.edge).setStroke()
-            path.lineWidth = 1; path.stroke()
-            ink = primary ? .white : (openerPinned ? OpenerLook.accent : OpenerLook.muted)
+                ink = Pal.drawButton(path, tone: .accent, hovered: hovered, pressed: pressed)
+            } else {
+                NSColor.white.withAlphaComponent(hovered ? 0.06 : 0).setFill(); path.fill()
+                OpenerLook.edge.setStroke(); path.lineWidth = 1; path.stroke()
+                ink = openerPinned ? OpenerLook.accent : OpenerLook.muted
+            }
         } else {
             ink = Pal.drawButton(path, tone: tone, hovered: hovered, pressed: pressed)
         }
         let filled = tone == .accent || tone == .success
         let t = NSAttributedString(string: title, attributes: [.font: labelFont ?? Typo.button, .foregroundColor: ink])
         // The shortcut reads like a menu's: the same line, quieter, no box of its own.
-        let k = NSAttributedString(string: key, attributes: [.font: openerAppearance && primary ? NSFont.systemFont(ofSize: 10) : Self.keyFont,
+        let k = NSAttributedString(string: key, attributes: [.font: openerAppearance && primary ? ZFont.ui(ofSize: 10) : Self.keyFont,
                                                               .foregroundColor: openerAppearance ? ink : (filled ? ink.withAlphaComponent(0.6) : Pal.textTertiary)])
         let ts = t.size(), ks = k.size()
         let keyWidth = openerAppearance ? max(20, ks.width + 10) : ks.width
@@ -2535,7 +2564,7 @@ final class TreeButton: NSView {
             } else { k.draw(at: NSPoint(x: keyX, y: (bounds.height - ks.height) / 2)) }
         }
     }
-    private static let keyFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    private static let keyFont = ZFont.ui(ofSize: 12, weight: .medium)
     private static let keyGap: CGFloat = 8
     private static let iconBox: CGFloat = 14
     private static let iconGap: CGFloat = 6
@@ -2572,22 +2601,51 @@ final class OpenerGlass: NSView {
     var edge: NSColor? { didSet { needsDisplay = true } }
     var lineWidth: CGFloat = 1.5 { didSet { needsDisplay = true } }
     var glow: Float = 0.75 { didSet { needsDisplay = true } }
+    /// False when this sits inside a surface that already has its own glass (the export screen
+    /// inside the island): a second blur would darken it and cover the island's pane frame.
+    var blursBehind = true { didSet { if blursBehind != oldValue { needsDisplay = true } } }
     override var isFlipped: Bool { true }
     override var wantsUpdateLayer: Bool { true }
+    /// Signal glass: the blurred desktop under the tint (Settings › Appearance › Glass). Shared by
+    /// the app opener and every Tasks window (focus card, quick add, export).
+    private let glass = SignalGlassView(frame: .zero)
+    private let gradientView = SignalLayerView(frame: .zero, flipped: true)
+    private var glassObserver: NSObjectProtocol?
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
+        glass.frame = bounds
+        glass.autoresizingMask = [.width, .height]
+        glass.minimumOpacity = 0.7
+        addSubview(glass)
+        glassObserver = NotificationCenter.default.addObserver(forName: GlassSettings.changed, object: nil, queue: .main) { [weak self] _ in
+            self?.needsDisplay = true
+        }
         gradientLayer.startPoint = CGPoint(x: 0, y: 0)
         gradientLayer.endPoint = CGPoint(x: 1, y: 1)
-        layer?.addSublayer(gradientLayer)
+        gradientView.frame = bounds
+        gradientView.autoresizingMask = [.width, .height]
+        gradientView.layer?.addSublayer(gradientLayer)
+        addSubview(gradientView)
     }
     required init?(coder: NSCoder) { fatalError() }
+    deinit { if let glassObserver { NotificationCenter.default.removeObserver(glassObserver) } }
+    override func layout() {
+        super.layout()
+        glass.setPath(CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil))
+    }
     override func updateLayer() {
         guard let l = layer else { return }
         l.cornerRadius = radius
         l.cornerCurve = .continuous
-        l.backgroundColor = (fill ?? Neon.fillBottom).cgColor
+        let translucent = GlassSettings.isTranslucent
+        glass.isHidden = !translucent || !blursBehind
+        glass.tintColor = fill ?? Neon.fillBottom
+        glass.setPath(CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil))
+        // Inside another glass (`blursBehind` false) the fill is painted directly, so a small
+        // tinted tile (the opener's search node) keeps its wash.
+        l.backgroundColor = translucent && blursBehind ? NSColor.clear.cgColor : (fill ?? Neon.fillBottom).cgColor
         CATransaction.begin(); CATransaction.setDisableActions(true)
         gradientLayer.isHidden = gradient == nil
         gradientLayer.frame = bounds
@@ -2615,7 +2673,7 @@ final class OpenerPill: NSView {
     var keycap = false { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     private static let font = Typo.bodyStrong
-    private static let keyFont = NSFont.systemFont(ofSize: 11.5, weight: .medium)
+    private static let keyFont = ZFont.ui(ofSize: 11.5, weight: .medium)
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     private var text: NSAttributedString {
@@ -2626,7 +2684,8 @@ final class OpenerPill: NSView {
     var fittedWidth: CGFloat { ceil(text.size().width) + 28 + (keycap ? 12 : 0) }
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 0.75, dy: 0.75)
-        let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        // Signal: squared like every other control, not a pill.
+        let path = NSBezierPath(roundedRect: r, xRadius: Radius.m, yRadius: Radius.m)
         (ghost ? Neon.chip : Neon.accent.withAlphaComponent(0.16)).setFill(); path.fill()
         (ghost ? Neon.chipEdge : Neon.accent.withAlphaComponent(0.65)).setStroke(); path.lineWidth = 1.2; path.stroke()
         if keycap {

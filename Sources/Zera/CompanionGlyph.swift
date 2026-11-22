@@ -3,28 +3,43 @@ import AppKit
 /// Zera's own soft, luminous ember. Shared by the notch, Home and open-panel companion.
 /// Shape, face, hands and light react together; no sprite rotation or downloaded artwork.
 enum CompanionGlyph {
+    /// Signal: her light is the interface's own status colour, so she and the screen agree.
+    /// Idle is the signal colour; thinking blue; done green; needs you amber; failed red; asleep grey.
     static func tint(for mood: ZeraMood) -> NSColor {
+        let t = ThemeStore.shared.current
         switch mood {
-        case .focused, .thinking: return NSColor(srgbRed: 0.42, green: 0.72, blue: 1, alpha: 1)
-        case .approved, .celebrate, .giving: return NSColor(srgbRed: 0.45, green: 0.92, blue: 0.72, alpha: 1)
-        case .error, .worried, .sad: return NSColor(srgbRed: 1, green: 0.42, blue: 0.42, alpha: 1)
-        case .sleepy, .cozy, .bored: return NSColor(srgbRed: 0.65, green: 0.59, blue: 0.96, alpha: 1)
-        default: return NSColor(srgbRed: 1, green: 0.66, blue: 0.28, alpha: 1)
+        case .focused, .thinking: return t.info
+        case .approved, .celebrate, .giving: return t.success
+        case .worried: return t.warning
+        case .error, .sad: return t.danger
+        case .sleepy, .cozy, .bored: return t.textTertiary
+        default: return t.accent
         }
     }
+
+    /// The signal core: the same silhouette, hands and gestures as before, drawn as dark glass
+    /// with a rim in her mood colour, two cursor-block eyes that blink like the terminal cursor,
+    /// and a glow under her that strengthens with attention.
+    private static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)
+    /// The glass body's light: the same every frame, so made once.
+    private static let bodyGradient = CGGradient(colorsSpace: sRGB, colors: [NSColor(srgbRed: 0.14, green: 0.21, blue: 0.25, alpha: 1).cgColor,
+                                                                              NSColor(srgbRed: 0.05, green: 0.08, blue: 0.11, alpha: 1).cgColor,
+                                                                              NSColor(srgbRed: 0.02, green: 0.035, blue: 0.05, alpha: 1).cgColor] as CFArray,
+                                                 locations: [0, 0.5, 1])
+
     static func draw(_ ctx: CGContext, in rect: CGRect, mood: ZeraMood, gaze: CGPoint,
-                     blink: CGFloat, attention: CGFloat = 0, phase: TimeInterval = 0, reach: CGFloat = 0) {
+                     blink: CGFloat, attention: CGFloat = 0, phase: TimeInterval = 0, reach: CGFloat = 0,
+                     tint shown: NSColor? = nil) {
         let body = rect.insetBy(dx: rect.width * 0.14, dy: rect.height * 0.16)
         let d = body.width, center = CGPoint(x: body.midX, y: body.midY)
-        let tint = tint(for: mood)
-        let top = tint.blended(withFraction: 0.45, of: .white) ?? tint
-        let warm = [.idle, .hello, .happy, .excited, .love, .surprised].contains(mood)
-        let bottom = warm ? (tint.blended(withFraction: 0.38, of: NSColor(srgbRed: 0.98, green: 0.29, blue: 0.25, alpha: 1)) ?? tint) : (tint.blended(withFraction: 0.22, of: .black) ?? tint)
+        // `shown`: the colour the caller is easing toward the mood's, so a mood change never snaps.
+        let tint = shown ?? tint(for: mood)
         let happy = [.happy, .celebrate, .love, .approved, .giving, .excited, .hello].contains(mood)
         let rest = mood == .sleepy || mood == .cozy
         let worried = [.worried, .sad, .error].contains(mood)
         let surprise = mood == .surprised
-        let focus = mood == .focused
+        let focus = mood == .focused || mood == .thinking
+        let glass = NSColor(srgbRed: 0.04, green: 0.07, blue: 0.09, alpha: 1)
         let shape = CGMutablePath()
         shape.move(to: CGPoint(x: body.minX, y: body.midY - d * 0.08))
         shape.addCurve(to: CGPoint(x: body.midX, y: body.maxY), control1: CGPoint(x: body.minX - d * 0.02, y: body.maxY - d * 0.16), control2: CGPoint(x: body.midX - d * 0.28, y: body.maxY + d * 0.035))
@@ -32,8 +47,9 @@ enum CompanionGlyph {
         shape.addCurve(to: CGPoint(x: body.midX, y: body.minY), control1: CGPoint(x: body.maxX, y: body.minY + d * 0.015), control2: CGPoint(x: body.midX + d * 0.23, y: body.minY - d * 0.018))
         shape.addCurve(to: CGPoint(x: body.minX, y: body.midY - d * 0.08), control1: CGPoint(x: body.minX + d * 0.11, y: body.minY - d * 0.02), control2: CGPoint(x: body.minX, y: body.minY + d * 0.08))
         shape.closeSubpath()
+        let rim = max(1, d * 0.024)
         if d > 28 {
-            ctx.saveGState(); ctx.setLineCap(.round); ctx.setLineWidth(d * 0.14); ctx.setStrokeColor(bottom.cgColor); ctx.setFillColor(tint.cgColor)
+            ctx.saveGState(); ctx.setLineCap(.round); ctx.setLineWidth(d * 0.1)
             for side: CGFloat in [-1, 1] {
                 let waving = happy && side > 0 && reach < 0.5
                 let wave = waving ? d * (0.2 + 0.045 * CGFloat(sin(phase * 9))) : -d * 0.37
@@ -41,62 +57,80 @@ enum CompanionGlyph {
                 // Reaching: both hands rise above her head, ready to catch.
                 let raised = CGPoint(x: center.x + side * d * 0.5, y: center.y + d * 0.5)
                 hand = CGPoint(x: hand.x + (raised.x - hand.x) * reach, y: hand.y + (raised.y - hand.y) * reach)
+                ctx.setStrokeColor(tint.withAlphaComponent(0.85).cgColor); ctx.setLineWidth(d * 0.1)
                 ctx.move(to: CGPoint(x: center.x + side * d * 0.37, y: center.y - d * 0.15))
                 ctx.addQuadCurve(to: hand, control: CGPoint(x: center.x + side * d * (0.66 - 0.04 * reach),
                                                             y: center.y - d * 0.1 + d * 0.12 * reach)); ctx.strokePath()
-                ctx.fillEllipse(in: CGRect(x: hand.x - d * 0.075, y: hand.y - d * 0.08, width: d * 0.15, height: d * 0.17))
+                let palm = CGRect(x: hand.x - d * 0.075, y: hand.y - d * 0.075, width: d * 0.15, height: d * 0.15)
+                ctx.setFillColor(glass.cgColor); ctx.fillEllipse(in: palm)
+                ctx.setLineWidth(rim * 0.8); ctx.strokeEllipse(in: palm)
                 if waving {
-                    ctx.setStrokeColor(tint.cgColor); ctx.setLineWidth(d * 0.06)
+                    ctx.setStrokeColor(tint.cgColor); ctx.setLineWidth(d * 0.045)
                     for (dx, dy): (CGFloat, CGFloat) in [(0, 0.13), (0.075, 0.09), (0.105, 0.025)] {
                         ctx.move(to: hand); ctx.addLine(to: CGPoint(x: hand.x + dx * d, y: hand.y + dy * d)); ctx.strokePath()
                     }
-                    ctx.setStrokeColor(bottom.cgColor); ctx.setLineWidth(d * 0.14)
                 }
             }
             ctx.restoreGState()
         }
+        // Dark glass, lit from below by her own colour.
         ctx.saveGState()
-        ctx.setShadow(offset: .zero, blur: d * (0.15 + attention * 0.08), color: tint.withAlphaComponent(0.5).cgColor)
-        ctx.addPath(shape); ctx.setFillColor(tint.cgColor); ctx.fillPath()
+        ctx.setShadow(offset: .zero, blur: d * (0.16 + attention * 0.1), color: tint.withAlphaComponent(0.55).cgColor)
+        ctx.addPath(shape); ctx.setFillColor(glass.cgColor); ctx.fillPath()
         ctx.restoreGState()
         ctx.saveGState(); ctx.addPath(shape); ctx.clip()
-        if let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [top.cgColor, tint.cgColor, bottom.cgColor] as CFArray, locations: [0, 0.5, 1]) {
-            ctx.drawLinearGradient(gradient, start: CGPoint(x: body.minX, y: body.maxY), end: CGPoint(x: body.maxX, y: body.minY), options: [])
+        let space = Self.sRGB
+        if let g = Self.bodyGradient {
+            let light = CGPoint(x: body.minX + d * (0.34 + gaze.x * 0.03), y: body.maxY - d * 0.2)
+            ctx.drawRadialGradient(g, startCenter: light, startRadius: 0, endCenter: light, endRadius: d * 0.95, options: [.drawsAfterEndLocation])
         }
-        if let sheen = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [NSColor.white.withAlphaComponent(0.44).cgColor, NSColor.white.withAlphaComponent(0).cgColor] as CFArray, locations: [0, 1]) {
-            let light = CGPoint(x: body.minX + d * (0.28 + gaze.x * 0.025), y: body.maxY - d * 0.1)
-            ctx.drawRadialGradient(sheen, startCenter: light, startRadius: 0, endCenter: light, endRadius: d * 0.66, options: [])
+        if let under = CGGradient(colorsSpace: space, colors: [tint.withAlphaComponent(0.34 + attention * 0.2).cgColor, tint.withAlphaComponent(0).cgColor] as CFArray, locations: [0, 1]) {
+            let from = CGPoint(x: body.midX, y: body.minY - d * 0.05)
+            ctx.drawRadialGradient(under, startCenter: from, startRadius: 0, endCenter: from, endRadius: d * 0.62, options: [])
         }
         ctx.restoreGState()
-        ctx.saveGState(); ctx.addPath(shape); ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.38).cgColor); ctx.setLineWidth(max(0.6, d * 0.012)); ctx.strokePath()
-        let ink = NSColor(srgbRed: 0.16, green: 0.11, blue: 0.16, alpha: 1)
-        ctx.setFillColor(ink.cgColor); ctx.setStrokeColor(ink.cgColor); ctx.setLineCap(.round); ctx.setLineWidth(max(1.05, d * 0.035))
-        let eyeY = center.y + d * 0.015 + gaze.y * d * 0.04
+        ctx.saveGState()
+        // A short highlight on the upper left of the glass.
+        ctx.setLineCap(.round); ctx.setLineWidth(max(0.8, d * 0.018))
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.26).cgColor)
+        ctx.move(to: CGPoint(x: body.minX + d * 0.12, y: body.maxY - d * 0.3))
+        ctx.addQuadCurve(to: CGPoint(x: body.minX + d * 0.36, y: body.maxY - d * 0.06), control: CGPoint(x: body.minX + d * 0.17, y: body.maxY - d * 0.1))
+        ctx.strokePath()
+        // The rim in her colour.
+        ctx.addPath(shape); ctx.setStrokeColor(tint.cgColor); ctx.setLineWidth(rim); ctx.strokePath()
+        // Face: cursor-block eyes and a mouth stroke, both lit.
+        ctx.setShadow(offset: .zero, blur: d * 0.06, color: tint.cgColor)
+        ctx.setFillColor(tint.cgColor); ctx.setStrokeColor(tint.cgColor)
+        ctx.setLineCap(.round); ctx.setLineJoin(.round); ctx.setLineWidth(max(1.1, d * 0.034))
+        let eyeY = center.y + d * 0.02 + gaze.y * d * 0.04
         for side: CGFloat in [-1, 1] {
-            let x = center.x + side * d * 0.175 + gaze.x * d * 0.045
-            if rest || blink > 0.8 || (happy && attention > 0.65) || (mood == .giving && side > 0) {
-                ctx.move(to: CGPoint(x: x - d * 0.05, y: eyeY))
-                ctx.addQuadCurve(to: CGPoint(x: x + d * 0.05, y: eyeY), control: CGPoint(x: x, y: eyeY + (happy ? d * 0.065 : -d * 0.025))); ctx.strokePath()
+            let x = center.x + side * d * 0.165 + gaze.x * d * 0.045
+            if rest || (happy && attention > 0.65) || (mood == .giving && side > 0) || blink > 0.92 {
+                ctx.move(to: CGPoint(x: x - d * 0.055, y: eyeY))
+                ctx.addQuadCurve(to: CGPoint(x: x + d * 0.055, y: eyeY), control: CGPoint(x: x, y: eyeY + (happy ? d * 0.08 : -d * 0.01))); ctx.strokePath()
             } else {
-                let height = d * (surprise ? 0.24 : focus ? 0.12 : 0.2) * max(0.1, 1 - blink)
-                ctx.fillEllipse(in: CGRect(x: x - d * 0.058, y: eyeY - height / 2, width: d * 0.116, height: height))
-                ctx.setFillColor(NSColor.white.withAlphaComponent(0.92).cgColor)
-                ctx.fillEllipse(in: CGRect(x: x - d * 0.027, y: eyeY + height * 0.13, width: d * 0.031, height: d * 0.038))
-                ctx.setFillColor(ink.cgColor)
+                // The block collapses toward its baseline when she blinks, like a cursor.
+                let w = d * 0.088
+                let full = d * (surprise ? 0.22 : focus ? 0.1 : 0.17)
+                let h = max(d * 0.02, full * (1 - blink))
+                let block = CGRect(x: x - w / 2, y: eyeY - full / 2, width: w, height: h)
+                ctx.addPath(CGPath(roundedRect: block, cornerWidth: min(w, h) * 0.28, cornerHeight: min(w, h) * 0.28, transform: nil)); ctx.fillPath()
             }
             if worried || focus {
-                let slope: CGFloat = worried ? -side * d * 0.025 : side * d * 0.018
-                ctx.move(to: CGPoint(x: x - d * 0.055, y: eyeY + d * 0.16 + slope))
-                ctx.addLine(to: CGPoint(x: x + d * 0.055, y: eyeY + d * 0.16 - slope)); ctx.strokePath()
+                // Failed frowns; worried lifts the inner ends; thinking keeps them level.
+                let slope: CGFloat = mood == .error ? -side * d * 0.025 : (worried ? side * d * 0.03 : 0)
+                let lift: CGFloat = focus ? 0.11 : 0.15
+                ctx.move(to: CGPoint(x: x - d * 0.055, y: eyeY + d * lift + slope))
+                ctx.addLine(to: CGPoint(x: x + d * 0.055, y: eyeY + d * lift - slope)); ctx.strokePath()
             }
         }
         let mouthY = center.y - d * 0.17
         if surprise {
-            ctx.fillEllipse(in: CGRect(x: center.x - d * 0.035, y: mouthY - d * 0.04, width: d * 0.07, height: d * 0.09))
+            ctx.fillEllipse(in: CGRect(x: center.x - d * 0.035, y: mouthY - d * 0.04, width: d * 0.07, height: d * 0.085))
         } else {
-            let width = d * (happy ? 0.095 : 0.065)
+            let width = d * (happy ? 0.09 : 0.06)
             ctx.move(to: CGPoint(x: center.x - width, y: mouthY))
-            ctx.addQuadCurve(to: CGPoint(x: center.x + width, y: mouthY), control: CGPoint(x: center.x, y: mouthY + (worried ? d * 0.065 : focus ? 0 : -d * (happy ? 0.11 : 0.045)))); ctx.strokePath()
+            ctx.addQuadCurve(to: CGPoint(x: center.x + width, y: mouthY), control: CGPoint(x: center.x, y: mouthY + (worried ? d * 0.06 : focus ? 0 : -d * (happy ? 0.1 : 0.045)))); ctx.strokePath()
         }
         ctx.restoreGState()
     }
@@ -116,6 +150,10 @@ final class LivingCompanionView: NSView, ZeraAnimating {
     private var expression: ZeraMood?
     private var expressionUntil: TimeInterval = 0
     private var hover: CGFloat = 0
+    /// A short lift of attention when the pointer crosses a tab; eases back down on its own.
+    private var interest: CGFloat = 0
+    /// Her colour as drawn, eased toward the mood's colour every frame.
+    private var shownTint: NSColor?
     private var lastMood: ZeraMood = .idle
     /// Phone transfers: eager toward the phone's edge, a leap to catch the card, then hopping
     /// with hands up while the original pours in.
@@ -156,9 +194,13 @@ final class LivingCompanionView: NSView, ZeraAnimating {
         layer.add(appear, forKey: "zera.descend.fade")
     }
     func noticeSelection() {
-        // Gaze follows the actual pointer; a brief attentive expression acknowledges the choice.
-        expression = .thinking; expressionUntil = CACurrentMediaTime() + 0.55
-        gesture = .acknowledge; gestureAt = CACurrentMediaTime()
+        // Running the pointer along the tabs: her eyes follow it (gaze), her attention lifts and
+        // eases off, and she nods once per pass, not once per tab. No expression or colour change,
+        // so nothing snaps from tab to tab.
+        interest = 1
+        let now = CACurrentMediaTime()
+        guard now - gestureAt > CompanionGesture.duration + 0.2 else { return }
+        gesture = .acknowledge; gestureAt = now
     }
     func greet() { gesture = .greet; gestureAt = CACurrentMediaTime(); expression = .hello; expressionUntil = gestureAt + 0.8 }
     /// A file is on its way from the phone: eager and bouncing, eyes on the edge it comes from.
@@ -236,6 +278,14 @@ final class LivingCompanionView: NSView, ZeraAnimating {
         }
         let reachTarget: CGFloat = leaping ? 1 : cheering ? 0.55 : phoneSide != nil ? 0.3 : 0
         reach += (reachTarget - reach) * CGFloat(1 - exp(-dt * 12))
+        interest -= interest * CGFloat(1 - exp(-dt * 2.2))
+        // Colour eases over about a quarter second instead of switching with the mood.
+        let want = CompanionGlyph.tint(for: mood)
+        if let shown = shownTint, dt > 0 {
+            shownTint = shown.blended(withFraction: CGFloat(1 - exp(-dt * 10)), of: want) ?? want
+        } else {
+            shownTint = want
+        }
         if now >= nextBlink { blinkAt = now; nextBlink = now + Double.random(in: 2.7...5.2) }
         if mood != lastMood { lastMood = mood; onTintChange?(CompanionGlyph.tint(for: mood)) }
         needsDisplay = true
@@ -260,12 +310,13 @@ final class LivingCompanionView: NSView, ZeraAnimating {
             for index in 0..<3 {
                 let angle = CGFloat(phase * 1.5) + CGFloat(index) * .pi * 2 / 3
                 let radius = d * 0.42
-                ctx.setFillColor(CompanionGlyph.tint(for: state).withAlphaComponent(0.48).cgColor)
+                ctx.setFillColor((shownTint ?? CompanionGlyph.tint(for: state)).withAlphaComponent(0.48).cgColor)
                 ctx.fillEllipse(in: CGRect(x: cos(angle) * radius - 1.8, y: sin(angle) * radius * 0.8 - 1.8, width: 3.6, height: 3.6))
             }
         }
-        if !reduce, elapsed >= 0, elapsed < 1 {
-            let tint = CompanionGlyph.tint(for: state)
+        // Rings for real reactions only; a nod while browsing tabs stays quiet.
+        if !reduce, elapsed >= 0, elapsed < 1, gesture != .acknowledge {
+            let tint = shownTint ?? CompanionGlyph.tint(for: state)
             for i in 0..<3 {
                 let progress = CGFloat(elapsed) + CGFloat(i) * 0.16
                 let radius = d * (0.3 + progress * 0.32)
@@ -275,7 +326,7 @@ final class LivingCompanionView: NSView, ZeraAnimating {
             }
         }
         let t = phase - blinkAt, blink: CGFloat = !reduce && t >= 0 && t < 0.18 ? CGFloat(sin(t / 0.18 * .pi)) : 0
-        CompanionGlyph.draw(ctx, in: CGRect(x: -d * (1 + squash) / 2, y: -d * (1 - squash) / 2, width: d * (1 + squash), height: d * (1 - squash)), mood: state, gaze: gaze, blink: blink, attention: hover, phase: reduce ? 0 : phase, reach: reach)
+        CompanionGlyph.draw(ctx, in: CGRect(x: -d * (1 + squash) / 2, y: -d * (1 - squash) / 2, width: d * (1 + squash), height: d * (1 - squash)), mood: state, gaze: gaze, blink: blink, attention: max(hover, interest * 0.6), phase: reduce ? 0 : phase, reach: reach, tint: shownTint)
         ctx.restoreGState()
     }
 }

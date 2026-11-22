@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Zera opener: centred minimal (Signal)</title>
+<style>
+:root{--sig:#7BE1C2;--sigd:#3FB79C;--txt:#DDE8EE;--t2:#8497A6;--t3:#5C7080;--line:rgba(255,255,255,.08);--glass:rgba(7,13,18,.80)}
+*{box-sizing:border-box;margin:0}
+body{height:100vh;font:13px/1.35 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--txt);
+ background:radial-gradient(120% 90% at 50% 0%,#2b6e80 0%,#17414f 38%,#0c2430 70%,#08161d 100%);display:grid;place-items:center;overflow:hidden}
+.notch{position:fixed;top:0;left:50%;transform:translateX(-50%);width:200px;height:32px;background:#000;border-radius:0 0 12px 12px}
+.wrap{position:relative;width:680px}
+.zera{position:absolute;left:50%;top:-30px;transform:translateX(-50%);width:44px;height:40px;border-radius:46% 46% 40% 40%;
+ background:radial-gradient(70% 70% at 35% 25%,#24363f,#0b1318 70%);border:1.6px solid var(--sig);box-shadow:0 0 14px rgba(123,225,194,.45);z-index:3}
+.zera:before,.zera:after{content:"";position:absolute;top:13px;width:4px;height:8px;border-radius:1.5px;background:var(--sig);box-shadow:0 0 6px var(--sig)}
+.zera:before{left:13px}.zera:after{right:13px}
+.pane{position:relative;background:var(--glass);backdrop-filter:blur(28px) saturate(1.2);border:1px solid rgba(123,225,194,.38);border-radius:10px;
+ box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 26px rgba(123,225,194,.10),0 30px 80px rgba(0,0,0,.55)}
+.br{position:absolute;width:14px;height:14px;border:2px solid var(--sig);filter:drop-shadow(0 0 3px var(--sig))}
+.br.tl{left:-2px;top:-2px;border-right:0;border-bottom:0;border-top-left-radius:10px}
+.br.tr{right:-2px;top:-2px;border-left:0;border-bottom:0;border-top-right-radius:10px}
+.br.bl{left:-2px;bottom:-2px;border-right:0;border-top:0;border-bottom-left-radius:10px}
+.br.brr{right:-2px;bottom:-2px;border-left:0;border-top:0;border-bottom-right-radius:10px}
+.head{display:flex;align-items:center;gap:10px;padding:14px 16px 12px}
+.input{flex:1;position:relative;display:flex;align-items:center;gap:10px;height:42px;padding:0 12px;border-radius:7px;
+ background:rgba(123,225,194,.05);border:1px solid rgba(123,225,194,.16)}
+.input .c{position:absolute;width:10px;height:10px;border:1.6px solid var(--sig)}
+.c1{left:-1px;top:-1px;border-right:0!important;border-bottom:0!important;border-top-left-radius:6px}
+.c2{right:-1px;top:-1px;border-left:0!important;border-bottom:0!important;border-top-right-radius:6px}
+.c3{left:-1px;bottom:-1px;border-right:0!important;border-top:0!important;border-bottom-left-radius:6px}
+.c4{right:-1px;bottom:-1px;border-left:0!important;border-top:0!important;border-bottom-right-radius:6px}
+.prompt{color:var(--sig);font-weight:700;text-shadow:0 0 6px var(--sig)}
+.q{font-size:15px;color:var(--txt)}.q i{display:inline-block;width:8px;height:17px;background:var(--sig);vertical-align:-3px;margin-left:1px;animation:b 1.1s steps(1) infinite}
+@keyframes b{50%{opacity:0}}
+.count{margin-left:auto;font-size:10px;letter-spacing:.5px;color:var(--t2)}
+.tabs{display:flex;gap:6px;padding:0 16px 10px}
+.tab{font-size:10.5px;letter-spacing:.6px;color:var(--t2);padding:5px 9px;border-radius:5px;border:1px solid transparent}
+.tab b{color:var(--t3);font-weight:500;margin-left:6px}
+.tab.on{color:#05080B;background:var(--sig);box-shadow:0 0 10px rgba(123,225,194,.35)}.tab.on b{color:#0b3a30}
+.rule{height:1px;background:var(--line);margin:0 16px}
+.list{padding:8px 10px}
+.row{position:relative;display:flex;align-items:center;gap:12px;height:44px;padding:0 10px;border-radius:7px;border:1px solid transparent}
+.row.on{background:rgba(123,225,194,.10);border-color:rgba(123,225,194,.40)}
+.row.on:before{content:"";position:absolute;left:-1px;top:9px;bottom:9px;width:2px;border-radius:1px;background:var(--sig);box-shadow:0 0 6px var(--sig)}
+.idx{width:24px;height:20px;border-radius:5px;display:grid;place-items:center;font-size:10px;font-weight:600;border:1px solid;opacity:.95}
+.ic{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;font-size:13px;color:#fff}
+.name{font-size:13.5px}.row.on .name{color:var(--sig)}
+.meta{margin-left:auto;font-size:10.5px;color:var(--t2);display:flex;align-items:center;gap:8px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--sig);box-shadow:0 0 6px var(--sig)}
+.key{font-size:10px;color:var(--t2);border:1px solid rgba(255,255,255,.16);border-radius:4.5px;padding:1px 5px}
+.insp{display:flex;align-items:center;gap:14px;margin:4px 16px 12px;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:rgba(255,255,255,.02)}
+.insp .k{font-size:10px;letter-spacing:.5px;color:var(--t3)}.insp .v{font-size:11.5px;color:var(--txt)}
+.btn{margin-left:auto;display:flex;gap:8px}
+.b{font-size:12px;padding:7px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.12);color:var(--t2);display:flex;gap:8px;align-items:center}
+.b.p{color:var(--txt);background:linear-gradient(rgba(123,225,194,.20),rgba(123,225,194,.08));border-color:rgba(123,225,194,.55);box-shadow:0 0 12px rgba(123,225,194,.15)}
+.status{display:flex;align-items:center;gap:14px;height:32px;padding:0 16px;border-top:1px solid var(--line);font-size:10px;color:var(--t3);letter-spacing:.4px}
+.live{color:var(--sig);font-weight:700;display:flex;align-items:center;gap:6px}.live:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--sig);box-shadow:0 0 6px var(--sig)}
+.hints{margin-left:auto;display:flex;gap:12px;align-items:center}.hints span{display:flex;gap:5px;align-items:center}
+.note{position:fixed;left:24px;bottom:20px;max-width:360px;font-size:11px;color:#b8cbd4;background:rgba(0,0,0,.35);padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.08)}
+</style></head><body>
+<div class="notch"></div>
+<div class="wrap">
+ <div class="zera"></div>
+ <div class="pane">
+  <i class="br tl"></i><i class="br tr"></i><i class="br bl"></i><i class="br brr"></i>
+  <div class="head">
+   <div class="input"><i class="c c1"></i><i class="c c2"></i><i class="c c3"></i><i class="c c4"></i>
+    <span class="prompt">&gt;</span><span class="q">chat<i></i></span><span class="count">3 FOUND</span></div>
+  </div>
+  <div class="tabs"><span class="tab on">APPS<b>7</b></span><span class="tab">COMMANDS<b>4</b></span><span class="tab">ACTIONS<b>8</b></span></div>
+  <div class="rule"></div>
+  <div class="list">
+   <div class="row"><span class="idx" style="color:#7BE1C2;border-color:rgba(123,225,194,.45)">01</span><span class="ic" style="background:#1f2a6b">A</span><span class="name">Antigravity IDE</span><span class="meta"><span class="dot"></span>pinned · running</span></div>
+   <div class="row"><span class="idx" style="color:#9B8DF9;border-color:rgba(155,141,249,.45)">02</span><span class="ic" style="background:#c8643c">✳</span><span class="name">Claude</span><span class="meta"><span class="dot"></span>pinned · running</span></div>
+   <div class="row on"><span class="idx" style="color:#05080B;background:#7BE1C2;border-color:#7BE1C2">03</span><span class="ic" style="background:#111">◎</span><span class="name">ChatGPT</span><span class="meta"><span class="dot"></span>running <span class="key">↵</span></span></div>
+   <div class="row"><span class="idx" style="color:#5AB8FF;border-color:rgba(90,184,255,.45)">04</span><span class="ic" style="background:#2a6fd6">◐</span><span class="name">Finder</span><span class="meta"><span class="dot"></span>running</span></div>
+   <div class="row"><span class="idx" style="color:#FFC35A;border-color:rgba(255,195,90,.45)">05</span><span class="ic" style="background:#555">⚙</span><span class="name">System Settings</span><span class="meta"></span></div>
+  </div>
+  <div class="insp">
+   <div><div class="k">STATUS</div><div class="v">Running</div></div>
+   <div><div class="k">VERSION</div><div class="v">26.1117</div></div>
+   <div><div class="k">OPENED</div><div class="v">46×</div></div>
+   <div><div class="k">WHERE</div><div class="v">/Applications</div></div>
+   <div class="btn"><span class="b">Pin <span class="key">⇧⌘P</span></span><span class="b p">Open <span class="key">↵</span></span></div>
+  </div>
+  <div class="status"><span class="live">LIVE</span><span>OPENER</span>
+   <span class="hints"><span><span class="key">↑↓</span>choose</span><span><span class="key">⇥</span>tab</span><span><span class="key">⌘1–6</span>open</span><span><span class="key">⌘M</span>actions</span><span><span class="key">esc</span>close</span><span style="color:var(--t2)">11:29</span></span></div>
+ </div>
+</div>
+<div class="note"><b>Proposal: centred minimal opener.</b> Centred on screen like a command palette, with no rope or tree. One 680pt pane with brackets; a <code>&gt;</code> prompt with a block caret; APPS / COMMANDS / ACTIONS as tabs; rows with ⌘1–6 index tiles; a one-line inspector in place of the big detail column; the island's status line as the footer. Zera peeks over the top edge. ⌘M actions and all shortcuts stay the same.</div>
+</body></html>

@@ -13,13 +13,31 @@ private enum OP {
     static let margin: CGFloat = 40           // room for the glow
     static let width: CGFloat = cardW + margin * 2
     static let ropeGap: CGFloat = 34          // notch → her head
-    static let zeraW: CGFloat = 104
-    static let paws: CGFloat = 9              // how far her paws overlap the window
+    static let zeraW: CGFloat = 84            // the signal-core companion's square
+    static let paws: CGFloat = 22             // how far she sinks behind the window's top edge
     static let tiles = 6                      // ⌘1…⌘6
+}
+
+/// The minimal look (Settings › General › Opener style › Minimal): a centred command palette in
+/// the Signal style. Same view, data and keys as the classic tree; only the layout differs.
+private enum OM {
+    static let cardW: CGFloat = 680
+    static let cardH: CGFloat = 500
+    static let headH: CGFloat = 104           // search block, branch tabs, rule
+    static let statusH: CGFloat = 36
+    static let inspH: CGFloat = 54            // the chosen item's one-line facts and buttons
+    static let zera: CGFloat = 52             // her square; she sits on the top edge
+    static let peek: CGFloat = 26             // room above the card for her
 }
 
 final class TreeOpenerView: NSView, NSTextFieldDelegate {
     static let panelWidth = OP.width
+    /// The centred, minimal command-palette layout instead of the hanging tree.
+    var minimal = false { didSet { if minimal != oldValue { needsLayout = true } } }
+    var panelWidth: CGFloat { minimal ? OM.cardW + OP.margin * 2 : OP.width }
+    private let tabs = OpenerTabs()
+    private let tabRule = NSView()
+    private let inspBox = NSView()
     private var cardHeight = OP.cardH
     private var exitAnimationID = 0
     var onLaunch: ((AppEntry, Bool) -> Void)?
@@ -35,9 +53,14 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     private let rope = NSView()
     private let holder = FlippedView()
     private let zera = NSImageView()
+    /// Signal: the same signal-core companion as the notch, hanging on a lit line.
+    private let companion = LivingCompanionView(frame: .zero)
     private let card = OpenerGlass()
+    /// The focused-pane frame round the card (hairline, glow, corner brackets), as in the island.
+    private let cardChrome = SignalLayerView(frame: .zero, flipped: true)
+    private let pane = SignalPaneLayer()
     /// v2: the search sits in a field box, and a bright hairline marks where she holds the window.
-    private let fieldBox = OpenerGlass()
+    private let fieldBox = SignalInputView()
     private let rootLine = CAGradientLayer()
     // The search row: the root.
     private let rootDot = OpenerGlass()
@@ -141,34 +164,18 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    private let sprite = SpriteLibrary.shared.sprite("hang_peek")
-    /// Where the rope enters her picture, 0…1 of its width.
-    private var ropeFraction: CGFloat { sprite?.ropeX ?? 0.5 }
-    /// As thick as the rope in her picture at this size (ZeraView draws it the same way).
-    private var ropeWidth: CGFloat { max(1.5, OP.zeraW * 0.035).rounded() }
-
-    /// The top of the rope in her picture, cut out at the size she's drawn, to tile the long rope.
-    private func ropePattern() -> NSImage? {
-        guard let sp = sprite, let rx = sp.ropeX,
-              let cg = sp.image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-        let pxW = CGFloat(cg.width)
-        let scale = OP.zeraW / pxW                       // picture pixels → points
-        let stripPx = max(2, (ropeWidth / scale).rounded())
-        let rowsPx: CGFloat = min(CGFloat(cg.height) * 0.12, 40)
-        let crop = CGRect(x: (rx * pxW - stripPx / 2).rounded(), y: 0, width: stripPx, height: rowsPx)
-        guard let piece = cg.cropping(to: crop) else { return nil }
-        let size = NSSize(width: ropeWidth, height: max(4, (rowsPx * scale).rounded()))
-        return NSImage(cgImage: piece, size: size)
-    }
-
-    private var zeraH: CGFloat {
-        guard let img = zera.image, img.size.width > 0 else { return 117 }
-        return OP.zeraW * img.size.height / img.size.width
-    }
-    private var cardTop: CGFloat { band + OP.ropeGap + zeraH - OP.paws }
-    private var cx: CGFloat { ropeX > 0 ? ropeX : bounds.width / 2 }
+    /// The lit line she hangs from: centred on her, a signal trace rather than a rope.
+    private let ropeFraction: CGFloat = 0.5
+    private let ropeWidth: CGFloat = 2
+    private var zeraH: CGFloat { OP.zeraW }
+    private var cardTop: CGFloat { minimal ? OP.margin + OM.peek : band + OP.ropeGap + zeraH - OP.paws }
+    private var cx: CGFloat { minimal ? bounds.width / 2 : (ropeX > 0 ? ropeX : bounds.width / 2) }
     func panelHeight(band: CGFloat, availableHeight: CGFloat = .greatestFiniteMagnitude) -> CGFloat {
         self.band = band
+        if minimal {
+            cardHeight = min(OM.cardH, max(380, availableHeight - 160))
+            return cardTop + cardHeight + OP.margin
+        }
         cardHeight = min(OP.cardH, max(400, availableHeight - cardTop - OP.margin))
         return cardTop + cardHeight + OP.margin
     }
@@ -178,30 +185,30 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         wantsLayer = true
         layer?.masksToBounds = false
 
-        // The same rope her picture holds: a strip of it, repeated all the way up to the notch.
+        // A lit signal line from the notch down to her head.
         rope.wantsLayer = true
-        rope.layer?.backgroundColor = (ropePattern().map { NSColor(patternImage: $0) }
-            ?? sprite?.ropeColor ?? NSColor(srgbRed: 0.36, green: 0.23, blue: 0.13, alpha: 1)).cgColor
+        rope.layer?.cornerRadius = ropeWidth / 2
         addSubview(rope)
         holder.wantsLayer = true
         holder.layer?.masksToBounds = false
         addSubview(holder)
 
-        card.radius = 30
-        card.lineWidth = 1
+        card.radius = Signal.paneRadius
+        card.lineWidth = 0                    // the pane frame draws the edge
         card.glow = 0.16
-        fieldBox.radius = 14
-        fieldBox.lineWidth = 1
-        fieldBox.glow = 0
+        fieldBox.radius = 8
         card.addSubview(fieldBox)
         rootLine.startPoint = CGPoint(x: 0, y: 0.5)
         rootLine.endPoint = CGPoint(x: 1, y: 0.5)
         holder.addSubview(card)
+        cardChrome.layer?.addSublayer(pane)
+        holder.addSubview(cardChrome)
 
-        // The root: a glowing node with the magnifier, then the field.
-        rootDot.radius = 15
+        // The root: a lit square node with the magnifier (like a rail tile), then the field.
+        rootDot.radius = 8
         rootDot.lineWidth = 1
         rootDot.glow = 0
+        rootDot.blursBehind = false           // inside the card's glass: just the wash and edge
         card.addSubview(rootDot)
         rootDot.addSubview(searchIcon)
         chip.key = "‹"
@@ -220,7 +227,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         field.delegate = self
         field.setAccessibilityLabel("App name")
         card.addSubview(field)
-        rightLabel.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold)
+        rightLabel.font = ZFont.mono(ofSize: 10.5, weight: .semibold)
         rightLabel.alignment = .right
         card.addSubview(rightLabel)
         rootStem.wantsLayer = true
@@ -255,13 +262,13 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         dName.alignment = .center
         dName.lineBreakMode = .byTruncatingTail
         detail.addSubview(dName)
-        dBlurb.font = NSFont.systemFont(ofSize: 13)
+        dBlurb.font = ZFont.ui(ofSize: 13)
         dBlurb.alignment = .center
         dBlurb.maximumNumberOfLines = 2
         detail.addSubview(dBlurb)
         for _ in 0..<4 {
             let k = NSTextField(labelWithString: ""), v = NSTextField(labelWithString: ""), rule = NSView()
-            k.font = NSFont.systemFont(ofSize: 12.5)
+            k.font = ZFont.ui(ofSize: 12.5)
             v.font = Typo.bodyMedium
             v.alignment = .right
             v.lineBreakMode = .byTruncatingMiddle
@@ -283,16 +290,22 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         dPin.key = "⇧⌘P"
         dPin.onClick = { [weak self] in self?.togglePinChosen() }
         detail.addSubview(dPin)
-        dEmpty.font = NSFont.systemFont(ofSize: 13.5)
+        dEmpty.font = ZFont.ui(ofSize: 13.5)
         dEmpty.alignment = .center
         detail.addSubview(dEmpty)
         card.addSubview(detail)
 
-        for r in [paneRule, footRule] {
+        for r in [paneRule, footRule, tabRule] {
             r.wantsLayer = true
             card.addSubview(r)
         }
-        foot.font = NSFont.systemFont(ofSize: 12)
+        tabs.onTap = { [weak self] i in self?.tabTapped(i) }
+        card.addSubview(tabs)
+        inspBox.wantsLayer = true
+        inspBox.layer?.cornerRadius = Radius.m
+        inspBox.layer?.borderWidth = 1
+        card.addSubview(inspBox, positioned: .below, relativeTo: detail)
+        foot.font = ZFont.ui(ofSize: 12)
         foot.lineBreakMode = .byTruncatingTail
         card.addSubview(foot)
         footOpen.ghost = true
@@ -306,9 +319,11 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         card.addSubview(footOpen)
         card.addSubview(footActions)
 
-        zera.image = sprite?.image
-        zera.imageScaling = .scaleProportionallyUpOrDown
+        zera.image = nil
         zera.wantsLayer = true
+        zera.layer?.masksToBounds = false
+        companion.wantsLayer = true
+        zera.addSubview(companion)
         holder.addSubview(zera)
         setAccessibilityRole(.group)
         setAccessibilityLabel("App opener")
@@ -320,10 +335,11 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
     /// Colours from the current theme. Runs each time the opener opens, so a theme picked in
     /// Settings shows up here too.
     private func applyTheme() {
-        card.fill = Neon.fillBottom.withAlphaComponent(0.98)
-        card.edge = ThemeStore.shared.current.border
-        fieldBox.fill = Neon.field
-        fieldBox.edge = ThemeStore.shared.current.border
+        card.fill = Neon.fillBottom
+        card.edge = .clear
+        fieldBox.needsDisplay = true
+        pane.color = Neon.accent
+        rope.layer?.backgroundColor = Neon.accent.withAlphaComponent(0.75).cgColor
         rootLine.colors = [Neon.accent.withAlphaComponent(0).cgColor, Neon.accent.withAlphaComponent(0.9).cgColor, Neon.accent.withAlphaComponent(0).cgColor]
         rootDot.fill = Neon.cyan.withAlphaComponent(0.14)
         rootDot.edge = Neon.cyan.withAlphaComponent(0.6)
@@ -343,7 +359,10 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             rule.layer?.backgroundColor = Neon.divider.cgColor
         }
         dEmpty.textColor = Neon.textDim
-        for r in [paneRule, footRule] { r.layer?.backgroundColor = Neon.divider.cgColor }
+        for r in [paneRule, footRule, tabRule] { r.layer?.backgroundColor = Neon.divider.cgColor }
+        inspBox.layer?.borderColor = Neon.divider.cgColor
+        inspBox.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.02).cgColor
+        tabs.needsDisplay = true
         foot.textColor = Neon.textDim
         ([card, rootDot, chip, dPrimary, dSecondary, dPin, footOpen, footActions] as [NSView]).forEach { $0.needsDisplay = true }
     }
@@ -458,6 +477,14 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
                 }
             }
         }
+        if minimal, mode == .root, !typing {
+            lines = lines.filter { if case .group = $0.0 { return false }; return true }
+        }
+        if minimal {
+            tabs.items = branches.map { b in
+                (b.branch.title, b.total, mode == .root ? (!typing && b.branch == effectiveBranch) : b.branch == .commands)
+            }
+        }
         for (line, level, lit) in lines {
             let v = makeRow(line)
             treeDoc.addSubview(v)
@@ -498,6 +525,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             case .action(let a, _): r.sub = OpenerActions.subtitle(a).replacingOccurrences(of: "Action · ", with: ""); r.accessory = "Action"
             }
             r.setAccessibilityLabel(it.name)
+            if minimal, mode == .root, i < OP.tiles { r.index = i + 1 }     // ⌘1…⌘6
             r.selected = i == selected && !actionsOpen
             r.onClick = { [weak self] in
                 guard let self = self else { return }
@@ -522,7 +550,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             r.icon = it.app?.icon
             r.mono = it.port != nil
             r.titleText = NSAttributedString(string: it.title, attributes: [
-                .font: it.port != nil ? NSFont.monospacedSystemFont(ofSize: 13.5, weight: .semibold) : NSFont.systemFont(ofSize: 13.5, weight: .medium),
+                .font: it.port != nil ? ZFont.mono(ofSize: 13.5, weight: .semibold) : ZFont.ui(ofSize: 13.5, weight: .medium),
                 .foregroundColor: Neon.text])
             if mode == .command(.quitAll) {
                 r.toggle = !it.keep
@@ -558,7 +586,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             return r
         case .note(let text):
             let r = TreeRowView(style: .note)
-            r.titleText = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Neon.textDim])
+            r.titleText = NSAttributedString(string: text, attributes: [.font: ZFont.ui(ofSize: 12.5), .foregroundColor: Neon.textDim])
             return r
         }
     }
@@ -571,7 +599,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         var frames: [NSRect] = []
         for (n, p) in placed.enumerated() {
             if n > 0, case .group = p.line { y += 4 }
-            let x = TV.rowX[p.level]
+            let x = minimal ? 10 + CGFloat(max(0, p.level - 1)) * 24 : TV.rowX[p.level]
             let h: CGFloat
             switch p.line {
             case .group: h = 30
@@ -665,6 +693,17 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         selected = k
         SoundService.shared.play(.openerTick)
         rebuild()
+    }
+
+    /// A branch tab (minimal look): opens it, or while typing jumps to its first match.
+    private func tabTapped(_ i: Int) {
+        guard let b = branches[safe: i] else { return }
+        if typing, mode == .root {
+            let start = branches.prefix(i).reduce(0) { $0 + $1.items.count }
+            if start < results.count { choose(start) }
+            return
+        }
+        openBranchTapped(b.branch)
     }
 
     private func openBranchTapped(_ b: Branch) {
@@ -1387,18 +1426,42 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
 
     override func layout() {
         super.layout()
+        let m = minimal
+        rope.isHidden = m
+        rootDot.isHidden = m
+        rootStem.isHidden = m
+        paneRule.isHidden = m
+        tabs.isHidden = !m
+        tabRule.isHidden = !m
+        inspBox.isHidden = !m
+        if fieldBox.caret != m { fieldBox.caret = m }
+        let live: String? = m ? "OPENER" : nil
+        if foot.liveTitle != live { foot.liveTitle = live }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        dimLines.isHidden = m; litLines.isHidden = m
+        CATransaction.commit()
+        if m { layoutMinimal(); return }
         let c = cx
         holder.frame = bounds
         // Her picture's own rope sits exactly on the drawn one.
         zera.frame = NSRect(x: (c - ropeFraction * OP.zeraW).rounded(), y: band + OP.ropeGap, width: OP.zeraW, height: zeraH)
+        companion.frame = zera.bounds
         if rope.layer?.animation(forKey: "grow") == nil {
-            rope.frame = NSRect(x: (c - ropeWidth / 2).rounded(), y: 0, width: ropeWidth, height: band + OP.ropeGap + 14)
+            // Down to the top of her head (her body starts about a fifth of the way down her square).
+            rope.frame = NSRect(x: (c - ropeWidth / 2).rounded(), y: 0, width: ropeWidth, height: band + OP.ropeGap + (zeraH * 0.24).rounded())
         }
         let W = OP.cardW, H = cardHeight
         card.frame = NSRect(x: (c - W / 2).rounded(), y: cardTop, width: W, height: H)
-        if rootLine.superlayer == nil { card.layer?.addSublayer(rootLine) }
+        cardChrome.frame = holder.bounds
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        rootLine.frame = CGRect(x: W / 2 - 150, y: 0, width: 300, height: 1)
+        pane.frame = cardChrome.bounds
+        CATransaction.commit()
+        pane.update(rect: card.frame, side: .none)
+        // Where her line meets the window: a lit stretch of its top edge. In the chrome view, so
+        // it sits above the card's glass.
+        if rootLine.superlayer == nil { cardChrome.layer?.addSublayer(rootLine) }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        rootLine.frame = CGRect(x: card.frame.minX + W / 2 - 150, y: card.frame.minY, width: 300, height: 1)
         CATransaction.commit()
 
         // The root row.
@@ -1433,7 +1496,54 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         foot.frame = NSRect(x: 22, y: H - TV.footH + 16, width: W - 44, height: 24)
     }
 
+    /// The centred palette: search block, branch tabs, the list, the chosen item's facts in one
+    /// strip, and the status line.
+    private func layoutMinimal() {
+        let c = cx, W = OM.cardW, H = cardHeight
+        holder.frame = bounds
+        card.frame = NSRect(x: (c - W / 2).rounded(), y: cardTop, width: W, height: H)
+        zera.frame = NSRect(x: (c - OM.zera / 2).rounded(), y: cardTop - 8 - OM.zera / 2, width: OM.zera, height: OM.zera)
+        companion.frame = zera.bounds
+        cardChrome.frame = holder.bounds
+        if rootLine.superlayer == nil { cardChrome.layer?.addSublayer(rootLine) }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        pane.frame = cardChrome.bounds
+        rootLine.frame = CGRect(x: card.frame.midX - 110, y: card.frame.minY, width: 220, height: 1)
+        CATransaction.commit()
+        pane.update(rect: card.frame, side: .none)
+
+        fieldBox.frame = NSRect(x: 16, y: 12, width: W - 32, height: 44)
+        var fx: CGFloat = 16 + 34                     // after the lit ">"
+        if !chip.isHidden {
+            let w = min(220, chip.fittedWidth)
+            chip.frame = NSRect(x: fx, y: 19, width: w, height: 30)
+            fx = chip.frame.maxX + 10
+        }
+        let rw = rightLabel.stringValue.isEmpty ? 0 : min(200, ceil(rightLabel.attributedStringValue.size().width) + 4)
+        rightLabel.frame = NSRect(x: W - 32 - rw, y: 27, width: rw, height: 14)
+        // A text field's line sits a little high in its frame: 3 pt down centres it on the caret.
+        field.frame = NSRect(x: fx, y: 25, width: max(60, W - 32 - rw - 12 - fx), height: 24)
+        tabs.frame = NSRect(x: 16, y: 62, width: W - 32, height: 32)
+        tabRule.frame = NSRect(x: 16, y: OM.headH - 4, width: W - 32, height: 1)
+
+        footRule.frame = NSRect(x: 0, y: H - OM.statusH, width: W, height: 1)
+        foot.frame = NSRect(x: 16, y: H - OM.statusH, width: W - 32, height: OM.statusH)
+        footOpen.isHidden = true
+        footActions.isHidden = true
+        inspBox.frame = NSRect(x: 16, y: H - OM.statusH - 12 - OM.inspH, width: W - 32, height: OM.inspH)
+        detail.frame = inspBox.frame
+        treeScroll.frame = NSRect(x: 0, y: OM.headH, width: W, height: max(60, inspBox.frame.minY - 8 - OM.headH))
+        if treeDoc.frame.width != treeScroll.contentSize.width { layoutTree() }
+        layoutDetail()
+    }
+
     private func layoutDetail() {
+        if minimal { layoutInspector(); return }
+        for (k, v, _) in dFacts {
+            k.font = ZFont.ui(ofSize: 12.5)
+            v.font = Typo.bodyMedium
+            v.alignment = .right
+        }
         let w = detail.bounds.width, h = detail.bounds.height, pad: CGFloat = 26
         dIcon.frame = NSRect(x: (w - 72) / 2, y: 28, width: 72, height: 72)
         CATransaction.begin()
@@ -1455,13 +1565,49 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         let count = dFacts.filter { !$0.0.isHidden }.count
         let rowHeight = min(35, max(20, (dPrimary.frame.minY - Space.m - y) / CGFloat(max(1, count))))
         for f in dFacts where !f.0.isHidden {
-            let labelWidth = min(130, ceil(f.0.attributedStringValue.size().width))
+            // A label's cell pads its text by a couple of points each side: measure with that room, or
+            // the last letter is clipped ("Opened from Zer", "Wher").
+            let labelWidth = min(150, ceil(f.0.attributedStringValue.size().width) + 6)
             f.0.frame = NSRect(x: pad, y: y + (rowHeight - 16) / 2, width: labelWidth, height: 16)
             f.1.frame = NSRect(x: pad + labelWidth + 12, y: y + (rowHeight - 16) / 2, width: w - pad * 2 - labelWidth - 12, height: 16)
             f.2.frame = NSRect(x: pad, y: y + rowHeight - 1, width: w - pad * 2, height: 1)
             y += rowHeight
         }
         dEmpty.frame = NSRect(x: pad, y: h / 2 - 30, width: w - pad * 2, height: 60)
+    }
+
+    /// Minimal look: the chosen item's facts as columns (label over value), its buttons right.
+    private func layoutInspector() {
+        let w = detail.bounds.width, h = detail.bounds.height, pad: CGFloat = 14
+        ([dIcon, dName, dBlurb, dSecondary] as [NSView]).forEach { $0.isHidden = true }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        dHalo.isHidden = true
+        CATransaction.commit()
+        var right = w - 10
+        if !dPrimary.isHidden {
+            let pw = min(240, max(110, dPrimary.fittedWidth + 22))       // room for its ⏎ keycap
+            dPrimary.frame = NSRect(x: right - pw, y: ((h - 32) / 2).rounded(), width: pw, height: 32)
+            right = dPrimary.frame.minX - 8
+        }
+        if !dPin.isHidden {
+            let pw = dPin.fittedWidth + 22
+            dPin.frame = NSRect(x: right - pw, y: ((h - 32) / 2).rounded(), width: pw, height: 32)
+            right = dPin.frame.minX - 8
+        }
+        var x = pad
+        for (k, v, rule) in dFacts {
+            rule.frame = .zero
+            k.font = ZFont.mono(ofSize: 9.5, weight: .medium)
+            v.font = ZFont.mono(ofSize: 11.5, weight: .medium)
+            v.alignment = .left
+            guard !k.isHidden else { continue }
+            let cw = min(190, max(ceil(k.attributedStringValue.size().width), ceil(v.attributedStringValue.size().width)) + 6)
+            guard x + cw <= right - 8 else { k.frame = .zero; v.frame = .zero; continue }
+            k.frame = NSRect(x: x, y: (h / 2 - 16).rounded(), width: cw, height: 14)
+            v.frame = NSRect(x: x, y: (h / 2).rounded(), width: cw, height: 16)
+            x += cw + 18
+        }
+        dEmpty.frame = NSRect(x: pad, y: (h - 34) / 2, width: max(0, right - pad), height: 34)
     }
 
     // MARK: Motion
@@ -1475,6 +1621,22 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         window?.makeFirstResponder(field)
         guard !Motion.reduced, let hl = holder.layer else { holder.alphaValue = 1; return }
         holder.alphaValue = 1
+        if minimal {
+            // Centred: it settles in place, and she drops onto its top edge.
+            let settle = CASpringAnimation(keyPath: "transform.translation.y")
+            settle.fromValue = -14; settle.toValue = 0
+            settle.stiffness = 260; settle.damping = 22; settle.mass = 1
+            settle.duration = settle.settlingDuration
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0; fade.toValue = 1; fade.duration = 0.16
+            hl.add(settle, forKey: "drop")
+            hl.add(fade, forKey: "appear")
+            companion.enterFromNotch()
+            popRows(delay: 0.08)
+            pane.snapBrackets()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.pane.sweep() }
+            return
+        }
         let drop = CASpringAnimation(keyPath: "transform.translation.y")
         drop.fromValue = -(cardTop + 40); drop.toValue = 0
         drop.stiffness = 170; drop.damping = 17; drop.mass = 1
@@ -1497,6 +1659,9 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             l.add(draw, forKey: "draw")
         }
         popRows(delay: 0.22)
+        // The pane takes focus once she has landed: brackets close in, a scan runs down it.
+        pane.snapBrackets()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.pane.sweep() }
     }
 
     /// Rows slide in from their branch, one after another: on open, a new branch, a command's
@@ -1531,12 +1696,12 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
         CATransaction.begin()
         CATransaction.setCompletionBlock(done)
         let up = CABasicAnimation(keyPath: "transform.translation.y")
-        up.fromValue = 0; up.toValue = -(cardTop + 60)
-        up.duration = 0.26
+        up.fromValue = 0; up.toValue = minimal ? -12 : -(cardTop + 60)
+        up.duration = minimal ? 0.18 : 0.26
         up.timingFunction = CAMediaTimingFunction(controlPoints: 0.5, 0, 0.75, 0)
         up.fillMode = .forwards; up.isRemovedOnCompletion = false
         let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 1; fade.toValue = 0; fade.duration = 0.26
+        fade.fromValue = 1; fade.toValue = 0; fade.duration = minimal ? 0.18 : 0.26
         fade.fillMode = .forwards; fade.isRemovedOnCompletion = false
         hl.add(up, forKey: "up")
         hl.add(fade, forKey: "fade")
@@ -1571,6 +1736,7 @@ final class TreeOpenerView: NSView, NSTextFieldDelegate {
             hop.keyTimes = [0, 0.35, 0.7, 1]
             hop.duration = 0.32
             zl.add(hop, forKey: "hop")
+            self.companion.react(.copy)       // she catches it
             self.sparkle(at: NSPoint(x: self.zera.frame.midX, y: self.zera.frame.midY))
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: done)
         })
@@ -1612,3 +1778,52 @@ private enum TV {
     static let rowX: [CGFloat] = [50, 68, 97, 125]
 }
 
+
+/// The minimal opener's branch tabs: "YOUR USUAL 11 · COMMANDS 4 · ACTIONS 8", the open one lit.
+private final class OpenerTabs: NSView {
+    var items: [(title: String, count: Int, on: Bool)] = [] { didSet { needsDisplay = true; window?.invalidateCursorRects(for: self) } }
+    var onTap: ((Int) -> Void)?
+    private var frames: [NSRect] = []
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    private func layoutFrames() -> [(NSRect, NSAttributedString, NSAttributedString)] {
+        let t = ThemeStore.shared.current
+        var x: CGFloat = 0, out: [(NSRect, NSAttributedString, NSAttributedString)] = []
+        for it in items {
+            let title = NSAttributedString(string: it.title, attributes: [
+                .font: ZFont.mono(ofSize: 10.5, weight: .semibold), .foregroundColor: it.on ? t.onAccent : t.textSecondary, .kern: 0.6])
+            let count = NSAttributedString(string: "  \(it.count)", attributes: [
+                .font: ZFont.mono(ofSize: 10.5, weight: .medium), .foregroundColor: it.on ? t.onAccent.withAlphaComponent(0.6) : t.textTertiary])
+            let w = ceil(title.size().width + count.size().width) + 18
+            out.append((NSRect(x: x, y: ((bounds.height - 24) / 2).rounded(), width: w, height: 24), title, count))
+            x += w + 6
+        }
+        return out
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let t = ThemeStore.shared.current
+        let laid = layoutFrames()
+        frames = laid.map(\.0)
+        for ((r, title, count), it) in zip(laid, items) {
+            let path = NSBezierPath(roundedRect: r, xRadius: Radius.s, yRadius: Radius.s)
+            if it.on {
+                NSGraphicsContext.saveGraphicsState()
+                let glow = NSShadow(); glow.shadowColor = t.accent.withAlphaComponent(0.45); glow.shadowBlurRadius = 8; glow.set()
+                t.accent.setFill(); path.fill()
+                NSGraphicsContext.restoreGraphicsState()
+            }
+            let ty = r.midY - title.size().height / 2
+            title.draw(at: NSPoint(x: r.minX + 9, y: ty))
+            count.draw(at: NSPoint(x: r.minX + 9 + title.size().width, y: ty))
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if let i = layoutFrames().firstIndex(where: { $0.0.contains(p) }) { onTap?(i) }
+    }
+    override func resetCursorRects() { for f in layoutFrames() { addCursorRect(f.0, cursor: .pointingHand) } }
+}

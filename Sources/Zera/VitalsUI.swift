@@ -411,7 +411,7 @@ final class VitalsOrgans: NSView {
             default: big = "\(Int(target[5].rounded()))%"; small = nil
             }
             let valueWidth = VDraw.width(big, Self.valueFont)
-            let font = valueWidth <= w ? Self.valueFont : NSFont.monospacedDigitSystemFont(ofSize: max(14, 24 * w / valueWidth), weight: .medium)
+            let font = valueWidth <= w ? Self.valueFont : ZFont.digits(ofSize: max(14, 24 * w / valueWidth), weight: .medium)
             VDraw.text(big, font, p.text, at: NSPoint(x: x, y: r.minY + 36))
             if let small = small {
                 VDraw.text(small, Typo.secondary, p.textSecondary, at: NSPoint(x: x, y: r.minY + 66))

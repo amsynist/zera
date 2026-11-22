@@ -14,9 +14,11 @@ enum EdgeLightMode: Int, CaseIterable {
 
 /// How the edge light looks (Settings → Notch → Light style).
 enum EdgeLightStyle: Int, CaseIterable {
-    case glow = 0, glitch = 1, prism = 2, ember = 3, aurora = 4
+    /// `signal` is appended (raw 5) so saved choices keep their meaning; it is the default.
+    case glow = 0, glitch = 1, prism = 2, ember = 3, aurora = 4, signal = 5
     var title: String {
         switch self {
+        case .signal: return "Signal"
         case .glow: return "Soft glow"
         case .glitch: return "Glitch"
         case .prism: return "Spectrum"
@@ -26,6 +28,7 @@ enum EdgeLightStyle: Int, CaseIterable {
     }
     var blurb: String {
         switch self {
+        case .signal: return "a sharp line of light with a pulse running along it, like Ghostty X"
         case .glow: return "light bleeding in from the edge, a slow shimmer running through it"
         case .glitch: return "the glow tears into red and cyan, slips and stutters"
         case .prism: return "every colour flowing along the edge"
@@ -123,12 +126,15 @@ final class GlowStrip {
         let along = Self.isHorizontal(edge) ? b.width : b.height
         let colors = Self.palette(style, color)
 
-        let body = makeBody(bounds: b, depth: depth, colors: colors, along: along, alpha: intensity * 0.72, flow: style != .glow && style != .glitch)
+        // Signal keeps the light tight to the edge: a hairline with a short, bright glow.
+        let signal = style == .signal
+        let body = makeBody(bounds: b, depth: signal ? depth * 0.36 : depth, colors: colors, along: along,
+                            alpha: intensity * (signal ? 0.9 : 0.72), flow: style != .glow && style != .glitch && !signal)
         layer.addSublayer(body)
 
         // The hot core: almost white where the light meets the glass.
         let core = CAGradientLayer()
-        let coreW = max(1, min(1.8, depth * 0.028))
+        let coreW = signal ? 1.7 : max(1, min(1.8, depth * 0.028))
         let hot = (colors.first ?? color).blended(withFraction: 0.28, of: .white) ?? .white
         if let contour {
             core.frame = b
@@ -147,6 +153,10 @@ final class GlowStrip {
         layer.addSublayer(core)
 
         switch style {
+        case .signal:
+            // The pulse: a bright head running along the line, as on the trace.
+            shimmer(in: body, bounds: b, along: along, period: 2.2, alpha: 0.7)
+            loop(core, "opacity", values: [1, 0.82, 1], duration: 2.2, discrete: false)
         case .glow:
             shimmer(in: body, bounds: b, along: along, period: 3.4, alpha: 0.42)
             breathe(body, values: [1, 0.86, 1], duration: 3.2)
@@ -377,6 +387,8 @@ final class GlowStrip {
     /// The colours a style paints with, starting from the moment's colour.
     static func palette(_ style: EdgeLightStyle, _ c: NSColor) -> [NSColor] {
         switch style {
+        case .signal:
+            return [c, c.blended(withFraction: 0.18, of: .white) ?? c, c]
         case .glow:
             return [c, c.shiftedHue(0.03), c.blended(withFraction: 0.25, of: .white) ?? c, c.shiftedHue(-0.03)]
         case .aurora:
@@ -452,7 +464,15 @@ final class EdgeLight {
     private var momentStrip: GlowStrip?
     private var momentGeneration = 0
 
-    private init() {}
+    private init() {
+        // Once: the Signal redesign makes the sharp Signal line the look for anyone still on the
+        // previous default (Soft glow). Another style you picked stays.
+        let d = UserDefaults.standard
+        if !d.bool(forKey: "zera.edgeLight.signalMigrated") {
+            d.set(true, forKey: "zera.edgeLight.signalMigrated")
+            if (d.object(forKey: Self.styleKey) as? Int ?? 0) == EdgeLightStyle.glow.rawValue { d.set(EdgeLightStyle.signal.rawValue, forKey: Self.styleKey) }
+        }
+    }
 
     var mode: EdgeLightMode {
         get { EdgeLightMode(rawValue: UserDefaults.standard.object(forKey: Self.modeKey) as? Int ?? EdgeLightMode.top.rawValue) ?? .top }
@@ -467,7 +487,7 @@ final class EdgeLight {
     }
 
     var style: EdgeLightStyle {
-        get { EdgeLightStyle(rawValue: UserDefaults.standard.object(forKey: Self.styleKey) as? Int ?? 0) ?? .glow }
+        get { EdgeLightStyle(rawValue: UserDefaults.standard.object(forKey: Self.styleKey) as? Int ?? EdgeLightStyle.signal.rawValue) ?? .signal }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: Self.styleKey)
             levelSignature = ""

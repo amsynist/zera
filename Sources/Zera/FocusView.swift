@@ -138,6 +138,8 @@ final class FocusTimerRing: NSView {
     static let lineWidth: CGFloat = 10
 
     private let track = CAShapeLayer()
+    /// Signal: a 60-tick bezel inside the ring, so it reads as an instrument.
+    private let ticks = CAShapeLayer()
     private let glow = CALayer()              // carries the gradient (and its soft shadow)
     private let gradient = CAGradientLayer()
     private let arc = CAShapeLayer()           // masks the gradient to the progress
@@ -155,6 +157,10 @@ final class FocusTimerRing: NSView {
         track.fillColor = NSColor.clear.cgColor
         track.lineWidth = Self.lineWidth
         layer?.addSublayer(track)
+        ticks.fillColor = nil
+        ticks.lineWidth = 1
+        ticks.lineCap = .round
+        layer?.addSublayer(ticks)
         arc.fillColor = NSColor.clear.cgColor
         arc.strokeColor = NSColor.black.cgColor
         arc.lineWidth = Self.lineWidth
@@ -246,6 +252,7 @@ final class FocusTimerRing: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         track.strokeColor = p.accent.withAlphaComponent(0.14).cgColor
+        ticks.strokeColor = p.textTertiary.withAlphaComponent(0.45).cgColor
         gradient.colors = colors.map { $0.cgColor }
         glow.shadowColor = (state == .done ? p.success : (state == .running ? p.accent : NSColor.clear)).cgColor
         glow.shadowOpacity = state == .running || state == .done ? 0.55 : 0
@@ -260,6 +267,16 @@ final class FocusTimerRing: NSView {
         let inset = Self.lineWidth / 2 + 2
         let r = min(b.width, b.height) / 2 - inset
         let c = CGPoint(x: b.midX, y: b.midY)
+        let bezel = CGMutablePath(), outer = r - Self.lineWidth / 2 - 5
+        for i in 0..<60 {
+            let a = CGFloat(i) / 60 * 2 * .pi, len: CGFloat = i % 5 == 0 ? 6 : 3
+            bezel.move(to: CGPoint(x: c.x + sin(a) * outer, y: c.y - cos(a) * outer))
+            bezel.addLine(to: CGPoint(x: c.x + sin(a) * (outer - len), y: c.y - cos(a) * (outer - len)))
+        }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        ticks.frame = b
+        ticks.path = bezel
+        CATransaction.commit()
         // From twelve o'clock, clockwise (the layer shares the view's flipped geometry).
         let path = CGMutablePath()
         path.addArc(center: c, radius: r, startAngle: -.pi / 2, endAngle: -.pi / 2 + .pi * 2, clockwise: false)
@@ -360,10 +377,7 @@ final class FocusView: CardBase, CardContent, NSTextFieldDelegate {
         addSubview(emptyLabel)
 
         fieldBox.paint = { r in
-            let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.m, yRadius: Radius.m)
-            Neon.accent.withAlphaComponent(0.08).setFill(); path.fill()
-            Neon.accent.withAlphaComponent(0.5).setStroke(); path.lineWidth = 1; path.stroke()
-            Neon.symbol("plus", in: NSRect(x: 4, y: 0, width: 28, height: r.height), size: 13, weight: .bold, color: Neon.cyan)
+            SignalDraw.inputBlock(r, caretIn: NSRect(x: 4, y: 0, width: 28, height: r.height))
             let k = NSRect(x: r.width - 34, y: (r.height - 20) / 2, width: 24, height: 20)
             let kp = NSBezierPath(roundedRect: k, xRadius: 5, yRadius: 5)
             Neon.chipEdge.setStroke(); kp.lineWidth = 1; kp.stroke()

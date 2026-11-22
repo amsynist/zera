@@ -8,6 +8,10 @@ AndropKit is local project source under this repository’s MIT license. Package
 
 Apple platform frameworks, SF Symbols and system fonts come from the OS/SDK and are not redistributed. SF Symbols are used as app interface glyphs, not as Zera’s identity.
 
+## Interface font
+
+The Mac app bundles **JetBrains Mono** (the "NL" cut, without ligatures), version 2.304, Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono), under the SIL Open Font License 1.1. The licence text ships beside the fonts as `Resources/Fonts/JetBrainsMono-OFL.txt`. The font files are unmodified.
+
 ## Android companion
 
 The downloadable debug-signed Androp APK includes the following direct runtime dependencies and their transitives. The exact direct versions are in android/app/build.gradle.kts; dependency source licenses and notices remain applicable.
