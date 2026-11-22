@@ -1,84 +1,60 @@
-<p align="center"><img src="site/assets/v2/screens/home.webp" alt="Zera v2: the native notch companion and Home screen" width="100%"></p>
-
 <h1 align="center">Zera v2</h1>
-<p align="center"><b>Your Mac companion, right in the notch.</b><br>Agents, files, clipboard, tasks and your day — one hover away.</p>
-<p align="center"><a href="https://github.com/amsynist/zera/releases/latest">Download for Mac</a> · <a href="Androp.apk?raw=1">Download Androp for Android</a> · <a href="https://zera.pravincodes.in/">Website</a> · <a href="https://cdn.jsdelivr.net/gh/amsynist/zera@assets/sharing.mp4">Watch the sharing film</a></p>
+<p align="center"><strong>Send originals from Android to your Mac over local Wi-Fi.</strong><br>Zera also keeps Claude, Codex, files, tasks and focus in one native notch.</p>
+<p align="center"><a href="https://github.com/amsynist/zera/releases/latest">Download for Mac</a> · <a href="Androp.apk?raw=1">Download Androp for Android</a> · <a href="https://zera.pravincodes.in/">Website and demos</a></p>
 
-## A companion in your notch
+## Android sharing
 
-Zera lives at the top of your Mac. Hover to open one shared island for Home, Agents, Shelf, Clipboard, Tasks, Pull requests, Reminders, Alerts, Focus and Teleprompter. The living character, native controls and shared navigation keep these everyday tools together.
+Glide a photo off the edge of your phone in Androp and it arrives from the matching edge on the Mac. Zera verifies the original before it opens. Documents glide into the notch, where a liquid receipt shows progress as the bytes arrive. The saved file appears on your Shelf.
 
-- Follow Claude and Codex activity and respond to managed-session approvals.
-- Keep files and clipboard history nearby, track tasks and export timesheets.
-- Dictate into editable fields, run focus sessions and keep reminders close.
-- Reach Settings directly and return to the screen where you left off.
+1. Connect your phone and Mac to the same trusted Wi-Fi or your phone’s hotspot.
+2. Enable receiving in Zera’s **Extras → Android sharing**, then enter the pairing code in Androp.
+3. Send from Androp’s gallery or Files tab, or use **Share → Androp** from another app.
 
-**App Shortcuts** and Android sharing are optional additions under **Settings → Extras**. Both are off on a fresh install; enable only the extras you want. The notch companion and its everyday tools remain Zera’s core.
+The optional Android edge overlay works with apps that export a global drag. Transfers are paired and unencrypted on your local network. [Watch the 20-second sharing film](https://zera.pravincodes.in/#sharing-film) · [Pairing guide](docs/ANDROID_SHARING.md)
 
-## What’s new in Zera v2
+[![Zera’s notch catches a document and shows transfer progress](site/assets/v2/screens/sharing.webp)](https://zera.pravincodes.in/#sharing-film)
 
-### Android sharing. One picture, across two screens.
+## New in Zera v2.1.0
 
-[▶ Play Android sharing video · 20 seconds](https://cdn.jsdelivr.net/gh/amsynist/zera@assets/sharing.mp4)
+**Daily Shelf** keeps the links you save at the edge of your Mac. Paste a pull request, ticket or doc, add a note, and pin anything you want to carry forward. Connect GitHub to see checks and reviews on the PRs you saved. Adjust placement, categories and sorting in **Settings → Shelf**.
 
-Open a photo in **Androp**, glide it off the phone’s edge, and it arrives from the matching edge of your Mac. Original files move directly over **local Wi-Fi or a phone hotspot**. **No internet connection or cloud upload is required.**
+<a href="https://zera.pravincodes.in/#daily-shelf">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="site/assets/v2/daily-shelf/poster.jpg">
+    <img src="site/assets/v2/daily-shelf/preview.gif" alt="Daily Shelf demo preview. A pull request is saved, approved and pinned." width="900">
+  </picture>
+</a>
 
-Photos and videos travel as the picture itself and open after Zera verifies and saves the original. Other files glide into the notch: Zera catches them, the themed liquid receipt fills with actual progress, and the saved original appears on your Shelf. Filename, size and errors stay readable below the hardware cutout. Zera already contains the receiver — you only need the Android companion on your phone.
+[Play the 18-second Daily Shelf film with audio and captions](https://zera.pravincodes.in/#daily-shelf) · [Zera v2.1.0 release notes](docs/releases/v2.1.0.md)
 
-**[Download Androp.apk](Androp.apk?raw=1)** · [Pairing and sharing guide](docs/ANDROID_SHARING.md) · [Wire protocol](docs/ANDROID_PROTOCOL.md)
+## Inside the notch
 
-1. Connect phone and Mac to the same trusted Wi-Fi, or connect the Mac to your phone’s hotspot.
-2. In Zera’s menu, open **Extras → Android sharing** and copy the six-digit pairing code. Enable receiving.
-3. Enter the code in Androp’s settings. Use discovery or enter the Mac’s local address.
-4. Hold a gallery tile or open a photo, then glide it off an edge. The Files tab sends documents and other originals. **Share → Androp** works too.
+The **Signal** interface brings shared typography and controls to the notch. Agents shows Claude and Codex activity. Managed sessions accept replies and approvals, and observed desktop chats display activity. Use the file Shelf for dropped or received files, Clipboard for copied text and links, Tasks for work and timesheets, and Pull requests for reviews and checks.
 
-Androp’s optional background overlay supports **global drags exported by the source app**. Support varies by app and Android/One UI mode; an in-app Gallery drag is not always a cross-app drag. All four edges work, and direction follows your gesture. Wi-Fi does not locate your Mac’s physical position. Transfers are paired but **unencrypted**; use trusted local networks and keep the receiver off the public internet. Native streaming has no fixed file-size cap; disk, provider and OS limits still apply. Transfer time depends on the file and local connection.
+| Agents | Pull requests |
+| --- | --- |
+| ![Claude and Codex activity with fictional tasks](site/assets/v2/screens/agents.webp) | ![Pull requests showing sample review and check states](site/assets/v2/screens/pull-requests.webp) |
+| **Tasks** | **Clipboard** |
+| ![Tasks grouped by project with time tracking](site/assets/v2/screens/tasks.webp) | ![Clipboard with sample text, links and a color](site/assets/v2/screens/clipboard.webp) |
+| **File Shelf** | **Settings** |
+| ![File Shelf with fictional documents](site/assets/v2/screens/shelf.webp) | ![Appearance settings for the Signal interface](site/assets/v2/screens/settings.webp) |
 
-### Claude and Codex, together
+Home also opens Focus, Reminders, Alerts and Teleprompter. Hold right **⌥ or ⇧** to dictate with your chosen provider. Murmur uses a local Whisper model after its one-time download. Enable **App Shortcuts** in Settings → Extras to open or focus apps with your own keys.
 
-Follow current work, requests, tools and results from the Agents screen. Managed sessions can accept replies and approvals; observed desktop sessions are read-only activity. Connect through your own installed tools and logins. Claude plan usage appears when you enable tracking; it is a plan reading, not a made-up task percentage.
-
-### Settle back into your work
-
-Settings is one click from the notch hover controls. **Remember Last Screen** is enabled by default: returning to the notch restores your screen, filters and timesheet range, including Yesterday. Turn it off in Settings → General to use the default landing behavior. Timesheet export now stays inside the shared island, with Back to Tasks.
-
-First-run setup guides optional Accessibility, speech and model access. **Settings → Permissions & Diagnostics** is the single repair area; Zera does not require Screen Recording. Murmur and Apple speech are explicit provider choices. Dictation stays bound to the original editable field and avoids secure input; unsupported or changed fields leave a recoverable transcript in Diagnostics without replacing your clipboard.
-
-### Voice, focus and everyday tools
-
-Hold right **⌥ or ⇧** to dictate with the configured provider. Optional **Murmur** uses an on-device Whisper model after its one-time download. The first use asks for the relevant microphone/speech permissions. Tasks, the focus orb, commit-based timesheets, reminders, water breaks, clipboard history, now playing, weather and app-opening shortcuts round out the day. Some integrations require separate access or setup.
-
-### Optional addition: App Shortcuts
-
-Open **Settings → Extras → App Shortcuts**, add an application and record the keys you want. A shortcut opens the app or activates its existing process. App choices and bindings migrate from the retired window manager; layouts, workspaces, window gestures and dock previews have been removed. App Shortcuts needs no Accessibility or Screen Recording permission.
-
-Use a separate window manager such as [OmniWM](https://omniwm.app/) for scrolling or tiled layouts. Zera does not bundle or control it. [App Shortcuts guide](docs/APP_SHORTCUTS.md).
-
-## See the current app
-
-[▶ Play Android sharing · 20 seconds](https://cdn.jsdelivr.net/gh/amsynist/zera@assets/sharing.mp4) · [▶ Play the native walkthrough · 80 seconds](https://cdn.jsdelivr.net/gh/amsynist/zera@assets/walkthrough.mp4) · [Get the Mac wallpaper](site/assets/v2/wallpaper/zera-tidal-5k.jpg)
-
-<table><tr><td><img src="site/assets/v2/screens/agents.webp" alt="Native Claude and Codex overview with fictional demo tasks"></td><td><img src="site/assets/v2/screens/sharing.webp" alt="The existing notch receives an original document with themed progress"></td></tr><tr><td><img src="site/assets/v2/screens/home.webp" alt="Zera v2 Home and Mac vitals"></td><td><img src="site/assets/v2/screens/shelf.webp" alt="The redesigned Shelf"></td></tr></table>
-
-These are fresh captures from the v2 Swift UI with fictional demo data. The 80-second walkthrough has kinetic captions, smooth focus moves and an earlier window-layout demo (the window manager has since been removed). It covers every primary screen; the separate short film shows the phone-to-Mac flow. [Media sources and recording steps](docs/MEDIA.md).
+[Explore all 14 screens](https://zera.pravincodes.in/#screens) · [Watch the original Zera v2.0 walkthrough](https://zera.pravincodes.in/#tour) · [App Shortcuts guide](docs/APP_SHORTCUTS.md) · [Media and recording notes](docs/MEDIA.md)
 
 ## Install
 
-**Mac:** macOS 13 or newer, Apple silicon or Intel. Download the DMG from [Releases](https://github.com/amsynist/zera/releases), drag Zera to Applications, then open it. A release without Apple notarization may need **System Settings → Privacy & Security → Open Anyway** after the first launch attempt. [Full install/update/uninstall guide](docs/INSTALL.txt).
-
-**Android:** Android 8/API 26 or newer. Download [Androp.apk](Androp.apk?raw=1) and allow installation from your download source. The supplied companion is debug-signed for direct installation. Photo/media, optional Files access, notifications and the edge-overlay permission are explained in the app; choose the features you use.
-
-Quit an older Zera before replacing it, then reopen the updated app. Quit standalone Androp on the Mac before enabling Zera’s receiver: only one receiver can own port 8989. Your existing pairing code is reused when available.
+- **Mac.** macOS 13+ on Apple silicon or Intel. Open the DMG, drag Zera to Applications, and launch it. For builds without notarization, macOS may require **System Settings → Privacy & Security → Open Anyway** after your first launch attempt. [Mac downloads](https://github.com/amsynist/zera/releases/latest) · [Install, update and uninstall guide](docs/INSTALL.txt)
+- **Android.** Android 8+. Install the debug-signed APK and allow installation from your download source. [Download Androp.apk](Androp.apk?raw=1)
+- **Updating.** Quit Zera before replacing it. Quit standalone Androp on the Mac before enabling Zera’s receiver. The receiver reuses your existing pairing code when available. [Android sharing guide](docs/ANDROID_SHARING.md)
 
 ## Setup and privacy
 
-- **Agents:** use your own Claude/Codex tools and login. Installing activity hooks or starting a managed session is explicit. Observed desktop chats remain read-only.
-- **GitHub, calendar, weather and audio:** optional integrations request their own access. Tokens are kept in macOS Keychain.
-- **Shelf:** stores references; removing an item does not delete the original. File contents go to Claude only when you ask for analysis. Received photos, videos and plain text can open after the verified save.
-- **Android sharing:** original bytes and preview metadata stay on the local network. Files save to `~/Downloads/Androp` with collision-safe names, quarantine and byte-count/SHA-256 verification. Only the final verified result means saved.
-- **Voice:** on-device Murmur needs a model download. Provider behavior and platform permissions are explained in Settings. Zera has no account, analytics or telemetry service.
-
-See [Security](SECURITY.md), [the data map](docs/PRIVACY_DATA_MAP.md), and [the sharing guide](docs/ANDROID_SHARING.md).
+- Use your installed Claude and Codex tools and logins. Live activity hooks and managed sessions are enabled separately.
+- Optional Daily Shelf sorting sends saved link URLs and titles to Claude. Daily Shelf uses your existing GitHub connection for PRs you saved. Disable Daily Shelf in **Settings → Shelf**.
+- The file Shelf stores references to originals. Choosing file analysis sends the selected file to your configured provider. Received originals save to `~/Downloads/Androp` after size and SHA-256 verification.
+- Zera stores integration tokens in macOS Keychain and has no telemetry service. [Privacy data map](docs/PRIVACY_DATA_MAP.md) · [Security](SECURITY.md)
 
 ## Build and test
 
@@ -89,16 +65,9 @@ cd zera
 open dist/Zera.app
 swift test
 swift test --package-path Packages/AndropKit
+node scripts/check-site.mjs
 ```
 
-The Mac app uses Swift, AppKit/SwiftUI, Network.framework and pinned WhisperKit. `VERSION` defines the local release version; CI can override it with `ZERA_VERSION`. The build uses the project’s stable local signing identity when configured, Developer ID when explicitly supplied, and ad-hoc signing otherwise. Signing alone is not notarization.
+Zera uses AppKit, SwiftUI, Network.framework and pinned WhisperKit. Local builds use `VERSION` by default. CI takes the published bundle version from its release tag. [Android source](android/README.md) · [Receiver package](Packages/AndropKit) · [Project guide](AGENTS.md)
 
-The self-contained Android source is in [android/](android/README.md), and the native receiver package in [Packages/AndropKit](Packages/AndropKit). No adjacent private checkout is required to build Zera. [Agent/project guide](AGENTS.md) · [v2 release notes](docs/releases/v2.0.0.md).
-
-## Contributing and credits
-
-[Contributions](CONTRIBUTING.md), issues and focused pull requests are welcome. Built by [amsynist](https://github.com/amsynist), with help from [contributors](https://github.com/amsynist/zera/graphs/contributors).
-
-Code is [MIT](LICENSE). Zera’s identity and original creative assets have [separate terms](LICENSE-ASSETS.md). Film music: **Sascha Ende, [ende.app](https://ende.app/), CC BY 4.0**; motion accents are CC0 where used. [Third-party notices](THIRD_PARTY_NOTICES.md).
-
-Zera is independent and is not affiliated with Anthropic, OpenAI, GitHub, Apple or Samsung. Their names and marks belong to their owners.
+Code is [MIT](LICENSE). Zera’s original artwork has [separate terms](LICENSE-ASSETS.md). Film music by Sascha Ende (CC BY 4.0) and Daily Shelf sound effects by Kenney (CC0). [Media credits](docs/MEDIA.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Contributing](CONTRIBUTING.md)

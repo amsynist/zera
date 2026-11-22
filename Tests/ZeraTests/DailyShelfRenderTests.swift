@@ -38,7 +38,7 @@ final class DailyShelfRenderTests: XCTestCase {
                 item.github = g
             }
         }
-        st.addNote("gh pr checkout 214 && swift test --filter Settings")
+        st.addNote("gh pr checkout 218 && swift test --filter Settings")
         _ = st.add(link: URL(string: "https://developer.apple.com/documentation/appkit/nspanel")!, title: "NSPanel | Apple Developer Documentation")
         for (u, t, c) in [("https://vercel.com/aurora/aurora-web/deployments", "Vercel · deployments", "Dev tools"),
                           ("https://sentry.io/organizations/aurora/issues/", "Sentry · issues", "Dev tools"),
@@ -58,7 +58,7 @@ final class DailyShelfRenderTests: XCTestCase {
         pr("aurora-web", 220, "Sidebar: keyboard focus ring follows the theme") { $0.ci = .running }
         pr("infra", 88, "Bump the build image to Node 22") { $0.review = .requested; $0.mine = false; $0.author = "dependabot" }
         pr("aurora", 418, "Cache favicons per host on disk") { $0.review = .changesRequested; $0.reviewer = "theo" }
-        pr("aurora-web", 214, "Make the settings page work from the keyboard") { $0.ci = .failing; $0.failing = 2 }
+        pr("aurora-web", 218, "Restore settings after a restart") { $0.ci = .failing; $0.failing = 2 }
         if let pinned = st.items.first(where: { $0.kind == .jira }) { st.togglePin(pinned.id) }
     }
 
@@ -141,6 +141,26 @@ final class DailyShelfRenderTests: XCTestCase {
     }
 
     func testRenderLeftRim() { shot(DailyShelfPlacement(), "daily-shelf-left") }
+
+    func testRenderReleaseSequence() throws {
+        let placement = DailyShelfPlacement()
+        let store = DailyShelfStore.shared
+        shot(placement, "shelf-start", empty: true)
+        let link = try XCTUnwrap(URL(string: "https://github.com/aurora/aurora-web/pull/214"))
+        let pr = store.add(link: link, title: "Make settings work from the keyboard").item
+        store.update(pr.id) {
+            $0.github?.ci = .running
+            $0.github?.checkedAt = Date()
+        }
+        shot(placement, "shelf-added", empty: true)
+        store.update(pr.id) {
+            $0.github?.ci = .passed
+            $0.github?.review = .approved
+            $0.github?.reviewer = "theo"
+        }
+        store.togglePin(pr.id)
+        shot(placement, "shelf-pinned", empty: true)
+    }
 
     func testRenderRightFloatingCompact() {
         var p = DailyShelfPlacement(); p.edge = .right; p.attached = false; p.align = .start; p.height = 560

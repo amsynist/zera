@@ -46,3 +46,15 @@ The full kinetic edit replaces the earlier raw 62-second walkthrough. It include
 The user requested the wallpaper for personal desktop use. Its source is installReleaseWallpaper(on:) in Tests/ZeraTests/ReleaseMediaRecorder.swift; the still exports render only those native vector layers at 5K. Export orientation must match the flipped capture canvas. The full-size wallpaper files are separate assets and are not fetched during normal page loading.
 
 Final sharing delivery verification is retained in docs/media/v2/delivery-validation.json: 1,200 frames, 20 seconds at 60fps, H.264/yuv420p with AAC, faststart, six English caption cues and 38/38 visible-text contrast checks. Encoded camera/word-reveal proof sheets are in docs/media/v2/qc/. The film brand is Zera v2; bundle version is 2.0.0.
+
+## Zera v2.1.0 Daily Shelf film
+
+The Daily Shelf demo is an 18-second, 1920×1080, 30 fps Hyperframes edit of native Swift test captures. It follows a fictional PR through saving, a running check, approval and pinning, then shows a populated day. The interface and review states come from the fixtures. The camera moves, captions and soundtrack were added in the edit.
+
+```sh
+ZERA_RENDER_SCREENS=/private/tmp/zera-v2.1-screens swift test --filter 'DailyShelfRenderTests/(testRenderReleaseSequence|testRenderLeftRim)'
+```
+
+The test uses a disposable shelf and disables favicon networking. The published MP4, poster, English WebVTT, README GIF and populated shelf screenshot live in `site/assets/v2/daily-shelf/`. The Android sharing film and the historical Zera v2.0 walkthrough have their own players.
+
+The Daily Shelf edit uses “Happy Beats / Business Moves Vol. 12” by Sascha Ende (CC BY 4.0), excerpted and mixed with Kenney Interface Sounds (CC0). [Sascha Ende](https://ende.app/) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) · [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds)

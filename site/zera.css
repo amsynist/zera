@@ -387,6 +387,9 @@ figcaption span {
   border:1px solid var(--line);
   border-radius:var(--radius)
 }
+#daily-shelf-film {
+  aspect-ratio:16/9
+}
 .download {
   margin-top:70px;
   padding:80px 0;

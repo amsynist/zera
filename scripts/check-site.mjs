@@ -25,7 +25,7 @@ const tabs=[...html.matchAll(/<button role="tab"([^>]+)>/g)].map(([,raw])=>{
   }
   return el;
 });
-assert.equal(tabs.length,13,'Every current primary screen should be represented');
+assert.equal(tabs.length,14,'Every current primary screen should be represented');
 const nodes=Object.fromEntries(['screen-image','screen-panel','screen-title','screen-caption','sharing-film','download-version'].map(id=>[id,new Element()]));
 const document={hidden:false,events:{},querySelectorAll:()=>tabs,getElementById:id=>nodes[id],addEventListener(name,fn){this.events[name]=fn;}};
 const reduce=new Element();reduce.matches=false;let intersection;
@@ -37,6 +37,9 @@ assert.equal(nodes['screen-panel'].attrs['aria-labelledby'],tabs.at(-1).id);
 tabs.at(-1).events.keydown(event('Home'));
 assert.equal(tabs[0].attrs['aria-selected'],'true');
 tabs[2].events.click();assert.equal(nodes['screen-title'].textContent,'Agents');
+tabs[2].events.keydown(event('ArrowRight'));
+assert.equal(nodes['screen-title'].textContent,'Daily Shelf');
+assert.match(html, /<video id="daily-shelf-film"[^>]+controls[^>]*>[\s\S]*?<track kind="captions"[^>]+daily-shelf\.vtt/);
 assert.equal(tabs.filter(t=>t.attrs['aria-selected']==='true').length,1);
 const film=nodes['sharing-film'];intersection([{isIntersecting:true}]);assert.equal(film.plays,1);
 reduce.matches=true;reduce.events.change();assert(film.paused);film.events.pause();
@@ -45,12 +48,32 @@ document.hidden=true;document.events.visibilitychange();film.events.pause();asse
 document.hidden=false;document.events.visibilitychange();assert.equal(film.plays,3);
 film.pause();film.events.pause();intersection([{isIntersecting:false}]);intersection([{isIntersecting:true}]);
 assert.equal(film.plays,3,'A user pause remains paused');
-async function release(url){
+async function release(dmgURL, apkURL, tag='v2.1.0'){
  const links=[new Element()],apk=[new Element()];const label=new Element();
  const doc={querySelectorAll:s=>s==='[data-download]'?links:apk,getElementById:()=>label};
- runInNewContext(readFileSync(new URL('../site/install.js',import.meta.url),'utf8'),{document:doc,fetch:async()=>({ok:true,json:async()=>({tag_name:'v2.0.0',assets:[{name:'Zera-2.0.0.dmg',browser_download_url:url},{name:'Androp.apk',browser_download_url:url}]})})});
- await new Promise(resolve=>setTimeout(resolve,0));return {links,apk};
+ runInNewContext(readFileSync(new URL('../site/install.js',import.meta.url),'utf8'),{
+   document:doc,
+   fetch:async url=>{
+     assert.equal(url,'https://api.github.com/repos/amsynist/zera/releases/latest');
+     return {ok:true,json:async()=>({tag_name:tag,assets:[
+       {name:'Zera-2.1.0.dmg',browser_download_url:dmgURL},
+       {name:'Androp.apk',browser_download_url:apkURL}
+     ]})};
+   }
+ });
+ await new Promise(resolve=>setTimeout(resolve,0));return {links,apk,label};
 }
-let result=await release('https://evil.example/installer');assert.equal(result.links[0].href,undefined,'Untrusted download URL must be ignored');
-result=await release('https://github.com/amsynist/zera/releases/download/v2.0.0/Zera-2.0.0.dmg');assert(result.links[0].href.startsWith('https://github.com/amsynist/zera/releases/download/'));
-console.log('Site checks passed: assets, anchors, 13-screen gallery, keyboard/ARIA, visibility, Reduce Motion, pause ownership and release URL allowlist.');
+const prefix='https://github.com/amsynist/zera/releases/download/';
+const dmgURL=prefix+'v2.1.0/Zera-2.1.0.dmg', apkURL=prefix+'v2.1.0/Androp.apk';
+let result=await release('https://evil.example/installer',dmgURL);
+assert.equal(result.links[0].href,undefined,'Untrusted download URLs must be ignored');
+assert.equal(result.apk[0].href,undefined,'A trusted URL must identify the correct asset');
+result=await release(prefix+'v2.0.0/Zera-2.1.0.dmg',apkURL);
+assert.equal(result.links[0].href,undefined,'An asset URL must match the release tag');
+result=await release(dmgURL,apkURL);
+assert.equal(result.links[0].href,dmgURL);
+assert.equal(result.apk[0].href,apkURL);
+assert.match(result.label.textContent,/^v2\.1\.0/);
+result=await release(dmgURL,apkURL,'v2.1.0-rc.1');
+assert.equal(result.links[0].href,undefined,'Pre-release tags must leave the download fallback intact');
+console.log('Site checks passed: assets, anchors, 14-screen gallery, keyboard/ARIA, captions, player lifecycle and release URLs.');
