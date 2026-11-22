@@ -158,8 +158,11 @@ final class DailyShelfRenderTests: XCTestCase {
             $0.github?.review = .approved
             $0.github?.reviewer = "theo"
         }
+        shot(placement, "shelf-approved", empty: true)
         store.togglePin(pr.id)
         shot(placement, "shelf-pinned", empty: true)
+        fill()
+        shot(placement, "shelf-overview", empty: true)
     }
 
     func testRenderRightFloatingCompact() {

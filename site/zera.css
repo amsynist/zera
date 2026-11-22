@@ -1,12 +1,12 @@
 :root {
   color-scheme:dark;
-  --bg:#0a0a0d;
-  --panel:#111115;
-  --text:#f3f1f7;
-  --muted:#aaa7b4;
-  --accent:#b1a4ff;
-  --line:#ffffff16;
-  --warm:#ffb773;
+  --bg:#091213;
+  --panel:#101d1e;
+  --text:#edf6f3;
+  --muted:#a3b8b3;
+  --accent:#98e9cb;
+  --line:#b2e1d324;
+  --warm:#98e9cb;
   --radius:24px
 }
 * {
@@ -65,8 +65,7 @@ img,video {
   top:0;
   z-index:10;
   border-bottom:1px solid var(--line);
-  background:#0a0a0dec;
-  backdrop-filter:blur(16px)
+  background:var(--bg)
 }
 nav {
   height:76px;
@@ -87,7 +86,7 @@ nav {
   height:13px;
   background:var(--warm);
   border-radius:45% 45% 40% 40%;
-  box-shadow:0 0 17px #ffb77332
+  box-shadow:0 0 17px #98e9cb32
 }
 .brand span {
   color:var(--muted);
@@ -125,7 +124,7 @@ nav {
   border-color:var(--text)
 }
 .button.primary:hover {
-  background:#dcd6ed;
+  background:#b8f1dc;
   color:#18171d
 }
 .button.small {
@@ -134,8 +133,7 @@ nav {
   font-size:13px
 }
 .hero {
-  text-align:center;
-  padding-top:80px
+  padding-top:70px
 }
 .eyebrow,.section-label,.platform {
   font-size:11px;
@@ -175,7 +173,6 @@ h1 em {
 .actions {
   display:flex;
   gap:12px;
-  justify-content:center;
   flex-wrap:wrap;
   margin-top:30px
 }
@@ -215,11 +212,11 @@ h1 em {
   color:var(--muted)
 }
 .section {
-  padding-top:120px;
+  padding-top:96px;
   padding-bottom:28px
 }
 .section-label {
-  margin-bottom:30px
+  margin-bottom:18px
 }
 h2 {
   font-size:clamp(34px,4.2vw,58px);
@@ -261,6 +258,10 @@ h3 {
   padding:32px 0 0;
   border-top:1px solid var(--line);
   list-style:none
+}
+.shelf-steps {
+  margin-top:28px;
+  gap:32px
 }
 .steps li>span {
   color:var(--accent);
@@ -315,8 +316,8 @@ h3 {
 }
 .screen-tabs [aria-selected=true] {
   color:var(--text);
-  background:#ffffff0d;
-  border-color:#ffffff35
+  background:#98e9cb19;
+  border-color:#98e9cb7a
 }
 .screens figure {
   margin:0
@@ -325,12 +326,12 @@ h3 {
   min-height:400px;
   height:clamp(400px,60vw,740px);
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   justify-content:center;
-  background:#0d0d11;
+  background:radial-gradient(ellipse at 50% 10%, #183839, var(--bg) 85%);
   border:1px solid var(--line);
   border-radius:var(--radius);
-  padding:0 28px 25px;
+  padding:22px;
   overflow:hidden
 }
 .screen-stage img {
@@ -339,7 +340,7 @@ h3 {
   width:auto;
   height:auto;
   object-fit:contain;
-  object-position:top;
+  object-position:center;
   filter:drop-shadow(0 18px 20px #0005)
 }
 figcaption {
@@ -393,7 +394,7 @@ figcaption span {
 .download {
   margin-top:70px;
   padding:80px 0;
-  background:#111115;
+  background:var(--panel);
   border-block:1px solid var(--line)
 }
 .download h2 {
@@ -434,6 +435,9 @@ figcaption span {
 }
 .faq {
   max-width:900px
+}
+.faq h2 {
+  margin-bottom:26px
 }
 details {
   border-top:1px solid var(--line);
@@ -530,7 +534,7 @@ footer>.fine {
   .screen-stage {
     height:clamp(260px,73vw,580px);
     min-height:260px;
-    padding:0 8px 10px;
+    padding:8px;
     border-radius:15px
   }
   .screen-tabs {

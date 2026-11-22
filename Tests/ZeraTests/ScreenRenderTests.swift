@@ -10,7 +10,7 @@ import ScreenCaptureKit
 final class ScreenRenderTests: XCTestCase {
     private var out: URL!
     private let band: CGFloat = 34
-    private let desk = NSColor(srgbRed: 0.16, green: 0.17, blue: 0.2, alpha: 1)
+    private let desk = NSColor(srgbRed: 0.04, green: 0.09, blue: 0.10, alpha: 1)
 
     override func setUpWithError() throws {
         guard let dir = ProcessInfo.processInfo.environment["ZERA_RENDER_SCREENS"] else { throw XCTSkip("set ZERA_RENDER_SCREENS to render") }

@@ -25,11 +25,11 @@ The optional Android edge overlay works with apps that export a global drag. Tra
   </picture>
 </a>
 
-[Play the 18-second Daily Shelf film with audio and captions](https://zera.pravincodes.in/#daily-shelf) · [Zera v2.1.0 release notes](docs/releases/v2.1.0.md)
+[Play the 22-second Daily Shelf film with audio and captions](https://zera.pravincodes.in/#daily-shelf) · [Zera v2.1.0 release notes](docs/releases/v2.1.0.md)
 
 ## Inside the notch
 
-The **Signal** interface brings shared typography and controls to the notch. Agents shows Claude and Codex activity. Managed sessions accept replies and approvals, and observed desktop chats display activity. Use the file Shelf for dropped or received files, Clipboard for copied text and links, Tasks for work and timesheets, and Pull requests for reviews and checks.
+The **Signal** interface uses solid backgrounds by default. Turn on **Translucent background** in **Settings → Appearance** to use a tinted desktop backdrop. Agents shows Claude and Codex activity. Managed sessions accept replies and approvals, and observed desktop chats display activity. Use the file Shelf for dropped or received files, Clipboard for copied text and links, Tasks for work and timesheets, and Pull requests for reviews and checks.
 
 | Agents | Pull requests |
 | --- | --- |

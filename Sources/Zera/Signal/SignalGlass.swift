@@ -2,9 +2,8 @@ import AppKit
 
 // MARK: - Glass
 //
-// The island, the agent wings and the other floating surfaces are tinted glass over a blurred
-// desktop, the way Ghostty draws a terminal with `background-opacity` and `background-blur`.
-// Settings › Appearance › Glass has the same two controls:
+// Floating Signal surfaces are solid by default. Settings › Appearance › Glass can enable
+// the desktop behind the tint and adjust its opacity and blur:
 //
 //   Background opacity  0.3 … 1   how much of the theme's dark tint covers the blur (1 = solid)
 //   Background blur     0 … 100   how strongly what is behind is blurred (0 = off, sharp desktop)
@@ -13,12 +12,22 @@ import AppKit
 
 enum GlassSettings {
     nonisolated static let changed = Notification.Name("ZeraGlassChanged")
+    private static let translucentKey = "zera.glass.translucent"
     private static let opacityKey = "zera.glass.opacity"
     private static let blurKey = "zera.glass.blur"
 
     static let opacityRange: ClosedRange<CGFloat> = 0.3...1
     static let defaultOpacity: CGFloat = 0.78
     static let defaultBlur: CGFloat = 70
+
+    static var translucentBackground: Bool {
+        get { UserDefaults.standard.bool(forKey: translucentKey) }
+        set {
+            guard newValue != translucentBackground else { return }
+            UserDefaults.standard.set(newValue, forKey: translucentKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
 
     /// Tint over the blur, like Ghostty's `background-opacity`.
     static var opacity: CGFloat {
@@ -41,9 +50,9 @@ enum GlassSettings {
     }
 
     static var reduceTransparency: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency }
-    /// What surfaces actually use: solid when the system asks for it.
-    static var effectiveOpacity: CGFloat { reduceTransparency ? 1 : opacity }
-    static var effectiveBlur: CGFloat { reduceTransparency ? 0 : blur / 100 }
+    static var allowsTranslucency: Bool { translucentBackground && !reduceTransparency }
+    static var effectiveOpacity: CGFloat { allowsTranslucency ? opacity : 1 }
+    static var effectiveBlur: CGFloat { isTranslucent ? blur / 100 : 0 }
     static var isTranslucent: Bool { effectiveOpacity < 0.995 }
 
     static func clampOpacity(_ v: CGFloat) -> CGFloat {

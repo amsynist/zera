@@ -47,12 +47,12 @@ The user requested the wallpaper for personal desktop use. Its source is install
 
 Final sharing delivery verification is retained in docs/media/v2/delivery-validation.json: 1,200 frames, 20 seconds at 60fps, H.264/yuv420p with AAC, faststart, six English caption cues and 38/38 visible-text contrast checks. Encoded camera/word-reveal proof sheets are in docs/media/v2/qc/. The film brand is Zera v2; bundle version is 2.0.0.
 
-## Zera v2.1.0 Daily Shelf film
+## Daily Shelf film
 
-The Daily Shelf demo is an 18-second, 1920×1080, 30 fps Hyperframes edit of native Swift test captures. It follows a fictional PR through saving, a running check, approval and pinning, then shows a populated day. The interface and review states come from the fixtures. The camera moves, captions and soundtrack were added in the edit.
+The Daily Shelf demo is a 22-second, 1920×1080, 30 fps Hyperframes edit of native Swift test captures with solid Signal surfaces. Follow a fictional PR as its link lands in the field, the PR appears, checks pass and it is pinned. One camera tracks those actions and pulls back to a populated shelf. The cursor, URL, action outlines, captions and soundtrack are added in the edit.
 
 ```sh
-ZERA_RENDER_SCREENS=/private/tmp/zera-v2.1-screens swift test --filter 'DailyShelfRenderTests/(testRenderReleaseSequence|testRenderLeftRim)'
+ZERA_RENDER_SCREENS=/private/tmp/zera-v2.1-screens swift test --filter DailyShelfRenderTests/testRenderReleaseSequence
 ```
 
 The test uses a disposable shelf and disables favicon networking. The published MP4, poster, English WebVTT, README GIF and populated shelf screenshot live in `site/assets/v2/daily-shelf/`. The Android sharing film and the historical Zera v2.0 walkthrough have their own players.

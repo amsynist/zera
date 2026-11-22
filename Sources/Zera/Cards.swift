@@ -1551,22 +1551,26 @@ final class SettingsCard: CardBase, CardContent {
 
     private func buildAppearance(_ s: inout Stack) {
         let store = ThemeStore.shared
-        // Glass: the same two controls as Ghostty's background-opacity and background-blur.
         sectionLabel("Glass", &s)
+        toggleRow("Translucent background", on: GlassSettings.translucentBackground, &s,
+                  enabled: !GlassSettings.reduceTransparency) { [weak self] on in
+            GlassSettings.translucentBackground = on
+            self?.rebuildPane()
+        }
         let opacity = NSSlider(value: Double(GlassSettings.opacity), minValue: Double(GlassSettings.opacityRange.lowerBound),
                                maxValue: Double(GlassSettings.opacityRange.upperBound), target: self, action: #selector(glassOpacityChanged(_:)))
         opacity.isContinuous = true
-        opacity.isEnabled = !GlassSettings.reduceTransparency
+        opacity.isEnabled = GlassSettings.allowsTranslucency
         opacity.setAccessibilityLabel("Background opacity")
         settingRow("Background opacity", &s, control: opacity, controlWidth: 180)
         let blur = NSSlider(value: Double(GlassSettings.blur), minValue: 0, maxValue: 100, target: self, action: #selector(glassBlurChanged(_:)))
         blur.isContinuous = true
-        blur.isEnabled = !GlassSettings.reduceTransparency
+        blur.isEnabled = GlassSettings.allowsTranslucency
         blur.setAccessibilityLabel("Background blur")
         settingRow("Background blur", &s, control: blur, controlWidth: 180)
         hint(GlassSettings.reduceTransparency
              ? "Reduce transparency is on in System Settings, so every surface is solid."
-             : "Like Ghostty's background-opacity and background-blur. Full opacity is solid; no blur shows the desktop sharp behind the tint.", &s)
+             : "Signal uses a solid background by default. Turn on translucency to show the desktop behind the tint.", &s)
         popupRow("Interface font", items: ZFont.Family.allCases.map(\.title),
                  selected: ZFont.Family.allCases.firstIndex(of: ZFont.chosenFamily) ?? 0, &s, action: #selector(fontFamilyChanged(_:)))
         hint(ZFont.chosenFamily == ZFont.family ? "JetBrains Mono is bundled with Zera, as in Ghostty X."
