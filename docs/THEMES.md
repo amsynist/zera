@@ -1,7 +1,7 @@
 # Themes
 
-Zera comes with seven themes: **Zera** (the default), **Tokyo Night**, **Dracula**, **Catppuccin Mocha**,
-**Nord**, **Rosé Pine** and **Gruvbox**. Pick one in **Settings → Appearance**. The notch island, the Claude
+Zera comes with nine themes: **Signal** (the default, matching Ghostty X), **Obsidian**, **Zera**, **Tokyo Night**,
+**Dracula**, **Catppuccin Mocha**, **Nord**, **Rosé Pine** and **Gruvbox**. Pick one in **Settings → Appearance**. The notch island, the Claude
 wings, Tasks and the app opener all follow it. Zera herself and her speech bubble keep their own look.
 
 ## Your own themes
@@ -27,7 +27,10 @@ single line:
 Save the file and Zera repaints straight away. If a file can't be read, Settings → Appearance says which one
 and why. A colour that isn't valid falls back to the base theme's colour.
 
-Base ids: `zera`, `tokyo-night`, `dracula`, `catppuccin-mocha`, `nord`, `rose-pine`, `gruvbox`.
+Base ids: `signal`, `obsidian`, `zera`, `tokyo-night`, `dracula`, `catppuccin-mocha`, `nord`, `rose-pine`, `gruvbox`.
+
+Glass (Settings → Appearance → Glass) is separate from the theme: **Background opacity** and **Background blur**
+work like Ghostty's `background-opacity` and `background-blur`. Reduce transparency makes every surface solid.
 
 Colours are `#RRGGBB`, or `#RRGGBBAA` to add transparency.
 

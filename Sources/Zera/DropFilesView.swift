@@ -225,7 +225,7 @@ final class FileDropZone: NSView {
         // Slim (the notch island): one line — icon, title, a short line of help.
         if bounds.height < 100 {
             ddraw(dsymbol(symbol, 18, p.accent, .medium), centeredIn: NSRect(x: 14, y: 0, width: 26, height: bounds.height))
-            let ta: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13.5, weight: .semibold), .foregroundColor: p.text]
+            let ta: [NSAttributedString.Key: Any] = [.font: ZFont.ui(ofSize: 13.5, weight: .semibold), .foregroundColor: p.text]
             let title = isTargeted ? "Drop it here! ✨" : "Drop files here"
             let ts = (title as NSString).size(withAttributes: ta)
             (title as NSString).draw(at: NSPoint(x: 50, y: bounds.midY - ts.height / 2), withAttributes: ta)
@@ -249,7 +249,7 @@ final class FileDropZone: NSView {
         // File types: tile + label each, centred as a group.
         let col: CGFloat = min(60, (bounds.width - 24) / CGFloat(kinds.count)), tile: CGFloat = 34
         var x = bounds.midX - col * CGFloat(kinds.count) / 2
-        let la: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11.5, weight: .medium), .foregroundColor: p.textSecondary]
+        let la: [NSAttributedString.Key: Any] = [.font: ZFont.ui(ofSize: 11.5, weight: .medium), .foregroundColor: p.textSecondary]
         for k in kinds {
             let tr = NSRect(x: x + (col - tile) / 2, y: 112, width: tile, height: tile)
             let tp = NSBezierPath(roundedRect: tr, xRadius: 10, yRadius: 10)
@@ -1487,10 +1487,10 @@ final class DropFilesView: NSView, CardContent {
         let (title, symbol, md, buttons, copyable) = tabContent(path: path, kind: kind, thread: thread, running: running, exists: exists)
         let theme = MarkdownLite.Theme(text: p.text, secondary: p.textSecondary, code: p.codeText,
                                        codeBackground: p.codeBox, accent: p.accent,
-                                       body: NSFont.systemFont(ofSize: 13.5), bold: NSFont.systemFont(ofSize: 13.5, weight: .semibold),
-                                       mono: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
-                                       h1: NSFont.systemFont(ofSize: 16, weight: .bold), h2: Typo.detailTitle,
-                                       h3: NSFont.systemFont(ofSize: 13.5, weight: .semibold))
+                                       body: ZFont.ui(ofSize: 13.5), bold: ZFont.ui(ofSize: 13.5, weight: .semibold),
+                                       mono: ZFont.mono(ofSize: 12, weight: .regular),
+                                       h1: ZFont.ui(ofSize: 16, weight: .bold), h2: Typo.detailTitle,
+                                       h3: ZFont.ui(ofSize: 13.5, weight: .semibold))
         let body = md.isEmpty ? NSAttributedString() : MarkdownLite.render(md, theme: theme, width: max(200, content.bounds.width - 46))
         let proc: (stage: ZeraAssistant.Stage, progress: Double, action: FileAction?, file: String)? = running ? (a.stage, a.progress, a.currentAction, path) : nil
         content.set(title: title, symbol: symbol, body: body, canCopy: copyable && !md.isEmpty, processing: proc, buttons: buttons)

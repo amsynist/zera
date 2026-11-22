@@ -8,8 +8,8 @@ enum MarkdownLite {
     struct Theme {
         var text: NSColor, secondary: NSColor, code: NSColor, codeBackground: NSColor, accent: NSColor
         var body: NSFont = Typo.body, bold: NSFont = Typo.bodyStrong, mono: NSFont = Typo.mono
-        var h1: NSFont = NSFont.systemFont(ofSize: 14.5, weight: .bold)
-        var h2: NSFont = NSFont.systemFont(ofSize: 13.5, weight: .semibold)
+        var h1: NSFont = ZFont.ui(ofSize: 14.5, weight: .bold)
+        var h2: NSFont = ZFont.ui(ofSize: 13.5, weight: .semibold)
         var h3: NSFont = Typo.bodyStrong
     }
 
@@ -48,7 +48,7 @@ enum MarkdownLite {
             if inCode { codeBuffer.append(raw); continue }
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty {
-                out.append(NSAttributedString(string: "\n", attributes: [.font: NSFont.systemFont(ofSize: 4), .paragraphStyle: paragraph(spacingAfter: 0)]))
+                out.append(NSAttributedString(string: "\n", attributes: [.font: ZFont.ui(ofSize: 4), .paragraphStyle: paragraph(spacingAfter: 0)]))
                 continue
             }
             // Headings
@@ -78,7 +78,7 @@ enum MarkdownLite {
                 continue
             }
             if line == "---" || line == "***" {
-                out.append(NSAttributedString(string: "\n", attributes: [.font: NSFont.systemFont(ofSize: 3)]))
+                out.append(NSAttributedString(string: "\n", attributes: [.font: ZFont.ui(ofSize: 3)]))
                 continue
             }
             out.append(inline(line, base: t.body, bold: t.bold, t: t, style: paragraph()))
@@ -288,7 +288,7 @@ final class ProcessingBlock: NSView {
             let doneStep = i < stage.rawValue || stage == .done
             let active = i == stage.rawValue && stage != .done
             l.textColor = doneStep ? p.textSecondary : (active ? p.text : p.textTertiary)
-            l.font = active ? NSFont.systemFont(ofSize: 11.5, weight: .semibold) : Typo.secondary
+            l.font = active ? ZFont.ui(ofSize: 11.5, weight: .semibold) : Typo.secondary
             let dot = stepDots[i]
             dot.layer?.backgroundColor = (doneStep ? p.accent : (active ? p.accentSoft : NSColor.clear)).cgColor
             dot.layer?.borderColor = (doneStep || active ? p.accent : p.muted).cgColor

@@ -370,7 +370,7 @@ final class ClipboardView: CardBase, CardContent, NSTextFieldDelegate {
             previewImage.isHidden = true
             preview.isHidden = false
             let mono = item.kind == .code || item.kind == .files || item.kind == .color
-            previewText.font = mono ? NSFont.monospacedSystemFont(ofSize: 12, weight: .medium) : Typo.screenSubtitle
+            previewText.font = mono ? ZFont.mono(ofSize: 12, weight: .medium) : Typo.screenSubtitle
             previewText.textColor = p.text
             previewText.string = item.text
         }
@@ -655,7 +655,7 @@ private final class ClipGroupHeader: NSView {
         addSubview(t)
         if let note = note {
             let n = NSTextField(labelWithString: note)
-            n.font = NSFont.systemFont(ofSize: 10.5, weight: .medium)
+            n.font = ZFont.ui(ofSize: 10.5, weight: .medium)
             n.textColor = p.textTertiary
             n.alignment = .right
             n.autoresizingMask = [.minXMargin]
@@ -729,7 +729,7 @@ final class ClipRow: NSView {
         configureTile()
         title.stringValue = item.title
         title.font = item.kind == .code || item.kind == .color
-            ? NSFont.monospacedSystemFont(ofSize: 12, weight: .medium) : Typo.control
+            ? ZFont.mono(ofSize: 12, weight: .medium) : Typo.control
         title.textColor = p.text
         title.lineBreakMode = .byTruncatingTail
         addSubview(title)
@@ -740,7 +740,7 @@ final class ClipRow: NSView {
         meta.lineBreakMode = .byTruncatingTail
         addSubview(meta)
         key.stringValue = index < 9 ? "⌘\(index + 1)" : ""
-        key.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium)
+        key.font = ZFont.mono(ofSize: 10.5, weight: .medium)
         key.textColor = p.textTertiary
         key.alignment = .right
         addSubview(key)
@@ -927,7 +927,7 @@ final class ClipThumb: NSView {
         image.imageScaling = .scaleProportionallyUpOrDown
         addSubview(image)
         if let s = item.imageSize { label.stringValue = "\(Int(s.width))×\(Int(s.height))" }
-        label.font = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .medium)
+        label.font = ZFont.mono(ofSize: 9.5, weight: .medium)
         label.textColor = NSColor(white: 0.92, alpha: 1)
         label.wantsLayer = true
         label.drawsBackground = true

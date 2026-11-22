@@ -15,10 +15,11 @@ enum Space {
 }
 
 enum Radius {
-    static let s: CGFloat = 6      // chips, badges
-    static let m: CGFloat = 8      // buttons, fields, tabs
-    static let l: CGFloat = 12     // rows, tiles
-    static let card: CGFloat = 18  // the card itself
+    // Signal: tighter, terminal-like corners (Ghostty X chips 6, buttons 7, cards 9, panes 10).
+    static let s: CGFloat = 5      // chips, badges
+    static let m: CGFloat = 7      // buttons, fields, tabs
+    static let l: CGFloat = 9      // rows, tiles
+    static let card: CGFloat = 10  // the card itself
 }
 
 /// Shared island header geometry, including controls centred on the title row.
@@ -153,45 +154,47 @@ enum RowTier {
 }
 
 enum Typo {
-    static let detailTitle = NSFont.systemFont(ofSize: 16, weight: .medium)
-    static let paneTitle = NSFont.systemFont(ofSize: 17, weight: .medium)
-    static let settingLabel = NSFont.systemFont(ofSize: 14, weight: .medium)
-    static let control = NSFont.systemFont(ofSize: 13, weight: .medium)
+    static let detailTitle = ZFont.ui(ofSize: 16, weight: .medium)
+    static let paneTitle = ZFont.ui(ofSize: 17, weight: .medium)
+    static let settingLabel = ZFont.ui(ofSize: 14, weight: .medium)
+    static let control = ZFont.ui(ofSize: 13, weight: .medium)
     /// Dashboard readings: stable digit widths, with the same quiet weight as controls.
-    static let metricValue = NSFont.monospacedDigitSystemFont(ofSize: 24, weight: .medium)
-    static let title = NSFont.systemFont(ofSize: 15, weight: .medium)
-    static let body = NSFont.systemFont(ofSize: 12.5, weight: .regular)
-    static let bodyMedium = NSFont.systemFont(ofSize: 12.5, weight: .medium)
-    static let bodyStrong = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
-    static let secondary = NSFont.systemFont(ofSize: 11.5, weight: .regular)
-    static let caption = NSFont.systemFont(ofSize: 11, weight: .regular)
-    static let button = NSFont.systemFont(ofSize: 13, weight: .medium)
-    static let badge = NSFont.systemFont(ofSize: 11, weight: .medium)
-    static let nav = NSFont.systemFont(ofSize: 12, weight: .medium)
-    static let mono = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .medium)
+    static let metricValue = ZFont.digits(ofSize: 24, weight: .medium)
+    static let title = ZFont.ui(ofSize: 15, weight: .medium)
+    static let body = ZFont.ui(ofSize: 12.5, weight: .regular)
+    static let bodyMedium = ZFont.ui(ofSize: 12.5, weight: .medium)
+    static let bodyStrong = ZFont.ui(ofSize: 12.5, weight: .semibold)
+    static let secondary = ZFont.ui(ofSize: 11.5, weight: .regular)
+    static let caption = ZFont.ui(ofSize: 11, weight: .regular)
+    static let button = ZFont.ui(ofSize: 13, weight: .medium)
+    static let badge = ZFont.ui(ofSize: 11, weight: .medium)
+    static let nav = ZFont.ui(ofSize: 12, weight: .medium)
+    static let mono = ZFont.mono(ofSize: 11.5, weight: .medium)
     /// Compact branch labels, shared by both opener styles.
-    static let branchLabel = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold)
+    static let branchLabel = ZFont.mono(ofSize: 10.5, weight: .semibold)
     static let branchKern: CGFloat = 0
 
     // v2: the seven roles every screen shares.
     /// The screen title uses size and space, rather than a heavier weight, for hierarchy.
-    static let screenTitle = NSFont.systemFont(ofSize: 24, weight: .medium)
-    static let screenSubtitle = NSFont.systemFont(ofSize: 13, weight: .regular)
+    static let screenTitle = ZFont.ui(ofSize: 20, weight: .semibold)
+    static let screenSubtitle = ZFont.ui(ofSize: 13, weight: .regular)
     /// The line under a banner's headline.
-    static let bannerDetail = NSFont.systemFont(ofSize: 13, weight: .regular)
+    static let bannerDetail = ZFont.ui(ofSize: 13, weight: .regular)
     /// Sentence-case section labels share one weight and baseline.
-    static let sectionLabel = NSFont.systemFont(ofSize: 12, weight: .medium)
-    static let sectionKern: CGFloat = 0
-    static let rowTitle = NSFont.systemFont(ofSize: 14, weight: .medium)
-    static let rowTitleStrong = NSFont.systemFont(ofSize: 14, weight: .semibold)
-    static let meta = NSFont.systemFont(ofSize: 12.5, weight: .regular)
+    static let sectionLabel = ZFont.ui(ofSize: 12, weight: .medium)
+    /// Signal: section labels are upper case and tracked, like Ghostty X's "SESSIONS".
+    /// Light tracking: the face is already monospaced, so wide tracking reads as gaps ("T O  D O").
+    static let sectionKern: CGFloat = 0.6
+    static let rowTitle = ZFont.ui(ofSize: 14, weight: .medium)
+    static let rowTitleStrong = ZFont.ui(ofSize: 14, weight: .semibold)
+    static let meta = ZFont.ui(ofSize: 12.5, weight: .regular)
     /// Segments and chips: the same weight selected or not, so nothing shifts when you pick one.
-    static let chip = NSFont.systemFont(ofSize: 13, weight: .medium)
-    static let count = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
+    static let chip = ZFont.ui(ofSize: 13, weight: .medium)
+    static let count = ZFont.ui(ofSize: 10.5, weight: .semibold)
 
-    /// Preserve the supplied casing, including product names and acronyms.
+    /// Upper case and tracked (Signal section labels).
     static func sectionText(_ text: String, color: NSColor? = nil) -> NSAttributedString {
-        NSAttributedString(string: text, attributes: [
+        NSAttributedString(string: text.uppercased(), attributes: [
             .font: sectionLabel, .foregroundColor: color ?? Pal.textTertiary, .kern: sectionKern])
     }
 }
@@ -314,9 +317,10 @@ extension Palette {
             path.lineWidth = 1; path.stroke()
             return text.withAlphaComponent(enabled ? 1 : 0.55)
         case .accent:
-            let fill = pressed && enabled ? surfacePressed : (lit ? surfaceStrong : surfaceElevated)
+            // Signal: the main action is washed in the signal colour with a lit hairline.
+            let fill = surface.blended(withFraction: pressed && enabled ? 0.24 : (lit ? 0.18 : 0.12), of: accent) ?? surfaceElevated
             fill.withAlphaComponent(dim).setFill(); path.fill()
-            accent.withAlphaComponent((lit ? 0.5 : 0.28) * dim).setStroke()
+            accent.withAlphaComponent((lit ? 0.8 : 0.55) * dim).setStroke()
             path.lineWidth = 1; path.stroke()
             return text.withAlphaComponent(enabled ? 1 : 0.55)
         case .success:
@@ -339,8 +343,8 @@ extension Palette {
 extension Palette {
     /// Shared solid selection background for chips, list rows, navigation and theme rows.
     /// Overlays use GlideWash's translucent variant so labels remain visible.
-    var selectedFill: NSColor { surfaceStrong }
-    var selectedEdge: NSColor { border }
+    var selectedFill: NSColor { surface.blended(withFraction: 0.18, of: accent) ?? surfaceStrong }
+    var selectedEdge: NSColor { accent.withAlphaComponent(0.36) }
 
     func drawSelected(_ path: NSBezierPath) {
         selectedFill.setFill(); path.fill()
@@ -355,21 +359,19 @@ extension Palette {
         guard path.elementCount > 0 else { return }
         let b = path.bounds
         guard b.width > 0, b.height > 0, b.width.isFinite, b.height.isFinite else { return }
-        // v2: one step up from the track, with a hairline of light along its top edge.
+        // Signal: the selection is washed in the signal colour, strongest at its leading edge,
+        // with a lit hairline and a soft inner glow (Ghostty X's selected session).
         NSGraphicsContext.saveGraphicsState()
-        let depth = NSShadow()
-        depth.shadowColor = NSColor.black.withAlphaComponent(0.28)
-        depth.shadowBlurRadius = 4
-        depth.shadowOffset = NSSize(width: 0, height: -1)
-        depth.set()
-        surfaceStrong.setFill(); path.fill()
+        let glow = NSShadow()
+        glow.shadowColor = accent.withAlphaComponent(0.35)
+        glow.shadowBlurRadius = 10
+        glow.shadowOffset = .zero
+        glow.set()
+        surface.setFill(); path.fill()
         NSGraphicsContext.restoreGraphicsState()
-        NSGraphicsContext.saveGraphicsState()
-        path.addClip()
-        let flipped = NSGraphicsContext.current?.isFlipped ?? false
-        NSColor.white.withAlphaComponent(0.08).setFill()
-        NSRect(x: b.minX, y: flipped ? b.minY : b.maxY - 1, width: b.width, height: 1).fill()
-        NSGraphicsContext.restoreGraphicsState()
+        NSGradient(starting: accent.withAlphaComponent(0.24), ending: accent.withAlphaComponent(0.07))?.draw(in: path, angle: 0)
+        accent.withAlphaComponent(0.4).setStroke()
+        path.lineWidth = 1; path.stroke()
     }
 }
 
@@ -536,7 +538,7 @@ final class IconButton: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         if hovered || isHighlighted {
             (isHighlighted ? Pal.surfacePressed : Pal.surfaceHover).setFill()
-            NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1)).fill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: Radius.s + 1, yRadius: Radius.s + 1).fill()
         }
         super.draw(dirtyRect)
         drawControlFocus()
@@ -749,7 +751,7 @@ final class SearchBox: NSView {
         super.init(frame: .zero)
         let p = Pal
         wantsLayer = true
-        layer?.cornerRadius = 15
+        layer?.cornerRadius = Radius.m + 1
         layer?.cornerCurve = .continuous
         layer?.backgroundColor = p.field.cgColor
         layer?.borderWidth = 1
@@ -778,7 +780,7 @@ final class SearchBox: NSView {
 
     override func layout() {
         super.layout()
-        layer?.cornerRadius = bounds.height / 2
+        layer?.cornerRadius = Radius.m + 1
         icon.frame = NSRect(x: 13, y: (bounds.height - 16) / 2, width: 16, height: 16)
         field.frame = NSRect(x: 36, y: (bounds.height - 18) / 2, width: bounds.width - 48, height: 18)
     }
@@ -790,10 +792,13 @@ final class IconTile: NSView {
     init(symbol: String, color: NSColor, size: CGFloat = Metrics.icon, pointSize: CGFloat = 13) {
         super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
         wantsLayer = true
-        layer?.cornerRadius = size * 0.32
+        layer?.cornerRadius = max(5, size * 0.27)
         layer?.cornerCurve = .continuous
         let tint = color.blended(withFraction: 0.12, of: .white) ?? color
-        layer?.backgroundColor = color.withAlphaComponent(0.18).cgColor
+        // Signal index tile: a faint wash of the colour with a hairline in it.
+        layer?.backgroundColor = color.withAlphaComponent(0.12).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = color.withAlphaComponent(0.3).cgColor
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .semibold))
         icon.contentTintColor = tint
@@ -846,14 +851,22 @@ final class Toggle: NSButton {
     override func draw(_ dirtyRect: NSRect) {
         let p = Pal
         let dim: CGFloat = isEnabled ? 1 : 0.4
-        let box = bounds.insetBy(dx: 1, dy: 1)
-        let track = NSBezierPath(roundedRect: box, xRadius: box.height / 2, yRadius: box.height / 2)
-        (isOn ? p.accent : p.surfaceStrong).withAlphaComponent(dim).setFill(); track.fill()
-        p.border.withAlphaComponent(dim).setStroke(); track.lineWidth = 1; track.stroke()
-        let d = box.height - 4
-        NSColor.white.withAlphaComponent(dim).setFill()
-        NSBezierPath(ovalIn: NSRect(x: isOn ? box.maxX - d - 2 : box.minX + 2, y: box.minY + 2, width: d, height: d)).fill()
-        drawControlFocus(radius: box.height / 2)
+        // Signal: a squared track; on, it is washed in the signal colour and the knob glows.
+        let box = bounds.insetBy(dx: 1, dy: 2)
+        let track = NSBezierPath(roundedRect: box, xRadius: Radius.s, yRadius: Radius.s)
+        (isOn ? (p.surface.blended(withFraction: 0.2, of: p.accent) ?? p.accent) : p.surface).withAlphaComponent(dim).setFill(); track.fill()
+        (isOn ? p.accent.withAlphaComponent(0.6) : p.border.withAlphaComponent(min(1, p.border.alphaComponent * 1.8))).withAlphaComponent(dim).setStroke()
+        track.lineWidth = 1; track.stroke()
+        let d = box.height - 6
+        let knob = NSBezierPath(roundedRect: NSRect(x: isOn ? box.maxX - d - 3 : box.minX + 3, y: box.minY + 3, width: d, height: d),
+                                xRadius: 3, yRadius: 3)
+        NSGraphicsContext.saveGraphicsState()
+        if isOn, isEnabled {
+            let glow = NSShadow(); glow.shadowColor = p.accent.withAlphaComponent(0.8); glow.shadowBlurRadius = 6; glow.set()
+        }
+        (isOn ? p.accent : p.textTertiary).withAlphaComponent(dim).setFill(); knob.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        drawControlFocus(radius: Radius.s)
     }
 }
 
@@ -892,7 +905,7 @@ func drawBadge(_ n: Int, rightEdge x: CGFloat, midY: CGFloat, color: NSColor? = 
     let w = max(20, sz.width + 10)
     let r = NSRect(x: x - w, y: midY - 10, width: w, height: 20)
     (color ?? p.accent).setFill()
-    NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10).fill()
+    NSBezierPath(roundedRect: r, xRadius: Radius.s, yRadius: Radius.s).fill()
     (s as NSString).draw(at: NSPoint(x: r.midX - sz.width / 2, y: r.midY - sz.height / 2), withAttributes: attrs)
     return w
 }

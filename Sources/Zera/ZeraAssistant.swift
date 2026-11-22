@@ -590,6 +590,71 @@ final class ZeraAssistant {
         }
     }
 
+    // MARK: Quick answers
+
+    /// One short request with no tools and no saved session, for small jobs such as filing the
+    /// Daily Shelf's links. Uses the provider chosen in Settings › Claude; only `prompt` is sent.
+    /// Claude Code runs with the `haiku` alias when the CLI accepts `--model`.
+    func quickAnswer(_ prompt: String, system: String, maxTokens: Int = 800,
+                     completion: @escaping (Result<String, ZeraAIError>) -> Void) {
+        switch provider {
+        case .anthropicAPI:
+            let client = AnthropicAPIClient.shared
+            let messages = [APIMessage(role: "user", content: [APIContentBlock(kind: .text(prompt))])]
+            Task { @MainActor in
+                var full = ""
+                do {
+                    for try await e in client.stream(system: system, messages: messages, maxTokens: maxTokens) {
+                        switch e {
+                        case .textDelta(let t): full += t
+                        case .completed(let r, _, _, _): completion(.success(r.isEmpty ? full : r)); return
+                        default: break
+                        }
+                    }
+                    completion(full.isEmpty ? .failure(ZeraAIError(message: "Claude didn't answer.", action: .retry)) : .success(full))
+                } catch {
+                    let e = error as? AnthropicAPIError
+                    completion(.failure(ZeraAIError(message: e?.errorDescription ?? error.localizedDescription,
+                                                    action: e?.kind == .authentication ? .updateAPIKey : .retry)))
+                }
+            }
+        case .claudeCode:
+            ClaudeCLI.shared.ensureProbed { [weak self] info in
+                guard let self = self else { return }
+                if let err = Self.error(for: info) { completion(.failure(err)); return }
+                guard let exe = info.executable else { completion(.failure(Self.error(for: ClaudeCLIInfo(status: .notDetected))!)); return }
+                var args = self.cliArguments(info.capabilities, needsRead: false, resume: false, sessionID: nil, name: nil)
+                var text = prompt
+                if let i = args.firstIndex(of: "--system-prompt"), i + 1 < args.count { args[i + 1] = system }
+                else { text = system + "\n\n" + prompt }
+                if info.capabilities.model {
+                    if let i = args.firstIndex(of: "--model"), i + 1 < args.count { args[i + 1] = "haiku" }
+                    else { args += ["--model", "haiku"] }
+                }
+                let req = self.cliRequest(executable: exe, info: info, arguments: args, stdin: Data(text.utf8), cwd: nil)
+                var answer: String?
+                var failure: ZeraAIError?
+                let h = ClaudeProcessManager.shared.launch(req)
+                h.onEvent = { e in
+                    switch e {
+                    case .completed(let r, _, _, _): answer = r
+                    case .assistantMessage(let t, false): if answer == nil || answer?.isEmpty == true { answer = t }
+                    case .failed(let m, let k): failure = Self.error(fromFailure: m, kind: k)
+                    default: break
+                    }
+                }
+                h.onEnd = { end, stderr in
+                    if let a = answer, !a.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { completion(.success(a)); return }
+                    if failure == nil, case .exited(let code) = end,
+                       case .failed(let m, let k) = ClaudeCodeOutputParser.failure(from: stderr, exitStatus: code) {
+                        failure = Self.error(fromFailure: m, kind: k)
+                    }
+                    completion(.failure(failure ?? ZeraAIError(message: "Claude didn't answer.", action: .retry)))
+                }
+            }
+        }
+    }
+
     // MARK: Provider selection
 
     /// Maps the CLI probe to the error the user should see, or nil when it is usable.

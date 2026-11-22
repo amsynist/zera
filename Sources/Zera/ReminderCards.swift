@@ -22,9 +22,9 @@ final class ReminderAlertCard: CardBase, CardContent, TimedNotificationBanner {
 
     private let figure = AnimatedZeraView()
     private let tile = AgendaTile()
-    private let headline = rlabel(NSFont.systemFont(ofSize: 15, weight: .bold), Pal.text)
+    private let headline = rlabel(ZFont.ui(ofSize: 15, weight: .bold), Pal.text)
     private let detail = rlabel(Typo.body, Pal.textSecondary, lines: 2)
-    private let counter = rlabel(NSFont.systemFont(ofSize: 11.5, weight: .semibold), Pal.textTertiary)
+    private let counter = rlabel(ZFont.ui(ofSize: 11.5, weight: .semibold), Pal.textTertiary)
     private var dismissButton: GHSquareButton!
     private var snooze: PRActionButton!
     private var primary: PRActionButton!

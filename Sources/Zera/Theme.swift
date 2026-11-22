@@ -30,7 +30,7 @@ enum Theme {
 
     static let purple = NSColor(srgbRed: 0.561, green: 0.482, blue: 1.000, alpha: 1.0)
     static func font(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
-        NSFont.systemFont(ofSize: size, weight: weight)
+        ZFont.ui(ofSize: size, weight: weight)
     }
 }
 

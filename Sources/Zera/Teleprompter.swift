@@ -634,8 +634,8 @@ final class TeleprompterRoll: NSView, ZeraAnimating {
 
     private func rebuildText() {
         let p = Pal
-        let font = NSFont.systemFont(ofSize: fontSize, weight: .medium)
-        let heading = NSFont.systemFont(ofSize: (fontSize * 0.72).rounded(), weight: .semibold)
+        let font = ZFont.ui(ofSize: fontSize, weight: .medium)
+        let heading = ZFont.ui(ofSize: (fontSize * 0.72).rounded(), weight: .semibold)
         let para = NSMutableParagraphStyle()
         para.lineSpacing = (fontSize * 0.3).rounded()
         para.paragraphSpacing = (fontSize * 0.45).rounded()
@@ -877,7 +877,7 @@ final class TeleprompterTransportBar: NSView {
         smallerButton = IconButton(symbol: "textformat.size.smaller", label: "Smaller text", target: self, action: #selector(smallerTapped))
         biggerButton = IconButton(symbol: "textformat.size.larger", label: "Bigger text", target: self, action: #selector(biggerTapped))
         for b in [restartButton!, playButton!, slowerButton!, fasterButton!, smallerButton!, biggerButton!] { addSubview(b) }
-        speedLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .medium)
+        speedLabel.font = ZFont.digits(ofSize: 12.5, weight: .medium)
         speedLabel.textColor = p.text
         speedLabel.alignment = .center
         speedLabel.setAccessibilityLabel("Speed")
@@ -1035,7 +1035,7 @@ final class TeleprompterView: CardBase, CardContent, NSTextViewDelegate, NSTextF
         editor.allowsUndo = true
         editor.usesFindBar = false
         editor.drawsBackground = false
-        editor.font = NSFont.systemFont(ofSize: 14)
+        editor.font = ZFont.ui(ofSize: 14)
         editor.textColor = p.text
         editor.insertionPointColor = p.text
         editor.selectedTextAttributes = [.backgroundColor: p.accent.withAlphaComponent(0.35)]

@@ -107,7 +107,7 @@ final class ClaudeUsageStrip: NSView, ZeraAnimating {
             // Line 1: the window's name, and how much is used.
             VDraw.label(item.0, at: NSPoint(x: cx, y: 13))
             let figure = item.1.map { "\($0.percent)%" } ?? "—"
-            let figureFont = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .bold)
+            let figureFont = ZFont.digits(ofSize: 13, weight: .bold)
             let usedWord = item.1 == nil ? "" : " used"
             let fw = VDraw.width(figure, figureFont), uw = VDraw.width(usedWord, Typo.caption)
             VDraw.text(figure, figureFont, item.1 == nil ? p.textTertiary : p.text, at: NSPoint(x: cx + colW - fw - uw, y: 10))

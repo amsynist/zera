@@ -3,7 +3,7 @@ import CoreAudio
 import IOKit.pwr_mgt
 import ImageIO
 
-// MARK: - Keep awake while Claude works
+// MARK: - Keep awake while an agent works
 //
 // One IOKit power assertion, held only while a Claude Code session is actively running. It stops
 // idle *system* sleep; the display still dims, turns off and locks as usual. Released the moment
@@ -37,7 +37,7 @@ final class AwakeKeeper {
             var id = IOPMAssertionID(0)
             let result = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
                                                      IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                                                     "Zera: Claude Code is working" as CFString, &id)
+                                                     "Zera: an agent is working" as CFString, &id)
             if result == kIOReturnSuccess { assertion = id; held = true }
         } else if !want, held {
             IOPMAssertionRelease(assertion)

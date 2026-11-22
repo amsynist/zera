@@ -6,7 +6,17 @@ Read README.md and docs/ANDROID_SHARING.md first. This is a native macOS Swift/A
 
 Zera’s existing IslandView is the shared notch container; do not add parallel floating status panels. CardKind raw values persist: append new cases rather than reordering them. Isle defines navigation and header geometry. ZeraController owns presentation, explicit dismissal, activity priorities and lifecycle. The LivingCompanionView is shared and animated on ZeraAnimationClock; preserve teardown and Reduce Motion.
 
+The Daily Shelf (Sources/Zera/DailyShelf, docs/design/daily-shelf/DESIGN.md) is the one approved surface outside the island: a user-curated edge shelf for the day's links, not a status panel. It shows only what the user adds, files known links by rule, sends Claude only URLs and titles, checks only the PRs on the shelf with the existing GitHub token, and can be turned off in Settings › Shelf.
+
 Home, Agents, Shelf, Clipboard, Tasks, PRs, Reminders, Alerts, Focus, Teleprompter, Settings and optional App Shortcuts share native controls and theme tokens. Agents combines Claude and Codex; managed sessions support interaction, observed desktop chats are read-only. Do not imply the watcher can control a desktop session. Murmur uses pinned WhisperKit for optional on-device speech after a model download. Permissions and provider selection remain explicit.
+
+## Signal interface
+
+The UI follows the Signal design (Ghostty X's look): `docs/design/signal/index.html` is the reference and
+`docs/design/signal/COMPONENTS.md` is the catalog of shared pieces (tokens, `ZFont`, `SignalGlassView`,
+`SignalPaneLayer`, `SignalTraceLayer`, `SignalDraw`, restyled controls) with a per-screen status table. Reuse
+or extend those pieces instead of drawing new ones, never call `NSFont.systemFont` directly, and update the
+catalog in the same change.
 
 ## Android sharing
 

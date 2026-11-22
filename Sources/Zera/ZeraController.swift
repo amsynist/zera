@@ -41,6 +41,13 @@ final class ZeraController: NSObject {
     private var surfacedFinish: String?
     /// A finished session has already had its five seconds on screen.
     private var finishedLiveHidden = false
+    /// "session id|prompt time" of the turn the wings show as running (nil otherwise).
+    private var liveRunningKey: String?
+    /// The running turn whose wings already had their seconds (Settings › Agents › Wings while working).
+    private var runningHiddenTurn: String?
+    /// The running turn the hide countdown was started for, and the countdown itself.
+    private var runningHideKey: String?
+    private var runningHideWork: DispatchWorkItem?
     /// The notch island: every screen opens out of the notch inside this window. It is a fixed
     /// transparent canvas; only the island's shape is drawn and takes the pointer.
     private let cardPanel: FloatingPanel
@@ -182,6 +189,9 @@ final class ZeraController: NSObject {
         let level = { (n: Int) in NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + n) }
         buddyPanel = FloatingPanel.make(size: NSSize(width: Theme.buddyWidth, height: 90), level: level(2), keyable: false)
         notchBuddyPanel = FloatingPanel.make(size: NSSize(width: 48, height: 32), level: level(2), keyable: false)
+        // The mini notch is part of the screen's top edge, like the island and the Daily Shelf:
+        // AppKit must not nudge it down off the edge (that left a hairline gap above it).
+        notchBuddyPanel.edgeAnchored = true
         bubblePanel = FloatingPanel.make(size: NSSize(width: 120, height: 30), level: level(3), keyable: false)
         livePanel = FloatingPanel.make(size: LiveActivityView.panelSize, level: .floating, keyable: false)
         cardPanel = FloatingPanel.make(size: NSSize(width: Theme.panelWidth, height: 240), level: level(1), keyable: true)
@@ -466,6 +476,14 @@ final class ZeraController: NSObject {
         tasks.onShortcutChanged = { [weak self] label in (self?.cards[.tasks] as? TasksCard)?.shortcutLabel = label }
         tasks.start()
         MainActor.assumeIsolated {
+            // The Daily Shelf: today's links at a screen edge (Settings › Shelf).
+            let shelf = DailyShelfController.shared
+            shelf.companionSource = buddy.zera
+            shelf.onOpenSettings = { [weak self] in
+                self?.show(.settings)
+                (self?.cards[.settings] as? SettingsCard)?.select(.shelf)
+            }
+            shelf.start()
             GitHubService.shared.startPolling()
             startFullScreenWatch()
             ClaudeHookService.shared.start()
@@ -649,6 +667,7 @@ final class ZeraController: NSObject {
                     self.liveObservedPresentation?.promptAt = Date()
                 }
                 if let presentation = self.liveObservedPresentation {
+                    self.liveRunningKey = "codex|\(run.id)|\(presentation.promptAt?.timeIntervalSince1970 ?? 0)"
                     presentation.title = run.title ?? run.project; presentation.status = .running; presentation.monitoredOnly = true
                     presentation.steps = [ActivityStep(id: "current", kind: .run, verb: "", target: run.activity ?? "Thinking through the request", detail: nil, at: run.lastEventAt, finished: false)]
                     self.live.update(session: presentation, pending: nil, provider: "Codex")
@@ -680,6 +699,7 @@ final class ZeraController: NSObject {
             // task line, so the words and the command on the wings always belong together.
             let foreign = pending.map { !$0.sessionID.isEmpty && $0.sessionID != s?.id } ?? false
             let isManaged = pending?.id == managed?.request.id && managed != nil
+            self.liveRunningKey = stale || foreign || isManaged ? nil : s.map { "\($0.id)|\($0.promptAt?.timeIntervalSince1970 ?? 0)" }
             self.live.update(session: stale || foreign || isManaged ? nil : s, pending: pending,
                              provider: isManaged ? managed!.provider : "Claude", review: isManaged && managed!.review)
             // The field folded away on its own (the session moved on): the reply is dropped.
@@ -705,11 +725,16 @@ final class ZeraController: NSObject {
             liveHideWork = nil
             finishedLiveHidden = false
         }
+        // While an agent works the wings get a few seconds, then tuck away (Settings › Agents). A new
+        // turn, an approval, a finished turn or the Claude tab brings them back.
+        let runningKey = show && live.mode == .running ? liveRunningKey : nil
+        if runningKey != runningHideKey { runningHideWork?.cancel(); runningHideWork = nil; runningHideKey = nil }
+        let runningHidden = AgentWingsAutoHide.hides(runningKey: runningKey, hiddenTurn: runningHiddenTurn, delay: AgentWingsAutoHide.delay)
         // Folded away while a card is open (the card carries the same information), while the
         // notch has widened to show the tabs, and after minimizing until an approval or a finished
         // turn needs you (or the Claude tab is opened).
         // Also folded away while she's down with the app opener.
-        guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed, !finishedLiveHidden, !openerOpen else {
+        guard buddyEnabled, show, !cardVisible, !dragging, !pillVisible, !liveDismissed, !finishedLiveHidden, !openerOpen, !runningHidden else {
             // Put away for good (minimized, or she is hidden): let a session waiting on a reply
             // finish now. A passing hover, toast or drag keeps the offer, so it is still there
             // when the wings come back.
@@ -724,6 +749,9 @@ final class ZeraController: NSObject {
             return
         }
         showLive()
+        if let key = runningKey, runningHideKey == nil, AgentWingsAutoHide.delay > 0 {
+            scheduleRunningHide(key, after: TimeInterval(AgentWingsAutoHide.delay))
+        }
         if done, liveHideWork == nil {
             // Let the green bar be seen, then tidy away.
             let finish = surfacedFinish
@@ -740,6 +768,33 @@ final class ZeraController: NSObject {
             liveHideWork = w
             DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: w)
         }
+    }
+
+    /// Tucks the running turn's wings away after `delay`; waits while the pointer is on them.
+    private func scheduleRunningHide(_ key: String, after delay: TimeInterval) {
+        runningHideWork?.cancel()
+        runningHideKey = key
+        let w = DispatchWorkItem { [weak self] in
+            guard let self = self, self.runningHideKey == key else { return }
+            self.runningHideWork = nil
+            guard self.live.mode == .running, self.liveRunningKey == key, !self.live.composing else { return }
+            if self.liveVisible, !self.livePanel.ignoresMouseEvents {
+                self.scheduleRunningHide(key, after: 1.5)
+                return
+            }
+            self.runningHiddenTurn = key
+            self.updateLive()
+        }
+        runningHideWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: w)
+    }
+
+    /// Wings that tucked away while Claude worked come back (an approval, the Claude tab, a new setting).
+    private func resetRunningAutoHide() {
+        runningHiddenTurn = nil
+        runningHideKey = nil
+        runningHideWork?.cancel()
+        runningHideWork = nil
     }
 
     private func showLive() {
@@ -775,7 +830,7 @@ final class ZeraController: NSObject {
     private func positionIsland() {
         let scr = geometry.screen.frame
         let w = min(scr.width, Isle.maxWidth + Isle.margin * 2)
-        let h = geometry.notchRect.height + Isle.maxContentHeight + Isle.margin
+        let h = geometry.notchRect.height + Isle.maxContentHeight + Isle.statusHeight + Isle.margin
         let rope = buddyPanel.frame.midX
         let x = max(scr.minX, min(scr.maxX - w, rope - w / 2))
         let frame = NSRect(x: x, y: scr.maxY - h, width: w, height: h)
@@ -856,6 +911,7 @@ final class ZeraController: NSObject {
             && !hovering && !mouseButtonDown
         if calm != pollIsCalm { schedulePoll(calm: calm) }
         trackFileDrag()
+        MainActor.assumeIsolated { DailyShelfController.shared.track(pointer: mouse, buttonDown: mouseButtonDown) }
 
         updateLook(mouse)
         updateHover(mouse, now)
@@ -1572,6 +1628,7 @@ final class ZeraController: NSObject {
         waterGlassTimer?.invalidate()
         liveTicker?.invalidate()
         liveHideWork?.cancel()
+        runningHideWork?.cancel()
         autoHideWork?.cancel()
         sayResetWork?.cancel()
         fullScreenWork?.cancel()
@@ -1594,7 +1651,7 @@ final class ZeraController: NSObject {
     }
     private func surfaceManagedApproval() {
         reactLight(.approvalNeeded); sound(.claudeApproval)
-        liveDismissed = false; finishedLiveHidden = false
+        liveDismissed = false; finishedLiveHidden = false; resetRunningAutoHide()
         if !cardVisible, liveCanApprove {
             if pillVisible { hidePill() } else { updateLive() }
         } else {
@@ -1728,6 +1785,7 @@ final class ZeraController: NSObject {
         // An approval brings minimized wings back; they stay up until the next minimize.
         liveDismissed = false
         finishedLiveHidden = false
+        resetRunningAutoHide()
         if cardVisible && currentCard == .approval {
             react(.thinking, for: 0)
             (cards[.approval] as? ApprovalCard)?.reload()
@@ -2243,6 +2301,7 @@ final class ZeraController: NSObject {
             s.onHoverMenuChanged = { [weak self] style in self?.island.hoverStyle = style }
             s.onShowZeraChanged = { [weak self] on in self?.setBuddyEnabled(on) }
             s.onFullScreenHideChanged = { [weak self] in self?.fullScreenChanged() }
+            s.onAgentWingsHideChanged = { [weak self] in self?.resetRunningAutoHide(); self?.updateLive() }
             s.clipboardShortcut = clipboardShortcut
             s.onClipboardShortcutChanged = { [weak self] c in self?.setClipboardShortcut(c) ?? false }
             // While you record, the current shortcut is paused so pressing it gets recorded.
@@ -2362,7 +2421,7 @@ final class ZeraController: NSObject {
             a.claude.say = { [weak self] line, mood in self?.say(line, mood: mood, for: 2.5) }
             a.claude.onOpenSettings = { [weak self] in
                 self?.show(.settings)
-                (self?.cards[.settings] as? SettingsCard)?.select(.claude)
+                (self?.cards[.settings] as? SettingsCard)?.selectAgent(.claude)
             }
             // The one external action here, and only when you press it.
             a.claude.onNewSession = { [weak self] in self?.openClaudeCode() }
@@ -2433,6 +2492,7 @@ final class ZeraController: NSObject {
             // Going through the Claude tab is how minimized wings come back (once the island closes).
             liveDismissed = false
             finishedLiveHidden = false
+            resetRunningAutoHide()
         }
         if let previous = currentCard, let view = currentContent { NotchNavigation.shared.captureScroll(in: view, screen: previous) }
         if kind == .settings, let previous = currentCard, previous != .settings, NotchNavigation.isDestination(previous) {
@@ -2550,7 +2610,7 @@ final class ZeraController: NSObject {
         c.needsLayout = true
         c.layoutSubtreeIfNeeded()
         isPresenting = false
-        let h = min(c.desiredHeight, Isle.maxContentHeight, geometry.screen.visibleFrame.height - 40)
+        let h = min(c.desiredHeight, Isle.maxContentHeight, geometry.screen.visibleFrame.height - 40 - Isle.statusHeight)
         island.present(c, size: NSSize(width: w, height: h), direction: direction, animated: animated)
     }
 

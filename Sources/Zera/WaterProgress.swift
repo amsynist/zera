@@ -111,7 +111,7 @@ final class WaterGlassCounterView: NSView {
         NSGraphicsContext.restoreGraphicsState()
         NSColor.white.withAlphaComponent(0.75).setStroke(); glass.lineWidth = 1.1; glass.stroke()
         let text = "\(count)/\(goal)" as NSString
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .bold),
+        let attrs: [NSAttributedString.Key: Any] = [.font: ZFont.digits(ofSize: 10.5, weight: .bold),
                                                     .foregroundColor: NSColor(calibratedRed: 0.75, green: 0.85, blue: 1, alpha: 1)]
         text.draw(at: NSPoint(x: 22, y: (bounds.height - 13) / 2), withAttributes: attrs)
     }
@@ -143,11 +143,11 @@ final class WaterWeekCardView: NSView {
         let pad = 80 * k
         let week = WaterStats.weekKey(self.week.last?.date ?? Date()).components(separatedBy: "W").last ?? ""
         ("WEEK \(week) · WATER" as NSString).draw(at: NSPoint(x: pad, y: pad), withAttributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 34 * k, weight: .bold), .kern: 6 * k,
+            .font: ZFont.mono(ofSize: 34 * k, weight: .bold), .kern: 6 * k,
             .foregroundColor: Pal.water])
         let para = NSMutableParagraphStyle(); para.lineSpacing = 8 * k
         (headline as NSString).draw(in: NSRect(x: pad, y: pad + 80 * k, width: bounds.width - pad * 2, height: 340 * k), withAttributes: [
-            .font: NSFont.systemFont(ofSize: 104 * k, weight: .bold), .foregroundColor: NSColor.white, .paragraphStyle: para])
+            .font: ZFont.ui(ofSize: 104 * k, weight: .bold), .foregroundColor: NSColor.white, .paragraphStyle: para])
 
         // Seven glasses, oldest on the left; each filled to that day's share of the goal.
         let n = max(1, self.week.count), gap = 26 * k
@@ -166,7 +166,7 @@ final class WaterWeekCardView: NSView {
             NSGraphicsContext.restoreGraphicsState()
             NSColor.white.withAlphaComponent(0.45).setStroke(); glass.lineWidth = 4 * k; glass.stroke()
             let label = days.string(from: d.date) as NSString
-            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: 30 * k, weight: .bold),
+            let attrs: [NSAttributedString.Key: Any] = [.font: ZFont.mono(ofSize: 30 * k, weight: .bold),
                                                         .foregroundColor: NSColor.white.withAlphaComponent(0.6)]
             let size = label.size(withAttributes: attrs)
             label.draw(at: NSPoint(x: r.midX - size.width / 2, y: r.maxY + 18 * k), withAttributes: attrs)
@@ -178,7 +178,7 @@ final class WaterWeekCardView: NSView {
             zera.draw(in: mark, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
         ("with Zera" as NSString).draw(at: NSPoint(x: mark.maxX + 20 * k, y: mark.midY - 20 * k), withAttributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 32 * k, weight: .semibold), .foregroundColor: NSColor.white.withAlphaComponent(0.6)])
+            .font: ZFont.mono(ofSize: 32 * k, weight: .semibold), .foregroundColor: NSColor.white.withAlphaComponent(0.6)])
     }
 
     /// The card as a PNG at full size.

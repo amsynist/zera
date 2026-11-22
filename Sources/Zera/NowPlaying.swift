@@ -333,7 +333,7 @@ final class NowPlayingWidget: NSView, ZeraAnimating {
         addSubview(title)
         artist.font = Typo.meta; artist.textColor = p.textSecondary; artist.lineBreakMode = .byTruncatingTail
         addSubview(artist)
-        time.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular); time.textColor = p.textTertiary
+        time.font = ZFont.digits(ofSize: 11, weight: .regular); time.textColor = p.textTertiary
         addSubview(time)
         addSubview(bar)
         addSubview(bars)

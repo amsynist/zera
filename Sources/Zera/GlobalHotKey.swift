@@ -269,10 +269,10 @@ final class ShortcutRecorder: NSView {
         let font: NSFont
         if recording {
             if let m = message { text = m; color = p.warning; font = Typo.bodyMedium }
-            else if !held.isEmpty { text = held + "…"; color = p.text; font = .systemFont(ofSize: 14, weight: .semibold) }
+            else if !held.isEmpty { text = held + "…"; color = p.text; font = ZFont.ui(ofSize: 14, weight: .semibold) }
             else { text = "Press keys…"; color = p.accent; font = Typo.bodyMedium }
         } else if let s = shortcut {
-            text = s.label; color = p.text; font = .systemFont(ofSize: 14, weight: .semibold)
+            text = s.label; color = p.text; font = ZFont.ui(ofSize: 14, weight: .semibold)
         } else {
             text = "Off · click to set"; color = p.textSecondary; font = Typo.body
         }

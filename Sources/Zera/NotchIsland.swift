@@ -11,9 +11,12 @@ enum Isle {
     /// The tallest a screen gets below the notch band; anything taller scrolls inside.
     static let maxContentHeight: CGFloat = 640
     static let maxWidth: CGFloat = 880
+    /// Signal: the status line under an open screen (LIVE, the screen, its keys, the time).
+    static let statusHeight: CGFloat = 32
     /// v2: every screen opens as one lens this wide (narrower screens shrink to fit).
     static let lensWidth: CGFloat = 880
-    static let corner: CGFloat = 34
+    /// Signal: tighter than v2's 34 so it sits with the 10 pt pane inside it.
+    static let corner: CGFloat = 22
     /// Hovering her (v2): the nodes bloom out round her on an arc, each centre this far from
     /// the rope (x) and below the top of the screen (y); the search node hangs under them.
     static let bloom: [CGPoint] = [CGPoint(x: -300, y: 72), CGPoint(x: -270, y: 148), CGPoint(x: -210, y: 224), CGPoint(x: -140, y: 300), CGPoint(x: -56, y: 376),
@@ -164,6 +167,7 @@ final class IslandView: NSView {
             // The pill glides from the tab you were on to the one you picked; on first open it
             // simply appears under it.
             tabIndicator.moveTo(activeTabFrame, animated: oldValue != nil && activeTab != nil)
+            if activeTab != oldValue { updateSignalChrome(sweep: activeTab != nil) }
         }
     }
     var badges: Set<CardKind> = [] { didSet { tabs.forEach { $0.hasBadge = badges.contains($0.kind) } } }
@@ -185,6 +189,15 @@ final class IslandView: NSView {
     private(set) var content: NSView?
 
     private let glow = CAShapeLayer()
+    /// Signal glass: the blurred, tinted body of the island (Settings › Appearance › Glass).
+    private let glass = SignalGlassView(frame: .zero)
+    /// The island's own layers (shadow, liquid, light, pane, trace), in a view above the glass.
+    private let chrome = SignalLayerView(frame: .zero, flipped: true)
+    /// Signal chrome: the open screen's pane frame, and the trace from Zera into it.
+    private let pane = SignalPaneLayer()
+    private let trace = SignalTraceLayer()
+    private var glassObserver: NSObjectProtocol?
+    private let status = SignalStatusLine()
     private let fill = CAGradientLayer()
     private let fillMask = CAShapeLayer()
     let phoneLiquid = PhoneLiquidLayer()
@@ -218,15 +231,19 @@ final class IslandView: NSView {
         wantsLayer = true
         layer?.masksToBounds = false
 
+        // First, so every layer below (liquid, light) and every view (screens, tabs) sits above it.
+        addSubview(glass)
+        addSubview(chrome)
+
         glow.fillColor = NSColor.black.cgColor
         glow.shadowColor = NSColor.black.cgColor
         glow.shadowOpacity = 0
         glow.shadowRadius = 16
         glow.shadowOffset = .zero
-        layer?.addSublayer(glow)
+        chrome.layer?.addSublayer(glow)
 
         fill.mask = fillMask
-        layer?.addSublayer(fill)
+        chrome.layer?.addSublayer(fill)
         ambient.type = .radial
         ambient.startPoint = CGPoint(x: 0.5, y: 0.12); ambient.endPoint = CGPoint(x: 1, y: 0.72)
         ambientHost.mask = ambientMask
@@ -236,8 +253,8 @@ final class IslandView: NSView {
         ambientFade.colors = [NSColor.clear.cgColor, NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor]
         ambient.colors = [CompanionGlyph.tint(for: .idle).withAlphaComponent(0.17).cgColor, CompanionGlyph.tint(for: .idle).withAlphaComponent(0.035).cgColor, NSColor.clear.cgColor]
         ambientHost.addSublayer(ambient)
-        layer?.addSublayer(ambientHost)
-        layer?.addSublayer(phoneLiquid)
+        chrome.layer?.addSublayer(ambientHost)
+        chrome.layer?.addSublayer(phoneLiquid)
 
         edge.fillColor = nil
         edge.strokeColor = Neon.edge.cgColor
@@ -249,11 +266,11 @@ final class IslandView: NSView {
         edge.opacity = 0
         edgeFade.colors = [NSColor.clear.cgColor, NSColor.black.cgColor]
         edge.mask = edgeFade
-        layer?.addSublayer(edge)
+        chrome.layer?.addSublayer(edge)
         // The light draws the edge; the old edge layer stays
         // for the morph geometry but never shows.
         edge.isHidden = true
-        layer?.addSublayer(light)
+        chrome.layer?.addSublayer(light)
 
         rootGlow.type = .radial
         rootGlow.startPoint = CGPoint(x: 0.5, y: 0)
@@ -262,9 +279,19 @@ final class IslandView: NSView {
         rootLine.startPoint = CGPoint(x: 0, y: 0.5)
         rootLine.endPoint = CGPoint(x: 1, y: 0.5)
         rootLine.opacity = 0
-        layer?.addSublayer(rootGlow)
-        layer?.addSublayer(rootLine)
+        chrome.layer?.addSublayer(rootGlow)
+        chrome.layer?.addSublayer(rootLine)
         recolorRoot()
+        trace.isHidden = true
+        pane.isHidden = true
+        chrome.layer?.addSublayer(trace)
+        chrome.layer?.addSublayer(pane)
+        // The glass replaces the old black fill; the shadow would darken translucent glass.
+        fill.isHidden = true
+        applyGlass()
+        glassObserver = NotificationCenter.default.addObserver(forName: GlassSettings.changed, object: nil, queue: .main) { [weak self] _ in
+            self?.applyGlass()
+        }
 
         host.wantsLayer = true
         host.layer?.mask = hostMask
@@ -300,6 +327,9 @@ final class IslandView: NSView {
             addSubview(t)
             tabs.append(t)
         }
+        status.isHidden = true
+        status.alphaValue = 0
+        addSubview(status)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -340,7 +370,7 @@ final class IslandView: NSView {
         islandRect = r
         let closedPath = Self.path(r, corner: corner, closed: true, neck: tiledPeek ? notchWidth : nil, band: band)
         let openPath = Self.path(r, corner: corner, closed: false, neck: tiledPeek ? notchWidth : nil, band: band)
-        let pairs: [(CAShapeLayer, CGPath)] = [(glow, closedPath), (fillMask, closedPath), (ambientMask, closedPath), (hostMask, closedPath), (phoneLiquid.outline, closedPath), (edge, openPath)]
+        let pairs: [(CAShapeLayer, CGPath)] = [(glow, closedPath), (fillMask, closedPath), (ambientMask, closedPath), (hostMask, closedPath), (phoneLiquid.outline, closedPath), (glass.shape, closedPath), (edge, openPath)]
         for (layer, p) in pairs {
             if animated, !Motion.reduced {
                 let from = layer.presentation()?.path ?? layer.path
@@ -382,8 +412,71 @@ final class IslandView: NSView {
         rootLine.colors = [Neon.accent.withAlphaComponent(0).cgColor, Neon.accent.withAlphaComponent(0.9).cgColor, Neon.accent.withAlphaComponent(0).cgColor]
     }
 
+    /// Glass settings or Reduce Transparency changed: translucent glass drops the drop shadow,
+    /// which would otherwise darken it from beneath.
+    private func applyGlass() {
+        glass.apply()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        glow.isHidden = GlassSettings.isTranslucent
+        CATransaction.commit()
+    }
+
+    // MARK: - Signal chrome
+
+    /// Frames the open screen as a focused pane and wires the trace from Zera through its tab.
+    /// Geometry only (no per-frame work); `sweep` scans the pane once, as when a pane takes focus.
+    private func updateSignalChrome(sweep: Bool = false) {
+        let show = mode == .open && content != nil && !(content is TimedNotificationBanner) && bounds.width > 0
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        pane.isHidden = !show
+        trace.isHidden = !show
+        CATransaction.commit()
+        trace.setRunning(show && window != nil)
+        guard show, let c = content?.frame else { return }
+        let top = (railY + nodeSize + 4).rounded()
+        // The frame closes just below the screen's own content, so footer buttons never meet
+        // the brackets; the status line hangs under it (`Isle.statusHeight` leaves the room).
+        let r = NSRect(x: c.minX + 12, y: top, width: c.width - 24, height: max(40, (showsStatus(content) ? c.maxY + 3 : c.maxY - 10) - top))
+        let tabFrame = activeTabFrame
+        let left = activeTab.map { Isle.leftTabs.contains($0) } ?? true
+        let side: SignalPaneLayer.Side = tabFrame == nil ? .none : (left ? .left : .right)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        pane.frame = bounds
+        trace.frame = bounds
+        CATransaction.commit()
+        pane.update(rect: r, side: side)
+        updateStatusText()
+        if let t = tabFrame {
+            let zx = centerX + (left ? -30 : 30)
+            trace.setPath(SignalTraceLayer.route(from: zx, tab: t, pane: r, side: side))
+        } else {
+            trace.setPath(nil)
+        }
+        if sweep { pane.sweep() }
+    }
+
+    /// Screens that get the status line: every open screen except banners and the phone receipt.
+    private func showsStatus(_ view: NSView?) -> Bool {
+        guard let view else { return false }
+        return !(view is TimedNotificationBanner) && !(view is AndroidTransferCard)
+    }
+
+    /// The screen's name and the keys that work there, for the status line.
+    private func updateStatusText() {
+        if content is SettingsCard { status.title = "Settings" }
+        else if let k = activeTab { status.title = k == .github ? "Pull requests" : (k == .claude ? "Agents" : k.title) }
+        else { status.title = "Zera" }
+        // Screens with their own key hints (Clipboard, Tasks) keep them; the status line carries
+        // the keys that work everywhere, so nothing is said twice.
+        status.hints = [("⌘,", "settings"), ("esc", "close")]
+    }
+
     /// The theme changed: recolour the glass, its edge and the tabs.
     func themeChanged() {
+        status.needsDisplay = true
+        pane.color = Neon.accent
+        trace.color = Neon.accent
+        glass.apply()
         recolorRoot()
         glow.fillColor = NSColor.black.cgColor
         glow.shadowColor = NSColor.black.cgColor
@@ -401,6 +494,9 @@ final class IslandView: NSView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         let b = bounds
         fill.frame = b
+        glass.frame = b
+        chrome.frame = b
+        glass.bandHeight = band
         ambientHost.frame = b
         ambient.frame = b
         ambientFade.frame = b
@@ -617,6 +713,7 @@ final class IslandView: NSView {
         settingsButton.isHidden = mode == .closed || content is TimedNotificationBanner
         tabIndicator.frame = bounds
         tabIndicator.needsDisplay = true
+        updateSignalChrome()
     }
 
     /// Where the open screen's tab is, in this view's coordinates.
@@ -651,6 +748,8 @@ final class IslandView: NSView {
         CATransaction.commit()
         light.setVisible(m != .closed)
         updateEdgeFade()
+        updateSignalChrome()
+        if open, !Motion.reduced { pane.snapBrackets() }
     }
 
     /// The edge fades in from the top of the screen: over the band when a screen is open, and
@@ -680,6 +779,9 @@ final class IslandView: NSView {
 
     /// Just the notch: nothing to see, nothing to click.
     func close(animated: Bool = true, completion: (() -> Void)? = nil) {
+        status.setRunning(false)
+        status.alphaValue = 0
+        status.isHidden = true
         setPhoneTransfer(nil)
         showDeck(false)
         mode = .closed
@@ -804,7 +906,29 @@ final class IslandView: NSView {
         } else {
             view.frame = target
         }
-        applyShape(shapeRect(width: w, height: band + h), corner: Isle.corner, animated: animated)
+        // Signal: the status line hangs under the screen, inside the island.
+        let statusH = showsStatus(view) ? Isle.statusHeight : 0
+        let grew = islandRect.height < band + h + statusH
+        status.frame = NSRect(x: target.minX, y: band + h, width: w, height: Isle.statusHeight)
+        if statusH > 0 {
+            updateStatusText()
+            status.isHidden = false
+            status.setRunning(true)
+            if animated, !Motion.reduced, grew || status.alphaValue < 1 {
+                status.alphaValue = 0
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self] in
+                    guard let self, self.mode == .open, !self.status.isHidden else { return }
+                    NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; self.status.animator().alphaValue = 1 }
+                }
+            } else {
+                status.alphaValue = 1
+            }
+        } else {
+            status.setRunning(false)
+            status.alphaValue = 0
+            status.isHidden = true
+        }
+        applyShape(shapeRect(width: w, height: band + h + statusH), corner: Isle.corner, animated: animated)
         if let t = whisperText { (content as? CardBase)?.whispering = true; whisperView.text = t }
         layoutWhisper()
     }
@@ -866,7 +990,7 @@ final class IslandWhisper: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        label.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        label.font = ZFont.ui(ofSize: 12, weight: .medium)
         label.textColor = tone
         label.lineBreakMode = .byTruncatingTail
         addSubview(label)
@@ -984,17 +1108,24 @@ final class IslandTab: NSButton {
             card.lineWidth = 0.75; card.stroke()
         }
         _ = circle
-        // Zera v2: a rounded key. Quiet in the rail, a graphite tile in the deck, white when open.
-        let key = NSBezierPath(roundedRect: c, xRadius: c.width * 0.32, yRadius: c.width * 0.32)
+        // Signal: a squared tile with a hairline, like Ghostty X's session tiles. The open screen's
+        // tile is filled in the signal colour by the indicator gliding behind the rail.
+        let key = NSBezierPath(roundedRect: c.insetBy(dx: 0.5, dy: 0.5), xRadius: c.width * 0.24, yRadius: c.width * 0.24)
         if isOn {
             // Selection belongs to the moving surface behind the rail, not a second static key.
             if bloomed { Pal.drawSegmentIndicator(key) }
         } else if hovered {
             t.surfaceHover.setFill(); key.fill()
+            t.accent.withAlphaComponent(0.5).setStroke(); key.lineWidth = 1; key.stroke()
         } else if bloomed {
             t.surface.setFill(); key.fill()
+            t.border.setStroke(); key.lineWidth = 1; key.stroke()
+        } else {
+            t.glassBottom.setFill(); key.fill()
+            t.border.withAlphaComponent(min(1, t.border.alphaComponent * 1.9)).setStroke(); key.lineWidth = 1; key.stroke()
         }
-        let ink = isOn || hovered ? Neon.text : Neon.textDim
+        let filled = isOn && !bloomed
+        let ink = filled ? Neon.onAccent : (isOn || hovered ? Neon.text : Neon.textDim)
         if let ins = instrument, let p = ins.progress {
             let r = c.insetBy(dx: 4.5 * k, dy: 4.5 * k)
             let track = NSBezierPath(ovalIn: r)
@@ -1006,10 +1137,10 @@ final class IslandTab: NSButton {
                 arc.appendArc(withCenter: NSPoint(x: r.midX, y: r.midY), radius: r.width / 2,
                               startAngle: -90, endAngle: -90 + 360 * v, clockwise: false)
                 arc.lineWidth = 2.2 * k; arc.lineCapStyle = .round
-                (ins.tone ?? Neon.accent).setStroke(); arc.stroke()
+                (filled ? Neon.onAccent : (ins.tone ?? Neon.accent)).setStroke(); arc.stroke()
             }
             if let text = ins.text, !text.isEmpty {
-                let font = NSFont.monospacedDigitSystemFont(ofSize: (text.count > 2 ? 7 : 8.5) * min(k, 1.55), weight: .bold)
+                let font = ZFont.digits(ofSize: (text.count > 2 ? 7 : 8.5) * min(k, 1.55), weight: .bold)
                 let a: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink]
                 let sz = (text as NSString).size(withAttributes: a)
                 (text as NSString).draw(at: NSPoint(x: c.midX - sz.width / 2, y: c.midY - sz.height / 2), withAttributes: a)
@@ -1023,7 +1154,7 @@ final class IslandTab: NSButton {
         if count > 0 || hasBadge {
             let text = count > 0 ? (count > 9 ? "9+" : "\(count)") : ""
             let b = min(1.35, k)
-            let font = NSFont.monospacedDigitSystemFont(ofSize: 8.5 * b, weight: .heavy)
+            let font = ZFont.digits(ofSize: 8.5 * b, weight: .heavy)
             let tw = text.isEmpty ? 0 : ceil((text as NSString).size(withAttributes: [.font: font]).width)
             let w = text.isEmpty ? 8 * b : max(13 * b, tw + 6 * b), h: CGFloat = (text.isEmpty ? 8 : 13) * b
             let pill = NSRect(x: c.maxX - w * 0.75, y: c.maxY - h * 0.85, width: w, height: h)
@@ -1096,7 +1227,7 @@ final class IslandClose: NSButton {
         }
         let d = min(bounds.width, bounds.height) - 2
         let disc = NSRect(x: (bounds.width - d) / 2, y: (bounds.height - d) / 2, width: d, height: d)
-        let c = NSBezierPath(roundedRect: disc, xRadius: 12, yRadius: 12)
+        let c = NSBezierPath(roundedRect: disc, xRadius: Radius.m, yRadius: Radius.m)
         if accent {
             let t = ThemeStore.shared.current
             (hovered ? t.surfaceHover : t.surface).setFill(); c.fill()
@@ -1140,9 +1271,13 @@ final class IslandTabIndicator: NSView {
         indicator.settle(at: r)
         // A single substantial surface travels between the nodes. Its rounded-square shape
         // matches the keys, rather than drawing an unrelated circular blue outline.
-        let at = indicator.rect.insetBy(dx: 1, dy: 1)
-        let path = NSBezierPath(roundedRect: at, xRadius: at.height * 0.32, yRadius: at.height * 0.32)
-        Pal.drawSegmentIndicator(path)
+        // Signal: the open screen's tile is filled in the signal colour and glows.
+        let at = indicator.rect.insetBy(dx: 2, dy: 2)
+        let path = NSBezierPath(roundedRect: at, xRadius: at.height * 0.24, yRadius: at.height * 0.24)
+        NSGraphicsContext.saveGraphicsState()
+        let glow = NSShadow(); glow.shadowColor = Neon.accent.withAlphaComponent(0.75); glow.shadowBlurRadius = 14; glow.set()
+        Neon.accent.setFill(); path.fill()
+        NSGraphicsContext.restoreGraphicsState()
 
     }
 }

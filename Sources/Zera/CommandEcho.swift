@@ -1257,8 +1257,8 @@ private final class EchoRowView: NSView {
     private static let pad: CGFloat = 14
     private static let symbolBox: CGFloat = 16
     private static let labelFont = Typo.bodyStrong
-    private static let keysFont = NSFont.systemFont(ofSize: 11.5, weight: .medium)
-    private static let detailFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    private static let keysFont = ZFont.ui(ofSize: 11.5, weight: .medium)
+    private static let detailFont = ZFont.ui(ofSize: 12, weight: .semibold)
     private static let sideMax: CGFloat = 220
     private static let swatch: CGFloat = 13
     private static let barCount = 7
@@ -1330,7 +1330,7 @@ private final class EchoRowView: NSView {
             return
         }
         if let p = Self.percent(c) {
-            let a: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+            let a: [NSAttributedString.Key: Any] = [.font: ZFont.digits(ofSize: 12, weight: .semibold),
                                                     .foregroundColor: NSColor.white.withAlphaComponent(0.8)]
             let size = (p as NSString).size(withAttributes: a)
             (p as NSString).draw(at: NSPoint(x: right - size.width, y: (h - size.height) / 2), withAttributes: a)

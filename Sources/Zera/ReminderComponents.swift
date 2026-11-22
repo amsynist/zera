@@ -104,7 +104,7 @@ final class AgendaTile: NSView {
             let s = (bounds.width * 0.5).rounded()
             LineIcon.draw(li, in: NSRect(x: bounds.midX - s / 2, y: bounds.midY - s / 2, width: s, height: s), color: glyph, lineWidth: 1.9)
         } else if let l = look.letter {
-            let f = NSFont.systemFont(ofSize: bounds.width * 0.42, weight: .heavy)
+            let f = ZFont.ui(ofSize: bounds.width * 0.42, weight: .heavy)
             let attrs: [NSAttributedString.Key: Any] = [.font: f, .foregroundColor: glyph]
             let s = (l as NSString).size(withAttributes: attrs)
             (l as NSString).draw(at: NSPoint(x: bounds.midX - s.width / 2, y: bounds.midY - s.height / 2), withAttributes: attrs)
@@ -159,8 +159,8 @@ final class AgendaRow: NSView {
     private var dim = false
     private var tint: NSColor = Pal.accent
 
-    private let timeLabel = rlabel(NSFont.systemFont(ofSize: 13.5, weight: .semibold), Pal.text)
-    private let subTimeLabel = rlabel(NSFont.systemFont(ofSize: 11.5, weight: .medium), Pal.textTertiary)
+    private let timeLabel = rlabel(ZFont.ui(ofSize: 13.5, weight: .semibold), Pal.text)
+    private let subTimeLabel = rlabel(ZFont.ui(ofSize: 11.5, weight: .medium), Pal.textTertiary)
     private let tile = AgendaTile()
     private let titleLabel = rlabel(Typo.rowTitle, Pal.text)
     private let detailLabel = rlabel(Typo.meta, Pal.textSecondary)

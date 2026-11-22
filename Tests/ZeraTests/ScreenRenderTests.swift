@@ -680,6 +680,19 @@ final class ScreenRenderTests: XCTestCase {
         treeActions.previewType("safari")
         treeActions.previewActions()
         panel(treeActions, "20e-app-opener-classic-actions")
+        // The minimal style: the same view as a centred palette.
+        let mini = TreeOpenerView(frame: .zero)
+        mini.minimal = true
+        mini.setFrameSize(NSSize(width: mini.panelWidth, height: mini.panelHeight(band: 32, availableHeight: 900)))
+        mini.prepare()
+        panel(mini, "20h-app-opener-minimal")
+        let miniTyping = TreeOpenerView(frame: .zero)
+        miniTyping.minimal = true
+        miniTyping.setFrameSize(NSSize(width: miniTyping.panelWidth, height: miniTyping.panelHeight(band: 32, availableHeight: 900)))
+        miniTyping.prepare()
+        miniTyping.previewType("safari")
+        miniTyping.previewActions()
+        panel(miniTyping, "20i-app-opener-minimal-actions")
 
         // Every theme on two busy screens (Home with Claude usage: one calm limit, one near the end).
         let now = Date()

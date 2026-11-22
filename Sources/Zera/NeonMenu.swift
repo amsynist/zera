@@ -187,7 +187,7 @@ final class NeonMenuView: NSView {
                 text(it.title, TaskFont.clock(10.5), Neon.textDim, NSRect(x: r.minX + 10, y: r.minY + 4, width: r.width - 20, height: r.height - 4), kern: 1.2)
             case .info:
                 if let sym = it.symbol { Neon.symbol(sym, in: NSRect(x: r.minX + 6, y: r.minY, width: 20, height: r.height), size: 10.5, color: Neon.textDim) }
-                text(it.title, .systemFont(ofSize: 12), Neon.textDim, NSRect(x: r.minX + 32, y: r.minY, width: r.width - 40, height: r.height))
+                text(it.title, ZFont.ui(ofSize: 12), Neon.textDim, NSRect(x: r.minX + 32, y: r.minY, width: r.width - 40, height: r.height))
             case .action:
                 let on = cursor == i
                 if on {

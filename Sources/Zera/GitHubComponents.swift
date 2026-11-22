@@ -145,7 +145,7 @@ final class AvatarCache {
             color(for: person.login).setFill()
             circle.fill()
             let initial = String(person.login.prefix(1)).uppercased()
-            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: rect.height * 0.46, weight: .bold), .foregroundColor: NSColor.white]
+            let attrs: [NSAttributedString.Key: Any] = [.font: ZFont.ui(ofSize: rect.height * 0.46, weight: .bold), .foregroundColor: NSColor.white]
             let s = (initial as NSString).size(withAttributes: attrs)
             (initial as NSString).draw(at: NSPoint(x: rect.midX - s.width / 2, y: rect.midY - s.height / 2), withAttributes: attrs)
         }
@@ -190,7 +190,7 @@ final class ReviewerAvatarGroup: NSView {
             ring.setFill(); NSBezierPath(roundedRect: r.insetBy(dx: -1.5, dy: -1.5), xRadius: diameter / 2 + 1.5, yRadius: diameter / 2 + 1.5).fill()
             Pal.surfaceStrong.setFill(); NSBezierPath(roundedRect: r, xRadius: diameter / 2, yRadius: diameter / 2).fill()
             let s = "+\(extra)" as NSString
-            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10, weight: .bold), .foregroundColor: Pal.textSecondary]
+            let attrs: [NSAttributedString.Key: Any] = [.font: ZFont.ui(ofSize: 10, weight: .bold), .foregroundColor: Pal.textSecondary]
             let sz = s.size(withAttributes: attrs)
             s.draw(at: NSPoint(x: r.midX - sz.width / 2, y: r.midY - sz.height / 2), withAttributes: attrs)
         }
@@ -205,7 +205,7 @@ final class PRStatusChip: NSView {
     private var text = ""
     private var color: NSColor = .gray
     override var isFlipped: Bool { true }
-    static let font = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
+    static let font = ZFont.ui(ofSize: 11.5, weight: .semibold)
 
     func set(symbol s: String, text t: String, color c: NSColor) {
         symbol = s; text = t; color = c
@@ -222,7 +222,8 @@ final class PRStatusChip: NSView {
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let path = NSBezierPath(roundedRect: r, xRadius: Radius.s + 1, yRadius: Radius.s + 1)
         // v2 pill: a soft tint of its colour, no outline.
-        color.withAlphaComponent(0.16).setFill(); path.fill()
+        color.withAlphaComponent(0.12).setFill(); path.fill()
+        color.withAlphaComponent(0.3).setStroke(); path.lineWidth = 1; path.stroke()
         var x: CGFloat = 8
         if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .bold))?
@@ -266,6 +267,10 @@ final class CommentCount: NSView {
 
 /// Rounded tile with the repo's glyph: lavender for your own repos, a warm tone per org.
 final class PRRepoTile: NSView {
+    /// Signal: the PR's number in an index tile, tinted with its status colour.
+    private var number: Int?
+    private var tone: NSColor = Signal.color
+    func show(number n: Int, tone t: NSColor) { number = n; tone = t; needsDisplay = true }
     private var fill: NSColor = .gray
     private var ink: NSColor = .white
     private var symbol = "arrow.triangle.pull"
@@ -299,6 +304,12 @@ final class PRRepoTile: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        if let n = number {
+            let text = n > 9999 ? "\(n % 10000)" : "\(n)"
+            let r = bounds.insetBy(dx: 1, dy: 1)
+            SignalDraw.indexTile(text, in: r, color: tone, radius: max(5, r.width * 0.24))
+            return
+        }
         fill.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: bounds.width * 0.28, yRadius: bounds.width * 0.28).fill()
         let side = bounds.width * 0.52
@@ -580,7 +591,7 @@ final class GitHubSegmentedControl: NSView {
     /// instead of one boxed track. The selected chip's accent wash still glides between them.
     var chipStyle = false { didSet { needsDisplay = true; needsLayout = true } }
     private static let chipGap: CGFloat = 8
-    private static let countFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+    private static let countFont = ZFont.digits(ofSize: 11, weight: .medium)
     /// The chosen segment. Changing it glides the indicator over (`setSelected(_:animated:)`).
     var selected = 0 {
         didSet {

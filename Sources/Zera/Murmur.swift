@@ -496,19 +496,19 @@ final class MurmurIntroController: NSWindowController, NSWindowDelegate {
         title.frame = NSRect(x: pad, y: 292, width: width, height: 32)
 
         let sub = NSTextField(wrappingLabelWithString: "Hold right ⌥ or right ⇧ and talk — your words appear in the notch as you speak, and are inserted into the original editable field when you let go. Murmur is a speech model that runs on this Mac, so nothing you say leaves it. It needs a one-time download.")
-        sub.font = .systemFont(ofSize: 13)
+        sub.font = ZFont.ui(ofSize: 13)
         sub.textColor = NSColor(white: 1, alpha: 0.75)
         sub.frame = NSRect(x: pad, y: 210, width: width, height: 76)
 
         let label = NSTextField(labelWithString: "Model")
-        label.font = .systemFont(ofSize: 12, weight: .semibold)
+        label.font = ZFont.ui(ofSize: 12, weight: .semibold)
         label.textColor = NSColor(white: 1, alpha: 0.6)
         label.frame = NSRect(x: pad, y: 176, width: 80, height: 18)
         choice.frame = NSRect(x: pad + 70, y: 170, width: 230, height: 28)
         choice.select(MurmurModel.allCases.firstIndex(of: Murmur.shared.model) ?? 0)
         choice.onChange = { [weak self] _ in self?.refresh() }
 
-        blurb.font = .systemFont(ofSize: 12)
+        blurb.font = ZFont.ui(ofSize: 12)
         blurb.textColor = NSColor(white: 1, alpha: 0.6)
         blurb.frame = NSRect(x: pad, y: 124, width: width, height: 36)
 
@@ -517,7 +517,7 @@ final class MurmurIntroController: NSWindowController, NSWindowDelegate {
         bar.minValue = 0; bar.maxValue = 1
         bar.frame = NSRect(x: pad, y: 98, width: width, height: 12)
 
-        status.font = .systemFont(ofSize: 12, weight: .medium)
+        status.font = ZFont.ui(ofSize: 12, weight: .medium)
         status.textColor = NSColor(white: 1, alpha: 0.75)
         status.frame = NSRect(x: pad, y: 62, width: width, height: 32)
 

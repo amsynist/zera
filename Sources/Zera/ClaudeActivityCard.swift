@@ -56,7 +56,7 @@ final class ClaudeActivityCard: CardBase, CardContent {
         addSubview(avatar); addSubview(chip); addSubview(close)
         elapsed.font = Typo.caption; elapsed.textColor = p.textTertiary; addSubview(elapsed)
         for h in [commandHeader, activityHeader, historyHeader, approvalTitle] {
-            h.font = NSFont.systemFont(ofSize: 10.5, weight: .bold)
+            h.font = ZFont.ui(ofSize: 10.5, weight: .bold)
             h.textColor = p.textSecondary
         }
         addSubview(commandHeader)
