@@ -33,7 +33,7 @@ final class LiveActivityView: NSView {
     static let panelSize = NSSize(width: 1520, height: 92)
 
     /// Where she hangs, in this view's coordinates. The controller sets it after placing the panel.
-    var centerX: CGFloat = LiveActivityView.panelSize.width / 2 { didSet { needsLayout = true; needsDisplay = true } }
+    var centerX: CGFloat = LiveActivityView.panelSize.width / 2 { didSet { needsLayout = true } }
     private(set) var mode: Mode = .idle
     private(set) var request: HookRequest?
 
@@ -107,7 +107,6 @@ final class LiveActivityView: NSView {
     /// The wings' own layers (ambient glow, edge energy), above the painted wings.
     private let fx = SignalLayerView(frame: .zero, flipped: true)
     private var glassObserver: NSObjectProtocol?
-    override var needsDisplay: Bool { didSet { if needsDisplay { face.needsDisplay = true } } }
 
     /// The right wing's width springs between `rightRun` and `rightAsk`.
     private var rightW: CGFloat = M.rightRun
@@ -126,11 +125,12 @@ final class LiveActivityView: NSView {
         // The blur sits under the painted wings; the wing body's tint is drawn by `face`.
         glass.tintColor = .clear
         addSubview(glass)
+        face.wantsLayer = true
         face.drawer = { [weak self] in self?.drawWings() }
         addSubview(face)
         addSubview(fx)
         glassObserver = NotificationCenter.default.addObserver(forName: GlassSettings.changed, object: nil, queue: .main) { [weak self] _ in
-            self?.needsDisplay = true
+            self?.face.needsDisplay = true
         }
         [ring, leftTitle, leftSub, expand, status, clock, bar, orb, prompt, command, reject, approve, minimize,
          replyButton, replyBox, sendButton].forEach { addSubview($0) }
@@ -278,7 +278,7 @@ final class LiveActivityView: NSView {
         replyField.textColor = Neon.text
         replyField.placeholderAttributedString = NSAttributedString(string: "Reply to Claude…", attributes: [
             .foregroundColor: Neon.textFaint, .font: Typo.rowTitle])
-        needsDisplay = true
+        face.needsDisplay = true
     }
 
     private func restyle() {
@@ -417,7 +417,7 @@ final class LiveActivityView: NSView {
         if modeChanged { restartEnergy() }
         springRight(to: asking || typing ? M.rightAsk : M.rightRun)
         needsLayout = true
-        if modeChanged { needsDisplay = true }
+        if modeChanged { face.needsDisplay = true }
     }
 
     /// "Running · 62%" — the word in the main colour, the detail in the accent.
@@ -463,7 +463,7 @@ final class LiveActivityView: NSView {
     private func springRight(to target: CGFloat) {
         guard target != rightTarget else { return }
         rightTarget = target
-        if Motion.reduced || window == nil { rightW = target; rightV = 0; needsLayout = true; needsDisplay = true; return }
+        if Motion.reduced || window == nil { rightW = target; rightV = 0; needsLayout = true; return }
         guard springTimer == nil else { return }
         lastSpringAt = CACurrentMediaTime()
         let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.stepSpring() }
@@ -483,7 +483,6 @@ final class LiveActivityView: NSView {
             springTimer?.invalidate(); springTimer = nil
         }
         needsLayout = true
-        needsDisplay = true
     }
 
     /// How wide the right wing can be at `width`, after clamping to the panel edge.
@@ -502,6 +501,7 @@ final class LiveActivityView: NSView {
 
         let lx1 = centerX - M.tail
         let lx0 = max(M.edge, lx1 - M.leftMax)
+        let previousLeft = leftBody, previousRight = rightBody
         leftBody = NSRect(x: lx0, y: y, width: max(0, lx1 - lx0), height: M.wingH)
         rightBody = NSRect(x: centerX + M.tail, y: y, width: room(for: rightW), height: M.wingH)
 
@@ -510,6 +510,11 @@ final class LiveActivityView: NSView {
 
         glass.frame = bounds
         face.frame = bounds
+        // Redraw after installing the new paths, in the same layout pass that moves the controls.
+        if leftBody != previousLeft || rightBody != previousRight {
+            face.needsDisplay = true
+            face.layer?.setNeedsDisplay()
+        }
         fx.frame = bounds
         let glassShape = CGMutablePath()
         if leftBody.width >= M.minWing { glassShape.addPath(leftPath.cgPathCompat) }

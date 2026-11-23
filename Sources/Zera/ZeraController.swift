@@ -445,6 +445,7 @@ final class ZeraController: NSObject {
         // A click anywhere else on the screen puts the card away at once — no waiting for the
         // pointer to wander off. (Our own panels get local events, so this never fires for them.)
         if let monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { [weak self] _ in
+            self?.clipboardPicker?.close()
             guard let self = self, self.cardVisible, !self.dragging, !self.buddyDragActive, !self.isDraggingOut else { return }
             if self.currentCard == .approval, self.approvalPending { return }
             if self.currentCard == .claude || self.currentCard == .phoneTransfer { return }
@@ -500,6 +501,7 @@ final class ZeraController: NSObject {
     // MARK: - Layout
 
     @objc private func screensChanged() {
+        clipboardPicker?.close()
         layoutBuddy()
         if cardVisible { cardHeightChanged() }
     }
@@ -1170,8 +1172,9 @@ final class ZeraController: NSObject {
     // MARK: - Clipboard
 
     private var clipboardHotKey: GlobalHotKey?
+    private var clipboardPicker: ClipboardPicker?
 
-    /// The shortcut that opens Clipboard from any app (⇧⌘V unless you recorded another); nil is off.
+    /// The shortcut that opens the picker from any app (⇧⌘V unless customized); nil is off.
     var clipboardShortcut: HotKeyShortcut? {
         get { HotKeyShortcut.load("clipboard.shortcut", default: .default) }
         set { HotKeyShortcut.save(newValue, "clipboard.shortcut") }
@@ -1241,12 +1244,19 @@ final class ZeraController: NSObject {
         clipboardHotKey = nil
         guard let s = clipboardShortcut else { return true }
         clipboardHotKey = GlobalHotKey(s) { [weak self] in
-            guard let self = self else { return }
-            MainActor.assumeIsolated { CommandEcho.shared.configuredShortcut(keys: s.label, label: "Clipboard", symbol: "doc.on.clipboard") }
-            if self.cardVisible, self.currentCard == .clipboard { self.dismissCardByUser() }
-            else { self.suppressUntil = .distantPast; self.show(.clipboard) }
+            self?.toggleClipboardPicker()
         }
         return clipboardHotKey != nil
+    }
+
+    private func toggleClipboardPicker() {
+        if cardVisible, currentCard == .clipboard { dismissCardByUser() }
+        if clipboardPicker == nil {
+            let picker = ClipboardPicker()
+            picker.onOpenHistory = { [weak self] in self?.show(.clipboard) }
+            clipboardPicker = picker
+        }
+        clipboardPicker?.toggle(at: NSEvent.mouseLocation)
     }
 
     /// From the recorder in Settings: try the new shortcut, keep the old one if it can't be used.
@@ -1999,6 +2009,8 @@ final class ZeraController: NSObject {
 
     /// Light ↔ dark: throw the cards away and rebuild the visible one in the new colours.
     @objc private func paletteChanged() {
+        clipboardPicker?.close()
+        clipboardPicker = nil
         let showing = cardVisible ? currentCard : nil
         if let kind = currentCard, let c = currentContent { NotchNavigation.shared.captureScroll(in: c, screen: kind) }
         let settingsPane = (cards[.settings] as? SettingsCard)?.current
@@ -2479,6 +2491,7 @@ final class ZeraController: NSObject {
     }
 
     func show(_ kind: CardKind, instant: Bool = false) {
+        clipboardPicker?.close()
         if kind != .phoneTransfer { island.companion.activityOverride = nil }
         navigationPinned = false
         // Missing files stay listed (marked "no longer available") so you can see what happened.

@@ -679,6 +679,7 @@ final class ClipRow: NSView {
     var onPreview: (() -> Void)?
     var selected = false { didSet { if selected != oldValue { needsDisplay = true } } }
     let item: ClipItem
+    private let showsActions: Bool
     /// Position in the list: ⌘1–⌘9 for the first nine.
     var index: Int { didSet { if index != oldValue { key.stringValue = index < 9 ? "⌘\(index + 1)" : "" } } }
     private let tile = NSImageView()
@@ -706,17 +707,18 @@ final class ClipRow: NSView {
     private func showTrailing() {
         let flashing = flashState != nil
         copiedTag.isHidden = !flashing
-        pinButton.isHidden = flashing || !hovered
-        previewButton.isHidden = flashing || !hovered
-        key.isHidden = flashing || hovered
+        pinButton.isHidden = flashing || !hovered || !showsActions
+        previewButton.isHidden = flashing || !hovered || !showsActions
+        key.isHidden = flashing || (hovered && showsActions)
         pinMark.isHidden = flashing || !item.pinned
     }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    init(item: ClipItem, index: Int) {
+    init(item: ClipItem, index: Int, showsActions: Bool = true) {
         self.item = item
         self.index = index
+        self.showsActions = showsActions
         super.init(frame: .zero)
         let p = Pal
         wantsLayer = true
@@ -865,7 +867,7 @@ final class ClipRow: NSView {
         pinButton.frame = NSRect(x: previewButton.frame.minX - 6 - 28, y: mid - 14, width: 28, height: 28)
         key.frame = NSRect(x: w - 10 - 30, y: mid - 7, width: 30, height: 14)
         pinMark.frame = NSRect(x: key.frame.minX - 16, y: mid - 7, width: 14, height: 14)
-        let right = pinButton.frame.minX - 8
+        let right = (showsActions ? pinButton.frame.minX : pinMark.frame.minX) - 8
         title.frame = NSRect(x: 54, y: mid - 17, width: max(0, right - 54), height: 18)
         meta.frame = NSRect(x: 54, y: mid + 2, width: max(0, right - 54), height: 15)
         copiedTag.frame = NSRect(x: w - 108, y: mid - 9, width: 96, height: 18)

@@ -63,6 +63,41 @@ final class ScreenRenderTests: XCTestCase {
 
     private func panel(_ v: NSView, _ name: String) { shot(v, name) }
 
+    func testRenderClipboardPicker() throws {
+        guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else { throw XCTSkip("use a disposable home") }
+        let screen = try XCTUnwrap(NSScreen.main)
+        ClipboardStore.shared.preview([
+            ClipItem(kind: .text, text: "Review the first-run checklist", sourceApp: "Notes", fingerprint: "sample-text"),
+            ClipItem(kind: .link, text: "https://example.com/aurora/releases", sourceApp: "Safari", fingerprint: "sample-link"),
+            ClipItem(kind: .code, text: "swift test --filter ClipboardPickerTests", sourceApp: "Terminal", pinned: true, fingerprint: "sample-code"),
+            ClipItem(kind: .color, text: "#7BE1C2", sourceApp: "Figma", fingerprint: "sample-color"),
+            ClipItem(kind: .files, text: "Release checklist.md", paths: ["/tmp/Release checklist.md"], sourceApp: "Finder", fingerprint: "sample-file"),
+        ])
+        ClipboardStore.shared.enabled = true
+        let picker = ClipboardPicker()
+        defer { picker.close() }
+        picker.toggle(at: NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.midY))
+        let window = try XCTUnwrap(NSApp.windows.first { $0.title == "Clipboard Picker" && $0.isVisible })
+        let surface = try XCTUnwrap(window.contentView)
+        surface.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let image = try XCTUnwrap(CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(window.windowNumber), .bestResolution))
+        let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
+        try png.write(to: out.appendingPathComponent("clipboard-picker.png"))
+
+        let search = try XCTUnwrap(surface.subviews.compactMap { $0 as? SearchBox }.first)
+        let scroll = try XCTUnwrap(surface.subviews.compactMap { $0 as? NSScrollView }.first)
+        let table = try XCTUnwrap(scroll.documentView as? NSTableView)
+        XCTAssertEqual(table.numberOfRows, 5)
+        search.field.stringValue = "aurora"
+        picker.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: search.field))
+        XCTAssertEqual(table.numberOfRows, 1)
+        XCTAssertEqual(table.selectedRow, 0)
+        picker.toggle(at: NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.midY))
+        XCTAssertFalse(window.isVisible)
+    }
+
     // MARK: Sample data
 
     private func sampleTasks() -> TaskStore {
@@ -615,9 +650,13 @@ final class ScreenRenderTests: XCTestCase {
         session.promptAt = Date().addingTimeInterval(-90)
         let wings = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
         wings.centerX = LiveActivityView.panelSize.width / 2
-        wings.update(session: session, pending: HookRequest(id: "r", receivedAt: Date(), sessionID: session.id, toolName: "Bash",
-            command: "npm test -- --watch=false", detail: nil, cwd: "/Users/you/aurora"))
-        panel(wings, "16-wings-approval")
+        wings.update(session: session, pending: nil)
+        shot(wings, "16-wings-approval") {
+            wings.layoutSubtreeIfNeeded()
+            wings.displayIfNeeded()
+            wings.update(session: session, pending: HookRequest(id: "r", receivedAt: Date(), sessionID: session.id, toolName: "Bash",
+                command: "npm test -- --watch=false", detail: nil, cwd: "/Users/you/aurora"))
+        }
         let running = LiveActivityView(frame: NSRect(origin: .zero, size: LiveActivityView.panelSize))
         running.centerX = LiveActivityView.panelSize.width / 2
         running.update(session: session, pending: nil)

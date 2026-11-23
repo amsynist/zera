@@ -31,8 +31,9 @@ Everything is local work on the `feature/daily-shelf` branch; nothing here is co
 | `SignalGlassView` | `Signal/SignalGlass.swift` | Any floating surface: blurred desktop + theme tint, shaped by `shape` / `setPath`, optional black notch band (`bandHeight`). `init(frame:flipped:)` for unflipped owners. Never takes clicks. |
 | `SignalLayerView` | `Signal/SignalGlass.swift` | Holds loose Core Animation layers at a fixed place among sibling views. **Always use it when layers must sit above a subview**: AppKit draws a view's subview layers above its own loose sublayers, which is why the island's light, liquid, pane and trace live in `IslandView.chrome`, and the wings' energy in `LiveActivityView.fx`. |
 | `OpenerGlass` | `AppOpener.swift` | Rounded glass windows (app opener, focus card, quick add, export). Already contains a `SignalGlassView`; reuse it rather than adding another. |
+| Clipboard picker | `ClipboardPicker.swift` | The Clipboard shortcut opens a temporary `FloatingPanel` next to the pointer. It shares `OpenerGlass`, `SearchBox` and the compact `ClipRow` with the full notch Clipboard. |
 | Island glass | `NotchIsland.swift` (`IslandView.glass`) | The island body; its mask morphs with the island path in `applyShape`. |
-| Wing glass | `ActivityPill.swift` (`LiveActivityView.glass` + `WingFace`) | Wings keep their pill-and-tendril outline (`LiveActivityView.wing`); `WingFace` paints above the blur. |
+| Wing glass | `ActivityPill.swift` (`LiveActivityView.glass` + `WingFace`) | `WingFace` paints the pill-and-tendril outline above the blur. Layout invalidates the face when the wing geometry changes, alongside the glass mask, glow and controls. |
 | Shelf glass | `DailyShelf/DailyShelfPanel.swift` (`DailyShelfRootView.glass`) | Clipped to the shelf outline. |
 
 ## Chrome

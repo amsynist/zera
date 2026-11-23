@@ -1498,7 +1498,7 @@ final class SettingsCard: CardBase, CardContent {
             return true
         }
         recorder.onRecording = { [weak self] on in self?.onClipboardShortcutRecording?(on) }
-        settingRow("Open with (from any app)", &s, control: recorder, controlWidth: 150)
+        settingRow("Open picker near the pointer", &s, control: recorder, controlWidth: 150)
         toggleRow("Fold away after copying", on: clip.foldAfterCopy, &s, enabled: on) { v in clip.foldAfterCopy = v }
         hint("Click the shortcut, then press keys with ⌘, ⌥ or ⌃ (⌫ turns it off). Passwords, private copies and password "
              + "managers are never kept, and everything stays on this Mac.", &s)

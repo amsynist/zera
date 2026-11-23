@@ -41,6 +41,8 @@ The **Signal** interface uses solid backgrounds by default. Turn on **Translucen
 
 Home also opens Focus, Reminders, Alerts and Teleprompter. Hold right **⌥ or ⇧** to dictate with your chosen provider. Murmur uses a local Whisper model after its one-time download. Enable **App Shortcuts** in Settings → Extras to open or focus apps with your own keys.
 
+Your Clipboard shortcut opens a small picker beside the pointer. Type to search, use the arrow keys to select and press Return to copy. Set the shortcut in **Settings → Clipboard**.
+
 [Explore all 14 screens](https://zera.pravincodes.in/#screens) · [Watch the original Zera v2.0 walkthrough](https://zera.pravincodes.in/#tour) · [App Shortcuts guide](docs/APP_SHORTCUTS.md) · [Media and recording notes](docs/MEDIA.md)
 
 ## Install
