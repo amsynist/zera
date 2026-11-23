@@ -1,71 +1,69 @@
 #!/usr/bin/env swift
 import AppKit
 
-// Renders the app icon: Zera on a violet squircle, matching the reference sheet.
+// Renders the app icon from the Signal character vector SVG (matching site/assets/icon.svg).
 let out = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "icon_1024.png"
 let S: CGFloat = 1024
 
-let image = NSImage(size: NSSize(width: S, height: S))
-image.lockFocus()
-guard let ctx = NSGraphicsContext.current?.cgContext else { exit(1) }
-ctx.setShouldAntialias(true)
+let svgString = """
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Zera">
+  <defs>
+    <radialGradient id="bg" cx=".5" cy=".42" r=".75"><stop offset="0" stop-color="#0d2a2a"/><stop offset=".55" stop-color="#071216"/><stop offset="1" stop-color="#03070a"/></radialGradient>
+    <radialGradient id="body" cx=".34" cy=".22" r=".95"><stop offset="0" stop-color="#22343f"/><stop offset=".5" stop-color="#0c151c"/><stop offset="1" stop-color="#05090d"/></radialGradient>
+    <radialGradient id="glow" cx=".5" cy="1.05" r=".6"><stop offset="0" stop-color="#7be1c2" stop-opacity=".7"/><stop offset="1" stop-color="#7be1c2" stop-opacity="0"/></radialGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#bg)"/>
+  <rect x="1.5" y="1.5" width="253" height="253" rx="56.5" fill="none" stroke="#7be1c2" stroke-opacity=".28" stroke-width="3"/>
+  <g transform="translate(34 30) scale(1.88)">
+    <path d="M13 56C12 28 29 12 50 12s38 16 37 44c0 22-16 33-37 33S13 78 13 56Z" fill="#7be1c2" opacity=".35" filter="url(#soft)"/>
+    <g fill="none" stroke="#7be1c2" stroke-width="4.5" stroke-linecap="round" opacity=".85"><path d="M15 62q-8 5-6 13"/><path d="M85 56q11-6 9-21"/></g>
+    <g fill="#0a1218" stroke="#7be1c2" stroke-width="1.6"><circle cx="9" cy="77" r="4.5"/><circle cx="94" cy="32" r="5"/></g>
+    <path d="M13 56C12 28 29 12 50 12s38 16 37 44c0 22-16 33-37 33S13 78 13 56Z" fill="url(#body)" stroke="#7be1c2" stroke-width="2.2"/>
+    <path d="M13 56C12 28 29 12 50 12s38 16 37 44c0 22-16 33-37 33S13 78 13 56Z" fill="url(#glow)" opacity=".5"/>
+    <path d="M24 34c5-9 13-14 22-15" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="1.6" stroke-linecap="round"/>
+    <g fill="#7be1c2"><rect x="35.5" y="44" width="7.5" height="15" rx="2.2"/><rect x="57" y="44" width="7.5" height="15" rx="2.2"/></g>
+    <path d="M44 66q6 5 12 0" fill="none" stroke="#7be1c2" stroke-width="3.4" stroke-linecap="round"/>
+  </g>
+</svg>
+"""
 
-// macOS icon grid: rounded square inset from the canvas edge.
-let inset: CGFloat = 92
-let rect = NSRect(x: inset, y: inset, width: S - inset * 2, height: S - inset * 2)
-let radius = rect.width * 0.2237
-let squircle = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
-
-ctx.saveGState()
-ctx.setShadow(offset: CGSize(width: 0, height: -14), blur: 34,
-              color: NSColor.black.withAlphaComponent(0.28).cgColor)
-NSColor.black.setFill()
-squircle.fill()
-ctx.restoreGState()
-
-ctx.saveGState()
-squircle.addClip()
-let top = NSColor(calibratedRed: 0.62, green: 0.56, blue: 1.00, alpha: 1)
-let bottom = NSColor(calibratedRed: 0.36, green: 0.29, blue: 0.86, alpha: 1)
-NSGradient(colors: [bottom, top])?.draw(in: rect, angle: 90)
-// Soft glow behind her.
-NSGradient(colorsAndLocations: (NSColor.white.withAlphaComponent(0.28), 0), (NSColor.white.withAlphaComponent(0), 1))?
-    .draw(in: NSBezierPath(ovalIn: rect.insetBy(dx: rect.width * 0.12, dy: rect.height * 0.12)),
-          relativeCenterPosition: NSPoint(x: 0, y: 0.1))
-ctx.restoreGState()
-
-// Zera on the tile: the real artwork when the sprite folder is given, vectors otherwise.
-let spriteDir = CommandLine.arguments.count > 2 ? URL(fileURLWithPath: CommandLine.arguments[2]) : nil
-let library = SpriteLibrary(directory: spriteDir)
-ctx.saveGState()
-squircle.addClip()
-ctx.setShadow(offset: CGSize(width: 0, height: -10), blur: 26,
-              color: NSColor.black.withAlphaComponent(0.22).cgColor)
-ctx.beginTransparencyLayer(auxiliaryInfo: nil)
-if let s = library.sprite("hello") {
-    ctx.interpolationQuality = .high
-    let h = rect.height * 0.84
-    let w = h * s.aspect
-    s.image.draw(in: NSRect(x: rect.midX - w / 2, y: rect.minY + rect.height * 0.08, width: w, height: h),
-                 from: .zero, operation: .sourceOver, fraction: 1)
-} else {
-    // No sprites: the placeholder puff, centred.
-    let v = ZeraView(frame: NSRect(x: 0, y: 0, width: rect.width * 0.8, height: rect.height * 0.8))
-    v.style = .standing
-    ctx.translateBy(x: rect.minX + rect.width * 0.1, y: rect.minY + rect.height * 0.1)
-    v.draw(v.bounds)
+let svgData = svgString.data(using: .utf8)!
+guard let image = NSImage(data: svgData) else {
+    fputs("Failed to parse SVG icon data\n", stderr)
+    exit(1)
 }
-ctx.endTransparencyLayer()
-ctx.restoreGState()
 
-NSColor.white.withAlphaComponent(0.22).setStroke()
-squircle.lineWidth = 3
-squircle.stroke()
+guard let rep = NSBitmapImageRep(
+    bitmapDataPlanes: nil,
+    pixelsWide: Int(S),
+    pixelsHigh: Int(S),
+    bitsPerSample: 8,
+    samplesPerPixel: 4,
+    hasAlpha: true,
+    isPlanar: false,
+    colorSpaceName: .deviceRGB,
+    bytesPerRow: 0,
+    bitsPerPixel: 0
+) else {
+    fputs("Failed to allocate bitmap representation\n", stderr)
+    exit(1)
+}
 
-image.unlockFocus()
+NSGraphicsContext.saveGraphicsState()
+NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+image.draw(in: NSRect(x: 0, y: 0, width: S, height: S), from: .zero, operation: .copy, fraction: 1.0)
+NSGraphicsContext.restoreGraphicsState()
 
-guard let tiff = image.tiffRepresentation,
-      let rep = NSBitmapImageRep(data: tiff),
-      let png = rep.representation(using: .png, properties: [:]) else { exit(1) }
-try? png.write(to: URL(fileURLWithPath: out))
-print("wrote \(out)")
+guard let png = rep.representation(using: .png, properties: [:]) else {
+    fputs("Failed to encode PNG\n", stderr)
+    exit(1)
+}
+
+do {
+    try png.write(to: URL(fileURLWithPath: out))
+    print("wrote \(out)")
+} catch {
+    fputs("Failed to write \(out): \(error)\n", stderr)
+    exit(1)
+}

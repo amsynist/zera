@@ -1,4 +1,4 @@
-<p align="center"><img src="site/assets/icon.png" alt="" width="84"></p>
+<p align="center"><img src="site/assets/icon.png" alt="Zera" width="84"></p>
 <h1 align="center">Zera v2</h1>
 <p align="center"><strong>Your Mac’s notch, wired for work.</strong><br>Claude and Codex sessions, today’s links, your clipboard, files, tasks and focus, one glance away.</p>
 <p align="center">
