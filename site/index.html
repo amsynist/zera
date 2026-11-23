@@ -1,81 +1,322 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-glass="solid">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Zera v2 — from your phone, into your Mac</title>
-<meta name="description" content="Swipe original photos and files from Android to your Mac over local Wi-Fi. Zera v2 brings sharing, Daily Shelf, Claude and Codex, files and focus into one native Mac notch.">
-<meta name="theme-color" content="#091213"><link rel="icon" href="assets/icon.png">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Zera v2 — your notch, wired for work</title>
+<meta name="description" content="Zera is a native, open-source Mac notch companion. Claude and Codex sessions, today's links, your clipboard, files, tasks and focus, one glance away. Try the live notch on this page.">
+<meta name="theme-color" content="#020507">
+<link rel="icon" href="assets/icon.png">
 <link rel="canonical" href="https://zera.pravincodes.in/">
-<meta property="og:type" content="website"><meta property="og:title" content="Zera v2 — from your phone, into your Mac">
-<meta property="og:description" content="No internet. Just Wi-Fi. Original files, a living notch, and a little less switching.">
-<meta property="og:image" content="https://zera.pravincodes.in/assets/v2/sharing-poster.jpg">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Zera v2 — your notch, wired for work">
+<meta property="og:description" content="A native Mac notch companion for agents, links, clipboard and focus. Open source.">
+<meta property="og:image" content="https://zera.pravincodes.in/assets/v3/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="zera.css"><script src="zera.js" defer></script><script src="install.js" defer></script>
+<link rel="preload" href="assets/fonts/JetBrainsMonoNL.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="zera.css">
+<script src="signal.js" defer></script>
+<script src="zera.js" defer></script>
+<script src="stage.js" defer></script>
+<script src="film.js" defer></script>
+<script src="install.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="header"><nav class="wrap" aria-label="Main"><a class="brand" href="#top"><i aria-hidden="true"></i>Zera <span>v2</span></a><div class="links"><a href="#sharing">Sharing</a><a href="#daily-shelf">Daily Shelf</a><a href="#screens">The app</a><a href="#tour">Walkthrough</a><a href="https://github.com/amsynist/zera">GitHub ↗</a></div><a class="button small" href="#download">Get Zera <span aria-hidden="true">↗</span></a></nav></header>
-<main id="main">
-<section class="hero wrap" id="top">
-<div class="eyebrow"><span></span> Native for macOS</div>
-<h1>From your phone.<br><em>Into your Mac.</em></h1>
-<p class="intro">Swipe original photos and files from Android over local Wi-Fi.</p>
-<div class="actions"><a class="button primary" href="https://github.com/amsynist/zera/releases/latest" data-download>Download for Mac <span aria-hidden="true">↓</span></a><a class="button" href="https://github.com/amsynist/zera/raw/refs/heads/main/Androp.apk" data-apk-download>Androp for Android <span aria-hidden="true">↓</span></a></div>
-<p class="fine">macOS 13+ · Apple silicon & Intel · Android 8+ · free & open source</p>
-<div class="hero-film"><video id="sharing-film" controls muted playsinline loop preload="metadata" poster="assets/v2/sharing-poster.jpg" aria-label="Zera v2: the real Androp gallery on a phone at left and photo arrival on a clean Mac desktop at right"><source src="assets/v2/sharing.mp4" type="video/mp4"><track kind="captions" src="assets/v2/sharing.vtt" srclang="en" label="English — sharing steps"></video></div>
-<div class="film-note"><strong>No internet. Just Wi-Fi.</strong><span>20-second sharing demo · <a href="assets/v2/wallpaper/zera-tidal-5k.jpg" download="Zera-Tidal-5K.jpg">Get the Mac wallpaper ↗</a></span></div>
-</section>
-<section class="wrap sharing section" id="sharing">
-<div class="section-label">Android sharing</div>
-<div class="split-copy"><h2>One picture.<br>Two screens.</h2><div><p class="large">A photo leaves your phone and arrives as itself on your Mac. Documents find their way into Zera’s notch, where she catches them and a themed receipt fills as the bytes arrive.</p><p>Zera already contains the receiver. Install Androp on Android, pair once, then send originals over your shared Wi-Fi or phone hotspot. Files are verified before the save is confirmed.</p><a class="text-link" href="https://github.com/amsynist/zera/blob/main/docs/ANDROID_SHARING.md">Read the sharing guide <span aria-hidden="true">↗</span></a></div></div>
-<ol class="steps"><li><span>1</span><h3>Same local network.</h3><p>Wi-Fi at home, or your phone’s hotspot outside. Internet access is unnecessary.</p></li><li><span>2</span><h3>Pair with the code.</h3><p>Zera menu → Android sharing. Enter the six-digit code in Androp.</p></li><li><span>3</span><h3>Glide it over.</h3><p>Use Androp’s gallery or Files tab, or Share → Androp from another app.</p></li></ol>
-<p class="boundary">Source apps must export a global drag for the optional background edge overlay. All four edges are supported. Transfers use paired, unencrypted local networking; use a trusted Wi-Fi or hotspot. File size, storage and connection conditions affect transfer time.</p>
-</section>
-<section class="wrap section" id="daily-shelf">
-<div class="section-label">Daily Shelf</div>
-<div class="section-heading"><h2>Keep today’s links at hand.</h2><p>Keep pull requests, tickets, docs and notes close while you work.</p></div>
-<video id="daily-shelf-film" class="tour" controls playsinline preload="none" poster="assets/v2/daily-shelf/poster.jpg" aria-label="Daily Shelf demo showing a fictional pull request being saved and pinned">
-  <source src="assets/v2/daily-shelf/daily-shelf.mp4" type="video/mp4">
-  <track kind="captions" src="assets/v2/daily-shelf/daily-shelf.vtt" srclang="en" label="English">
-</video>
-<ol class="steps shelf-steps">
-  <li><h3>Save a link</h3><p>Paste a URL. Daily Shelf files links it recognizes.</p></li>
-  <li><h3>Follow the checks</h3><p>Connect GitHub to see checks and reviews on the pull requests you saved.</p></li>
-  <li><h3>Pin it for tomorrow</h3><p>Pin links to carry them forward. Adjust placement and sorting in Settings → Shelf.</p></li>
-</ol>
-<p class="fine"><a href="https://github.com/amsynist/zera/releases/latest">See the latest release notes ↗</a></p>
-</section>
-<section class="screens section" id="screens"><div class="wrap">
-<div class="section-heading"><h2>Inside the notch</h2><p>Explore Agents, Tasks, Clipboard and more.</p></div>
-<div class="screen-tabs" role="tablist" aria-label="Explore Zera screens">
-<button role="tab" id="tab-sharing" aria-selected="true" aria-controls="screen-panel" data-screen="sharing" data-label="Android sharing" data-caption="The existing notch catches an original document. Its liquid receipt follows real progress." data-image="assets/v2/screens/sharing.webp">Sharing</button>
-<button role="tab" id="tab-home" aria-selected="false" aria-controls="screen-panel" data-screen="home" data-label="Home" data-caption="A calm starting point, quick actions and your Mac’s vitals." data-image="assets/v2/screens/home.webp" tabindex="-1">Home</button>
-<button role="tab" id="tab-agents" aria-selected="false" aria-controls="screen-panel" data-screen="agents" data-label="Agents" data-caption="Claude and Codex activity together. Managed sessions support replies; observed chats are read-only." data-image="assets/v2/screens/agents.webp" tabindex="-1">Agents</button>
-<button role="tab" id="tab-daily-shelf" aria-selected="false" aria-controls="screen-panel" data-screen="daily-shelf" data-label="Daily Shelf" data-caption="Saved links, reviews and notes for the day in a shelf you can position at the screen edge." data-image="assets/v2/daily-shelf/today.webp" tabindex="-1">Daily Shelf</button>
-<button role="tab" id="tab-shelf" aria-selected="false" aria-controls="screen-panel" data-screen="shelf" data-label="Shelf" data-caption="Keep a file close, copy it, drag it out, or ask about it when you choose." data-image="assets/v2/screens/shelf.webp" tabindex="-1">Shelf</button>
-<button role="tab" id="tab-clipboard" aria-selected="false" aria-controls="screen-panel" data-screen="clipboard" data-label="Clipboard" data-caption="Find the text, link or color you copied, and bring it back." data-image="assets/v2/screens/clipboard.webp" tabindex="-1">Clipboard</button>
-<button role="tab" id="tab-tasks" aria-selected="false" aria-controls="screen-panel" data-screen="tasks" data-label="Tasks" data-caption="Your work, projects and timesheets, with a remembered export range." data-image="assets/v2/screens/tasks.webp" tabindex="-1">Tasks</button>
-<button role="tab" id="tab-focus" aria-selected="false" aria-controls="screen-panel" data-screen="focus" data-label="Focus" data-caption="Pick one task and give it a little room." data-image="assets/v2/screens/focus.webp" tabindex="-1">Focus</button>
-<button role="tab" id="tab-reminders" aria-selected="false" aria-controls="screen-panel" data-screen="reminders" data-label="Reminders" data-caption="Reminders, calendar heads-ups and small water breaks." data-image="assets/v2/screens/reminders.webp" tabindex="-1">Reminders</button>
-<button role="tab" id="tab-prs" aria-selected="false" aria-controls="screen-panel" data-screen="pull-requests" data-label="Pull requests" data-caption="Reviews, checks and approvals from your GitHub account." data-image="assets/v2/screens/pull-requests.webp" tabindex="-1">PRs</button>
-<button role="tab" id="tab-alerts" aria-selected="false" aria-controls="screen-panel" data-screen="alerts" data-label="Alerts" data-caption="One place for what needs your attention." data-image="assets/v2/screens/alerts.webp" tabindex="-1">Alerts</button>
-<button role="tab" id="tab-script" aria-selected="false" aria-controls="screen-panel" data-screen="teleprompter" data-label="Teleprompter" data-caption="Your words, close to the camera and ready to roll." data-image="assets/v2/screens/teleprompter.webp" tabindex="-1">Script</button>
-<button role="tab" id="tab-app-shortcuts" aria-selected="false" aria-controls="screen-panel" data-screen="app-shortcuts" data-label="App Shortcuts" data-caption="Choose an app and record keys to open or focus it. Optional under Settings → Extras; no window-management permissions required." data-image="assets/v2/screens/app-shortcuts.png" tabindex="-1">App Shortcuts</button>
-<button role="tab" id="tab-settings" aria-selected="false" aria-controls="screen-panel" data-screen="settings" data-label="Settings" data-caption="Direct notch access, Remember Last Screen and one place to repair permissions." data-image="assets/v2/screens/settings.webp" tabindex="-1">Settings</button>
-</div>
-<figure id="screen-panel" role="tabpanel" aria-labelledby="tab-sharing" tabindex="0"><div class="screen-stage"><img id="screen-image" src="assets/v2/screens/sharing.webp" alt="Android sharing in Zera’s native notch" width="1536" height="652" loading="lazy"></div><figcaption><strong id="screen-title">Android sharing</strong><span id="screen-caption">The existing notch catches an original document. Its liquid receipt follows real progress.</span></figcaption></figure>
 
-</div></section>
-<section class="wrap section" id="shortcuts">
-<div class="section-heading"><h2>Shortcuts and dictation</h2></div>
-<div class="feature-rows">
-<article><span>App Shortcuts</span><div><h3>Open or focus an app</h3><p>Enable App Shortcuts in Settings → Extras and record the keys for any app you use. <a class="text-link" href="https://github.com/amsynist/zera/blob/main/docs/APP_SHORTCUTS.md">Setup guide ↗</a></p></div></article>
-<article><span>Right ⌥ or ⇧</span><div><h3>Dictate into the field you’re using</h3><p>Choose Apple speech or on-device Murmur. Manage access in Settings → Permissions.</p></div></article>
-</div>
+<header class="top">
+  <a class="brand" href="#notch" aria-label="Zera v2, back to top">
+    <svg viewBox="-6 -6 112 106" width="24" height="24" aria-hidden="true"><path d="M13 56C12 28 29 12 50 12s38 16 37 44c0 22-16 33-37 33S13 78 13 56Z" fill="#0b151d" stroke="var(--sig)" stroke-width="5"/><rect x="34" y="44" width="9" height="16" rx="2.4" fill="var(--sig)"/><rect x="57" y="44" width="9" height="16" rx="2.4" fill="var(--sig)"/></svg>
+    ZERA <small>v2</small>
+  </a>
+  <div class="cap" aria-hidden="true"><span class="n" id="cap-n">01</span><b id="cap-t">Notch</b><span>/ zera v2</span></div>
+  <nav aria-label="Main">
+    <a href="#agents">Agents</a><a href="#daily-shelf">Daily Shelf</a><a href="#clipboard">Clipboard</a><a href="#opener">Opener</a><a href="#sharing">Sharing</a>
+    <a class="gh" href="https://github.com/amsynist/zera" rel="noopener noreferrer">GitHub ↗</a>
+    <a class="get" href="#install">Download</a>
+  </nav>
+</header>
+
+<nav class="rail" id="rail" aria-label="Sections">
+  <a href="#notch"><i>01</i><span>NOTCH</span></a>
+  <a href="#agents"><i>02</i><span>AGENTS</span></a>
+  <a href="#daily-shelf"><i>03</i><span>DAILY SHELF</span></a>
+  <a href="#clipboard"><i>04</i><span>CLIPBOARD</span></a>
+  <a href="#opener"><i>05</i><span>OPENER</span></a>
+  <a href="#everyday"><i>06</i><span>EVERYDAY</span></a>
+  <a href="#sharing"><i>07</i><span>SHARING</span></a>
+  <a href="#privacy"><i>08</i><span>PRIVACY</span></a>
+  <a href="#install"><i>09</i><span>INSTALL</span></a>
+</nav>
+<svg class="ptrace" id="ptrace" aria-hidden="true"><path class="t0"/><path class="t1"/><circle r="3.5"/></svg>
+
+<main id="main">
+
+<section class="sec hero focus" id="notch" data-n="01" data-name="Notch">
+  <i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i>
+  <header class="sec-h"><span class="tg">01</span><span class="nm">NOTCH</span><span>a live desktop · sample data</span><span class="grow"></span><span>macOS 13+</span></header>
+  <div class="sec-b">
+    <div class="hero-copy">
+      <div>
+        <p class="eyebrow"><i></i>Native for macOS · open source</p>
+        <h1>Your notch,<br><em>wired for work.</em></h1>
+      </div>
+      <div>
+        <p class="lede">Zera turns the notch into one calm place for <b>Claude and Codex sessions</b>, <b>today’s links</b>, your <b>clipboard</b>, files, tasks and focus. The desktop below is live. Click Zera and try it.</p>
+        <div class="actions">
+          <a class="cta pri" href="https://github.com/amsynist/zera/releases/latest" data-download rel="noopener noreferrer">Download for Mac <span aria-hidden="true">↓</span></a>
+          <a class="cta" href="https://github.com/amsynist/zera" rel="noopener noreferrer">View the source <span aria-hidden="true">↗</span></a>
+        </div>
+        <p class="fine">macOS 13+ · Apple silicon and Intel · free · MIT</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="fitbox" id="stage-fit">
+        <div class="desk sgn" id="desk" tabindex="0" role="application" aria-label="Live demo of Zera on a Mac desktop. Arrow keys switch screens, Escape closes.">
+          <img class="poster" src="assets/v2/screens/home.webp" alt="Zera’s notch open on the Home screen" width="1860" height="1428">
+        </div>
+      </div>
+      <div class="trybar" aria-label="Demo controls">
+        <span class="lead">TRY</span>
+        <button class="tb" type="button" data-stage="toggle" aria-pressed="false"><i></i>Notch <kbd class="kbdh">N</kbd></button>
+        <button class="tb" type="button" data-stage="agent" aria-pressed="false"><i></i>Run an agent <kbd class="kbdh">A</kbd></button>
+        <button class="tb" type="button" data-stage="dshelf" aria-pressed="false"><i></i>Daily Shelf <kbd class="kbdh">D</kbd></button>
+        <button class="tb" type="button" data-stage="deck" aria-pressed="false"><i></i>Clipboard deck <kbd class="kbdh">V</kbd></button>
+        <button class="tb" type="button" data-stage="opener" aria-pressed="false"><i></i>App opener <kbd class="kbdh">O</kbd></button>
+        <span class="grow"></span>
+        <button class="tb" type="button" data-stage="tour" aria-pressed="false"><i></i>Auto tour</button>
+      </div>
+      <p class="fine" style="margin-top:10px">A browser recreation of the native app with fictional data. Keys work once you click the desktop: <kbd class="kc">←</kbd> <kbd class="kc">→</kbd> switch screens, <kbd class="kc">1</kbd>–<kbd class="kc">0</kbd> jump, <kbd class="kc">esc</kbd> closes.</p>
+    </div>
+  </div>
 </section>
-<section class="wrap section" id="tour"><div class="section-label">From the archive</div><div class="section-heading"><h2>The Zera v2.0 walkthrough</h2><p>27 captioned chapters from the original Zera v2 launch.</p></div><video id="walkthrough-film" class="tour" controls playsinline preload="none" poster="assets/v2/walkthrough-poster.jpg" aria-label="Native Zera v2.0 walkthrough with sample data"><source src="assets/v2/walkthrough.mp4" type="video/mp4"><track kind="captions" src="assets/v2/walkthrough.vtt" srclang="en" label="English — full walkthrough"></video><p class="fine">80 seconds · 27 captioned chapters. Home, Agents, sharing, Shelf, clipboard, tasks, focus, reviews, reminders, alerts, Teleprompter, a window-arrangement demo from v2.0, settings, export, launcher, voice preview and small everyday moments.</p></section>
-<section class="download section" id="download"><div class="wrap"><h2>Download Zera and Androp</h2><div class="download-options"><article><span class="platform">For your Mac</span><h3>Zera v2</h3><p>The receiver, notch and everyday tools.</p><a class="button primary" href="https://github.com/amsynist/zera/releases/latest" data-download>Download for Mac ↓</a><p class="fine" id="download-version">macOS 13+ · Apple silicon & Intel</p></article><article><span class="platform">For your phone</span><h3>Androp</h3><p>The gallery-first Android companion.</p><a class="button" href="https://github.com/amsynist/zera/raw/refs/heads/main/Androp.apk" data-apk-download>Download Android APK ↓</a><p class="fine">Android 8+ · direct APK · debug-signed build</p></article></div><p class="install-note">Mac: open the DMG, drag Zera to Applications, then launch it. For an unnotarized build, follow Apple’s first-launch approval in Privacy & Security. Android: allow installation from your download source. <a href="https://github.com/amsynist/zera/blob/main/docs/INSTALL.txt">Install and update guide ↗</a></p></div></section>
-<section class="wrap section faq"><h2>Frequently asked questions</h2><details><summary>Does sharing need internet?</summary><p>No. Phone and Mac need the same local Wi-Fi or a phone-hotspot connection. There is no cloud relay. Bluetooth and automatic physical device positioning are not implemented.</p></details><details><summary>Can I drag out of any Android app?</summary><p>The background overlay can receive global drags that the source app exports. Support depends on the app and Android/One UI mode. Androp’s own gallery, Files tab and Share → Androp are available alternatives.</p></details><details><summary>What leaves my Mac?</summary><p>Received originals stay on the local network and save in Downloads/Androp. The transfer is paired but unencrypted. Optional Claude/Codex, GitHub, weather and other integrations have their own data flows and setup. A file is sent for analysis only when you ask. <a href="https://github.com/amsynist/zera/blob/main/docs/PRIVACY_DATA_MAP.md">Read the data map.</a></p></details><details><summary>What if my Mac has no notch?</summary><p>Zera uses the center of the menu bar. The same screens and tools are available.</p></details><details><summary>Is everything in the video a real screen?</summary><p>The app surfaces are native captures of Zera and Androp with synthetic artwork and fictional demo data. The device framing and presentation are motion design. Transfer time varies by file and network; the film is not a performance benchmark.</p></details></section>
+
+<section class="sec" id="agents" data-n="02" data-name="Agents">
+  <i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i>
+  <header class="sec-h"><span class="tg">02</span><span class="nm">AGENTS</span><span>claude and codex, together</span></header>
+  <div class="sec-b">
+    <div class="hero-copy rv" style="align-items:start">
+      <div>
+        <h2>See your agents <em>without</em> hunting for the window.</h2>
+        <p class="copy" style="margin-top:14px">When a session starts working, two wings slide out of the notch with what it is doing. When it needs a decision, the command is right there. Approve it, reject it, or reply when it is done.</p>
+        <div class="actions"><button class="cta" type="button" data-open-screen="agents">Open Agents in the notch <span aria-hidden="true">↑</span></button></div>
+      </div>
+      <ul class="facts" style="margin-top:6px">
+        <li><span><b>Claude and Codex in one list.</b> Sessions keep their own colour across the wings, alerts and the Agents screen.</span></li>
+        <li><span><b>Managed sessions take replies and approvals.</b> Observed desktop chats are shown read-only; Zera does not control them.</span></li>
+        <li><span><b>Your tools, your logins.</b> Zera uses the Claude and Codex you already installed.</span></li>
+      </ul>
+    </div>
+    <div class="rv">
+      <div class="vig fitbox" data-vig="wings" aria-label="Live demo: an agent’s activity beside the notch"></div>
+      <p class="vig-note"><i></i>LIVE · APPROVE OR REJECT THE COMMAND WHEN IT ASKS</p>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="daily-shelf" data-n="03" data-name="Daily Shelf">
+  <i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i>
+  <header class="sec-h"><span class="tg">03</span><span class="nm">DAILY SHELF</span><span>today’s links, at the edge</span></header>
+  <div class="sec-b">
+    <div class="split flip rv">
+      <div class="txt">
+        <h2>Where did that PR go? <em>It’s on the shelf.</em></h2>
+        <p class="copy">Paste a pull request, a ticket, a doc or a note. Daily Shelf files the links it recognises and waits at the edge of your screen until you need them.</p>
+        <ul class="facts">
+          <li><span><b>Only what you add.</b> Nothing is read from your browser or history.</span></li>
+          <li><span><b>Checks and reviews</b> for the PRs you saved, once GitHub is connected.</span></li>
+          <li><span><b>Clears at 4:00.</b> Pinned items stay for tomorrow; past shelves are in history.</span></li>
+        </ul>
+        <p class="fine" style="margin-top:18px">Try it: type <kbd class="kc">github.com/you/repo/pull/12</kbd> or any note, then <kbd class="kc">↵</kbd>. Nothing is fetched or stored.</p>
+      </div>
+      <div>
+        <div class="vig fitbox" data-vig="shelf" aria-label="Live demo: Daily Shelf"></div>
+        <p class="vig-note"><i></i>LIVE · PASTE A LINK OR JOT A NOTE</p>
+      </div>
+    </div>
+    <details class="faq rv" style="margin-top:26px">
+      <summary>Watch the 22-second Daily Shelf film</summary>
+      <div class="film" style="margin:4px 0 18px">
+        <video id="daily-shelf-film" controls playsinline preload="none" poster="assets/v2/daily-shelf/poster.jpg" aria-label="Daily Shelf film showing a fictional pull request being saved and pinned">
+          <source src="assets/v2/daily-shelf/daily-shelf.mp4" type="video/mp4">
+          <track kind="captions" src="assets/v2/daily-shelf/daily-shelf.vtt" srclang="en" label="English">
+        </video>
+      </div>
+    </details>
+  </div>
+</section>
+
+<section class="sec" id="clipboard" data-n="04" data-name="Clipboard">
+  <i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i>
+  <header class="sec-h"><span class="tg">04</span><span class="nm">CLIPBOARD</span><span>a deck beside the pointer</span></header>
+  <div class="sec-b">
+    <div class="split rv">
+      <div class="txt">
+        <h2>Copy once. <em>Flip back</em> to it.</h2>
+        <p class="copy">Your Clipboard shortcut opens a deck of cards right where the pointer is. Colours fill the card, code sits in an editor frame, pictures cover it. Flip to the one you want and press Return.</p>
+        <div class="keys">
+          <span><kbd class="kc">↑ ↓</kbd> flip</span><span><kbd class="kc">↵</kbd> copy</span><span><kbd class="kc">⇥</kbd> filter</span><span><kbd class="kc">⌘1–9</kbd> copy directly</span><span><kbd class="kc">type</kbd> search</span>
+        </div>
+        <ul class="facts">
+          <li><span><b>Stays on this Mac.</b> History is local and kept for the time you choose.</span></li>
+          <li><span><b>Light on memory.</b> Only the front card holds a full picture.</span></li>
+        </ul>
+      </div>
+      <div>
+        <div class="vig" data-vig="deck" aria-label="Live demo: Clipboard deck"></div>
+        <div class="vig-ctl" style="margin-top:12px;padding:0">
+          <button class="tb" type="button" data-deck-act="up">↑ Previous</button><button class="tb" type="button" data-deck-act="down">↓ Next</button><button class="tb" type="button" data-deck-act="copy">↵ Copy</button><button class="tb" type="button" data-deck-act="filter">⇥ Filter</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="opener" data-n="05" data-name="Opener">
+  <i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i>
+  <header class="sec-h"><span class="tg">05</span><span class="nm">OPENER</span><span>apps, commands, actions</span></header>
+  <div class="sec-b">
+    <div class="split flip rv">
+      <div class="txt">
+        <h2>Open or focus anything <em>from the keys.</em></h2>
+        <p class="copy">Press <kbd class="kc">⌥ Space</kbd> for a small palette: apps, commands and Zera’s own actions. Or turn on App Shortcuts and give the apps you live in their own keys.</p>
+        <ul class="facts">
+          <li><span><b>Three looks.</b> Minimal palette, tree or orbit. Same keys in each.</span></li>
+          <li><span><b>App Shortcuts are optional</b> and need no Accessibility or Screen Recording permission.</span></li>
+          <li><span><b>Not a window manager.</b> Zera opens and focuses apps; it never moves your windows.</span></li>
+        </ul>
+        <p class="fine" style="margin-top:18px">Try it: type a few letters, <kbd class="kc">⇥</kbd> switches tabs, <kbd class="kc">↵</kbd> opens.</p>
+      </div>
+      <div>
+        <div class="vig fitbox" data-vig="opener" aria-label="Live demo: app opener"></div>
+        <p class="vig-note"><i></i>LIVE · TYPE TO FILTER</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="everyday" data-n="06" data-name="Everyday">
+  <i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i>
+  <header class="sec-h"><span class="tg">06</span><span class="nm">EVERYDAY</span><span>ten screens, one rail</span></header>
+  <div class="sec-b">
+    <div class="rv">
+      <h2>The small things, <em>one tile away.</em></h2>
+      <p class="copy" style="margin-top:12px">Every tile on the rail is a screen. Pick one and it opens in the live notch above.</p>
+    </div>
+    <span id="screens"></span><span id="tour"></span>
+    <div class="grid rv" id="tiles"></div>
+    <figure class="real rv">
+      <img src="assets/v3/desktop.webp" alt="Native capture of Zera: the notch open on Home, Daily Shelf at the left edge and the Clipboard deck on the right, over the Tidal wallpaper" width="2880" height="1800" loading="lazy">
+    </figure>
+    <p class="fine" style="margin-top:10px">The real thing: a native capture of the app with sample data. <a href="assets/v2/wallpaper/zera-tidal-5k.jpg" download="Zera-Tidal-5K.jpg">Get the Tidal wallpaper ↓</a></p>
+  </div>
+</section>
+
+<section class="sec" id="sharing" data-n="07" data-name="Sharing">
+  <i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i>
+  <header class="sec-h"><span class="tg">07</span><span class="nm">SHARING</span><span>android to mac · no internet, just wi-fi</span></header>
+  <div class="sec-b">
+    <div class="split rv">
+      <div class="txt">
+        <h2>From your phone, <em>into your Mac.</em></h2>
+        <p class="copy">Glide a photo off the edge of your phone in Androp and it arrives on the Mac as the original. Documents drop into the notch, where a liquid receipt fills as the bytes arrive, then wait on the Shelf.</p>
+        <ul class="facts">
+          <li><span><b>Local only.</b> Same Wi-Fi or your phone’s hotspot. No cloud relay.</span></li>
+          <li><span><b>Verified originals.</b> A file counts as saved only after its SHA-256 checks out.</span></li>
+          <li><span><b>Paired, not encrypted.</b> Use a network you trust.</span></li>
+        </ul>
+        <div class="actions">
+          <a class="cta" href="https://github.com/amsynist/zera/raw/refs/heads/main/Androp.apk" data-apk-download rel="noopener noreferrer">Androp for Android <span aria-hidden="true">↓</span></a>
+          <a class="cta" href="https://github.com/amsynist/zera/blob/main/docs/ANDROID_SHARING.md" rel="noopener noreferrer">Pairing guide <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+      <div class="film">
+        <video id="sharing-film" controls muted playsinline loop preload="none" poster="assets/v2/sharing-poster.jpg" aria-label="Sharing film: the Androp gallery on a phone at left and a photo arriving on a Mac desktop at right">
+          <source src="assets/v2/sharing.mp4" type="video/mp4">
+          <track kind="captions" src="assets/v2/sharing.vtt" srclang="en" label="English">
+        </video>
+      </div>
+    </div>
+    <ol class="steps rv">
+      <li><h3>Same local network</h3><p>Wi-Fi at home, or your phone’s hotspot outside.</p></li>
+      <li><h3>Pair with the code</h3><p>Turn on receiving under Extras → Android sharing, then enter the code in Androp.</p></li>
+      <li><h3>Glide it over</h3><p>From Androp’s gallery or Files tab, or Share → Androp in another app.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section class="sec" id="privacy" data-n="08" data-name="Privacy">
+  <i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i>
+  <header class="sec-h"><span class="tg">08</span><span class="nm">PRIVACY</span><span>local first, and plain about the rest</span></header>
+  <div class="sec-b">
+    <div class="rv">
+      <h2>What stays, <em>and what leaves.</em></h2>
+      <p class="copy" style="margin-top:12px">Zera has no telemetry service and no account. Integrations are opt-in, and each one is listed in the <a href="https://github.com/amsynist/zera/blob/main/docs/PRIVACY_DATA_MAP.md" rel="noopener noreferrer">privacy data map</a>.</p>
+    </div>
+    <div class="privacy rv">
+      <div><b>ON THIS MAC</b><p>Clipboard history, tasks, timesheets, notes and shelf references.</p></div>
+      <div><b>IN KEYCHAIN</b><p>Integration tokens. Nothing is written to plain files.</p></div>
+      <div><b>ONLY WHEN YOU ASK</b><p>A file is sent to your chosen provider when you ask about it. Optional link sorting sends URLs and titles only.</p></div>
+      <div><b>ON DEVICE</b><p>Dictation with Murmur runs on a local Whisper model after a one-time download.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="install" data-n="09" data-name="Install">
+  <i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i>
+  <header class="sec-h"><span class="tg">09</span><span class="nm">INSTALL</span><span>download, or build it yourself</span></header>
+  <div class="sec-b">
+    <h2 class="rv">Get <em>Zera v2.</em></h2>
+    <div class="cards2 rv">
+      <article class="card">
+        <span class="plat">FOR YOUR MAC</span><h3>Zera</h3><p>The notch, Daily Shelf, Clipboard deck, opener and the Android receiver.</p>
+        <a class="cta pri" href="https://github.com/amsynist/zera/releases/latest" data-download rel="noopener noreferrer">Download for Mac <span aria-hidden="true">↓</span></a>
+        <p class="fine" id="download-version">macOS 13+ · Apple silicon and Intel</p>
+      </article>
+      <article class="card">
+        <span class="plat">FOR YOUR PHONE</span><h3>Androp</h3><p>The gallery-first Android companion for sending originals to your Mac.</p>
+        <a class="cta" href="https://github.com/amsynist/zera/raw/refs/heads/main/Androp.apk" data-apk-download rel="noopener noreferrer">Download the APK <span aria-hidden="true">↓</span></a>
+        <p class="fine">Android 8+ · direct APK · debug-signed build</p>
+      </article>
+    </div>
+    <p class="fine rv" style="margin-top:12px">Open the DMG and drag Zera to Applications. For a build without notarization, macOS asks you to allow it under Privacy &amp; Security → Open Anyway. <a href="https://github.com/amsynist/zera/blob/main/docs/INSTALL.txt" rel="noopener noreferrer">Install and update guide ↗</a></p>
+    <div class="term rv">
+      <div class="term-h"><span>BUILD FROM SOURCE</span><span class="grow"></span><button type="button" id="copy-build" data-copy="git clone https://github.com/amsynist/zera.git&#10;cd zera&#10;./build.sh&#10;open dist/Zera.app">COPY</button></div>
+<pre><span class="p">$</span> git clone https://github.com/amsynist/zera.git
+<span class="p">$</span> cd zera
+<span class="p">$</span> ./build.sh            <span class="c"># Swift, AppKit and SwiftUI. No Xcode project needed.</span>
+<span class="p">$</span> open dist/Zera.app</pre>
+    </div>
+
+    <div class="faq rv" style="margin-top:34px">
+      <h3 style="font-size:10px;letter-spacing:.2em;color:var(--faint);font-weight:500;margin-bottom:10px">QUESTIONS</h3>
+      <details><summary>What if my Mac has no notch?</summary><p>Zera uses the centre of the menu bar. The same screens and tools are there.</p></details>
+      <details><summary>Does Zera control my Claude or Codex sessions?</summary><p>Managed sessions that Zera starts accept replies and approvals. Chats it only observes on the desktop are read-only. It uses the tools and logins you already have.</p></details>
+      <details><summary>Is the desktop on this page the real app?</summary><p>No. It is a browser recreation with fictional data so you can try the feel of it. The native capture and the films show the real app, also with sample data.</p></details>
+      <details><summary>Does Android sharing need internet?</summary><p>No. Phone and Mac need the same local Wi-Fi or a phone hotspot. There is no cloud relay and no Bluetooth transport. Transfers are paired and unencrypted, so use a network you trust.</p></details>
+      <details><summary>Is it free?</summary><p>Yes. The code is MIT licensed. Zera’s original artwork has separate terms.</p></details>
+    </div>
+  </div>
+</section>
+
 </main>
-<footer class="wrap"><a class="brand" href="#top"><i aria-hidden="true"></i>Zera <span>v2</span></a><p>Built by <a href="https://github.com/amsynist">amsynist</a>. Free and open source.</p><div><a href="https://github.com/amsynist/zera">Source</a><a href="https://github.com/amsynist/zera/releases">Releases</a><a href="https://github.com/amsynist/zera/blob/main/LICENSE">MIT code</a><a href="https://github.com/amsynist/zera/blob/main/LICENSE-ASSETS.md">Asset terms</a><a href="https://github.com/amsynist/zera/blob/main/SECURITY.md">Security</a></div><p class="fine">Film music by Sascha Ende (<a href="https://ende.app/">ende.app</a>, CC BY 4.0). Daily Shelf sound effects by <a href="https://kenney.nl/assets/interface-sounds">Kenney</a> (CC0). Native demo recordings use synthetic data. Zera is independent of Anthropic, OpenAI, Apple, GitHub and Samsung.</p></footer>
-</body></html>
+
+<footer>
+  <span>Built by <a href="https://github.com/amsynist" rel="noopener noreferrer">amsynist</a>. Free and open source.</span><span class="grow"></span>
+  <a href="https://github.com/amsynist/zera" rel="noopener noreferrer">Source</a><a href="https://github.com/amsynist/zera/releases" rel="noopener noreferrer">Releases</a><a href="https://github.com/amsynist/zera/blob/main/LICENSE" rel="noopener noreferrer">MIT</a><a href="https://github.com/amsynist/zera/blob/main/LICENSE-ASSETS.md" rel="noopener noreferrer">Asset terms</a><a href="https://github.com/amsynist/zera/blob/main/SECURITY.md" rel="noopener noreferrer">Security</a>
+  <p>Demos and recordings use synthetic data. JetBrains Mono is used under the <a href="assets/fonts/OFL.txt">SIL Open Font License</a>. Film music by Sascha Ende (ende.app, CC BY 4.0). Daily Shelf sound effects by Kenney (CC0). Zera is independent of Anthropic, OpenAI, Apple, GitHub and Samsung.</p>
+</footer>
+
+<div class="statusline" role="contentinfo" aria-label="Page status">
+  <span class="live"><i></i>LIVE</span><span class="hide-s">fictional demo data · runs in your browser</span><span class="grow"></span>
+  <span class="hide-s">SIGNAL</span>
+  <span class="swatches" role="group" aria-label="Signal colour">
+    <button type="button" style="--c:#7be1c2" data-sig="#7be1c2" aria-pressed="true" aria-label="Tidal"></button><button type="button" style="--c:#5ab8ff" data-sig="#5ab8ff" aria-pressed="false" aria-label="Void"></button><button type="button" style="--c:#9b8df9" data-sig="#9b8df9" aria-pressed="false" aria-label="Violet"></button><button type="button" style="--c:#ff9e64" data-sig="#ff9e64" aria-pressed="false" aria-label="Ember"></button><button type="button" style="--c:#5dfc9a" data-sig="#5dfc9a" aria-pressed="false" aria-label="Phosphor"></button>
+  </span>
+  <b id="page-clock"></b>
+</div>
+</body>
+</html>

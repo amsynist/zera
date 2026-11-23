@@ -58,3 +58,17 @@ ZERA_RENDER_SCREENS=/private/tmp/zera-v2.1-screens swift test --filter DailyShel
 The test uses a disposable shelf and disables favicon networking. The published MP4, poster, English WebVTT, README GIF and populated shelf screenshot live in `site/assets/v2/daily-shelf/`. The Android sharing film and the historical Zera v2.0 walkthrough have their own players.
 
 The Daily Shelf edit uses “Happy Beats / Business Moves Vol. 12” by Sascha Ende (CC BY 4.0), excerpted and mixed with Kenney Interface Sounds (CC0). [Sascha Ende](https://ende.app/) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) · [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds)
+
+## Single-screen desktop and live site demos
+
+The README hero, `site/assets/v3/desktop.webp`, is a native composite: the island open on Home, the Daily Shelf at the left edge and the Clipboard deck on the right, over the Tidal wallpaper. `HeroRenderTests` captures each surface from its own clear window (only windows the test creates) with the existing fixture data, then composites them at their captured 2x pixels. Home is presented shorter than it is on a 900 pt screen so the three surfaces do not overlap.
+
+```bash
+swift build --build-tests
+CFFIXED_USER_HOME="$(mktemp -d)" ZERA_RENDER_HERO=/tmp/zera-hero swift test --skip-build --filter HeroRenderTests
+cwebp -q 90 /tmp/zera-hero/hero-desktop.png -o site/assets/v3/desktop.webp
+cwebp -q 90 -crop 2040 840 840 940 /tmp/zera-hero/hero-desktop.png -o site/assets/v3/clipboard-deck.webp
+cwebp -q 90 -crop 0 820 800 980 /tmp/zera-hero/hero-desktop.png -o site/assets/v3/daily-shelf.webp
+```
+
+The website's hero desktop and the Agents, Daily Shelf, Clipboard and opener demos are browser recreations drawn by `site/signal.js` and `site/stage.js` from the Signal design reference. They use fictional data, make no requests and are labelled as recreations on the page. The native capture above and the films remain the record of the real app. The site font is the bundled JetBrains Mono NL as `site/assets/fonts/JetBrainsMonoNL.woff2` (SIL OFL, licence beside it).
