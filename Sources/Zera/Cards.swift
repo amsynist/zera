@@ -64,7 +64,7 @@ class CardBase: NSView {
 
     /// The header's right side, for buttons: everything right of Zera's spot.
     var headerTrailingRect: NSRect {
-        ScreenHeader.trailingRect(width: bounds.width)
+        ScreenHeader.trailingRect(width: bounds.width, twoLines: !subtitleLabel.isHidden)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -493,7 +493,6 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
     private let usageStrip = ClaudeUsageStrip()
     private var showsUsage = false
     private let macHeader = SectionHeader("This Mac")
-    private let macHint = NSTextField(labelWithString: "tap a vital to open it")
     private let vitalsPage = VitalsPage()
     private var backButton: GHSquareButton!
     private var showingVitals = false
@@ -515,8 +514,6 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         usageStrip.onOpen = { [weak self] in self?.onOpen?(.claude) }
         body.addSubview(usageStrip)
         body.addSubview(macHeader)
-        macHint.font = Typo.secondary; macHint.textColor = p.textTertiary; macHint.alignment = .right
-        body.addSubview(macHint)
         vitalsPage.isHidden = true
         addSubview(vitalsPage)
         backButton = GHSquareButton(symbol: "chevron.left", label: "Back", target: self, action: #selector(backTapped))
@@ -574,7 +571,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         guard on != showingVitals else { return }
         showingVitals = on
         bodyScroll.isHidden = on
-        [search, vitalsStrip, macHeader, macHint, attentionHeader, allClear, quickHeader, usageStrip, nowHeader, media, weather, moreHeader].forEach { $0.isHidden = on }
+        [search, vitalsStrip, macHeader, attentionHeader, allClear, quickHeader, usageStrip, nowHeader, media, weather, moreHeader].forEach { $0.isHidden = on }
         ((attentionRows as [NSView]) + recentRows + tiles + moreTiles).forEach { $0.isHidden = on }
         vitalsPage.isHidden = !on
         backButton.isHidden = !on
@@ -672,7 +669,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         }
         let alerts = rs.pendingAlerts
         if let a = alerts.first {
-            let r = ListRow(symbol: "bell.fill", color: p.warning, title: a.headline, subtitle: a.detail)
+            let r = ListRow(symbol: "bell.fill", color: p.warning, title: ReminderAlertCard.bannerHeadline(a.headline), subtitle: a.detail)
             r.badge = alerts.count; r.emphasized = true
             r.onTap = { [weak self] in self?.onOpen?(.alerts) }
             attentionRows.append(r)
@@ -702,7 +699,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         attentionRows = Array(attentionRows.prefix(Self.maxAttention))
         for r in attentionRows { r.titleFont = Typo.settingLabel; r.isHidden = showingVitals; body.addSubview(r) }
         allClear.isHidden = showingVitals || !attentionRows.isEmpty
-        allClear.stringValue = "All clear — nothing needs you right now ✨"
+        allClear.stringValue = "Nothing needs you right now"
         let day = Date().formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
         setSubtitle(showingVitals ? VitalsPage.subtitle
                     : (needs == 0 ? "\(day) · all clear" : "\(day) · \(needs) thing\(needs == 1 ? "" : "s") need\(needs == 1 ? "s" : "") you"))
@@ -744,17 +741,17 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         hero.isHidden = showingVitals || !query.isEmpty
         if let first = hook.pending.first {
             hero.set(hook.pending.count == 1 ? "Claude needs your OK" : "\(hook.pending.count) agents need your OK",
-                     first.command.isEmpty ? "A permission is waiting." : first.command, mood: .asking,
+                     first.command, mood: .asking,
                      buttons: [("Review", .primary, { [weak self] in self?.onOpen?(.approval) })])
         } else if let item = MainActor.assumeIsolated({ AgentOverview.snapshot().first { [.waiting, .working, .failed].contains($0.state) } }) {
-            hero.set(item.needsApproval ? "A moment for \(item.providerName)" : "Work is moving along",
-                     "\(item.providerName) · \(item.activity)", mood: item.needsApproval ? .asking : .working,
+            hero.set(item.needsApproval ? "\(item.providerName) needs approval" : item.providerName,
+                     item.activity, mood: item.needsApproval ? .asking : .working,
                      buttons: [(item.needsApproval ? "Review agent" : "See activity", .secondary, { [weak self] in self?.onOpen?(.claude) })])
         } else if needs > 0 {
-            hero.set("\(needs) thing\(needs == 1 ? "" : "s") for you", "Everything that wants you is listed below.", mood: .calm, buttons: [])
+            hero.set("\(needs) need\(needs == 1 ? "s" : "") attention", "", mood: .calm, buttons: [])
         } else {
             let t = NowPlayingService.shared.track
-            hero.set("A little room to focus", t.map { "Nothing needs you. \($0.title) is playing." } ?? "Your work, saved things and everyday tools are close at hand.",
+            hero.set("Nothing needs attention", t.map { "Playing \($0.title)" } ?? "",
                      mood: .done, buttons: [])
         }
     }
@@ -826,7 +823,7 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
             y -= Space.xxl - Space.xs
         } else if shown.isEmpty {
             allClear.isHidden = false
-            allClear.stringValue = searching ? "No match — press Return to ask Zera." : "All clear — nothing needs you right now ✨"
+            allClear.stringValue = searching ? "No match — press Return to ask Zera." : "Nothing needs you right now"
             allClear.frame = NSRect(x: Space.xs, y: y, width: w - Space.xs, height: 20)
             y += 20
         } else {
@@ -869,7 +866,6 @@ final class HomeCard: CardBase, CardContent, NSTextFieldDelegate {
         }
 
         macHeader.frame = NSRect(x: 0, y: y, width: w, height: 18)
-        macHint.frame = NSRect(x: max(100, w - 220), y: y + 1, width: min(220, w - 100), height: 16)
         y += 18 + Space.m
         vitalsStrip.frame = NSRect(x: 0, y: y, width: w, height: VitalsOrgans.height)
         y += VitalsOrgans.height
@@ -1014,7 +1010,6 @@ final class SettingsCard: CardBase, CardContent {
         backButton = CardButton("Integrations", style: .tertiary, symbol: "chevron.left", target: nil, action: #selector(SettingsCard.backTapped))
         closeButton = IconButton(symbol: "xmark", label: "Close", target: nil, action: #selector(SettingsCard.closeTapped))
         super.init(width: Isle.lensWidth, title: "Settings")
-        setSubtitle("Your companion, your preferences")
         backButton.target = self
         closeButton.target = self
         addSubview(closeButton)
@@ -1349,7 +1344,7 @@ final class SettingsCard: CardBase, CardContent {
     private func buildGeneral(_ s: inout Stack) {
         defaultPopup = popupRow("Tap on Zera opens", items: Self.defaultChoices.map { $0?.title ?? "Nothing" },
                                 selected: Self.defaultChoices.firstIndex(of: defaultKind) ?? 0, &s, action: #selector(defaultChanged))
-        toggleRow("Remember Last Screen", on: NotchNavigation.shared.remembersScreen, &s) { on in NotchNavigation.shared.remembersScreen = on }
+        toggleRow("Remember last screen", on: NotchNavigation.shared.remembersScreen, &s) { on in NotchNavigation.shared.remembersScreen = on }
         hint("Return to the same screen, filters and timesheet range when you hover or reopen Zera. Off uses your default landing screen.", &s)
         toggleRow("Show Zera at the notch", on: showingZera, &s) { [weak self] on in self?.onShowZeraChanged?(on) }
         popupRow("Hover menu", items: HoverMenuStyle.allCases.map(\.title), selected: HoverMenuStyle.current.rawValue,
@@ -1573,7 +1568,7 @@ final class SettingsCard: CardBase, CardContent {
              : "Signal uses a solid background by default. Turn on translucency to show the desktop behind the tint.", &s)
         popupRow("Interface font", items: ZFont.Family.allCases.map(\.title),
                  selected: ZFont.Family.allCases.firstIndex(of: ZFont.chosenFamily) ?? 0, &s, action: #selector(fontFamilyChanged(_:)))
-        hint(ZFont.chosenFamily == ZFont.family ? "JetBrains Mono is bundled with Zera, as in Ghostty X."
+        hint(ZFont.chosenFamily == ZFont.family ? "JetBrains Mono is included with Zera."
              : "Zera uses the new font the next time it opens.", &s)
         sectionLabel("Notch border & glow", &s)
         let picker = NotchLightPicker()
@@ -1826,7 +1821,7 @@ final class SettingsCard: CardBase, CardContent {
                        on: false, enabled: false, &s, pane: nil) { _ in }
         integrationRow(symbol: "number.square.fill", color: p.muted, title: "Slack", state: .disconnected, detail: "messages and mentions · coming soon",
                        on: false, enabled: false, &s, pane: nil) { _ in }
-        let add = CardButton("Add Integration", style: .tertiary, symbol: "plus", target: nil, action: #selector(closeTapped))
+        let add = CardButton("Add integration", style: .tertiary, symbol: "plus", target: nil, action: #selector(closeTapped))
         add.isEnabled = false
         pane.addSubview(add)
         s.place(add, height: Metrics.button, gap: Space.m)
@@ -2345,7 +2340,7 @@ final class SettingsCard: CardBase, CardContent {
     private func buildShortcuts(_ s: inout Stack) {
         let items: [(String, String)] = [
             ("Open the default card", "Tap Zera"), ("Show the pill", "Hover Zera"), ("Move Zera along the top", "Drag her"),
-            ("Close any card", "Esc"), ("Approve / reject a Claude command", "⏎ / Esc"), ("Add an event or reminder", "+ Add Event ▾"),
+            ("Close any card", "Esc"), ("Approve / reject a Claude command", "⏎ / Esc"), ("Add an event or reminder", "+ Add event ▾"),
             ("Open clipboard history", clipboardShortcut?.label ?? "Clipboard tab"),
             ("Open an app", openerShortcut?.label ?? "Off (Settings → General)"),
             ("Add a task from anywhere", tasksShortcut?.label ?? "Off (Settings → General)"),
@@ -2655,7 +2650,7 @@ final class SettingsCard: CardBase, CardContent {
         layoutHeader()
         let x = Metrics.cardPad
         let trailing = headerTrailingRect
-        returnButton.frame = NSRect(x: trailing.maxX - 96, y: trailing.minY, width: 96, height: Metrics.button)
+        returnButton.frame = NSRect(x: trailing.maxX - 96, y: trailing.midY - Metrics.button / 2, width: 96, height: Metrics.button)
         // v2: the island's own ✕ at notch level closes the lens.
         closeButton.isHidden = true
         var y = headerBottom
@@ -2851,7 +2846,7 @@ final class ApprovalCard: CardBase, CardContent {
         tile.isHidden = true
         layoutHeader()
         let aw = max(96, approve.fittedWidth), rw = max(84, reject.fittedWidth)
-        let buttonY = ScreenHeader.controlY(Metrics.control)
+        let buttonY = ScreenHeader.controlY(Metrics.control, twoLines: !subtitleLabel.isHidden)
         approve.frame = NSRect(x: bounds.width - x - aw, y: buttonY, width: aw, height: Metrics.control)
         reject.frame = NSRect(x: approve.frame.minX - Space.s - rw, y: buttonY, width: rw, height: Metrics.control)
         counter.frame = NSRect(x: reject.frame.minX - 70, y: buttonY + 7, width: 62, height: 16)
@@ -2962,9 +2957,9 @@ final class ToastCard: CardBase, CardContent, TimedNotificationBanner {
         let heading: String, button: String, pose: String, line: String
         switch e.kind {
         case .prOpened:
-            heading = e.mine ? "Your PR is up" : "New PR opened"; button = e.mine ? "Open PR" : "Review Now"
+            heading = e.mine ? "Your PR is up" : "New PR opened"; button = e.mine ? "Open PR" : "Review now"
             pose = e.mine ? "card_cheer" : "card_notify"; line = e.mine ? "Nice one! It's live 🚀" : "New PR! Want me to take a look? 👀"
-        case .reviewRequested: heading = "Review requested"; button = "Review Now"; pose = "card_point_sparkle"; line = "They'd like your eyes on this one 📝"
+        case .reviewRequested: heading = "Review requested"; button = "Review now"; pose = "card_point_sparkle"; line = "They'd like your eyes on this one 📝"
         case .ciFailed: heading = "CI failed"; button = "See why"; pose = "worried"; line = "Something broke in the checks 😬"
         case .ciPassed: heading = "CI passed"; button = "Open PR"; pose = "card_thumbs_wink"; line = "All green! ✅"
         case .ciRunning: heading = "Checks running"; button = "Open PR"; pose = "card_laptop_side"; line = "Checks are running… ⏳"

@@ -1,0 +1,47 @@
+import AppKit
+
+/// The notch and companion forward external drops to the same file Shelf handler.
+class ShelfDropTargetView: NSView {
+    var onDrop: ((NSPasteboard) -> Bool)?
+    var onDragStateChange: ((Bool) -> Void)?
+    private var targeted = false
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        registerForDraggedTypes([.fileURL, .png, .tiff, .pdf, .rtf, .string, .URL])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func acceptsDrop(at point: NSPoint) -> Bool { bounds.contains(point) }
+
+    private func canAccept(_ sender: NSDraggingInfo) -> Bool {
+        onDrop != nil && sender.draggingSourceOperationMask.contains(.copy)
+            && sender.draggingPasteboard.types?.contains(shelfDragType) != true
+            && acceptsDrop(at: convert(sender.draggingLocation, from: nil))
+    }
+
+    private func setTargeted(_ active: Bool) {
+        guard active != targeted else { return }
+        targeted = active
+        onDragStateChange?(active)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let accepted = canAccept(sender)
+        setTargeted(accepted)
+        return accepted ? .copy : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { setTargeted(false) }
+    override func draggingEnded(_ sender: NSDraggingInfo) { setTargeted(false) }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { canAccept(sender) }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        defer { setTargeted(false) }
+        guard canAccept(sender) else { return false }
+        return onDrop?(sender.draggingPasteboard) ?? false
+    }
+}

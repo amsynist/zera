@@ -576,7 +576,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
 
     private func updateSubtitle() {
         let f = DateFormatter()
-        f.dateFormat = "EEE d MMM"
+        f.dateFormat = "EEE, d MMM"
         spanChoices.enumerated().forEach { $1.selected = TaskViewSpan.allCases[$0] == viewSpan }
         if let c = spanChoices.first(where: { $0.selected }), spanTrack.frame.width > 0 {
             spanIndicator.move(to: spanTrack.convert(c.frame, from: c.superview), animated: true)
@@ -631,7 +631,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
         if viewSpan == .today { section("TO DO · \(open.count)") }
         if viewSpan == .today, open.isEmpty {
             let l = TaskPaint(frame: NSRect(x: 0, y: y, width: w, height: 36))
-            let empty = shown.map { "Nothing to do in \($0). Add one above ✨" } ?? "Nothing to do. Add one above ✨"
+            let empty = shown.map { "Nothing to do in \($0). Add one above." } ?? "Nothing to do. Add one above."
             l.paint = { r in drawText(empty, Typo.body, Neon.textDim, in: NSRect(x: 10, y: 0, width: r.width - 20, height: r.height)) }
             doc.addSubview(l)
             y += 36
@@ -644,7 +644,7 @@ final class TasksCard: CardBase, CardContent, NSTextFieldDelegate {
             }
         } else {
             let f = DateFormatter()
-            f.dateFormat = "EEE d MMM"
+            f.dateFormat = "EEE, d MMM"
             let byDay = Dictionary(grouping: done) { store.calendar.startOfDay(for: $0.doneAt!) }
             if done.isEmpty {
                 section("DONE")
@@ -1426,7 +1426,7 @@ final class TaskExportView: NSView {
         for (i, c) in spanChips.enumerated() { c.selected = TaskExport.Span.allCases[i] == span }
         if let c = spanChips.first(where: { $0.selected }), c.frame.width > 0 { spanIndicator.move(to: c.frame, animated: true) }
         for (i, c) in formatTiles.enumerated() { c.selected = TaskExport.Format.allCases[i] == format }
-        preview.string = rows.isEmpty ? "No tasks in this range yet." : (format == .text ? TaskExport.text(rows, project: project) : "")
+        preview.string = rows.isEmpty ? "No tasks in this range yet" : (format == .text ? TaskExport.text(rows, project: project) : "")
         let isSheet = format == .timesheet
         let isTable = (format == .xlsx || format == .csv) && !rows.isEmpty
         previewScroll.isHidden = (isSheet || isTable) && !rows.isEmpty
@@ -1551,10 +1551,10 @@ final class TaskExportView: NSView {
         }
         let note: String
         switch format {
-        case .xlsx: note = "Opens in Excel, Numbers or Google Sheets."
-        case .csv: note = "Comma-separated, UTF-8."
+        case .xlsx: note = "Opens in Excel, Numbers or Google Sheets"
+        case .csv: note = "Comma-separated, UTF-8"
         case .timesheet: note = "Click a day to copy it. ⏎ copies them all."
-        case .text: note = "Each day's date, then its tasks numbered."
+        case .text: note = "Each day's date, then its tasks numbered"
         }
         drawText(note, ZFont.ui(ofSize: 12), Neon.textDim, in: NSRect(x: pad, y: r.height - 58, width: 260, height: 36))
     }

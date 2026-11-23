@@ -487,6 +487,9 @@ final class ClaudeActivityService {
         case "SessionStart":
             s.status = .idle
         case "UserPromptSubmit":
+            // A new prompt means the last turn's permission was answered in the terminal, even
+            // when it was rejected there and no tool result ever arrived.
+            if !s.agents.contains(where: { $0.isRunning }) { ClaudeHookService.shared.resolveSession(sid) }
             let prompt = (e["prompt"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             s.title = Self.oneLine(prompt, max: 90)
             s.fullPrompt = prompt
@@ -546,24 +549,32 @@ final class ClaudeActivityService {
                 if s.steps.count > 60 { s.steps.removeFirst(s.steps.count - 60) }
             }
             if agentID.isEmpty { s.status = .running }
-        case "PostToolUse":
+        case "PostToolUse", "PostToolUseFailure":
+            let response = e["tool_response"] ?? e["error"]
+            let hooks = ClaudeHookService.shared
+            hooks.resolveTool(sessionID: sid, tool: tool, input: input)
+            if !hooks.pending.contains(where: { $0.sessionID == sid }) {
+                finishPermissionWait(s, at: now)
+            }
             if !agentID.isEmpty, let a = s.agents.first(where: { $0.id == agentID }) {
-                Self.finishStep(in: &a.steps, useID: useID, tool: tool, response: e["tool_response"], at: now)
+                Self.finishStep(in: &a.steps, useID: useID, tool: tool, response: response, at: now)
                 a.lastEventAt = now
             }
-            if !ownTimeline { Self.finishStep(in: &s.steps, useID: useID, tool: tool, response: e["tool_response"], at: now) }
+            if !ownTimeline { Self.finishStep(in: &s.steps, useID: useID, tool: tool, response: response, at: now) }
             // An Agent call that returns brings its agent's answer, unless it runs in the background.
             if tool == "Task" || tool == "Agent", !useID.isEmpty,
                let a = s.agents.first(where: { $0.callID == useID && $0.isRunning && !$0.background }) {
                 a.finish(at: now)
             }
-            if agentID.isEmpty { s.status = .running }
+            if agentID.isEmpty, !hooks.pending.contains(where: { $0.sessionID == sid }) { s.status = .running }
         case "Notification":
             // Two different notifications arrive here: a permission prompt (Claude is blocked
             // on you) and the idle nudge "Claude is waiting for your input" (its turn is over).
             let raw = e["message"] as? String ?? ""
             let msg = raw.lowercased()
-            let isPermission = msg.contains("permission") || msg.contains("approve") || msg.contains("needs your")
+            let type = e["notification_type"] as? String
+            let isPermission = type == "permission_prompt" || (type == nil
+                && (msg.contains("permission") || msg.contains("approve") || msg.contains("needs your")))
             if isPermission {
                 s.status = .waiting
                 if !(s.steps.last.map { $0.kind == .waiting && !$0.finished } ?? false) {
@@ -571,7 +582,7 @@ final class ClaudeActivityService {
                                                 detail: Self.oneLine(raw, max: 80), at: now, finished: false))
                 }
                 post(milestone: "waiting", s)
-            } else if s.status == .running || s.status == .waiting {
+            } else if type == "idle_prompt" || type == nil, s.status == .running || s.status == .waiting {
                 // Idle nudge: the turn finished without a Stop we saw — treat it as done.
                 finishOpenSteps(s, at: now)
                 s.status = s.promptAt == nil ? .idle : .done
@@ -591,6 +602,8 @@ final class ClaudeActivityService {
             finishOpenSteps(s, at: now)
             // Agents Claude waited for are done when its turn is; background ones carry on.
             for a in s.agents where a.isRunning && !a.background { a.finish(at: now) }
+            // The turn is over, so nothing of its own still waits on a permission.
+            if !s.agents.contains(where: { $0.isRunning }) { ClaudeHookService.shared.resolveSession(sid) }
             let stoppedByYou = s.stopRequested
             if s.stopRequested {
                 s.steps.append(ActivityStep(id: "stop-\(now.timeIntervalSince1970)", kind: .done, verb: "Stopped", target: "from Zera",
@@ -622,6 +635,7 @@ final class ClaudeActivityService {
             for a in s.agents where a.isRunning { a.finish(at: now) }
             clearStop(s)
             s.status = .ended
+            ClaudeHookService.shared.resolveSession(sid)
         default:
             break
         }
@@ -1007,6 +1021,20 @@ final class ClaudeActivityService {
         }
     }
 
+    func permissionAnswered(in sessionID: String) {
+        guard let session = sessions[sessionID], session.status == .waiting else { return }
+        finishPermissionWait(session, at: Date())
+        session.status = .running
+        NotificationCenter.default.post(name: Self.changed, object: nil)
+    }
+
+    private func finishPermissionWait(_ session: ClaudeSession, at now: Date) {
+        for i in session.steps.indices where session.steps[i].kind == .waiting && !session.steps[i].finished {
+            session.steps[i].finished = true
+            session.steps[i].endedAt = now
+        }
+    }
+
     private func finishOpenSteps(_ s: ClaudeSession, at now: Date) {
         for i in s.steps.indices where !s.steps[i].finished {
             s.steps[i].finished = true
@@ -1166,13 +1194,13 @@ final class ClaudeActivityService {
     exit 0
     """
 
-    static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd",
+    static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Notification", "Stop", "SessionEnd",
                          "SubagentStart", "SubagentStop"]
 
     /// Our hook entry for one event: every tool for the tool events, more time for Stop.
     private func entry(for ev: String) -> [String: Any] {
         var entry: [String: Any] = ["hooks": [["type": "command", "command": "\"\(scriptURL.path)\"", "timeout": ev == "Stop" ? Self.stopTimeout : 5]]]
-        if ev == "PreToolUse" || ev == "PostToolUse" { entry["matcher"] = "*" }
+        if ["PreToolUse", "PostToolUse", "PostToolUseFailure"].contains(ev) { entry["matcher"] = "*" }
         return entry
     }
 

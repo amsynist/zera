@@ -66,11 +66,15 @@ final class ScreenRenderTests: XCTestCase {
     func testRenderClipboardPicker() throws {
         guard ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] != nil else { throw XCTSkip("use a disposable home") }
         let screen = try XCTUnwrap(NSScreen.main)
+        let assets = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("site/assets/v2/daily-shelf")
+        let photo = assets.appendingPathComponent("poster.jpg")
+        let video = assets.appendingPathComponent("daily-shelf.mp4")
         ClipboardStore.shared.preview([
             ClipItem(kind: .text, text: "Review the first-run checklist", sourceApp: "Notes", fingerprint: "sample-text"),
             ClipItem(kind: .link, text: "https://example.com/aurora/releases", sourceApp: "Safari", fingerprint: "sample-link"),
-            ClipItem(kind: .code, text: "swift test --filter ClipboardPickerTests", sourceApp: "Terminal", pinned: true, fingerprint: "sample-code"),
-            ClipItem(kind: .color, text: "#7BE1C2", sourceApp: "Figma", fingerprint: "sample-color"),
+            ClipItem(kind: .files, text: "Site poster", paths: [photo.path], sourceApp: "Finder", fingerprint: "sample-photo"),
+            ClipItem(kind: .files, text: "Daily Shelf film", paths: [video.path], sourceApp: "Finder", fingerprint: "sample-video"),
             ClipItem(kind: .files, text: "Release checklist.md", paths: ["/tmp/Release checklist.md"], sourceApp: "Finder", fingerprint: "sample-file"),
         ])
         ClipboardStore.shared.enabled = true
@@ -81,7 +85,7 @@ final class ScreenRenderTests: XCTestCase {
         let surface = try XCTUnwrap(window.contentView)
         surface.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        RunLoop.main.run(until: Date().addingTimeInterval(1.0))
         let image = try XCTUnwrap(CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(window.windowNumber), .bestResolution))
         let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
         try png.write(to: out.appendingPathComponent("clipboard-picker.png"))
@@ -275,6 +279,19 @@ final class ScreenRenderTests: XCTestCase {
         approvalCard.titleLabel.stringValue = "Permission needed"
         approvalCard.setSubtitle("Claude · Aurora · layout-only fixture")
         island(approvalCard, tab: .claude, "audit-approval-card-header")
+    }
+
+    func testRenderCompletedClaudeDetail() {
+        let session = ClaudeSession(id: "completed-fixture", cwd: "/tmp/Aurora", at: Date())
+        session.title = "Review the launch checklist"
+        session.status = .done
+        session.promptAt = Date().addingTimeInterval(-140)
+        session.steps = [ActivityStep(id: "checklist", kind: .read, verb: "Read", target: "Checklist.md",
+                                      detail: nil, at: Date().addingTimeInterval(-100), finished: true)]
+        ClaudeActivityService.shared.preview([session])
+        let view = ClaudeSessionsView()
+        view.openSession(session.id)
+        island(view, tab: .claude, "audit-claude-completed")
     }
 
     func testRenderNativeCodexDetail() {

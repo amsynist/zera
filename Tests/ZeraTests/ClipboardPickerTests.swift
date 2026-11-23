@@ -26,3 +26,14 @@ final class ClipboardPickerTests: XCTestCase {
         XCTAssertEqual(frame.height, 324)
     }
 }
+
+extension ClipboardPickerTests {
+    func testCopiedMediaFilesCanRequestThumbnails() {
+        func file(_ name: String) -> ClipItem {
+            ClipItem(kind: .files, text: name, paths: ["/tmp/" + name], fingerprint: name)
+        }
+        XCTAssertEqual(file("mountains.png").mediaFile?.lastPathComponent, "mountains.png")
+        XCTAssertEqual(file("walkthrough.mov").mediaFile?.lastPathComponent, "walkthrough.mov")
+        XCTAssertNil(file("notes.md").mediaFile)
+    }
+}

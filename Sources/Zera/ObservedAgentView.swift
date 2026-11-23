@@ -15,7 +15,7 @@ final class ObservedAgentView: NSView, @preconcurrency CardContent {
     private let console = ClaudeActivityConsole()
     private let scroll = NSScrollView(), document = FlippedView()
     private let changes = NSTextView(), changesScroll = NSScrollView()
-    private var back: CardButton!
+    private var back: GHSquareButton!
     private var provider = "", sessionID = "", page = 0
     private var rows: [SessionInfoRow] = []
     private var signature = ""
@@ -24,7 +24,7 @@ final class ObservedAgentView: NSView, @preconcurrency CardContent {
     init(snapshot: (() -> AgentRun?)? = nil) {
         self.snapshot = snapshot
         super.init(frame: .zero)
-        back = CardButton("Agents", style: .tertiary, target: self, action: #selector(backTapped))
+        back = GHSquareButton(symbol: "chevron.left", label: "All agents", target: self, action: #selector(backTapped))
         title.font = Typo.detailTitle; title.textColor = Pal.text; title.lineBreakMode = .byTruncatingTail
         project.font = Typo.screenSubtitle; project.textColor = Pal.textSecondary; project.lineBreakMode = .byTruncatingMiddle
         tabs.setAccessibilityLabel("Session detail sections")
@@ -50,7 +50,7 @@ final class ObservedAgentView: NSView, @preconcurrency CardContent {
         }
         title.stringValue = run.title ?? run.project; project.stringValue = run.agent.rawValue + " · " + run.project
         let state = run.state == .working ? "Working" : run.state == .done ? "Completed" : "Idle"
-        status.set(symbol: "", text: state, color: run.state == .working ? Pal.accent : run.state == .done ? Pal.success : Pal.textSecondary)
+        status.set(symbol: "circle.fill", text: state, color: run.state == .working ? Pal.accent : run.state == .done ? Pal.success : Pal.textSecondary)
         let files = Array(Set(run.records.flatMap(\.files))).sorted()
         let patches = run.records.compactMap(\.patch)
         tabs.items = ["Live", "Files", "Changes", "Tools", "Timeline"].enumerated().map { index, name in
@@ -105,10 +105,10 @@ final class ObservedAgentView: NSView, @preconcurrency CardContent {
     override func layout() {
         super.layout()
         let x = Metrics.sidePad, w = max(0, bounds.width - 2 * x)
-        back.frame = NSRect(x: x, y: ScreenHeader.controlY(Metrics.control), width: back.fittedWidth, height: Metrics.control)
-        title.frame = NSRect(x: back.frame.maxX + Space.m, y: ScreenHeader.titleTop, width: max(0, bounds.width / 2 - Isle.zeraGap / 2 - back.frame.maxX - Space.m), height: ScreenHeader.titleHeight)
-        project.frame = ScreenHeader.subtitleFrame(width: bounds.width, padding: x); project.frame.size.width = w
-        status.frame = NSRect(x: bounds.width - x - status.fittedWidth, y: ScreenHeader.controlY(24), width: status.fittedWidth, height: 24)
+        back.frame = ScreenHeader.backFrame(padding: x)
+        title.frame = ScreenHeader.detailTitleFrame(width: bounds.width, padding: x)
+        project.frame = ScreenHeader.detailSubtitleFrame(width: bounds.width, padding: x)
+        status.frame = NSRect(x: bounds.width - x - status.fittedWidth, y: ScreenHeader.blockControlY(24), width: status.fittedWidth, height: 24)
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: w, height: Metrics.segment)
         let top = tabs.frame.maxY + Space.m
         progress.frame = NSRect(x: x, y: top, width: w, height: 72)

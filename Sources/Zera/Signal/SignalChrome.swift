@@ -379,21 +379,11 @@ final class SignalStatusLine: NSView {
         let t = ThemeStore.shared.current
         // The pane's bottom edge (3 pt down) is the divider; centre the line in the room below it.
         let mid = ((bounds.height + 4) / 2).rounded() + 0.5
-        var x: CGFloat = 22
-        NSGraphicsContext.saveGraphicsState()
-        let glow = NSShadow(); glow.shadowColor = t.accent; glow.shadowBlurRadius = 6; glow.set()
-        SignalDraw.dot(at: NSPoint(x: x + 3, y: mid), color: t.accent)
-        NSGraphicsContext.restoreGraphicsState()
-        x += 13
-        let strong: [NSAttributedString.Key: Any] = [.font: ZFont.mono(ofSize: 10, weight: .semibold), .foregroundColor: t.accent, .kern: 0.5]
-        let live = NSAttributedString(string: "LIVE", attributes: strong)
-        let ls = live.size()
-        live.draw(at: NSPoint(x: x, y: mid - ls.height / 2))
-        x += ceil(ls.width) + 16
+        let x = Space.xl
         let quiet: [NSAttributedString.Key: Any] = [.font: ZFont.mono(ofSize: 10, weight: .medium), .foregroundColor: Signal.faint, .kern: 0.5]
         let dim: [NSAttributedString.Key: Any] = [.font: ZFont.mono(ofSize: 10, weight: .medium), .foregroundColor: t.textSecondary, .kern: 0.3]
         // Right side first, so the title can truncate before it.
-        var r = bounds.width - 22
+        var r = bounds.width - Space.xl
         let time = NSAttributedString(string: Self.clock.string(from: Date()), attributes: dim)
         let tsz = time.size()
         r -= ceil(tsz.width)

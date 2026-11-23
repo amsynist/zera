@@ -22,7 +22,7 @@ struct HookRequest: Equatable {
 
 /// Lets Zera answer Claude Code's permission prompts.
 ///
-/// No API keys involved: Claude Code's own `PreToolUse` hook runs a tiny script we install.
+/// Claude Code's `PermissionRequest` hook runs the installed script.
 /// The script drops the tool call as JSON into a spool folder and waits; Zera shows it,
 /// you tap Approve or Reject, Zera writes the answer next to it, the script prints that
 /// answer for Claude Code and exits. If Zera is not running, or you take too long, the
@@ -41,11 +41,12 @@ final class ClaudeHookService {
     private var timer: Timer?
     private var seen: Set<String> = []
     private let fm = FileManager.default
+    private let baseOverride: URL?
 
     // MARK: Paths
 
     private var base: URL {
-        fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        baseOverride ?? fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Zera", isDirectory: true)
     }
     private var hooksDir: URL { base.appendingPathComponent("hooks", isDirectory: true) }
@@ -56,7 +57,8 @@ final class ClaudeHookService {
         URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/settings.json")
     }
 
-    private init() {
+    init(base: URL? = nil) {
+        baseOverride = base
         for d in [requestsDir, responsesDir] {
             try? fm.createDirectory(at: d, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
@@ -102,6 +104,13 @@ final class ClaudeHookService {
         id.split(separator: "-").first.flatMap { TimeInterval($0) }.map { Date(timeIntervalSince1970: $0) }
     }
 
+    /// A hook cancelled by the terminal can disappear without running its cleanup trap.
+    static func ownerExited(id: String) -> Bool {
+        let parts = id.split(separator: "-")
+        guard parts.count >= 3, let pid = pid_t(parts[1]), pid > 1 else { return false }
+        return kill(pid, 0) == -1 && errno == ESRCH
+    }
+
     func scan() {
         guard var files = try? fm.contentsOfDirectory(at: requestsDir, includingPropertiesForKeys: nil) else { return }
         // Oldest first, so "1 of N" and the wing show the request Claude has waited on longest.
@@ -111,17 +120,25 @@ final class ClaudeHookService {
         let now = Date()
         files.removeAll { url in
             let id = url.deletingPathExtension().lastPathComponent
-            guard let at = Self.queuedAt(id: id), now.timeIntervalSince(at) > Self.requestLifetime else { return false }
+            let expired = Self.queuedAt(id: id).map { now.timeIntervalSince($0) > Self.requestLifetime } ?? false
+            guard expired || Self.ownerExited(id: id) else { return false }
             try? fm.removeItem(at: url)
             try? fm.removeItem(at: responsesDir.appendingPathComponent(id + ".json"))
             return true
         }
-        seen.formIntersection(Set(files.map { $0.deletingPathExtension().lastPathComponent }))
-        var changed = false
+        let ids = Set(files.map { $0.deletingPathExtension().lastPathComponent })
+        seen.formIntersection(ids)
+        let previous = pending
+        pending.removeAll { req in
+            !ids.contains(req.id) || fm.fileExists(atPath: responsesDir.appendingPathComponent(req.id + ".json").path)
+        }
+        var changed = pending.count != previous.count
+        if changed { lastResponseError = nil }
         for url in files {
             let id = url.deletingPathExtension().lastPathComponent
             guard !seen.contains(id) else { continue }
             seen.insert(id)
+            guard !fm.fileExists(atPath: responsesDir.appendingPathComponent(id + ".json").path) else { continue }
             guard let data = try? Data(contentsOf: url),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
             let req = Self.parse(id: id, json: json)
@@ -129,11 +146,41 @@ final class ClaudeHookService {
             changed = true
             NotificationCenter.default.post(name: Self.newRequest, object: nil, userInfo: ["request": req])
         }
-        // Requests whose script has given up (file gone) drop out of the queue.
-        let before = pending.count
-        pending.removeAll { !fm.fileExists(atPath: requestsDir.appendingPathComponent($0.id + ".json").path) }
-        if pending.count != before { changed = true }
+        // An early terminal decision can end the hook before the approved tool finishes.
+        let remaining = Set(pending.map(\.id))
+        let waitingSessions = Set(pending.map(\.sessionID))
+        let clearedSessions = Set(previous.filter { req in
+            !remaining.contains(req.id) && now.timeIntervalSince(req.receivedAt) < Self.requestLifetime - 60
+        }.map(\.sessionID))
+        for session in clearedSessions.subtracting(waitingSessions) {
+            ClaudeActivityService.shared.permissionAnswered(in: session)
+        }
         if changed { NotificationCenter.default.post(name: Self.changed, object: nil) }
+    }
+
+    /// A terminal decision may be followed by a tool result before the spool watcher fires.
+    /// The request payload lacks a tool-use ID, so only a unique exact match can be dismissed.
+    func resolveTool(sessionID: String, tool: String, input: [String: Any]) {
+        let matches = pending.filter { req in
+            guard req.sessionID == sessionID, req.toolName == tool,
+                  let data = try? Data(contentsOf: requestsDir.appendingPathComponent(req.id + ".json")),
+                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let queuedInput = payload["tool_input"] as? [String: Any] else { return false }
+            return NSDictionary(dictionary: queuedInput).isEqual(to: input)
+        }
+        if matches.count == 1 { removeResolved(matches) }
+    }
+
+    func resolveSession(_ sessionID: String) {
+        removeResolved(pending.filter { $0.sessionID == sessionID })
+    }
+
+    private func removeResolved(_ requests: [HookRequest]) {
+        guard !requests.isEmpty else { return }
+        for req in requests {
+            try? fm.removeItem(at: requestsDir.appendingPathComponent(req.id + ".json"))
+        }
+        scan()
     }
 
     private static func parse(id: String, json: [String: Any]) -> HookRequest {
@@ -185,6 +232,7 @@ final class ClaudeHookService {
     @discardableResult
     func respond(_ req: HookRequest, allow: Bool) -> Bool {
         let now = Date()
+        if Self.ownerExited(id: req.id) { scan(); return false }
         guard pending.contains(where: { $0.id == req.id }),
               fm.fileExists(atPath: requestsDir.appendingPathComponent(req.id + ".json").path),
               !answered.contains(req.id), now.timeIntervalSince(lastDecisionAt) >= Self.decisionLockout else { return false }
@@ -207,6 +255,9 @@ final class ClaudeHookService {
         answered.insert(req.id)
         if answered.count > 200 { answered = answered.filter { id in pending.contains { $0.id == id } } }
         pending.removeAll { $0.id == req.id }
+        if !pending.contains(where: { $0.sessionID == req.sessionID }) {
+            ClaudeActivityService.shared.permissionAnswered(in: req.sessionID)
+        }
         answeredCount += 1
         NotificationCenter.default.post(name: Self.changed, object: nil)
         return true
@@ -246,6 +297,7 @@ final class ClaudeHookService {
         rm -f "${RES:?}/${ID:?}.json" "${REQ:?}/${ID:?}.json"
         exit 0
       fi
+      if [ ! -f "$REQ/$ID.json" ]; then exit 0; fi
       if [ $((i % 10)) -eq 0 ] && ! pgrep -x Zera >/dev/null 2>&1; then log "Zera quit while waiting"; rm -f "${REQ:?}/${ID:?}.json"; exit 0; fi
       sleep 0.2
       i=$((i+1))

@@ -128,7 +128,7 @@ enum HoverMenuStyle: Int, CaseIterable {
 ///
 /// The window is a fixed transparent canvas; only the island's shape is drawn and clickable, and
 /// it springs between sizes (closed → peek → a screen → another screen) with Core Animation.
-final class IslandView: NSView {
+final class IslandView: ShelfDropTargetView {
     enum Mode { case closed, peek, open }
 
     var onTab: ((CardKind) -> Void)?
@@ -970,6 +970,11 @@ final class IslandView: NSView {
         // Bloomed: the nodes and the search node take clicks; the gaps between them don't.
         guard mode == .peek else { return false }
         return (!settingsButton.isHidden && settingsButton.frame.contains(p)) || tabs.contains { $0.frame.contains(p) } || (!searchNode.isHidden && searchNode.alphaValue > 0 && searchNode.frame.contains(p))
+    }
+
+    override func acceptsDrop(at point: NSPoint) -> Bool {
+        mode != .closed && point.y >= 0 && point.y <= band
+            && abs(point.x - centerX) <= notchWidth / 2 + NotchBuddyView.wingWidth(forHeight: band)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {

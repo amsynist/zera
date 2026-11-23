@@ -143,10 +143,9 @@ final class RemindersView: NSView, CardContent {
                               bottom: c.blended(withFraction: 0.25, of: .black) ?? c)
     }()
     private let titleLabel = rlabel(Typo.screenTitle, Pal.text)
-    private let subtitleLabel = rlabel(Typo.screenSubtitle, Pal.textSecondary)
     private let peek = AnimatedZeraView()
     private let bubble = ZeraGitHubBubble()
-    private let addButton = GHSplitButton(title: "Add Event", symbol: "plus")
+    private let addButton = GHSplitButton(title: "Add event", symbol: "plus")
     private let tabs = GitHubSegmentedControl(items: [])
     private let filters = ChoiceChips(items: [])
     private let scroll = NSScrollView()
@@ -236,8 +235,6 @@ final class RemindersView: NSView, CardContent {
         main.addSubview(screenTile)
         titleLabel.stringValue = "Reminders"
         main.addSubview(titleLabel)
-        subtitleLabel.stringValue = "Your day, all in one place"
-        main.addSubview(subtitleLabel)
         peek.pose = "card_peek_down"
         main.addSubview(peek)
         bubble.tailRight = true
@@ -447,7 +444,7 @@ final class RemindersView: NSView, CardContent {
             switch Self.tab {
             case 0:
                 emptyState.set(pose: "card_thumbs_wink", title: "Nothing left today\(filteredNote)",
-                               subtitle: "Add an event or a reminder with + Add Event.")
+                               subtitle: "Add an event or a reminder with + Add event")
             case 1:
                 emptyState.set(pose: "card_read_q", title: "Nothing coming up\(filteredNote)",
                                subtitle: svc.calendarAuthorized ? "The next two weeks are clear." : "Connect Calendar to see your Google, Outlook and Apple events.")
@@ -464,13 +461,13 @@ final class RemindersView: NSView, CardContent {
         tipAction = nil
         var pose = "card_point_sparkle"
         if !svc.calendarAuthorized, !UserDefaults.standard.bool(forKey: Self.calendarTipKey) {
-            tip.set(title: "See your real calendars 📅",
+            tip.set(title: "See your real calendars",
                     body: "Connect macOS Calendar and Google, Outlook and Apple events show up here — read on your Mac only.",
                     action: "Connect", closable: true)
             tipAction = { [weak self] in self?.connectCalendar() }
             pose = "card_greet"
         } else if let water = today.first(where: { $0.reminder?.isHydration == true && [.due, .overdue].contains(svc.state(of: $0, now: now)) }) {
-            tip.set(title: "Time to hydrate 💧", body: "\(water.title) — \(water.seriesDone) of \(water.seriesTotal) done today. Mark it when you've had a glass.",
+            tip.set(title: "Time to hydrate", body: "\(water.title) — \(water.seriesDone) of \(water.seriesTotal) done today. Mark it when you've had a glass.",
                     action: "Done", closable: false)
             tipAction = { [weak self] in self?.complete(water) }
             pose = "boba"
@@ -478,14 +475,14 @@ final class RemindersView: NSView, CardContent {
             let st = svc.state(of: next, now: now)
             let when = st == .inProgress ? "happening now" : ReminderFormat.time.string(from: next.occurrence) + " · " + ReminderFormat.countdown(to: next.occurrence, now: now)
             let isMeeting = next.event?.kind == .meeting
-            tip.set(title: "Next up ✨", body: "\(next.title) — \(when)." + (isMeeting ? " I'll warn you before it starts." : ""),
+            tip.set(title: "Next up", body: "\(next.title) — \(when)." + (isMeeting ? " I'll warn you before it starts." : ""),
                     action: nil, closable: false)
             pose = isMeeting ? "card_bell" : "card_point_sparkle"
         } else if today.isEmpty {
-            tip.set(title: "All done for today 🎉", body: "Nothing else on your plate. Enjoy it!", action: nil, closable: false)
+            tip.set(title: "All done for today", body: "Nothing else on your plate.", action: nil, closable: false)
             pose = "celebrate"
         } else {
-            tip.set(title: "Zera's tip ✨", body: "Tap anything to see details, snooze it or mark it done.", action: nil, closable: false)
+            tip.set(title: "Zera's tip", body: "Tap anything to see details, snooze it or mark it done.", action: nil, closable: false)
         }
         tipZera.pose = pose
     }
@@ -918,9 +915,8 @@ final class RemindersView: NSView, CardContent {
         // the right. Her own pictures and the tip stay hidden in the island.
         [screenTile, peek, bubble, tip, tipZera].forEach { $0.isHidden = true }
         titleLabel.frame = ScreenHeader.titleFrame(width: w, padding: x)
-        subtitleLabel.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
         let bw = min(170, addButton.fittedWidth + 8)
-        addButton.frame = NSRect(x: w - x - bw, y: ScreenHeader.blockControlY(Metrics.headerButton), width: bw, height: Metrics.headerButton)
+        addButton.frame = NSRect(x: w - x - bw, y: ScreenHeader.controlY(Metrics.headerButton), width: bw, height: Metrics.headerButton)
 
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)
         filters.fill = filters.preferredWidth > iw

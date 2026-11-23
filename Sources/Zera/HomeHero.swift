@@ -6,7 +6,10 @@ final class HomeHero: NSView {
     enum Mood { case calm, working, asking, done }
     static let height: CGFloat = 104
     static let compactHeight: CGFloat = 72
-    var preferredHeight: CGFloat { buttons.isEmpty ? Self.compactHeight : Self.height }
+    var preferredHeight: CGFloat {
+        if !buttons.isEmpty { return Self.height }
+        return detail.stringValue.isEmpty ? 48 : Self.compactHeight
+    }
     private let line = NSTextField(labelWithString: "")
     private let detail = NSTextField(wrappingLabelWithString: "")
     private var buttons: [CardButton] = []
@@ -32,6 +35,7 @@ final class HomeHero: NSView {
 
     func set(_ title: String, _ sub: String, mood: Mood, buttons items: [(String, CardButton.Style, () -> Void)]) {
         line.stringValue = title; detail.stringValue = sub
+        detail.isHidden = sub.isEmpty
         buttons.forEach { $0.removeFromSuperview() }
         buttons = []; actions = []
         for (index, item) in items.prefix(2).enumerated() {
@@ -51,7 +55,7 @@ final class HomeHero: NSView {
         // Narrow review layouts stack actions beneath the text rather than collide with it.
         let stacked = bounds.width < 620 && !buttons.isEmpty
         let textWidth = max(0, bounds.width - padding * 2 - (stacked || buttons.isEmpty ? 0 : actionWidth + Space.xl))
-        line.frame = NSRect(x: padding, y: stacked ? 12 : 14, width: textWidth, height: 24)
+        line.frame = NSRect(x: padding, y: stacked ? Space.m : (detail.isHidden ? (bounds.height - 24) / 2 : 14), width: textWidth, height: 24)
         detail.frame = NSRect(x: padding, y: stacked ? 38 : 44, width: textWidth, height: stacked ? 20 : 28)
         var x = stacked ? padding : bounds.width - padding - actionWidth
         for button in buttons {

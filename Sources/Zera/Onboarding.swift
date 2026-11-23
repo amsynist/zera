@@ -219,7 +219,7 @@ private final class OnboardingView: NSView {
         current = new
         dots.selected = i >= 3 ? i - 1 : i
         back.isHidden = i == 0
-        next.setTitleText(i == pages.count - 1 ? "Open Zera" : i == 0 ? "Get Started" : "Continue")
+        next.setTitleText(i == pages.count - 1 ? "Open Zera" : i == 0 ? "Get started" : "Continue")
         skipButton.isHidden = i == pages.count - 1
         needsLayout = true
 

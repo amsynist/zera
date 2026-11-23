@@ -1,6 +1,7 @@
 import AppKit
 import CryptoKit
 import ImageIO
+import UniformTypeIdentifiers
 
 /// One thing you copied: text, a link, a colour, an image or some files.
 struct ClipItem: Codable, Identifiable, Equatable {
@@ -84,6 +85,15 @@ struct ClipItem: Codable, Identifiable, Equatable {
         case .image: return "Image"
         case .files: return paths.count == 1 ? "File" : "Files"
         }
+    }
+
+    /// A single copied media file can use a Quick Look thumbnail in history.
+    var mediaFile: URL? {
+        guard kind == .files, paths.count == 1, let path = paths.first else { return nil }
+        let url = URL(fileURLWithPath: path)
+        guard let type = UTType(filenameExtension: url.pathExtension),
+              type.conforms(to: .image) || type.conforms(to: .movie) else { return nil }
+        return url
     }
 
     static func oneLine(_ s: String, max: Int = 200) -> String {

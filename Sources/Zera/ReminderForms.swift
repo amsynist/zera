@@ -201,14 +201,14 @@ final class EventFormView: ReminderFormBase {
     private static let alerts = [-1, 0, 5, 10, 15, 30, 60, 1440]
     private static let alertTitles = ["None", "At start", "5 min before", "10 min before", "15 min before", "30 min before", "1 hour before", "1 day before"]
 
-    override var headerTitle: String { editing == nil ? "Create Event" : "Edit Event" }
+    override var headerTitle: String { editing == nil ? "Create event" : "Edit event" }
     override var headerSubtitle: String { "A meeting, focus block or plan on your calendar" }
     override var headerLook: AgendaLook { .source(.custom) }
     override var zeraPose: String { "card_writing" }
 
     init(editing: CalendarEvent?) {
         self.editing = editing
-        super.init(saveTitle: editing == nil ? "Create Event" : "Save Changes", saveSymbol: editing == nil ? "plus" : "checkmark")
+        super.init(saveTitle: editing == nil ? "Create event" : "Save changes", saveSymbol: editing == nil ? "plus" : "checkmark")
         calendars = editing == nil ? svc.writableCalendars : []
         calendarSelect = ZeraSelect(["Zera — this Mac only"] + calendars.map { "\($0.title) · \($0.source.title)" },
                                     symbols: [String?](["sparkles"]) + calendars.map { _ -> String? in "calendar" })
@@ -406,14 +406,14 @@ final class ReminderFormView: ReminderFormBase {
     private static let repeatSymbols: [String?] = ["minus.circle", "sun.max", "clock", "clock", "clock", "calendar", "slider.horizontal.3"]
     private static let customUnits: [RepeatRule.Unit] = [.minute, .hour, .day, .week]
 
-    override var headerTitle: String { editing == nil ? "Create Reminder" : "Edit Reminder" }
+    override var headerTitle: String { editing == nil ? "Create reminder" : "Edit reminder" }
     override var headerSubtitle: String { "A nudge from Zera — once, or on a schedule" }
     override var headerLook: AgendaLook { .reminder }
     override var zeraPose: String { "pencil" }
 
     init(editing: Reminder?) {
         self.editing = editing
-        super.init(saveTitle: editing == nil ? "Create Reminder" : "Save Changes", saveSymbol: editing == nil ? "bell.badge" : "checkmark")
+        super.init(saveTitle: editing == nil ? "Create reminder" : "Save changes", saveSymbol: editing == nil ? "bell.badge" : "checkmark")
         activeLabel.stringValue = "Only during set hours"
         activeToggle.onChange = { [weak self] _ in self?.refresh() }
         [dateBox, timeBox, activeFrom, activeTo, endDateBox].forEach { $0.onChange = { [weak self] in self?.refresh() } }
@@ -566,14 +566,14 @@ final class HydrationFormView: ReminderFormBase {
 
     private static let presets = [30, 60, 120, 180]
 
-    override var headerTitle: String { editing == nil ? "Hydration Reminder" : "Edit Hydration" }
-    override var headerSubtitle: String { "Zera reminds you to drink water through the day 💧" }
+    override var headerTitle: String { editing == nil ? "Hydration reminder" : "Edit hydration" }
+    override var headerSubtitle: String { "Zera reminds you to drink water through the day" }
     override var headerLook: AgendaLook { .hydration }
     override var zeraPose: String { "boba" }
 
     init(editing: Reminder?) {
         self.editing = editing
-        super.init(saveTitle: editing == nil ? "Create Hydration Reminder" : "Save Changes", saveSymbol: "drop.fill")
+        super.init(saveTitle: editing == nil ? "Create hydration reminder" : "Save changes", saveSymbol: "drop.fill")
         intervals.fill = true
         intervals.selection = [1]
         intervals.onChange = { [weak self] _ in self?.refresh() }

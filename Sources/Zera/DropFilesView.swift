@@ -29,7 +29,7 @@ private enum D {
 }
 
 /// Pasteboard type that marks a drag as one of Zera's own file rows (for the Drop Bin).
-private let shelfDragType = NSPasteboard.PasteboardType("ai.zera.shelf-item")
+let shelfDragType = NSPasteboard.PasteboardType("ai.zera.shelf-item")
 
 @MainActor
 private func dlabel(_ font: NSFont, _ color: NSColor, lines: Int = 1) -> NSTextField {
@@ -226,7 +226,7 @@ final class FileDropZone: NSView {
         if bounds.height < 100 {
             ddraw(dsymbol(symbol, 18, p.accent, .medium), centeredIn: NSRect(x: 14, y: 0, width: 26, height: bounds.height))
             let ta: [NSAttributedString.Key: Any] = [.font: ZFont.ui(ofSize: 13.5, weight: .semibold), .foregroundColor: p.text]
-            let title = isTargeted ? "Drop it here! ✨" : "Drop files here"
+            let title = isTargeted ? "Drop to add" : "Drop files here"
             let ts = (title as NSString).size(withAttributes: ta)
             (title as NSString).draw(at: NSPoint(x: 50, y: bounds.midY - ts.height / 2), withAttributes: ta)
             let sub = isTargeted ? "Let go and it goes on your Shelf." : "They wait on the Shelf. I only read one when you ask."
@@ -237,7 +237,7 @@ final class FileDropZone: NSView {
             return
         }
         ddraw(dsymbol(symbol, isTargeted ? 28 : 24, p.accent, .medium), centeredIn: NSRect(x: 0, y: 24, width: bounds.width, height: 30))
-        let title = isTargeted ? "Drop it here! ✨" : "Drop files here"
+        let title = isTargeted ? "Drop to add" : "Drop files here"
         let ta: [NSAttributedString.Key: Any] = [.font: Typo.detailTitle, .foregroundColor: p.text]
         let ts = (title as NSString).size(withAttributes: ta)
         (title as NSString).draw(at: NSPoint(x: bounds.midX - ts.width / 2, y: 60), withAttributes: ta)
@@ -1476,11 +1476,11 @@ final class DropFilesView: NSView, CardContent {
             reaction.set(pose: a.phase == .streaming ? "card_writing" : "reading", title: "Reading \(fileName.stringValue)…",
                          detail: "Claude is working on it through your Claude Code login — nothing opens.")
         } else if let f = lastFailure {
-            reaction.set(pose: "worried", title: "That didn't work 😕", detail: ClaudeActivityService.oneLine(f, max: 120))
+            reaction.set(pose: "worried", title: "That didn't work", detail: ClaudeActivityService.oneLine(f, max: 120))
         } else if thread.contains(where: { $0.answer != nil }) {
-            reaction.set(pose: "holding_doc", title: "Here's what I found ✨", detail: "You can ask me anything about it.")
+            reaction.set(pose: "holding_doc", title: "Here's what I found", detail: "You can ask me anything about it.")
         } else {
-            reaction.set(pose: "excited", title: "What should we do with this? 👀", detail: "Nothing is sent to Claude until you pick an action.")
+            reaction.set(pose: "excited", title: "What should we do with this?", detail: "Nothing is sent to Claude until you pick an action.")
         }
 
         // Content for the tab.
@@ -1690,7 +1690,7 @@ final class DropFilesView: NSView, CardContent {
         leftTitle.frame = ScreenHeader.titleFrame(width: w, padding: x)
         leftSub.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
         let cw = clearRecent.isHidden ? 0 : max(80, clearRecent.fittedWidth)
-        clearRecent.frame = NSRect(x: w - x - cw, y: ScreenHeader.controlY(Metrics.control), width: cw, height: Metrics.control)
+        clearRecent.frame = NSRect(x: w - x - cw, y: ScreenHeader.blockControlY(Metrics.control), width: cw, height: Metrics.control)
 
         // Shelf · Fresh under the header.
         var top = Isle.headerHeight
@@ -1849,8 +1849,8 @@ final class DropFilesView: NSView, CardContent {
         onSay?(line, .happy, 1.6)
     }
 
-    private func selectNewest(excluding before: Set<String>) {
-        if let p = store.items.first(where: { !before.contains($0.path) })?.path { Self.selectedPath = p; Self.tab = 0 }
+    func selectNewest(excluding before: Set<String>, existingPath: String? = nil) {
+        if let p = store.items.first(where: { !before.contains($0.path) })?.path ?? existingPath { Self.selectedPath = p; Self.tab = 0 }
         reload()
     }
 

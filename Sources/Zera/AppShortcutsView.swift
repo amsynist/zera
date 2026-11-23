@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 final class AppShortcutsView: NSView, @preconcurrency CardContent {
     private let service: AppShortcuts
     private let heading = NSTextField(labelWithString: "App Shortcuts")
-    private let detail = NSTextField(wrappingLabelWithString: "Open or focus your apps with a shortcut. Window layouts and workspaces stay with your window manager.")
+    private let detail = NSTextField(labelWithString: "Open or focus each app with a shortcut")
     private let status = NSTextField(wrappingLabelWithString: "")
     private let enabled = Toggle()
     private let add = CardButton("Add app…", style: .secondary, target: nil, action: #selector(chooseApp))
@@ -24,9 +24,9 @@ final class AppShortcutsView: NSView, @preconcurrency CardContent {
     init(service: AppShortcuts) {
         self.service = service
         super.init(frame: .zero)
-        heading.font = Typo.paneTitle; heading.textColor = Pal.text
-        detail.font = Typo.body; detail.textColor = Pal.textSecondary
-        status.font = Typo.caption; status.textColor = Pal.textSecondary
+        heading.font = Typo.screenTitle; heading.textColor = Pal.text
+        detail.font = Typo.screenSubtitle; detail.textColor = Pal.textSecondary; detail.lineBreakMode = .byTruncatingTail
+        status.font = Typo.caption; status.textColor = Pal.textSecondary; status.maximumNumberOfLines = 2
         enabled.setAccessibilityLabel("Enable App Shortcuts")
         enabled.onChange = { [weak self] yes in _ = self?.service.update { $0.enabled = yes } }
         add.target = self
@@ -43,19 +43,19 @@ final class AppShortcutsView: NSView, @preconcurrency CardContent {
     func willShow() { reload() }
     private func reload() {
         // Keep the recording control alive while its callback commits the binding.
-        if recorders.contains(where: \.isRecording) { status.stringValue = service.message; return }
-        enabled.isOn = service.preferences.enabled; status.stringValue = service.message
+        if recorders.contains(where: \.isRecording) { status.stringValue = Self.caption(service.message); return }
+        enabled.isOn = service.preferences.enabled; status.stringValue = Self.caption(service.message)
         body.subviews.forEach { $0.removeFromSuperview() }; recorders.removeAll(); actions.removeAll()
         let width = max(360, scroll.contentSize.width)
         var y: CGFloat = 0
         if service.preferences.apps.isEmpty {
             let empty = NSTextField(wrappingLabelWithString: "Add an application, then click its shortcut field to record keys. No Accessibility permission is needed.")
-            empty.font = Typo.body; empty.textColor = Pal.textSecondary; empty.frame = CGRect(x: 0, y: 12, width: width - 16, height: 60); body.addSubview(empty); y = 84
+            empty.font = Typo.body; empty.textColor = Pal.textSecondary; empty.frame = CGRect(x: 0, y: Space.s, width: width - Space.l, height: 60); body.addSubview(empty); y = 76
         }
         for app in service.preferences.apps {
             let label = NSTextField(labelWithString: app.name); label.font = Typo.control; label.textColor = Pal.text
-            label.lineBreakMode = .byTruncatingTail; label.frame = CGRect(x: 0, y: y + 9, width: width - 290, height: 24); body.addSubview(label)
-            let recorder = ShortcutRecorder(frame: CGRect(x: width - 280, y: y, width: 160, height: 36))
+            label.lineBreakMode = .byTruncatingTail; label.frame = CGRect(x: 0, y: y + 6, width: width - 288, height: 20); body.addSubview(label)
+            let recorder = ShortcutRecorder(frame: CGRect(x: width - 276, y: y, width: 160, height: Metrics.button))
             recorder.shortcut = app.shortcut; recorder.setAccessibilityLabel(app.name + " shortcut")
             recorder.onRecording = { [weak self, weak service] yes in
                 // The view can already be gone when its child recorder tears
@@ -68,14 +68,19 @@ final class AppShortcutsView: NSView, @preconcurrency CardContent {
             }
             body.addSubview(recorder); recorders.append(recorder)
             let open = CardButton("Open", style: .secondary, target: self, action: #selector(tapped(_:)))
-            open.setAccessibilityLabel("Open " + app.name); open.frame = CGRect(x: width - 108, y: y, width: 62, height: 36)
+            open.setAccessibilityLabel("Open " + app.name); open.frame = CGRect(x: width - 108, y: y, width: 64, height: Metrics.button)
             actions[ObjectIdentifier(open)] = { [weak self] in self?.service.launch(app.bundle) }; body.addSubview(open)
             let remove = IconButton(symbol: "minus", label: "Remove " + app.name, target: self, action: #selector(tapped(_:)))
-            remove.frame = CGRect(x: width - 36, y: y + 3, width: 30, height: 30)
+            remove.frame = CGRect(x: width - 32, y: y, width: Metrics.button, height: Metrics.button)
             actions[ObjectIdentifier(remove)] = { [weak self] in _ = self?.service.update { $0.apps.removeAll { $0.bundle == app.bundle } } }; body.addSubview(remove)
-            y += 48
+            y += Metrics.button + Space.s
         }
         contentHeight = y; needsLayout = true
+    }
+    /// A one-sentence status reads as a caption, so it drops its full stop.
+    static func caption(_ message: String) -> String {
+        guard message.hasSuffix("."), !message.dropLast().contains(". ") else { return message }
+        return String(message.dropLast())
     }
     @objc private func tapped(_ sender: NSControl) { actions[ObjectIdentifier(sender)]?() }
     @objc private func chooseApp() {
@@ -90,13 +95,17 @@ final class AppShortcutsView: NSView, @preconcurrency CardContent {
     override func layout() {
         super.layout()
         let x = Metrics.sidePad, width = max(0, bounds.width - 2 * x)
-        heading.frame = CGRect(x: x, y: ScreenHeader.titleTop, width: max(0, bounds.width / 2 - Isle.zeraGap / 2 - x), height: ScreenHeader.titleHeight)
-        enabled.frame = CGRect(x: bounds.width - x - 44, y: ScreenHeader.controlY(28), width: 44, height: 28)
-        detail.frame = CGRect(x: x, y: Isle.headerHeight + 8, width: width, height: 44)
-        status.frame = CGRect(x: x, y: detail.frame.maxY + 8, width: width - 124, height: 40)
-        add.frame = CGRect(x: bounds.width - x - 112, y: detail.frame.maxY + 8, width: 112, height: 36)
+        heading.frame = ScreenHeader.titleFrame(width: bounds.width, padding: x)
+        detail.frame = ScreenHeader.subtitleFrame(width: bounds.width, padding: x)
+        enabled.frame = CGRect(x: bounds.width - x - 44, y: ScreenHeader.blockControlY(28), width: 44, height: 28)
+        // The status and Add app share one row, centred on each other.
+        let addWidth = max(112, add.fittedWidth), rowTop = Isle.headerHeight
+        add.frame = CGRect(x: bounds.width - x - addWidth, y: rowTop, width: addWidth, height: Metrics.button)
+        let statusWidth = max(0, width - addWidth - Space.l)
+        let statusHeight = min(Metrics.button, ceil(status.cell?.cellSize(forBounds: CGRect(x: 0, y: 0, width: statusWidth, height: 200)).height ?? 16))
+        status.frame = CGRect(x: x, y: rowTop + (Metrics.button - statusHeight) / 2, width: statusWidth, height: statusHeight)
         let oldWidth = scroll.contentSize.width
-        scroll.frame = CGRect(x: x, y: status.frame.maxY + 12, width: width, height: max(0, bounds.height - status.frame.maxY - 28))
+        scroll.frame = CGRect(x: x, y: add.frame.maxY + Space.m, width: width, height: max(0, bounds.height - add.frame.maxY - Space.m - Space.l))
         if abs(oldWidth - scroll.contentSize.width) > 1 { reload() }
         body.frame = CGRect(x: 0, y: 0, width: scroll.contentSize.width, height: max(contentHeight, scroll.contentSize.height))
     }

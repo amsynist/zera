@@ -33,6 +33,15 @@ enum ScreenHeader {
         titleTop + (subtitleTop + subtitleHeight - titleTop - height) / 2
     }
     static func controlY(_ height: CGFloat) -> CGFloat { titleTop + (titleHeight - height) / 2 }
+    /// One rule for every header control: beside a title alone it centres on the title, beside a
+    /// title and subtitle it centres on both.
+    static func controlY(_ height: CGFloat, twoLines: Bool) -> CGFloat {
+        twoLines ? blockControlY(height) : controlY(height)
+    }
+    /// Detail screens: a square back button, with the title and subtitle indented beside it.
+    static func backFrame(padding: CGFloat) -> NSRect {
+        NSRect(x: padding, y: blockControlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
+    }
     static func titleFrame(width: CGFloat, padding: CGFloat = Metrics.cardPad) -> NSRect {
         NSRect(x: padding, y: titleTop, width: max(0, width / 2 - Isle.zeraGap / 2 - padding), height: titleHeight)
     }
@@ -41,9 +50,10 @@ enum ScreenHeader {
         frame.origin.y = subtitleTop; frame.size.height = subtitleHeight
         return frame
     }
-    static func trailingRect(width: CGFloat) -> NSRect {
+    static func trailingRect(width: CGFloat, twoLines: Bool = false) -> NSRect {
         let x = width / 2 + Isle.zeraGap / 2
-        return NSRect(x: x, y: controlY(Metrics.headerButton), width: max(0, width - Metrics.cardPad - x), height: Metrics.headerButton)
+        let y = controlY(Metrics.headerButton, twoLines: twoLines)
+        return NSRect(x: x, y: y, width: max(0, width - Metrics.cardPad - x), height: Metrics.headerButton)
     }
     static func detailTitleFrame(width: CGFloat, padding: CGFloat) -> NSRect {
         var frame = titleFrame(width: width, padding: padding)

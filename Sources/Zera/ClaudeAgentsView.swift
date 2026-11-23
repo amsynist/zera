@@ -17,7 +17,7 @@ final class ClaudeAgentsView: NSView, @preconcurrency CardContent {
     private let timelineTitle = NSTextField(labelWithString: "Activity")
     private let permissionTitle = NSTextField(labelWithString: "")
     private let input = ThemedField(placeholder: "Message this Claude session…")
-    private var back: CardButton!, new: CardButton!, send: CardButton!, stop: CardButton!, allow: CardButton!, deny: CardButton!
+    private var back: GHSquareButton!, new: CardButton!, send: CardButton!, stop: CardButton!, allow: CardButton!, deny: CardButton!
     private var selected: String?
     private var ids: [String] = []
     private var approval: ClaudeAgentService.Approval?
@@ -26,13 +26,13 @@ final class ClaudeAgentsView: NSView, @preconcurrency CardContent {
     init(service: ClaudeAgentService) {
         self.service = service
         super.init(frame: .zero)
-        heading.font = Typo.screenTitle; heading.textColor = Pal.text
+        heading.font = Typo.detailTitle; heading.textColor = Pal.text; heading.lineBreakMode = .byTruncatingTail
         subtitle.font = Typo.screenSubtitle; subtitle.textColor = Pal.textSecondary
         subtitle.lineBreakMode = .byTruncatingMiddle
         activity.font = Typo.body; activity.textColor = Pal.textSecondary; activity.lineBreakMode = .byTruncatingTail
         timelineTitle.font = Typo.rowTitleStrong; timelineTitle.textColor = Pal.textSecondary
         permissionTitle.font = Typo.rowTitleStrong; permissionTitle.textColor = Pal.warning
-        back = CardButton("Agents", style: .tertiary, target: self, action: #selector(backTapped))
+        back = GHSquareButton(symbol: "chevron.left", label: "All agents", target: self, action: #selector(backTapped))
         new = CardButton("New session…", style: .secondary, target: self, action: #selector(newTapped))
         send = CardButton("Send", style: .primary, target: self, action: #selector(sendTapped))
         stop = CardButton("Stop", style: .destructive, target: self, action: #selector(stopTapped))
@@ -145,12 +145,10 @@ final class ClaudeAgentsView: NSView, @preconcurrency CardContent {
     override func layout() {
         super.layout()
         let x = Metrics.sidePad, w = max(0, bounds.width - 2 * x)
-        back.frame = NSRect(x: x, y: ScreenHeader.controlY(Metrics.control), width: back.fittedWidth, height: Metrics.control)
-        heading.frame = ScreenHeader.titleFrame(width: bounds.width, padding: x)
-        heading.frame.origin.x = back.frame.maxX + Space.m
-        heading.frame.size.width = max(0, bounds.width - x - new.fittedWidth - Space.m - heading.frame.minX)
-        subtitle.frame = ScreenHeader.subtitleFrame(width: bounds.width, padding: x)
-        new.frame = NSRect(x: bounds.width - x - new.fittedWidth, y: ScreenHeader.controlY(Metrics.control), width: new.fittedWidth, height: Metrics.control)
+        back.frame = ScreenHeader.backFrame(padding: x)
+        heading.frame = ScreenHeader.detailTitleFrame(width: bounds.width, padding: x)
+        subtitle.frame = ScreenHeader.detailSubtitleFrame(width: bounds.width, padding: x)
+        new.frame = NSRect(x: bounds.width - x - new.fittedWidth, y: ScreenHeader.blockControlY(Metrics.control), width: new.fittedWidth, height: Metrics.control)
         chooser.frame = NSRect(x: x, y: 132, width: w, height: Metrics.control)
         pulse.frame = NSRect(x: x, y: 174, width: 22, height: 22)
         activity.frame = NSRect(x: x + 28, y: 174, width: w - 28, height: 24)

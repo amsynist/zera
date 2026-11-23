@@ -2,7 +2,7 @@ import AppKit
 
 /// Zera dangling from the notch. Fully transparent apart from her: clicks land only on
 /// the part of the window where she actually is, so the menu bar stays usable.
-final class BuddyView: NSView {
+final class BuddyView: ShelfDropTargetView {
     let zera = ZeraView()
 
     /// Fired on click (a press that did not turn into a drag) — opens her default card.
@@ -13,11 +13,6 @@ final class BuddyView: NSView {
     var onDragEnded: (() -> Void)?
     private var pressPoint = NSPoint.zero
     private var dragging = false
-    /// Something was dropped straight onto her.
-    var onDrop: ((NSPasteboard) -> Bool)?
-    /// True when a drag arrives over her, false when it leaves or lands.
-    var onDragStateChange: ((Bool) -> Void)?
-
     /// Points at the top that belong to the notch / menu bar; input there passes through.
     var hangInset: CGFloat = 0 {
         didSet { zera.hangInset = hangInset }
@@ -41,7 +36,6 @@ final class BuddyView: NSView {
         layer?.addSublayer(troupe)
         zera.style = .hanging
         addSubview(zera)
-        registerForDraggedTypes([.fileURL, .png, .tiff, .pdf, .rtf, .string, .URL])
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -181,21 +175,7 @@ final class BuddyView: NSView {
         }
     }
 
-    // MARK: Drag & drop onto her
 
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        onDragStateChange?(true)
-        return .copy
-    }
-
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
-    override func draggingExited(_ sender: NSDraggingInfo?) { onDragStateChange?(false) }
-    override func draggingEnded(_ sender: NSDraggingInfo) { onDragStateChange?(false) }
-    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
-
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        onDrop?(sender.draggingPasteboard) ?? false
-    }
 }
 
 /// A quiet, click-through comic speech bubble beside Zera. Its transparent margin

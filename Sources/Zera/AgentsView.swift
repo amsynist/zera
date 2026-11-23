@@ -4,7 +4,7 @@ import AppKit
 final class CodexAgentsView: NSView, @preconcurrency CardContent {
     var onHeightChange: (() -> Void)?
     var onBack: (() -> Void)?
-    private var back: CardButton!
+    private var back: GHSquareButton!
     var cardWidth: CGFloat { Isle.lensWidth }
     var desiredHeight: CGFloat { Isle.maxContentHeight }
     private let service = CodexAgentService.shared
@@ -28,11 +28,11 @@ final class CodexAgentsView: NSView, @preconcurrency CardContent {
     override var isFlipped: Bool { true }
     override init(frame: NSRect) {
         super.init(frame: frame)
-        title.font = Typo.screenTitle; title.textColor = Pal.text
+        title.font = Typo.detailTitle; title.textColor = Pal.text; title.lineBreakMode = .byTruncatingTail
         subtitle.font = Typo.screenSubtitle; subtitle.textColor = Pal.textSecondary
         note.font = Typo.caption; note.textColor = Pal.textSecondary
         approvalTitle.font = Typo.rowTitleStrong; approvalTitle.textColor = Pal.warning
-        back = CardButton("Agents", style: .tertiary, target: self, action: #selector(backTapped))
+        back = GHSquareButton(symbol: "chevron.left", label: "All agents", target: self, action: #selector(backTapped))
         addSubview(back)
         connect = CardButton("Connect", style: .secondary, target: self, action: #selector(connectTapped))
         new = CardButton("New session…", style: .primary, target: self, action: #selector(newTapped))
@@ -177,14 +177,14 @@ final class CodexAgentsView: NSView, @preconcurrency CardContent {
     override func layout() {
         super.layout()
         let x = Metrics.sidePad, w = max(0, bounds.width - 2 * x), h = bounds.height
-        back.frame = NSRect(x: x, y: ScreenHeader.controlY(Metrics.control), width: back.fittedWidth, height: Metrics.control)
-        title.frame = ScreenHeader.titleFrame(width: bounds.width, padding: x)
-        title.frame.origin.x = back.frame.maxX + Space.m
-        title.frame.size.width = max(0, bounds.width - x - new.fittedWidth - open.fittedWidth - 2 * Space.s - title.frame.minX)
-        subtitle.frame = ScreenHeader.subtitleFrame(width: bounds.width, padding: x)
+        back.frame = ScreenHeader.backFrame(padding: x)
+        title.frame = ScreenHeader.detailTitleFrame(width: bounds.width, padding: x)
+        subtitle.frame = ScreenHeader.detailSubtitleFrame(width: bounds.width, padding: x)
         let nw = new.fittedWidth, ow = open.fittedWidth, cw = connect.fittedWidth
-        open.frame = NSRect(x: bounds.width - x - ow, y: ScreenHeader.controlY(Metrics.control), width: ow, height: Metrics.control)
-        new.frame = NSRect(x: open.frame.minX - Space.s - nw, y: ScreenHeader.controlY(Metrics.control), width: nw, height: Metrics.control)
+        // Connect takes the subtitle row when it shows; without it the actions centre on the header.
+        let actionY = ScreenHeader.controlY(Metrics.control, twoLines: connect.isHidden)
+        open.frame = NSRect(x: bounds.width - x - ow, y: actionY, width: ow, height: Metrics.control)
+        new.frame = NSRect(x: open.frame.minX - Space.s - nw, y: actionY, width: nw, height: Metrics.control)
         connect.frame = NSRect(x: bounds.width - x - cw, y: ScreenHeader.subtitleTop, width: cw, height: Metrics.control)
         scope.frame = NSRect(x: x, y: 112, width: min(w, 280), height: Metrics.segment)
         chooser.frame = NSRect(x: x, y: 156, width: w, height: Metrics.control)

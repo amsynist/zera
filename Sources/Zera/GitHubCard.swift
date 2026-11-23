@@ -882,7 +882,7 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         switch mode {
         case .disconnected:
             state.set(pose: "card_greet", title: "Connect GitHub",
-                      subtitle: "See your PRs, checks and approvals right here — I look every 2 minutes.",
+                      subtitle: "PRs, checks and approvals, refreshed every 2 minutes",
                       button: PRActionButton("Connect GitHub", style: .primary, symbol: "link", target: self, action: #selector(connectTapped)))
         case .loading:
             state.set(pose: "card_read_q", title: "Checking your PRs…", subtitle: "This takes a few seconds the first time.", loading: true)
@@ -902,10 +902,10 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
                 state.set(pose: "card_read_q", title: "Nothing matches", subtitle: "Try a different search or clear the filters.",
                           button: PRActionButton("Clear filters", style: .secondary, target: self, action: #selector(clearFilters)))
             } else if gh.pulls.isEmpty {
-                state.set(pose: "card_thumbs_wink", title: "You're all clear ✨", subtitle: "No PRs were opened in your repos in the last 24 hours.")
+                state.set(pose: "card_thumbs_wink", title: "You're all clear", subtitle: "No PRs were opened in your repos in the last 24 hours.")
             } else {
                 switch Self.tab {
-                case 1: state.set(pose: "card_thumbs_wink", title: "Everything's approved ✨", subtitle: "Every PR opened in the last 24 hours has an approval.")
+                case 1: state.set(pose: "card_thumbs_wink", title: "Everything's approved", subtitle: "Every PR opened in the last 24 hours has an approval.")
                 case 2: state.set(pose: "card_sleepy_sit", title: "No checks to show", subtitle: "None of today's PRs have run any checks yet.")
                 default: state.set(pose: "card_read_q", title: "Nothing approved yet", subtitle: "PRs you approve, and yours once someone approves them, show up here.")
                 }
@@ -1019,8 +1019,9 @@ final class GitHubCard: CardBase, CardContent, NSTextFieldDelegate {
         // more on the right. Her own pictures and the insight box stay hidden in the island.
         [headerTile, zeraHead, bubble, insight, insightZera].forEach { $0.isHidden = true }
         layoutHeader()
-        moreButton.frame = NSRect(x: w - x - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
-        refreshButton.frame = NSRect(x: moreButton.frame.minX - 8 - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
+        let actions = headerTrailingRect
+        moreButton.frame = NSRect(x: w - x - Metrics.headerButton, y: actions.minY, width: Metrics.headerButton, height: Metrics.headerButton)
+        refreshButton.frame = NSRect(x: moreButton.frame.minX - Space.s - Metrics.headerButton, y: actions.minY, width: Metrics.headerButton, height: Metrics.headerButton)
 
         if mode == .disconnected {
             state.frame = NSRect(x: x, y: L.segY, width: iw, height: GHStateView.height)

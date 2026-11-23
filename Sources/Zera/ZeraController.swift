@@ -226,40 +226,13 @@ final class ZeraController: NSObject {
                 self.show(answerWaiting ? (self.resultsInShelf ? .shelf : .result) : defaultCard)
             }
         }
-        buddy.onDrop = { [weak self] pb in
-            guard let self = self else { return false }
-            // One motion: she catches it and the Shelf is there in the same frame. The drop's
-            // contents are read now; a picture or text is written to disk after, off the main thread.
-            guard let payload = ShelfStore.payload(from: pb) else {
-                self.sound(.fileReject)
-                self.say("hmm, can't hold that", mood: .thinking, for: 1.6)
-                return false
-            }
-            let already = ShelfStore.shared.alreadyHas(pasteboard: pb)
-            self.sound(.fileCatch)
-            self.suppressUntil = .distantPast
-            self.show(.shelf, instant: true)
-            ShelfStore.shared.ingest(payload) { [weak self] n in
-                guard let self = self else { return }
-                if n == 0 && !already {
-                    self.say("hmm, can't hold that", mood: .thinking, for: 1.6)
-                    return
-                }
-                self.say(n == 1 ? "got it! ✨" : (n > 1 ? "got all \(n)! ✨" : "already have that one 😊"), mood: .happy, for: 1.6)
-                self.shelfDidAcceptDrop()
-            }
-            return true
-        }
-        buddy.onDragStateChange = { [weak self] active in
-            guard let self = self else { return }
-            self.buddyDragActive = active
-            if active {
-                self.sound(.fileHover)
-                self.suppressUntil = .distantPast
-                self.say("toss it here! 🙌", mood: .excited, for: 0)
-                self.show(.shelf, instant: true)
-            } else {
-                self.settle()
+        for target: ShelfDropTargetView in [buddy, notchBuddy, island] {
+            target.onDrop = { [weak self] pasteboard in self?.catchShelfDrop(pasteboard) ?? false }
+            target.onDragStateChange = { [weak self] active in
+                guard let self else { return }
+                self.buddyDragActive = active
+                if active { self.sound(.fileHover); self.react(.excited, for: 0) }
+                else { self.settle() }
             }
         }
         buddy.onDragBegan = { [weak self] in
@@ -529,7 +502,7 @@ final class ZeraController: NSObject {
 
     /// Shows her ear when she lives in the notch, is enabled, and no screen covers the notch.
     private func syncNotchBuddy(animated: Bool) {
-        let show = notchStyle && buddyEnabled && !liveVisible && !cardVisible && !pillVisible && !openerOpen && !(waterVisit?.isActive ?? false)
+        let show = notchStyle && buddyEnabled && (!liveVisible || fileDragLit) && !cardVisible && !pillVisible && !openerOpen && !(waterVisit?.isActive ?? false)
         if show {
             positionNotchBuddy()
             if notchBuddyPanel.alphaValue < 0.05 { notchBuddyPanel.orderFrontRegardless() }
@@ -931,9 +904,9 @@ final class ZeraController: NSObject {
     }
 
     private func updateLook(_ mouse: NSPoint) {
+        // The opener displays its own companion. The hidden notch and rope figures need no gaze updates.
+        guard !openerOpen else { return }
         let head = headPoint
-        // In the app opener she watches the app you're on: under the pointer, or the selection.
-        let mouse = openerOpen ? (opener.focusPoint ?? mouse) : mouse
         // Respond near the face and ease towards a bounded gaze farther away.
         let x = tanh((mouse.x - head.x) / 260)
         let y = tanh((mouse.y - head.y) / 200)
@@ -1750,9 +1723,11 @@ final class ZeraController: NSObject {
             dragBoardCount = count
             guard !isDraggingOut, !dragging, dragBoard.types?.contains(.fileURL) == true else { return }
             fileDragLit = true
+            syncNotchBuddy(animated: false)
             reactLight(.fileDrag(active: true))
         } else if fileDragLit {
             fileDragLit = false
+            syncNotchBuddy(animated: false)
             reactLight(.fileDrag(active: false))
         }
     }
@@ -2734,6 +2709,27 @@ final class ZeraController: NSObject {
     }
 
     // MARK: - Shelf
+
+    private func catchShelfDrop(_ pasteboard: NSPasteboard) -> Bool {
+        guard let payload = ShelfStore.payload(from: pasteboard) else { sound(.fileReject); return false }
+        let store = ShelfStore.shared
+        let before = Set(store.items.map(\.path))
+        let existing = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL])?
+            .first.map { $0.standardizedFileURL.path }.flatMap { before.contains($0) ? $0 : nil }
+        sound(.fileCatch)
+        suppressUntil = .distantPast
+        show(.shelf, instant: true)
+        store.ingest(payload) { [weak self] count in
+            guard let self, self.cardVisible, self.currentCard == .shelf else { return }
+            guard count > 0 || existing != nil else {
+                self.say("Couldn’t add that to Shelf", mood: .thinking, for: 1.6)
+                return
+            }
+            (self.cards[.shelf] as? DropFilesView)?.selectNewest(excluding: before, existingPath: existing)
+            self.outsideSince = nil
+        }
+        return true
+    }
 
     private func shelfDidAcceptDrop() {
         cardHeightChanged()

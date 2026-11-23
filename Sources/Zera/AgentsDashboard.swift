@@ -225,8 +225,10 @@ final class AgentsView: NSView, @preconcurrency CardContent {
         let x = Metrics.sidePad, w = bounds.width, iw = max(0, w - 2 * x)
         heading.frame = ScreenHeader.titleFrame(width: w, padding: x)
         subtitle.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
-        new.frame = NSRect(x: w - x - new.fittedWidth, y: ScreenHeader.controlY(Metrics.control), width: new.fittedWidth, height: Metrics.control)
-        approvals.frame = NSRect(x: w - x - approvals.fittedWidth, y: ScreenHeader.subtitleTop, width: approvals.fittedWidth, height: Metrics.control)
+        let actionY = ScreenHeader.blockControlY(Metrics.control)
+        new.frame = NSRect(x: w - x - new.fittedWidth, y: actionY, width: new.fittedWidth, height: Metrics.control)
+        let approvalsRight = new.isHidden ? w - x : new.frame.minX - Space.s
+        approvals.frame = NSRect(x: approvalsRight - approvals.fittedWidth, y: actionY, width: approvals.fittedWidth, height: Metrics.control)
         let filterWidth = min(max(240, providers.preferredWidth), max(240, iw - 178))
         providers.frame = NSRect(x: x, y: Isle.headerHeight, width: filterWidth, height: Metrics.segment)
         state.frame = NSRect(x: w - x - 160, y: Isle.headerHeight, width: 160, height: Metrics.segment)

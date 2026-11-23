@@ -4,11 +4,11 @@ import XCTest
 /// The approval spool: requests the hook script drops in, and the decisions Zera writes back.
 /// Runs against the hooks folder of the (throwaway) home the test process uses.
 final class ClaudeHookServiceTests: XCTestCase {
-    private var requests: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Zera/hooks/requests", isDirectory: true)
-    }
-    private var responses: URL { requests.deletingLastPathComponent().appendingPathComponent("responses", isDirectory: true) }
+    private let base = FileManager.default.temporaryDirectory.appendingPathComponent("zera-hooks-\(UUID().uuidString)")
+    private var requests: URL { base.appendingPathComponent("hooks/requests") }
+    private var responses: URL { base.appendingPathComponent("hooks/responses") }
+
+    private func liveID(_ time: Int, _ serial: Int) -> String { "\(time)-\(getpid())-\(serial)" }
 
     private func drop(_ id: String, command: String = "ls", session: String = "s1") throws {
         try FileManager.default.createDirectory(at: requests, withIntermediateDirectories: true)
@@ -16,13 +16,7 @@ final class ClaudeHookServiceTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: json).write(to: requests.appendingPathComponent(id + ".json"))
     }
 
-    private func clearSpool() {
-        for dir in [requests, responses] {
-            for f in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] {
-                try? FileManager.default.removeItem(at: f)
-            }
-        }
-    }
+    private func clearSpool() { try? FileManager.default.removeItem(at: base) }
 
     @MainActor
     func testGhostRequestsAreDroppedAndTheRestComeOldestFirst() throws {
@@ -30,11 +24,11 @@ final class ClaudeHookServiceTests: XCTestCase {
         defer { clearSpool() }
         let now = Int(Date().timeIntervalSince1970)
         let ghost = "\(now - 2000)-1-1"            // its script died long ago
-        let older = "\(now - 30)-2-2", newer = "\(now - 5)-3-3"
+        let older = liveID(now - 30, 2), newer = liveID(now - 5, 3)
         try drop(ghost, command: "rm -rf build")
         try drop(newer, command: "npm test")
         try drop(older, command: "git status")
-        let hooks = ClaudeHookService.shared
+        let hooks = ClaudeHookService(base: base)
         hooks.scan()
         XCTAssertEqual(hooks.pending.map(\.id), [older, newer], "oldest first, the ghost never shown")
         XCTAssertFalse(FileManager.default.fileExists(atPath: requests.appendingPathComponent(ghost + ".json").path),
@@ -47,9 +41,9 @@ final class ClaudeHookServiceTests: XCTestCase {
         clearSpool()
         defer { clearSpool() }
         let now = Int(Date().timeIntervalSince1970)
-        let a = "\(now - 10)-4-4", b = "\(now - 9)-5-5"
+        let a = liveID(now - 10, 4), b = liveID(now - 9, 5)
         try drop(a); try drop(b)
-        let hooks = ClaudeHookService.shared
+        let hooks = ClaudeHookService(base: base)
         hooks.scan()
         let first = try XCTUnwrap(hooks.pending.first)
         XCTAssertEqual(first.id, a)
@@ -69,9 +63,9 @@ final class ClaudeHookServiceTests: XCTestCase {
         clearSpool()
         defer { clearSpool() }
         RunLoop.main.run(until: Date().addingTimeInterval(0.65))
-        let id = "\(Int(Date().timeIntervalSince1970))-91-91"
+        let id = liveID(Int(Date().timeIntervalSince1970), 91)
         try drop(id)
-        let hooks = ClaudeHookService.shared
+        let hooks = ClaudeHookService(base: base)
         hooks.scan()
         let request = try XCTUnwrap(hooks.pending.first)
         let obstruction = responses.appendingPathComponent(id + ".json")
@@ -85,6 +79,37 @@ final class ClaudeHookServiceTests: XCTestCase {
         let output = json["hookSpecificOutput"] as! [String: Any]
         XCTAssertEqual((output["decision"] as! [String: Any])["behavior"] as? String, "deny")
         XCTAssertNil(hooks.lastResponseError)
+    }
+
+    @MainActor
+    func testExternalDecisionRemovesOnlyItsMatchingRequest() throws {
+        defer { clearSpool() }
+        let hooks = ClaudeHookService(base: base)
+        let now = Int(Date().timeIntervalSince1970)
+        let done = liveID(now, 1), sameSession = liveID(now, 2), otherSession = liveID(now, 3)
+        try drop(done, command: "pwd")
+        try drop(sameSession, command: "echo sample")
+        try drop(otherSession, command: "pwd", session: "s2")
+        hooks.scan()
+        hooks.resolveTool(sessionID: "s1", tool: "Bash", input: ["command": "pwd"])
+        XCTAssertEqual(hooks.pending.map(\.id), [sameSession, otherSession])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: requests.appendingPathComponent(done + ".json").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: responses.appendingPathComponent(done + ".json").path))
+        hooks.resolveSession("s1")
+        XCTAssertEqual(hooks.pending.map(\.id), [otherSession])
+    }
+
+    @MainActor
+    func testCancelledHookDisappearsBeforeItsTimeout() throws {
+        defer { clearSpool() }
+        let hooks = ClaudeHookService(base: base)
+        let now = Int(Date().timeIntervalSince1970)
+        let dead = "\(now)-\(Int32.max)-2"
+        let live = liveID(now, 3)
+        try drop(dead)
+        try drop(live)
+        hooks.scan()
+        XCTAssertEqual(hooks.pending.map(\.id), [live])
     }
 
     func testSettingsFileIsNeverReplacedWhenItCannotBeRead() throws {

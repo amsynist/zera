@@ -798,12 +798,22 @@ final class ClipRow: NSView {
         tile.layer?.borderColor = p.border.cgColor
         switch item.kind {
         case .image:
-            // Decoded off the main thread unless it's already cached; the tile is black till then.
             let store = ClipboardStore.shared
-            tile.image = store.cachedThumbnail(item, size: 40)
-            if tile.image == nil { store.loadThumbnail(item, size: 40) { [weak self] img in self?.tile.image = img } }
-            tile.imageScaling = .scaleProportionallyUpOrDown
-            tile.layer?.backgroundColor = NSColor.black.cgColor
+            if let image = store.cachedThumbnail(item, size: 40) {
+                showThumbnail(image)
+            } else {
+                tile.image = NSImage(systemSymbolName: "photo", accessibilityDescription: nil)?
+                    .withSymbolConfiguration(.init(pointSize: 14, weight: .semibold))
+                tile.imageScaling = .scaleNone
+                tile.contentTintColor = p.textSecondary
+                store.loadThumbnail(item, size: 40) { [weak self] image in
+                    if let image { self?.showThumbnail(image) }
+                }
+            }
+        case .files where item.mediaFile != nil:
+            if let url = item.mediaFile {
+                Thumbnails.shared.thumbnail(for: url) { [weak self] image in self?.showThumbnail(image) }
+            }
         case .color:
             tile.image = nil
             tile.layer?.backgroundColor = ClipRow.color(item.text)?.cgColor ?? p.surfaceHover.cgColor
@@ -822,6 +832,13 @@ final class ClipRow: NSView {
             tile.layer?.backgroundColor = tint.withAlphaComponent(0.12).cgColor
             tile.layer?.borderColor = tint.withAlphaComponent(0.3).cgColor
         }
+    }
+
+    private func showThumbnail(_ image: NSImage) {
+        tile.contentTintColor = nil
+        tile.image = image
+        tile.imageScaling = .scaleProportionallyUpOrDown
+        tile.layer?.backgroundColor = Pal.field.cgColor
     }
 
     /// "#4DBDFF", "4dbdff", "#abc", "rgb(…)" → a colour for the swatch.

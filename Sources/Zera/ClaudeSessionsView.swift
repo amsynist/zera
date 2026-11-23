@@ -343,6 +343,9 @@ final class ClaudeSessionRow: NSView {
     /// list's scroll view a glow is clipped to a hard box around the row.
     private func restyle() { needsDisplay = true }
 
+    /// Widest chip (Completed) plus the usual time ("50 min ago").
+    static let statusColumn: CGFloat = 176
+
     override func layout() {
         super.layout()
         let w = bounds.width, h = bounds.height
@@ -351,13 +354,15 @@ final class ClaudeSessionRow: NSView {
         tile.frame = NSRect(x: 14, y: mid - ts / 2, width: ts, height: ts)
         more.frame = NSRect(x: w - 14 - 34, y: mid - 17, width: 34, height: 34)
         action.frame = NSRect(x: more.frame.minX - 8 - 34, y: mid - 17, width: 34, height: 34)
-        // Without a stop / review button the status column moves up against the menu button.
-        let actionsLeft = action.isHidden ? more.frame.minX : action.frame.minX
-        // Chip and time side by side; the column grows so the time is never cut off.
+        // Every row keeps the action slot, with or without a stop / review button, so the status
+        // column, progress bars and notes end on the same line down the whole list.
+        let actionsLeft = action.frame.minX
+        // One status column: chips start on its left edge and times end on its right edge. It
+        // only grows when a long time would otherwise be cut off.
         let cw = min(112, chip.fittedWidth)
         let timeW = ceil(time.attributedStringValue.size().width) + 4
-        let statusW = max(128, cw + 8 + timeW)
-        let sx = actionsLeft - 14 - statusW
+        let statusW = max(Self.statusColumn, cw + Space.s + timeW)
+        let sx = actionsLeft - Space.m - statusW
 
         // Title and folder, plus a third line (progress or a note) when there is one, centred
         // as a block on the row so the text lines up with the tile and the buttons.
@@ -378,15 +383,15 @@ final class ClaudeSessionRow: NSView {
         else if running || waiting { chipY = top - 3 }
         else { chipY = mid - 12 }
         chip.frame = NSRect(x: sx, y: chipY, width: cw, height: 24)
-        time.frame = NSRect(x: chip.frame.maxX + 8, y: chipY + 4, width: max(0, sx + statusW - chip.frame.maxX - 8), height: 16)
+        time.frame = NSRect(x: sx + statusW - timeW, y: chipY + 4, width: timeW, height: 16)
         switch kind {
         case .running:
             let pw: CGFloat = percent.stringValue.isEmpty ? 0 : 40
-            let barRight = actionsLeft - 14 - pw
+            let barRight = actionsLeft - Space.m - pw
             bar.frame = NSRect(x: tx, y: top + 45, width: max(40, barRight - tx), height: 6)
             percent.frame = NSRect(x: barRight + 4, y: top + 40, width: pw - 4, height: 16)
         case .waiting:
-            note.frame = NSRect(x: tx, y: top + 40, width: actionsLeft - 14 - tx, height: 16)
+            note.frame = NSRect(x: tx, y: top + 40, width: actionsLeft - Space.m - tx, height: 16)
         case .completed:
             note.frame = NSRect(x: sx, y: chip.frame.maxY + 6, width: statusW, height: 16)
         }
@@ -483,7 +488,8 @@ final class ClaudeSessionProgress: NSView {
             else { value = s.promptAt == nil ? 0 : 1 }
         }
         bar.set(progress: value, tone: tone, running: running)
-        elapsed.stringValue = s.promptAt == nil ? "" : "\(ClaudeActivityCard.clock(s.elapsed)) elapsed"
+        let showElapsed = s.promptAt != nil && (s.status == .running || s.status == .waiting)
+        elapsed.stringValue = showElapsed ? "\(ClaudeActivityCard.clock(s.elapsed)) elapsed" : ""
         eta.stringValue = s.eta.map { "ETA ~ \(ClaudeActivityCard.clock($0))" } ?? ""
         needsLayout = true
     }
@@ -495,8 +501,8 @@ final class ClaudeSessionProgress: NSView {
         big.frame = NSRect(x: 8, y: (h - 34) / 2, width: leftW - 8, height: 34)
         glyph.frame = NSRect(x: 8, y: (h - 32) / 2, width: leftW - 8, height: 32)
         spinner.frame = NSRect(x: 8 + (leftW - 8 - 24) / 2, y: (h - 24) / 2, width: 24, height: 24)
-        let rightW: CGFloat = 132
-        elapsed.frame = NSRect(x: w - 16 - rightW, y: 18, width: rightW, height: 16)
+        let rightW: CGFloat = elapsed.stringValue.isEmpty && eta.stringValue.isEmpty ? 0 : 132
+        elapsed.frame = NSRect(x: w - Space.l - rightW, y: 16, width: rightW, height: 16)
         eta.frame = NSRect(x: w - 16 - rightW, y: 42, width: rightW, height: 16)
         let x = leftW + 8
         stage.frame = NSRect(x: x, y: 16, width: w - 16 - rightW - 12 - x, height: 19)
@@ -571,12 +577,12 @@ final class ZeraSessionReaction: NSView {
                 detail.stringValue = Self.doing(s)
             case .waiting:
                 pose = "card_bell"
-                title.stringValue = "Claude needs your OK 🙋"
+                title.stringValue = "Claude needs your approval"
                 detail.stringValue = pendingCommand.map { "Wants to run: \(ClaudeActivityService.oneLine($0, max: 90))" } ?? "Review the request to let it continue."
             case .done:
                 pose = "celebrate"
                 let n = s.filesChanged.count
-                title.stringValue = "All done! 🎉"
+                title.stringValue = "All done"
                 detail.stringValue = n > 0 ? "Changed \(n) file\(n == 1 ? "" : "s") in \(ClaudeActivityCard.clock(s.elapsed))." : "Finished in \(ClaudeActivityCard.clock(s.elapsed)) — no files changed."
             case .idle:
                 pose = s.promptAt == nil ? "idle" : "cheerful"
@@ -585,7 +591,7 @@ final class ZeraSessionReaction: NSView {
             case .ended:
                 pose = "sleepy"
                 title.stringValue = "Session ended"
-                detail.stringValue = "Start a new one any time with New Session."
+                detail.stringValue = "Start a new one any time with New"
             }
         }
         figure.pose = pose
@@ -679,7 +685,7 @@ final class ClaudeActivityConsole: NSView {
         let x0: CGFloat = 18, top: CGFloat = 16
         let rightLimit = copyButton.frame.minX - 10
         guard !lines.isEmpty else {
-            ("> Waiting for Claude's first step…" as NSString).draw(at: NSPoint(x: x0, y: top), withAttributes: [.font: Self.font, .foregroundColor: dim])
+            ("No recorded steps" as NSString).draw(at: NSPoint(x: x0, y: top), withAttributes: [.font: Self.font, .foregroundColor: dim])
             return
         }
         let fit = max(1, Int((bounds.height - top - 10) / Self.lineH))
@@ -1272,7 +1278,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
             } else if !Self.query.isEmpty || Self.filter != 0 {
                 leftState.set(pose: "card_read_q", title: "Nothing here", subtitle: "Try another filter or search.")
             } else {
-                leftState.set(pose: "card_sleepy_sit", title: "No Claude sessions yet", subtitle: "Start one with New Session — I'll follow along.")
+                leftState.set(pose: "card_sleepy_sit", title: "No Claude sessions yet", subtitle: "Start one with New and I'll follow along")
             }
         }
 
@@ -1299,7 +1305,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
             } else {
                 rightState.set(pose: "card_laptop_side", title: "No session selected",
                                subtitle: "Start Claude Code in any folder and its session shows up here as it works.",
-                               button: PRActionButton("New Session", style: .primary, symbol: "plus", target: self, action: #selector(newSessionTapped)))
+                               button: PRActionButton("New session", style: .primary, symbol: "plus", target: self, action: #selector(newSessionTapped)))
             }
             return
         }
@@ -1333,7 +1339,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
             switch kind {
             case 0: primary = PRActionButton("Stop", style: .destructive, symbol: "stop.fill", target: self, action: #selector(primaryTapped))
             case 1: primary = PRActionButton("Review approval", style: .warning, symbol: "hand.raised.fill", target: self, action: #selector(primaryTapped))
-            default: primary = PRActionButton("New Session", style: .secondary, symbol: "plus", target: self, action: #selector(primaryTapped))
+            default: primary = PRActionButton("New session", style: .secondary, symbol: "plus", target: self, action: #selector(primaryTapped))
             }
             right.addSubview(primary)
         }
@@ -1505,7 +1511,8 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         leftTitle.frame = ScreenHeader.titleFrame(width: w, padding: x)
         leftSub.frame = ScreenHeader.subtitleFrame(width: w, padding: x)
         let bw = newSession.fittedWidth + 8
-        newSession.frame = NSRect(x: w - x - bw, y: ScreenHeader.controlY(Metrics.button), width: bw, height: Metrics.button)
+        // Usage takes the subtitle row when it shows; without it New centres on the header.
+        newSession.frame = NSRect(x: w - x - bw, y: ScreenHeader.controlY(Metrics.button, twoLines: usageBadge.isHidden), width: bw, height: Metrics.button)
 
         // Usage occupies the existing trailing subtitle slot, never an extra list row.
         let usageLeft = w / 2 + Isle.zeraGap / 2
@@ -1535,7 +1542,7 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
         rightState.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: max(0, h - Isle.headerHeight - 20))
         // Island header: back · title / time and folder on the left; status, Stop, more on the right.
         back.isHidden = false
-        back.frame = NSRect(x: x, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
+        back.frame = NSRect(x: x, y: ScreenHeader.blockControlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
         sessionTile.isHidden = true
         collapse.isHidden = true
         sessionTitleLabel.frame = ScreenHeader.detailTitleFrame(width: w, padding: x)
@@ -1545,13 +1552,13 @@ final class ClaudeSessionsView: NSView, CardContent, NSTextFieldDelegate {
             sessionMetaLabel.stringValue = elapsed + " · " + sessionMetaLabel.stringValue
         }
         sessionMetaLabel.frame = ScreenHeader.detailSubtitleFrame(width: w, padding: x)
-        sessionMore.frame = NSRect(x: w - x - 34, y: ScreenHeader.controlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
+        sessionMore.frame = NSRect(x: w - x - Metrics.headerButton, y: ScreenHeader.blockControlY(Metrics.headerButton), width: Metrics.headerButton, height: Metrics.headerButton)
         let pw = primary.isHidden ? 0 : max(76, primary.fittedWidth)
-        primary.frame = NSRect(x: sessionMore.frame.minX - 8 - pw, y: ScreenHeader.controlY(Metrics.button), width: pw, height: Metrics.button)
-        let chipRight = (primary.isHidden ? sessionMore.frame.minX : primary.frame.minX) - 8
-        let chipW = min(chipRight - (w / 2 + Isle.zeraGap / 2), sessionChipView.fittedWidth)
+        primary.frame = NSRect(x: sessionMore.frame.minX - Space.s - pw, y: ScreenHeader.blockControlY(Metrics.button), width: pw, height: Metrics.button)
+        let chipRight = (primary.isHidden ? sessionMore.frame.minX : primary.frame.minX) - Space.s
+        let chipW = max(0, min(chipRight - (w / 2 + Isle.zeraGap / 2), sessionChipView.fittedWidth))
         sessionChipView.isHidden = chipW < 60
-        sessionChipView.frame = NSRect(x: chipRight - chipW, y: ScreenHeader.controlY(24), width: chipW, height: 24)
+        sessionChipView.frame = NSRect(x: chipRight - chipW, y: ScreenHeader.blockControlY(24), width: chipW, height: 24)
 
         // Tabs.
         tabs.frame = NSRect(x: x, y: Isle.headerHeight, width: iw, height: Metrics.segment)

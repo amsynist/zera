@@ -183,7 +183,7 @@ final class AlertCenter {
             } else {
                 kind = .reminder; symbol = "bell.fill"; tint = p.warning
             }
-            let a = ZeraAlert(id: id, kind: kind, title: r.headline, detail: r.detail, date: stamp(id, or: Date()),
+            let a = ZeraAlert(id: id, kind: kind, title: ReminderAlertCard.bannerHeadline(r.headline), detail: r.detail, date: stamp(id, or: Date()),
                               symbol: symbol, tint: tint, url: r.joinURL, opens: r.kind == .battery ? .home : .reminders, isActionable: true)
             if insert(a) { dirty = true }
         }
@@ -414,7 +414,7 @@ final class AlertsView: CardBase, CardContent {
     private let doc = FlippedView()
     private let needsHeader = SectionHeader("Needs you")
     private let earlierHeader = SectionHeader("Earlier")
-    private let empty = NSTextField(labelWithString: "All quiet. Nothing needs you.")
+    private let empty = NSTextField(labelWithString: "No alerts")
     private var needsRows: [AlertRow] = []
     private var earlierRows: [AlertRow] = []
     /// While `willShow` refreshes the inbox itself, its `changed` posts are not reloaded twice.
@@ -494,7 +494,7 @@ final class AlertsView: CardBase, CardContent {
 
         let n = center.needsYou, today = center.today
         if all.isEmpty {
-            setSubtitle("All quiet")
+            setSubtitle(nil)
         } else {
             let who = n == 0 ? "Nothing needs you" : "\(n) need\(n == 1 ? "s" : "") you"
             setSubtitle("\(who) · \(today) today")

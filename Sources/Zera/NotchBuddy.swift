@@ -22,7 +22,7 @@ enum BuddyStyle: Int {
 // controller already does to her shows up here too. Drawn with Core Graphics on the shared
 // animation clock, only while it's on screen: eyes follow the pointer, she blinks, breathes,
 // leans in when you hover, squashes when you tap, and glows with what Claude is doing.
-final class NotchBuddyView: NSView, ZeraAnimating {
+final class NotchBuddyView: ShelfDropTargetView, ZeraAnimating {
     /// The full figure whose state she mirrors.
     weak var source: ZeraView?
     var activityOverride: ZeraActivity?

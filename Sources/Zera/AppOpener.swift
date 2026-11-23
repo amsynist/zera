@@ -151,9 +151,6 @@ final class AppOpener: NSObject, NSWindowDelegate {
 
     func toggle(notch: NSRect, screen: NSRect) { isOpen ? close() : open(notch: notch, screen: screen) }
 
-    /// The app Zera should be looking at (see `OpenerSurface.focusPoint`), while open.
-    var focusPoint: NSPoint? { isOpen ? view?.focusPoint : nil }
-
     func open(notch: NSRect, screen: NSRect) {
         guard !isOpen else { return }
         closeWork?.cancel(); closeWork = nil
@@ -289,7 +286,7 @@ final class AppOpenerView: NSView, NSTextFieldDelegate {
     private let rope = NSView()
     private let holder = FlippedView()
     private let zera = NSImageView()
-    /// Her live eyes, over the picture: they follow the app you're on (see `focusPoint`).
+    /// The classic face drawn over the launcher artwork.
     private let zeraFace = OpenerZeraFace()
     /// Signal: the shared signal-core companion peeks over the search, as in the notch.
     private let companion = LivingCompanionView(frame: .zero)
@@ -2729,23 +2726,6 @@ protocol OpenerSurface: NSView, NSTextFieldDelegate {
     func toss(_ app: AppEntry, _ done: @escaping () -> Void)
 }
 extension OpenerSurface {
-    /// Where the app you're on sits, in screen points: the one under the pointer, else the
-    /// selected one. Zera looks there while the opener is up.
-    var focusPoint: NSPoint? {
-        guard let window else { return nil }
-        let mouse = window.mouseLocationOutsideOfEventStream
-        var spots: [(rect: NSRect, chosen: Bool)] = []
-        func walk(_ v: NSView) {
-            guard !v.isHidden, v.alphaValue > 0.05 else { return }
-            if let t = v as? OrbitTile { spots.append((t.convert(t.bounds, to: nil), t.chosen)) }
-            else if let r = v as? TreeRowView { spots.append((r.convert(r.bounds, to: nil), r.selected)) }
-            v.subviews.forEach(walk)
-        }
-        walk(self)
-        guard let spot = spots.first(where: { $0.rect.contains(mouse) }) ?? spots.first(where: \.chosen) else { return nil }
-        return window.convertPoint(toScreen: NSPoint(x: spot.rect.midX, y: spot.rect.midY))
-    }
-
     /// Navigation belongs to the opener window, not just to its search field's editor.
     func handleKeyEvent(_ event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return false }

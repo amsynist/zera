@@ -21,6 +21,8 @@ Everything is local work on the `feature/daily-shelf` branch; nothing here is co
 | Section labels | `Typo.sectionText(_:)` | Upper case, tracked 1.6. `SignalDraw.label(_:count:)` for drawn labels with a count. |
 | Radii | `Radius` (`Palette.swift`) | chip 5 · button 7 · row 9 · card/pane 10 · island 22 (`Isle.corner`). |
 | Heights | `Metrics`, `RowTier` | Unchanged from v2 so screen bodies keep their origin. |
+| Screen headers | `ScreenHeader` in `Palette.swift` | One rule for header controls: `controlY(_:twoLines:)` centres them on the title, or on the title and subtitle together when both show. Detail screens use `backFrame` with `detailTitleFrame` / `detailSubtitleFrame`, so the square back button sits beside both lines. |
+| Session status column | `ClaudeSessionRow.statusColumn` | Chips start on the column's left edge and times end on its right edge. Every row keeps the action slot so bars and notes end on one line. |
 | Motion | `Motion` | Every animation checks `Motion.reduced`. |
 
 ## Surfaces
@@ -32,6 +34,7 @@ Everything is local work on the `feature/daily-shelf` branch; nothing here is co
 | `SignalLayerView` | `Signal/SignalGlass.swift` | Holds loose Core Animation layers at a fixed place among sibling views. **Always use it when layers must sit above a subview**: AppKit draws a view's subview layers above its own loose sublayers, which is why the island's light, liquid, pane and trace live in `IslandView.chrome`, and the wings' energy in `LiveActivityView.fx`. |
 | `OpenerGlass` | `AppOpener.swift` | Rounded glass windows (app opener, focus card, quick add, export). Already contains a `SignalGlassView`; reuse it rather than adding another. |
 | Clipboard picker | `ClipboardPicker.swift` | The Clipboard shortcut opens a temporary `FloatingPanel` next to the pointer. It shares `OpenerGlass`, `SearchBox` and the compact `ClipRow` with the full notch Clipboard. |
+| Clipboard previews | `ClipboardView.swift` and `Thumbnails.swift` | Bitmap history uses the existing thumbnail cache. A single image or movie file uses Quick Look with its file icon as the fallback. |
 | Island glass | `NotchIsland.swift` (`IslandView.glass`) | The island body; its mask morphs with the island path in `applyShape`. |
 | Wing glass | `ActivityPill.swift` (`LiveActivityView.glass` + `WingFace`) | `WingFace` paints the pill-and-tendril outline above the blur. Layout invalidates the face when the wing geometry changes, alongside the glass mask, glow and controls. |
 | Shelf glass | `DailyShelf/DailyShelfPanel.swift` (`DailyShelfRootView.glass`) | Clipped to the shelf outline. |
