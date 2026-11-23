@@ -30,3 +30,5 @@ docs/NATIVE_REDESIGN_PLAN.md
 docs/REA_SETUP_PLAN.md
 docs/STABILITY_VERIFICATION_*.md
 docs/WINDOW_ARRANGEMENT_PLAN.md
+# Local design previews (HTML mock-ups and renders); never committed.
+design_previews/

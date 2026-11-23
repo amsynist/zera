@@ -203,6 +203,59 @@ final class PerfTests: XCTestCase {
     }
 
     /// Switching through every tab many times shouldn't keep growing memory.
+    /// What the shortcut picker costs: open, flip through 80 cards (16 of them screenshots), rest, close.
+    func testClipboardPickerMemory() throws {
+        try autoreleasepool { try fillClipboard() }
+        let screen = try XCTUnwrap(NSScreen.main)
+        let at = NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.midY)
+        func settle(_ s: TimeInterval) { RunLoop.main.run(until: Date().addingTimeInterval(s)) }
+        func mb(_ bytes: Int) -> Double { Double(bytes) / 1_048_576 }
+        // What drawing one card costs, by kind.
+        var draws: [String] = []
+        let size = ClipDeckLayout(bounds: ClipDeckLayout.size).card
+        for kind in [ClipItem.Kind.text, .link, .code, .color, .image] {
+            guard let item = ClipboardStore.shared.items.first(where: { $0.kind == kind }) else { continue }
+            let face = ms { for _ in 0..<20 { _ = ClipFace.face(item, size: size, scale: 2, picture: nil) } } / 20
+            let foot = ms { for _ in 0..<20 { _ = ClipFace.peekFoot(item, index: 3, size: NSSize(width: size.width, height: ClipDeckLayout.footer), scale: 2) } } / 20
+            draws.append(String(format: "%@ %.1f + %.1f ms", item.kindName, face, foot))
+        }
+        print("\ncard drawing (face + strip): " + draws.joined(separator: " · "))
+        settle(0.5)
+        let base = footprintMB()
+        let picker = ClipboardPicker()
+        let made = footprintMB()
+        // The first open pays for text, symbols and the window once; measure a later one too.
+        autoreleasepool { picker.toggle(at: at); settle(0.6); picker.close(); settle(0.6) }
+        let warm = footprintMB()
+        autoreleasepool { picker.toggle(at: at); settle(1.0) }
+        let open = footprintMB(), openBitmaps = picker.deck.bitmapBytes, openCards = picker.deck.cardCount
+        var peakBitmaps = 0, worst = 0.0, total = 0.0
+        for _ in 0..<80 {
+            autoreleasepool {
+                let t = ms { picker.step(1) }
+                worst = max(worst, t); total += t
+                settle(0.03)
+                peakBitmaps = max(peakBitmaps, picker.deck.bitmapBytes)
+            }
+        }
+        let flipping = footprintMB()
+        autoreleasepool { settle(1.5) }
+        let rest = footprintMB(), restBitmaps = picker.deck.bitmapBytes, restCards = picker.deck.cardCount
+        autoreleasepool { picker.close(); settle(1.0) }
+        let closed = footprintMB()
+        print(String(format: """
+
+        clipboard picker memory (footprint over baseline %.1f MB)
+          created, closed   %+6.1f MB
+          after first use   %+6.1f MB   (closed; one-time text, symbol and window set-up)
+          open              %+6.1f MB   cards %d, bitmaps %.2f MB
+          after 80 flips    %+6.1f MB   peak bitmaps %.2f MB, step %.1f ms average, %.1f ms slowest
+          at rest           %+6.1f MB   cards %d, bitmaps %.2f MB
+          closed again      %+6.1f MB
+        """, base, made - base, warm - base, open - base, openCards, mb(openBitmaps), flipping - base, mb(peakBitmaps), total / 80, worst,
+                     rest - base, restCards, mb(restBitmaps), closed - base))
+    }
+
     func testRepeatedNavigationMemory() throws {
         // Drain full-resolution image generation before measuring the app's thumbnails.
         try autoreleasepool { try fillClipboard(); try fillShelf() }

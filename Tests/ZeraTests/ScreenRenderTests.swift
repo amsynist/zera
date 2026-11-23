@@ -72,33 +72,88 @@ final class ScreenRenderTests: XCTestCase {
         let video = assets.appendingPathComponent("daily-shelf.mp4")
         ClipboardStore.shared.preview([
             ClipItem(kind: .text, text: "Review the first-run checklist", sourceApp: "Notes", fingerprint: "sample-text"),
-            ClipItem(kind: .link, text: "https://example.com/aurora/releases", sourceApp: "Safari", fingerprint: "sample-link"),
+            ClipItem(kind: .link, text: "https://example.com/aurora/releases?tag=v2", sourceApp: "Safari", fingerprint: "sample-link"),
+            ClipItem(kind: .code, text: "func greet(_ name: String) -> String {\n    let hello = \"Hello, \\(name)\"\n    return hello\n}", sourceApp: "Xcode", pinned: true, fingerprint: "sample-code"),
+            ClipItem(kind: .color, text: "#7BE1C2", sourceApp: "Figma", fingerprint: "sample-color"),
             ClipItem(kind: .files, text: "Site poster", paths: [photo.path], sourceApp: "Finder", fingerprint: "sample-photo"),
             ClipItem(kind: .files, text: "Daily Shelf film", paths: [video.path], sourceApp: "Finder", fingerprint: "sample-video"),
             ClipItem(kind: .files, text: "Release checklist.md", paths: ["/tmp/Release checklist.md"], sourceApp: "Finder", fingerprint: "sample-file"),
+            ClipItem(kind: .text, text: "Zera keeps what you copy on this Mac. Open the clip with your shortcut, flip to the copy you want and press Return. Nothing leaves the machine.", sourceApp: "Mail", fingerprint: "sample-long"),
         ])
         ClipboardStore.shared.enabled = true
         let picker = ClipboardPicker()
         defer { picker.close() }
-        picker.toggle(at: NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.midY))
+        let centre = NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.midY)
+        picker.toggle(at: centre)
         let window = try XCTUnwrap(NSApp.windows.first { $0.title == "Clipboard Picker" && $0.isVisible })
-        let surface = try XCTUnwrap(window.contentView)
-        surface.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(1.0))
-        let image = try XCTUnwrap(CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(window.windowNumber), .bestResolution))
-        let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
-        try png.write(to: out.appendingPathComponent("clipboard-picker.png"))
+        func capture(_ name: String, wait: TimeInterval = 0.9) throws {
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(wait))
+            let image = try XCTUnwrap(CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(window.windowNumber), .bestResolution))
+            let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
+            try png.write(to: out.appendingPathComponent(name + ".png"))
+        }
+        try capture("clipboard-picker")
+        XCTAssertEqual(picker.items.count, 8)
+        XCTAssertEqual(picker.visibleCards, 1 + ClipDeckLayout.peeks)
+        // At rest only the front card holds a full bitmap; the waiting cards hold a strip each.
+        XCTAssertLessThan(picker.deck.bitmapBytes, 3 * 1_048_576)
 
-        let search = try XCTUnwrap(surface.subviews.compactMap { $0 as? SearchBox }.first)
-        let scroll = try XCTUnwrap(surface.subviews.compactMap { $0 as? NSScrollView }.first)
-        let table = try XCTUnwrap(scroll.documentView as? NSTableView)
-        XCTAssertEqual(table.numberOfRows, 5)
-        search.field.stringValue = "aurora"
-        picker.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: search.field))
-        XCTAssertEqual(table.numberOfRows, 1)
-        XCTAssertEqual(table.selectedRow, 0)
-        picker.toggle(at: NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.midY))
+        // Going back is the forward flip run backwards: the card that flipped away comes down
+        // from its tilt, is solid almost at once (no two cards showing through each other) and
+        // lands flat without tipping past.
+        RunLoop.main.run(until: Date().addingTimeInterval(1.0))    // settled, and trimmed
+        picker.step(1)
+        RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+        XCTAssertEqual(picker.selected, 1)
+        let log = ProcessInfo.processInfo.environment["ZERA_RENDER_FLIP"] != nil
+        let began = CACurrentMediaTime()
+        picker.step(-1)
+        var steepest: CGFloat = 0
+        for _ in 0..<8 {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+            let ms = (CACurrentMediaTime() - began) * 1000
+            let front = try XCTUnwrap(picker.deck.frontOnScreen)
+            steepest = max(steepest, front.tilt)
+            XCTAssertGreaterThan(front.tilt, -0.5, "the landing card never tips past flat")
+            if ms > 110 { XCTAssertEqual(front.opacity, 1, accuracy: 0.01, "solid well before it lands") }
+            if log { print(String(format: "back +%.0f ms\n", ms) + picker.deck.cardsDescription) }
+        }
+        XCTAssertGreaterThan(steepest, 20, "it comes down from a tilt rather than fading in flat")
+        RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+        let landed = try XCTUnwrap(picker.deck.frontOnScreen)
+        XCTAssertEqual(landed.tilt, 0, accuracy: 0.01)
+        XCTAssertEqual(picker.selected, 0)
+        XCTAssertEqual(picker.visibleCards, 1 + ClipDeckLayout.peeks)
+
+        picker.deck.stamp(ok: true)
+        try capture("clipboard-picker-copied", wait: 0.5)
+        RunLoop.main.run(until: Date().addingTimeInterval(1.2))
+
+        // One capture per kind of card.
+        for (i, name) in ["text", "link", "colour", "photo", "video", "file", "long"].enumerated() {
+            picker.step(1)
+            XCTAssertEqual(picker.selected, i + 1)
+            try capture("clipboard-picker-" + name, wait: name == "photo" || name == "video" ? 1.4 : 0.6)
+        }
+        picker.step(1)
+        XCTAssertEqual(picker.selected, 7, "the deck stops at its last card")
+
+        picker.cycleFilter(1)
+        XCTAssertEqual(picker.filter, .text)
+        XCTAssertEqual(picker.items.count, 5)
+        picker.cycleFilter(-1)
+        picker.searchField.stringValue = "aurora"
+        picker.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: picker.searchField))
+        XCTAssertEqual(picker.items.count, 1)
+        XCTAssertEqual(picker.selected, 0)
+        try capture("clipboard-picker-search")
+        picker.searchField.stringValue = "nothing like this"
+        picker.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: picker.searchField))
+        XCTAssertTrue(picker.items.isEmpty)
+        try capture("clipboard-picker-empty")
+        picker.toggle(at: centre)
         XCTAssertFalse(window.isVisible)
     }
 
