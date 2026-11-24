@@ -858,6 +858,8 @@ final class DropFilesView: NSView, CardContent {
     // What the Shelf tells the rest of Zera, as closures like every other screen.
     var onAcceptDrop: (() -> Void)?
     var onDragOverChanged: ((Bool) -> Void)?
+    /// A drop was taken (before its files are written): the island closes its catch on it.
+    var onDropLanded: (() -> Void)?
     var onDragOutBegan: (() -> Void)?
     var onDragOutEnded: (() -> Void)?
     /// Zera speaks for the Shelf. `seconds == 0` holds the line until `onSettle`.
@@ -1078,7 +1080,7 @@ final class DropFilesView: NSView, CardContent {
         super.init(frame: NSRect(x: 0, y: 0, width: 1240, height: 760))
         let p = Pal
         [left, center, right].forEach { addSubview($0) }
-        registerForDraggedTypes([.fileURL, .png, .tiff, .pdf, .rtf, .string, .URL])
+        registerForDraggedTypes(FileDragCatch.dropTypes)
 
         // Left.
         left.addSubview(docTile)
@@ -2081,9 +2083,11 @@ final class DropFilesView: NSView, CardContent {
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard !isInternal(sender) else { return [] }
         setTargeted(true)
-        return .copy
+        return FileDragCatch.operation(for: sender.draggingSourceOperationMask)
     }
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { isInternal(sender) ? [] : .copy }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        isInternal(sender) ? [] : FileDragCatch.operation(for: sender.draggingSourceOperationMask)
+    }
     override func draggingExited(_ sender: NSDraggingInfo?) { setTargeted(false) }
     override func draggingEnded(_ sender: NSDraggingInfo) { setTargeted(false) }
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { !isInternal(sender) }
@@ -2094,8 +2098,9 @@ final class DropFilesView: NSView, CardContent {
         let pb = sender.draggingPasteboard
         let before = Set(store.items.map { $0.path })
         // Files land at once; a picture or text is written off the main thread and lands after.
-        if let payload = ShelfStore.payload(from: pb), !store.alreadyHas(pasteboard: pb) {
-            store.ingest(payload) { [weak self] added in
+        if ShelfStore.canTake(pb), !store.alreadyHas(pasteboard: pb) {
+            onDropLanded?()
+            store.take(pb) { [weak self] added in
                 guard let self = self else { return }
                 guard added > 0 else { self.onSay?("hmm, I can't hold that", .thinking, 1.6); return }
                 self.selectNewest(excluding: before)
@@ -2109,6 +2114,7 @@ final class DropFilesView: NSView, CardContent {
                 Self.selectedPath = url.standardizedFileURL.path
                 reload()
             }
+            onDropLanded?()
             onSay?("already on your Shelf 😊", .happy, 1.4)
             return true
         }

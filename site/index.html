@@ -35,7 +35,7 @@
   </a>
   <div class="cap" aria-hidden="true"><span class="n" id="cap-n">01</span><b id="cap-t">Notch</b><span>/ zera v2</span></div>
   <nav aria-label="Main">
-    <a href="#agents">Agents</a><a href="#daily-shelf">Daily Shelf</a><a href="#clipboard">Clipboard</a><a href="#opener">Opener</a><a href="#sharing">Sharing</a>
+    <a href="#agents">Agents</a><a href="#daily-shelf">Daily Shelf</a><a href="#clipboard">Clipboard</a><a href="#opener">Launcher</a><a href="#sharing">Sharing</a>
     <a class="gh" href="https://github.com/amsynist/zera" rel="noopener noreferrer">GitHub ↗</a>
     <a class="get" href="#install">Download</a>
   </nav>
@@ -46,7 +46,7 @@
   <a href="#agents"><i>02</i><span>AGENTS</span></a>
   <a href="#daily-shelf"><i>03</i><span>DAILY SHELF</span></a>
   <a href="#clipboard"><i>04</i><span>CLIPBOARD</span></a>
-  <a href="#opener"><i>05</i><span>OPENER</span></a>
+  <a href="#opener"><i>05</i><span>LAUNCHER</span></a>
   <a href="#everyday"><i>06</i><span>EVERYDAY</span></a>
   <a href="#sharing"><i>07</i><span>SHARING</span></a>
   <a href="#privacy"><i>08</i><span>PRIVACY</span></a>
@@ -87,7 +87,7 @@
         <button class="tb" type="button" data-stage="agent" aria-pressed="false"><i></i>Run an agent <kbd class="kbdh">A</kbd></button>
         <button class="tb" type="button" data-stage="dshelf" aria-pressed="false"><i></i>Daily Shelf <kbd class="kbdh">D</kbd></button>
         <button class="tb" type="button" data-stage="deck" aria-pressed="false"><i></i>Clipboard deck <kbd class="kbdh">V</kbd></button>
-        <button class="tb" type="button" data-stage="opener" aria-pressed="false"><i></i>App opener <kbd class="kbdh">O</kbd></button>
+        <button class="tb" type="button" data-stage="opener" aria-pressed="false"><i></i>Launcher <kbd class="kbdh">O</kbd></button>
         <span class="grow"></span>
         <button class="tb" type="button" data-stage="tour" aria-pressed="false"><i></i>Auto tour</button>
       </div>
@@ -177,24 +177,32 @@
   </div>
 </section>
 
-<section class="sec" id="opener" data-n="05" data-name="Opener">
+<section class="sec" id="opener" data-n="05" data-name="Launcher">
   <i class="cn tl"></i><i class="cn tr"></i><i class="cn bl"></i><i class="cn br"></i>
-  <header class="sec-h"><span class="tg">05</span><span class="nm">OPENER</span><span>apps, commands, actions</span></header>
+  <header class="sec-h"><span class="tg">05</span><span class="nm">LAUNCHER</span><span>apps, commands, wallpapers</span></header>
   <div class="sec-b">
     <div class="split flip rv">
       <div class="txt">
-        <h2>Open or focus anything <em>from the keys.</em></h2>
-        <p class="copy">Press <kbd class="kc">⌥ Space</kbd> for a small palette: apps, commands and Zera’s own actions. Or turn on App Shortcuts and give the apps you live in their own keys.</p>
+        <h2>A launcher that rises <em>from the bottom edge.</em></h2>
+        <p class="copy">Press <kbd class="kc">⌥ Space</kbd> and type to find an app. Type <kbd class="kc">&gt;</kbd> and the list turns into commands: Wallpaper, Theme, Lock, Sleep, Quit All, Kill Process, Kill Port and Zera’s own actions.</p>
         <ul class="facts">
-          <li><span><b>Three looks.</b> Minimal palette, tree or orbit. Same keys in each.</span></li>
+          <li><span><b><kbd class="kc">&gt;wallpaper</kbd> is a strip of pictures.</b> Move with <kbd class="kc">←</kbd> <kbd class="kc">→</kbd> and the desktop follows. Nothing is set until you press Return, and the pictures come from folders you choose.</span></li>
+          <li><span><b>Four looks, one shortcut.</b> Launcher is the default. Minimal, Tree and Orbit stay in Settings; try each one here.</span></li>
           <li><span><b>App Shortcuts are optional</b> and need no Accessibility or Screen Recording permission.</span></li>
           <li><span><b>Not a window manager.</b> Zera opens and focuses apps; it never moves your windows.</span></li>
         </ul>
-        <p class="fine" style="margin-top:18px">Try it: type a few letters, <kbd class="kc">⇥</kbd> switches tabs, <kbd class="kc">↵</kbd> opens.</p>
+        <p class="fine" style="margin-top:18px">Try it: type a few letters, or <kbd class="kc">&gt;</kbd> then <kbd class="kc">wallpaper</kbd>, a space and <kbd class="kc">←</kbd> <kbd class="kc">→</kbd>. <kbd class="kc">↵</kbd> runs the choice.</p>
+        <p class="fine" style="margin-top:10px">The launcher’s flow is inspired by <a href="https://github.com/caelestia-dots/shell" rel="noopener noreferrer">Caelestia shell</a> for Hyprland, rebuilt natively for macOS in Zera’s Signal style. Zera uses none of its code.</p>
       </div>
       <div>
-        <div class="vig fitbox" data-vig="opener" aria-label="Live demo: app opener"></div>
-        <p class="vig-note"><i></i>LIVE · TYPE TO FILTER</p>
+        <div class="opsw" role="tablist" aria-label="Opener look">
+          <button type="button" role="tab" data-opstyle="launcher" aria-selected="true" class="on">Launcher <small>DEFAULT</small></button>
+          <button type="button" role="tab" data-opstyle="minimal" aria-selected="false" tabindex="-1">Minimal</button>
+          <button type="button" role="tab" data-opstyle="tree" aria-selected="false" tabindex="-1">Tree</button>
+          <button type="button" role="tab" data-opstyle="orbit" aria-selected="false" tabindex="-1">Orbit</button>
+        </div>
+        <div class="vig fitbox" data-vig="opener" aria-label="Live demo: the app opener’s four looks"></div>
+        <p class="vig-note"><i></i><span data-opnote>LIVE · TYPE &gt; FOR COMMANDS</span></p>
       </div>
     </div>
   </div>
@@ -274,7 +282,7 @@
     <h2 class="rv">Get <em>Zera v2.</em></h2>
     <div class="cards2 rv">
       <article class="card">
-        <span class="plat">FOR YOUR MAC</span><h3>Zera</h3><p>The notch, Daily Shelf, Clipboard deck, opener and the Android receiver.</p>
+        <span class="plat">FOR YOUR MAC</span><h3>Zera</h3><p>The notch, Daily Shelf, Clipboard deck, launcher and the Android receiver.</p>
         <a class="cta pri" href="https://github.com/amsynist/zera/releases/latest" data-download rel="noopener noreferrer">Download for Mac <span aria-hidden="true">↓</span></a>
         <p class="fine" id="download-version">macOS 13+ · Apple silicon and Intel</p>
       </article>

@@ -1705,31 +1705,92 @@ final class ZeraController: NSObject {
     // MARK: File drags
     //
     // While the mouse button is down, the drag pasteboard's change counter is read each tick (it
-    // is only touched when a press begins and while it lasts). Files picked up anywhere make the
-    // notch breathe amber until the drop, so you know where the Shelf is.
+    // is only touched when a press begins and while it lasts). A file picked up anywhere — on
+    // disk, promised by Photos or a browser, a raw picture — makes the notch breathe amber, so
+    // you know where the Shelf is. Carry it up to the notch and the island opens the Shelf under
+    // it, its outline a running net, ready to catch; let go anywhere on it and it lands. Carry
+    // it away again and the Shelf folds back. Rules in `FileDragCatch`.
     private let dragBoard = NSPasteboard(name: .drag)
-    private var dragBoardCount = 0
-    private var buttonWasDown = false
-    private var fileDragLit = false
+    private var dragCatch = FileDragCatch()
+    private var fileDragLit: Bool { dragCatch.active }
+    /// The Shelf was opened for this drag (rather than already being up).
+    private var catchOpenedShelf = false
+    /// The file was let go on the island.
+    private var catchLanded = false
 
     private func trackFileDrag() {
-        let down = mouseButtonDown
-        defer { buttonWasDown = down }
-        if down {
-            if !buttonWasDown { dragBoardCount = dragBoard.changeCount; return }
-            guard !fileDragLit else { return }
-            let count = dragBoard.changeCount
-            guard count != dragBoardCount else { return }
-            dragBoardCount = count
-            guard !isDraggingOut, !dragging, dragBoard.types?.contains(.fileURL) == true else { return }
-            fileDragLit = true
-            syncNotchBuddy(animated: false)
-            reactLight(.fileDrag(active: true))
-        } else if fileDragLit {
-            fileDragLit = false
-            syncNotchBuddy(animated: false)
-            reactLight(.fileDrag(active: false))
+        let notch = geometry.notchRect
+        let keep = cardVisible && currentCard == .shelf ? islandScreenRect.insetBy(dx: -40, dy: -40) : .zero
+        let events = dragCatch.update(
+            buttonDown: mouseButtonDown, changeCount: dragBoard.changeCount,
+            holdsFile: { [self] in
+                // Her own rope and files leaving the Shelf are not arrivals.
+                !isDraggingOut && !dragging && dragBoard.types?.contains(shelfDragType) != true
+                    && FileDragCatch.holdsFile(dragBoard.types)
+            },
+            pointer: NSEvent.mouseLocation, zone: FileDragCatch.zone(notch: notch), keep: keep,
+            now: CACurrentMediaTime())
+        for event in events {
+            switch event {
+            case .began:
+                catchLanded = false
+                syncNotchBuddy(animated: false)
+                reactLight(.fileDrag(active: true))
+            case .reached:
+                openShelfToCatch()
+            case .left:
+                foldCatch(resumeLight: true)
+            case .ended:
+                syncNotchBuddy(animated: false)
+                reactLight(.fileDrag(active: false))
+                // The drop itself arrives through AppKit a moment after the button comes up.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                    guard let self, !self.dragCatch.active else { return }
+                    self.foldCatch(resumeLight: false)
+                }
+            }
         }
+    }
+
+    /// A carried file reached the notch: the Shelf opens under it and the island becomes a net.
+    private func openShelfToCatch() {
+        guard buddyEnabled, !isTouring, !openerOpen, !(waterVisit?.isActive ?? false) else { return }
+        // Something that needs an answer stays up; the notch band still takes the drop.
+        if cardVisible, let card = currentCard, [.approval, .reminderAlert, .phoneTransfer].contains(card) { return }
+        if !(cardVisible && currentCard == .shelf) {
+            catchOpenedShelf = true
+            suppressUntil = .distantPast
+            if pillVisible { hidePill() }
+            show(.shelf)
+        }
+        // The amber "the Shelf is here" light has done its job; the net takes over in the theme's colour.
+        reactLight(.fileDrag(active: false))
+        island.setCatching(true)
+        cardPanel.ignoresMouseEvents = false
+        sound(.fileHover)
+        react(.excited, for: 0)
+    }
+
+    /// The file was let go on the island (the Shelf screen or the band along the notch).
+    private func catchDidLand() {
+        catchLanded = true
+        catchOpenedShelf = false
+        island.catchLanded()
+        reactLight(.success)
+    }
+
+    /// The carried file went away without landing: the net drops, and a Shelf that only opened
+    /// for it folds back (unless the pointer is resting on it).
+    private func foldCatch(resumeLight: Bool) {
+        guard island.catching || catchOpenedShelf else { return }
+        island.setCatching(false)
+        if resumeLight, dragCatch.active { reactLight(.fileDrag(active: true)) }
+        let opened = catchOpenedShelf
+        catchOpenedShelf = false
+        guard opened, !catchLanded, cardVisible, currentCard == .shelf, !externalDragOver else { settle(); return }
+        if NSPointInRect(NSEvent.mouseLocation, islandScreenRect.insetBy(dx: -14, dy: -14)) { settle(); return }
+        hideCard()
+        settle()
     }
 
     @objc private func githubNews(_ note: Notification) {
@@ -2247,6 +2308,7 @@ final class ZeraController: NSObject {
             let s = DropFilesView()
             s.onAcceptDrop = { [weak self] in self?.shelfDidAcceptDrop() }
             s.onDragOverChanged = { [weak self] over in self?.shelfDragOverChanged(over) }
+            s.onDropLanded = { [weak self] in self?.sound(.fileCatch); self?.catchDidLand() }
             s.onDragOutBegan = { [weak self] in self?.isDraggingOut = true; self?.sound(.fileDragOut) }
             s.onDragOutEnded = { [weak self] in self?.isDraggingOut = false; self?.outsideSince = Date() }
             s.onSay = { [weak self] line, mood, seconds in self?.say(line, mood: mood, for: seconds) }
@@ -2711,7 +2773,7 @@ final class ZeraController: NSObject {
     // MARK: - Shelf
 
     private func catchShelfDrop(_ pasteboard: NSPasteboard) -> Bool {
-        guard let payload = ShelfStore.payload(from: pasteboard) else { sound(.fileReject); return false }
+        guard ShelfStore.canTake(pasteboard) else { sound(.fileReject); return false }
         let store = ShelfStore.shared
         let before = Set(store.items.map(\.path))
         let existing = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL])?
@@ -2719,7 +2781,8 @@ final class ZeraController: NSObject {
         sound(.fileCatch)
         suppressUntil = .distantPast
         show(.shelf, instant: true)
-        store.ingest(payload) { [weak self] count in
+        catchDidLand()
+        store.take(pasteboard) { [weak self] count in
             guard let self, self.cardVisible, self.currentCard == .shelf else { return }
             guard count > 0 || existing != nil else {
                 self.say("Couldn’t add that to Shelf", mood: .thinking, for: 1.6)

@@ -27,15 +27,15 @@ It is written in Swift with AppKit and SwiftUI, keeps your data on your Mac, and
 
 More on the rail:
 
-- **App opener and App Shortcuts.** `⌥ Space` opens a small palette for apps, commands and Zera’s own actions. App Shortcuts is an optional extra that gives an app its own keys. Zera opens and focuses apps; it does not move windows. [Guide](docs/APP_SHORTCUTS.md)
+- **Launcher and App Shortcuts.** `⌥ Space` raises a launcher from the bottom of the screen: type to find an app, or type `>` for commands (Wallpaper, Theme, Lock, Sleep, Quit All, Kill Process, Kill Port and Zera’s own actions). `>wallpaper` shows your pictures as a strip, previews each one on the desktop as you move through them and sets one only when you press Return; `>folders` chooses where the pictures come from. The launcher is the default of four looks: Minimal, Tree and Orbit stay in Settings › General › Opener style. Its flow is inspired by [Caelestia shell](https://github.com/caelestia-dots/shell). App Shortcuts is an optional extra that gives an app its own keys. Zera opens and focuses apps; it does not move windows. [Guide](docs/APP_SHORTCUTS.md)
 - **Tasks, timesheets and Focus.** Add a task from anywhere with `⌥ ⌘ T`, focus on one at a time, and export a range to Excel, CSV or text.
-- **File Shelf.** Drop a file on the notch and drag it out later. Zera reads a file only when you ask about it.
+- **File Shelf.** Carry any file, picture or video up to the notch and the Shelf opens to catch it; drag it out later. Zera reads a file only when you ask about it.
 - **Reminders, Alerts and Teleprompter.** Your calendars in one day view, one inbox for what needs you, and a script that rolls beside the camera.
 - **Dictation.** Hold right `⌥` or `⇧` to dictate with Apple speech or on-device Murmur.
 - **Signal interface.** One monospaced face, a lit trace from Zera to the open screen, nine colour themes, solid or translucent. [Themes](docs/THEMES.md) · [Design reference](docs/design/signal/COMPONENTS.md)
 - **Android sharing.** Send original photos and files from your phone over local Wi-Fi. [See below](#android-sharing).
 
-The [website](https://zera.pravincodes.in/) has a live, clickable recreation of the notch, the Daily Shelf, the Clipboard deck and the opener. Release notes are in [docs/releases](docs/releases).
+The [website](https://zera.pravincodes.in/) has a live, clickable recreation of the notch, the Daily Shelf, the Clipboard deck and all four looks of the launcher. Release notes are in [docs/releases](docs/releases).
 
 ## Install
 
@@ -49,7 +49,7 @@ Zera needs macOS 13 or later and runs on Apple silicon and Intel. To update, qui
 
 | Keys | Action |
 | --- | --- |
-| `⌥ Space` | App opener |
+| `⌥ Space` | Launcher (type `>` for commands) |
 | `⌃ Space` | Daily Shelf |
 | `⌥ ⌘ T` | Add a task |
 | Right `⌥` or `⇧`, held | Dictation |
@@ -117,6 +117,6 @@ Bug reports, integrations, accessibility improvements and fixes are welcome. Rea
 
 ## License and credits
 
-Code is released under the [MIT license](LICENSE). Zera’s original artwork has [separate terms](LICENSE-ASSETS.md). JetBrains Mono is used under the SIL Open Font License. Film music is by Sascha Ende (CC BY 4.0) and Daily Shelf sound effects are by Kenney (CC0). See [media credits](docs/MEDIA.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
+Code is released under the [MIT license](LICENSE). Zera’s original artwork has [separate terms](LICENSE-ASSETS.md). JetBrains Mono is used under the SIL Open Font License. Film music is by Sascha Ende (CC BY 4.0) and Daily Shelf sound effects are by Kenney (CC0). The launcher’s flow (a list over a bottom search field, `>` for commands, the wallpaper strip) is inspired by [Caelestia shell](https://github.com/caelestia-dots/shell) for Hyprland; it is written from scratch for macOS and uses none of Caelestia’s code. See [media credits](docs/MEDIA.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
 
 Zera is an independent project and is not affiliated with Anthropic, OpenAI, Apple, GitHub or Samsung.

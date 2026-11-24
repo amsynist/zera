@@ -1,4 +1,4 @@
-/* The live demos: the desktop in the hero (notch island, wings, Daily Shelf, Clipboard deck, app opener)
+/* The live demos: the desktop in the hero (notch island, wings, Daily Shelf, Clipboard deck, launcher)
    and the smaller vignettes further down. Everything is fictional sample data drawn in the browser;
    nothing is fetched, stored or sent. Visitor text is escaped before it is shown. */
 (() => {
@@ -205,20 +205,164 @@
     return { step, copy, cycle, reset, focus: () => q.focus({ preventScroll: true }), count: () => list().length, at: () => state.sel };
   }
 
-  /* ═════ App opener (centred minimal) ═════ */
-  function Opener(root, opt = {}) {
-    const C = ['#7BE1C2', VIOLET, ROSE, BLUE, AMBER, '#9be36b'];
-    const DATA = {
-      apps: [
-        { n: 'Ghostty X', m: 'Gx', run: 1, pin: 1, ver: '1.4.2', opened: '128×' }, { n: 'Safari', m: 'Sa', run: 1, pin: 1, ver: '27.0.1', opened: '46×' },
-        { n: 'Xcode', m: 'Xc', run: 1, ver: '26.1', opened: '31×' }, { n: 'Finder', m: 'Fi', run: 1, ver: '26.1', opened: '22×' },
-        { n: 'Notes', m: 'No', ver: '4.12', opened: '9×' }, { n: 'Calendar', m: 'Ca', ver: '15.0', opened: '6×' }, { n: 'System Settings', m: 'Se', ver: '26.1', opened: '4×' }
-      ],
-      commands: [{ n: 'Quit all apps', i: 'x', k: 'runs a command' }, { n: 'Ports in use', i: 'plug', k: 'lists listeners' }, { n: 'Empty the Trash', i: 'trash', k: 'asks first' }, { n: 'Toggle dark mode', i: 'moon', k: 'system' }],
-      actions: [{ n: 'New task', i: 'tasks', go: 'tasks' }, { n: 'Start a focus session', i: 'target', go: 'focus' }, { n: 'Open Daily Shelf', i: 'tray', go: 'dshelf' }, { n: 'Open the Clipboard deck', i: 'clip', go: 'deck' },
-        { n: 'Add a reminder', i: 'cal', go: 'rem' }, { n: 'Open Agents', i: 'term', go: 'agents' }, { n: 'Roll the teleprompter', i: 'lines', go: 'tele' }, { n: 'Take a screenshot', i: 'cam' }]
+  /* ═════ App opener: four looks, one set of sample apps ═════ */
+  const OP_C = ['#7BE1C2', VIOLET, ROSE, BLUE, AMBER, '#9be36b'];
+  const OP_DATA = {
+    apps: [
+      { n: 'Ghostty X', m: 'Gx', run: 1, pin: 1, ver: '1.4.2', opened: '128×', cat: 'Developer Tools' }, { n: 'Safari', m: 'Sa', run: 1, pin: 1, ver: '27.0.1', opened: '46×', cat: 'Productivity' },
+      { n: 'Xcode', m: 'Xc', run: 1, ver: '26.1', opened: '31×', cat: 'Developer Tools' }, { n: 'Finder', m: 'Fi', run: 1, ver: '26.1', opened: '22×', cat: 'Utilities' },
+      { n: 'Notes', m: 'No', ver: '4.12', opened: '9×', cat: 'Productivity' }, { n: 'Calendar', m: 'Ca', ver: '15.0', opened: '6×', cat: 'Productivity' }, { n: 'System Settings', m: 'Se', ver: '26.1', opened: '4×', cat: 'Utilities' }
+    ],
+    commands: [{ n: 'Quit all apps', i: 'x', k: 'runs a command' }, { n: 'Ports in use', i: 'plug', k: 'lists listeners' }, { n: 'Empty the Trash', i: 'trash', k: 'asks first' }, { n: 'Toggle dark mode', i: 'moon', k: 'system' }],
+    actions: [{ n: 'New task', i: 'tasks', go: 'tasks' }, { n: 'Start a focus session', i: 'target', go: 'focus' }, { n: 'Open Daily Shelf', i: 'tray', go: 'dshelf' }, { n: 'Open the Clipboard deck', i: 'clip', go: 'deck' },
+      { n: 'Add a reminder', i: 'cal', go: 'rem' }, { n: 'Open Agents', i: 'term', go: 'agents' }, { n: 'Roll the teleprompter', i: 'lines', go: 'tele' }, { n: 'Take a screenshot', i: 'cam' }]
+  };
+  const OP_TABS = ['apps', 'commands', 'actions'];
+  const opFound = (t, q) => OP_DATA[t].filter(x => !q || x.n.toLowerCase().includes(q));
+  const opVerb = (t, x) => t === 'apps' ? (x.run ? 'FOCUSED' : 'OPENED') : 'RAN';
+  const opFacts = (t, x) => t === 'apps'
+    ? [['Status', x.run ? 'Running' : 'Not running'], ['Version', x.ver], ['Opened from Zera', x.opened], ['Where', '/Applications']]
+    : [['Kind', t === 'commands' ? 'Command' : 'Zera action'], ['Does', x.k || 'opens it in the notch']];
+
+  /* ───── Launcher (the default): risen from the bottom edge. Apps over a search field; ">" turns the
+     list into commands, and ">wallpaper " into a strip of pictures the desktop follows. ───── */
+  function Launcher(root, opt = {}) {
+    const CMDS = [
+      { key: 'wallpaper', n: 'Wallpaper', k: 'Change the desktop picture', i: 'photo', list: 1 },
+      { key: 'folders', n: 'Wallpaper Folders', k: 'Choose the folders >wallpaper shows pictures from', i: 'dir' },
+      { key: 'theme', n: 'Theme', k: 'Change Zera’s colours', i: 'swatch' },
+      { key: 'lock', n: 'Lock', k: 'Turn the display off', i: 'lock' },
+      { key: 'sleep', n: 'Sleep', k: 'Put the Mac to sleep', i: 'moon' },
+      { key: 'quit', n: 'Quit All Apps', k: 'Quit every open app for a clean desk', i: 'x' },
+      { key: 'kill', n: 'Kill Process', k: 'Stop a running process by name', i: 'bolt' },
+      { key: 'port', n: 'Kill Port', k: 'Free a port by stopping what listens on it', i: 'plug' },
+      { key: 'clipboard', n: 'Clipboard History', k: 'Everything you copied', i: 'clip', go: 'deck' },
+      { key: 'shelf', n: 'Open Daily Shelf', k: 'Today’s links at the edge of the screen', i: 'tray', go: 'dshelf' },
+      { key: 'task', n: 'New Task', k: 'Add a task from anywhere', i: 'tasks', go: 'tasks' },
+      { key: 'focus', n: 'Start a Focus Session', k: 'One task at a time', i: 'target', go: 'focus' }
+    ];
+    /* Fictional pictures drawn in CSS, so the demo ships no one's wallpaper. */
+    const WALLS = [
+      { n: 'signal', bg: '#0e3b3d url(assets/v3/wallpaper.webp) center/cover' },
+      { n: 'dusk', bg: 'linear-gradient(160deg,#2b1f4d 0%,#7a3b6b 46%,#f08a6b 100%)' },
+      { n: 'ink', bg: 'radial-gradient(120% 90% at 70% 18%,#f1ecdd 0%,#d5cfbd 42%,#77736a 100%)' },
+      { n: 'neon-room', bg: 'linear-gradient(200deg,#0b1d3a 0%,#124a6c 38%,#c2338b 100%)' },
+      { n: 'moss', bg: 'linear-gradient(170deg,#0c2a22 0%,#1f5a45 55%,#9fd19a 100%)' },
+      { n: 'ember', bg: 'radial-gradient(90% 80% at 30% 82%,#ff7a3d 0%,#7a1f1f 46%,#16090b 100%)' },
+      { n: 'horizon', bg: 'linear-gradient(180deg,#31405f 0%,#8d6a8c 55%,#e9a27c 100%)' }
+    ];
+    const ROWS = 6;
+    const wallHost = opt.wall || null;
+    const state = { sel: 0, w: 0, set: 0, mode: 'apps', said: '', list: [], walls: WALLS };
+    let saidTimer;
+    root.classList.add('lc');
+    root.innerHTML = `<div class="lc-card"><div class="lc-list" role="listbox" aria-label="Results"></div><div class="lc-strip" role="listbox" aria-label="Wallpapers" hidden></div>
+<div class="lc-field">${ic('search')}<input type="text" placeholder="Type &quot;&gt;&quot; for commands" autocomplete="off" spellcheck="false" maxlength="40" aria-label="Search apps, or type &gt; for commands"><span class="lc-said" role="status"></span><button type="button" class="lc-x" data-clear aria-label="Clear" hidden>${ic('x')}</button></div></div>`;
+    const q = $('input', root), listEl = $('.lc-list', root), strip = $('.lc-strip', root), saidEl = $('.lc-said', root), clear = $('[data-clear]', root);
+    const paint = i => { if (wallHost) wallHost.style.background = i === 0 ? '' : WALLS[i].bg; };
+    function parse() {
+      const text = q.value;
+      if (!text.startsWith('>')) return { mode: 'apps', f: text.trim().toLowerCase() };
+      const rest = text.slice(1).replace(/^ +/, ''), m = /^wallpaper\s(.*)$/i.exec(rest);
+      return m ? { mode: 'walls', f: m[1].trim().toLowerCase() } : { mode: 'cmds', f: rest.trim().toLowerCase() };
+    }
+    function say(text) {
+      state.said = text; saidEl.textContent = text;
+      clearTimeout(saidTimer);
+      saidTimer = setTimeout(() => { state.said = ''; saidEl.textContent = ''; }, 1600);
+    }
+    function placeTiles() {
+      $$('.lc-wt', strip).forEach((el, i) => {
+        const k = i - state.w, far = Math.abs(k);
+        el.style.transform = `translateX(${k * 168 + (k ? Math.sign(k) * 12 : 0)}px) scale(${k ? 1 : 1.16})`;
+        el.style.opacity = far > 2 ? 0 : far === 2 ? .55 : far === 1 ? .9 : 1;
+        el.classList.toggle('on', !k); el.setAttribute('aria-selected', !k); el.tabIndex = -1;
+      });
+    }
+    function render(keep) {
+      const p = parse(), was = state.mode;
+      state.mode = p.mode;
+      clear.hidden = !q.value;
+      root.classList.toggle('wall', p.mode === 'walls');
+      listEl.hidden = p.mode === 'walls'; strip.hidden = p.mode !== 'walls';
+      if (p.mode === 'walls') {
+        state.walls = WALLS.filter(w => !p.f || w.n.includes(p.f));
+        if (!state.walls.length) { state.mode = 'cmds'; root.classList.remove('wall'); listEl.hidden = false; strip.hidden = true; state.list = []; listEl.innerHTML = `<div class="lc-none">No picture called “${esc(p.f)}”.</div>`; return; }
+        if (was !== 'walls') state.w = Math.max(0, state.walls.indexOf(WALLS[state.set]));
+        state.w = clamp(state.w, 0, state.walls.length - 1);
+        strip.innerHTML = state.walls.map((w, i) => `<button type="button" role="option" class="lc-wt" data-w="${i}"><i style="background:${w.bg}"></i><small>${w.n}</small></button>`).join('');
+        placeTiles();
+        if (was === 'walls') paint(WALLS.indexOf(state.walls[state.w]));
+        return;
+      }
+      if (was === 'walls') paint(state.set);
+      state.list = p.mode === 'apps' ? OP_DATA.apps.filter(a => !p.f || a.n.toLowerCase().includes(p.f)) : CMDS.filter(c => !p.f || c.n.toLowerCase().includes(p.f) || c.key.startsWith(p.f));
+      if (!keep) state.sel = 0;
+      state.sel = clamp(state.sel, 0, Math.max(0, state.list.length - 1));
+      const first = clamp(state.sel - ROWS + 1, 0, Math.max(0, state.list.length - ROWS));
+      listEl.innerHTML = state.list.length ? state.list.slice(first, first + ROWS).map((x, j) => {
+        const i = first + j, on = i === state.sel, c = OP_C[i % OP_C.length];
+        const icon = p.mode === 'apps' ? `<span class="lc-ic app" style="--c:${c}">${x.m}</span>` : `<span class="lc-ic">${ic(x.i)}</span>`;
+        const sub = p.mode === 'apps' ? `${x.run ? 'Running · ' : ''}${x.cat}` : x.k;
+        return `<button type="button" role="option" aria-selected="${on}" class="lc-row${on ? ' on' : ''}" data-i="${i}">${icon}<span class="lc-tx"><b>${x.n}</b><small>${sub}</small></span>${p.mode === 'cmds' ? `<span class="lc-key">&gt;${x.key}</span>` : ''}</button>`;
+      }).join('') : `<div class="lc-none">${p.mode === 'apps' ? `Nothing on this Mac is called “${esc(p.f)}”.` : `No command called “${esc(p.f)}”.`}</div>`;
+    }
+    const setText = text => { q.value = text; render(); };
+    function run() {
+      if (state.mode === 'walls') {
+        const w = state.walls[state.w];
+        state.set = WALLS.indexOf(w); paint(state.set);
+        say(`WALLPAPER · ${w.n.toUpperCase()}`);
+        if (opt.onWall) opt.onWall(w); else setText('');
+        return;
+      }
+      const x = state.list[state.sel];
+      if (!x) return;
+      if (x.list) { setText(`>${x.key} `); return; }
+      const row = $('.lc-row.on', listEl);
+      if (row) { row.classList.remove('go'); void row.offsetWidth; row.classList.add('go'); }
+      say(`${state.mode === 'apps' ? (x.run ? 'FOCUSED' : 'OPENED') : 'RAN'} · ${x.n.toUpperCase()}`);
+      if (opt.onRun) opt.onRun(x);
+    }
+    function move(n) {
+      if (state.mode === 'walls') {
+        const next = clamp(state.w + n, 0, state.walls.length - 1);
+        if (next === state.w) return;
+        state.w = next; placeTiles(); paint(WALLS.indexOf(state.walls[state.w]));
+      } else { state.sel = clamp(state.sel + n, 0, Math.max(0, state.list.length - 1)); render(true); }
+    }
+    q.addEventListener('input', () => render());
+    root.addEventListener('keydown', e => {
+      const wall = state.mode === 'walls';
+      if (e.key === 'ArrowDown' && !wall) { move(1); e.preventDefault(); }
+      else if (e.key === 'ArrowUp' && !wall) { move(-1); e.preventDefault(); }
+      else if (e.key === 'ArrowRight' && wall) { move(1); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft' && wall) { move(-1); e.preventDefault(); }
+      else if (e.key === 'Tab' && document.activeElement === q) { const x = state.list[state.sel]; if (state.mode === 'cmds' && x) setText(`>${x.key}${x.list ? ' ' : ''}`); e.preventDefault(); }
+      else if (e.key === 'Enter') { run(); e.preventDefault(); }
+      else if (e.key === 'Escape') { if (opt.onEscape) opt.onEscape(); else setText(''); e.stopPropagation(); }
+      else return;
+      if (wall || e.key !== 'Escape') e.stopPropagation();
+    });
+    root.addEventListener('click', e => {
+      const row = e.target.closest('.lc-row'), tile = e.target.closest('.lc-wt');
+      if (e.target.closest('[data-clear]')) setText('');
+      else if (row) { const i = +row.dataset.i; if (i === state.sel) run(); else { state.sel = i; render(true); } }
+      else if (tile) { const i = +tile.dataset.w; if (i === state.w) run(); else move(i - state.w); }
+      q.focus({ preventScroll: true });
+    });
+    strip.addEventListener('wheel', e => { e.preventDefault(); const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY; if (Math.abs(d) > 8) move(d > 0 ? 1 : -1); }, { passive: false });
+    render();
+    return {
+      input: q, move, run, focus: () => q.focus({ preventScroll: true }),
+      reset: () => { q.value = ''; state.said = ''; saidEl.textContent = ''; render(); },
+      script: [['saf', o => o.run()], ['>', o => { o.move(1); o.move(1); }], ['>wallpaper ', o => { o.move(1); setTimeout(() => o.move(1), 700); setTimeout(() => o.run(), 1500); }], ['>po', o => o.run()]]
     };
-    const TABS = ['apps', 'commands', 'actions'];
+  }
+
+  /* ───── Minimal: a centred palette with branch tabs and a one-line inspector ───── */
+  function OpenerMinimal(root, opt = {}) {
+    const C = OP_C, DATA = OP_DATA, TABS = OP_TABS;
     const state = { tab: 0, sel: 0, q: '', said: '' };
     let saidTimer;
     root.classList.add('op');
@@ -249,7 +393,7 @@
       if (!x) return;
       const row = $('.op-row.on', listEl);
       if (row) { row.classList.remove('go'); void row.offsetWidth; row.classList.add('go'); }
-      state.said = `${state.tab === 0 ? (x.run ? 'FOCUSED' : 'OPENED') : 'RAN'} · ${x.n.toUpperCase()}`;
+      state.said = `${opVerb(TABS[state.tab], x)} · ${x.n.toUpperCase()}`;
       status.querySelector('.op-said')?.remove();
       status.querySelector('span:nth-child(2)').insertAdjacentHTML('afterend', `<span class="op-said">${state.said}</span>`);
       clearTimeout(saidTimer);
@@ -274,8 +418,158 @@
       else if (e.target.closest('[data-run]')) run();
     });
     render();
-    return { input: q, move, tab, run, focus: () => q.focus({ preventScroll: true }), reset: () => { q.value = ''; state.q = ''; state.tab = 0; state.sel = 0; state.said = ''; render(); } };
+    return {
+      input: q, move, tab, run, focus: () => q.focus({ preventScroll: true }),
+      reset: () => { q.value = ''; state.q = ''; state.tab = 0; state.sel = 0; state.said = ''; render(); },
+      script: [['saf', o => o.run()], ['', o => { o.tab(1); o.tab(1); o.move(1); o.move(1); }], ['fo', o => { o.tab(1); o.tab(1); o.run(); }]]
+    };
   }
+
+  /* ───── Tree (classic): a window Zera holds on a lit line. The search is the root; branches fold
+     open under it and the chosen item's facts sit on the right. ───── */
+  function OpenerTree(root, opt = {}) {
+    const state = { branch: 0, sel: 0, q: '', said: '' };
+    let saidTimer, flat = [];
+    root.classList.add('ot');
+    root.innerHTML = `<div class="ot-rope"></div><div class="ot-z sgn">${zera({ s: 56 })}</div><div class="ot-pane">${cns}
+<div class="ot-head"><span class="ot-root">${ic('search')}</span><div class="op-input">${cns}<input type="text" placeholder="Open an app…" autocomplete="off" spellcheck="false" maxlength="40" aria-label="Search apps, commands and actions"><span class="op-count"></span></div></div>
+<div class="ot-body"><div class="ot-tree" role="listbox" aria-label="Results"></div><div class="ot-detail"></div></div>
+<div class="op-status"></div></div>`;
+    const q = $('input', root), tree = $('.ot-tree', root), detail = $('.ot-detail', root), status = $('.op-status', root), count = $('.op-count', root);
+    function render() {
+      const typing = !!state.q;
+      flat = [];
+      let html = '';
+      OP_TABS.forEach((t, b) => {
+        const all = opFound(t, state.q), open = typing ? all.length > 0 : b === state.branch;
+        if (typing && !all.length) return;
+        html += `<button type="button" class="ot-group${open ? ' open' : ''}" data-branch="${b}"><i></i>${t === 'apps' ? (typing ? 'APPS' : 'YOUR USUAL') : t.toUpperCase()}<b>${all.length}</b></button>`;
+        if (!open) return;
+        const start = flat.length, shown = all.slice(0, typing ? 3 : 5);
+        shown.forEach(x => flat.push({ t, x }));
+        html += `<div class="ot-kids">${shown.map((x, j) => { const i = start + j; return `<button type="button" role="option" class="ot-row" data-i="${i}"><span class="op-ic" style="--c:${OP_C[i % OP_C.length]}">${x.m || ic(x.i)}</span><span class="op-name">${x.n}</span><span class="op-meta">${x.pin ? 'Pinned' : x.run ? '<span class="op-dot"></span>running' : ''}</span></button>`; }).join('')}</div>`;
+      });
+      state.sel = clamp(state.sel, 0, Math.max(0, flat.length - 1));
+      tree.innerHTML = html || '<div class="op-none">Nothing called that. ↵ would search the web.</div>';
+      $$('.ot-row', tree).forEach((el, i) => { el.classList.toggle('on', i === state.sel); el.setAttribute('aria-selected', i === state.sel); });
+      count.textContent = typing ? (flat.length ? `${flat.length} FOUND` : 'NO MATCHES') : '';
+      const cur = flat[state.sel];
+      detail.innerHTML = !cur ? '<div class="ot-empty">Choose something on the left.</div>'
+        : `<span class="ot-big" style="--c:${OP_C[state.sel % OP_C.length]}">${cur.x.m || ic(cur.x.i)}</span><b class="ot-name">${cur.x.n}</b><small class="ot-kind">${cur.t === 'apps' ? 'Application' : cur.t === 'commands' ? 'Command' : 'Zera action'}</small>
+<div class="ot-facts">${opFacts(cur.t, cur.x).map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>
+<button type="button" class="op-b p ot-go" data-run>${cur.t === 'apps' ? (cur.x.run ? 'Focus' : 'Open') : 'Run'} ${cur.x.n} <span class="op-key">↵</span></button>`;
+      status.innerHTML = `<span class="op-live">LIVE</span><span>TREE</span>${state.said ? `<span class="op-said">${state.said}</span>` : ''}<span class="op-hints"><span><span class="op-key">↑↓</span>choose</span><span><span class="op-key">⇥</span>next branch</span><span><span class="op-key">↵</span>open</span><span><span class="op-key">esc</span>close</span></span>`;
+    }
+    function run() {
+      const cur = flat[state.sel];
+      if (!cur) return;
+      const row = $('.ot-row.on', tree);
+      if (row) { row.classList.remove('go'); void row.offsetWidth; row.classList.add('go'); }
+      state.said = `${opVerb(cur.t, cur.x)} · ${cur.x.n.toUpperCase()}`;
+      clearTimeout(saidTimer);
+      saidTimer = setTimeout(() => { state.said = ''; render(); }, 1500);
+      const keep = row ? row.className : '';
+      render();
+      if (keep) { const again = $('.ot-row.on', tree); if (again) again.classList.add('go'); }
+      if (opt.onRun) opt.onRun(cur.x);
+    }
+    const move = n => { state.sel = clamp(state.sel + n, 0, Math.max(0, flat.length - 1)); render(); };
+    const tab = n => { state.branch = (state.branch + n + OP_TABS.length) % OP_TABS.length; state.sel = 0; render(); };
+    q.addEventListener('input', () => { state.q = q.value.trim().toLowerCase(); state.sel = 0; render(); });
+    root.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { move(1); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { move(-1); e.preventDefault(); }
+      else if (e.key === 'Tab' && document.activeElement === q) { tab(e.shiftKey ? -1 : 1); e.preventDefault(); }
+      else if (e.key === 'Enter') { run(); e.preventDefault(); }
+      else if (e.key === 'Escape') { if (opt.onEscape) opt.onEscape(); else { q.value = ''; state.q = ''; render(); } e.stopPropagation(); }
+    });
+    root.addEventListener('click', e => {
+      const g = e.target.closest('[data-branch]'), row = e.target.closest('.ot-row');
+      if (g) { state.branch = +g.dataset.branch; state.sel = 0; render(); }
+      else if (row) { const i = +row.dataset.i; if (i === state.sel) run(); else { state.sel = i; render(); } }
+      else if (e.target.closest('[data-run]')) run();
+      q.focus({ preventScroll: true });
+    });
+    render();
+    return {
+      input: q, move, tab, run, focus: () => q.focus({ preventScroll: true }),
+      reset: () => { q.value = ''; state.q = ''; state.branch = 0; state.sel = 0; state.said = ''; render(); },
+      script: [['', o => { o.move(1); o.move(1); }], ['saf', o => o.run()], ['', o => { o.tab(1); o.move(1); }], ['fo', o => o.run()]]
+    };
+  }
+
+  /* ───── Orbit: the search in the middle of a dimmed screen, the results on an arc under it ───── */
+  function OpenerOrbit(root, opt = {}) {
+    const NAMES = ['YOUR USUAL', 'COMMANDS', 'ACTIONS'];
+    const state = { tab: 0, sel: 0, q: '', said: '' };
+    let saidTimer, list = [];
+    root.classList.add('oo');
+    root.innerHTML = `<div class="oo-z sgn">${zera({ s: 44 })}</div>
+<div class="oo-search">${ic('search')}<input type="text" placeholder="Search apps, commands, or actions…" autocomplete="off" spellcheck="false" maxlength="40" aria-label="Search apps, commands and actions"></div>
+<div class="oo-tabs" role="tablist"></div><div class="oo-arc" role="listbox" aria-label="Results"></div><div class="oo-card"></div>
+<div class="oo-hints"><span><span class="op-key">←</span><span class="op-key">→</span>navigate</span><span><span class="op-key">⇥</span>switch tab</span><span><span class="op-key">↵</span>open</span><span><span class="op-key">esc</span>close</span></div>`;
+    const q = $('input', root), tabs = $('.oo-tabs', root), arc = $('.oo-arc', root), card = $('.oo-card', root);
+    function place() {
+      $$('.oo-tile', arc).forEach((el, i) => {
+        const k = i - state.sel, far = Math.abs(k);
+        el.style.transform = `translate(${k * 96}px,${k * k * 3.2}px) scale(${k === 0 ? 1.25 : far === 1 ? 1 : .875})`;
+        el.style.opacity = far > 3 ? 0 : 1;
+        el.style.pointerEvents = far > 3 ? 'none' : '';
+        el.classList.toggle('on', !k); el.setAttribute('aria-selected', !k);
+      });
+      const t = OP_TABS[state.tab], x = list[state.sel];
+      card.innerHTML = !x ? '<span class="oo-none">Nothing matches. Try another tab with ⇥.</span>'
+        : `<span class="op-ic" style="--c:${OP_C[state.sel % OP_C.length]}">${x.m || ic(x.i)}</span><span class="oo-what"><b>${x.n}</b><small>${opFacts(t, x).slice(0, 3).map(f => f[1]).join(' · ')}</small></span>${state.said ? `<span class="op-said">${state.said}</span>` : ''}<button type="button" class="op-b p" data-run>${t === 'apps' ? (x.run ? 'Focus app' : 'Open app') : 'Run'} <span class="op-key">↵</span></button>`;
+    }
+    function render() {
+      list = opFound(OP_TABS[state.tab], state.q);
+      state.sel = clamp(state.sel, 0, Math.max(0, list.length - 1));
+      tabs.innerHTML = OP_TABS.map((t, i) => `<button type="button" role="tab" aria-selected="${i === state.tab}" class="oo-tab${i === state.tab ? ' on' : ''}" data-tab="${i}">${NAMES[i]}<b>${opFound(t, state.q).length}</b></button>`).join('');
+      arc.innerHTML = list.map((x, i) => `<button type="button" role="option" class="oo-tile" data-i="${i}"><span class="oo-ic" style="--c:${OP_C[i % OP_C.length]}">${x.m || ic(x.i)}</span>${x.run ? '<i class="oo-run"></i>' : ''}<small>${x.n}</small></button>`).join('');
+      place();
+    }
+    function run() {
+      const x = list[state.sel];
+      if (!x) return;
+      const tile = $('.oo-tile.on', arc);
+      if (tile) { tile.classList.remove('go'); void tile.offsetWidth; tile.classList.add('go'); }
+      state.said = `${opVerb(OP_TABS[state.tab], x)} · ${x.n.toUpperCase()}`;
+      clearTimeout(saidTimer);
+      saidTimer = setTimeout(() => { state.said = ''; place(); }, 1500);
+      place();
+      if (opt.onRun) opt.onRun(x);
+    }
+    const move = n => { const next = clamp(state.sel + n, 0, Math.max(0, list.length - 1)); if (next !== state.sel) { state.sel = next; place(); } };
+    const tab = n => { state.tab = (state.tab + n + OP_TABS.length) % OP_TABS.length; state.sel = Math.min(2, Math.max(0, opFound(OP_TABS[state.tab], state.q).length - 1)); render(); };
+    q.addEventListener('input', () => { state.q = q.value.trim().toLowerCase(); state.sel = 0; render(); });
+    root.addEventListener('keydown', e => {
+      const typing = document.activeElement === q && q.value;
+      if (e.key === 'ArrowRight' && !typing) { move(1); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft' && !typing) { move(-1); e.preventDefault(); }
+      else if (e.key === 'ArrowDown') { move(1); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { move(-1); e.preventDefault(); }
+      else if (e.key === 'Tab' && document.activeElement === q) { tab(e.shiftKey ? -1 : 1); e.preventDefault(); }
+      else if (e.key === 'Enter') { run(); e.preventDefault(); }
+      else if (e.key === 'Escape') { if (opt.onEscape) opt.onEscape(); else { q.value = ''; state.q = ''; render(); } e.stopPropagation(); }
+      else return;
+      e.stopPropagation();
+    });
+    root.addEventListener('click', e => {
+      const t = e.target.closest('[data-tab]'), tile = e.target.closest('.oo-tile');
+      if (t) { state.tab = +t.dataset.tab; state.sel = Math.min(2, Math.max(0, opFound(OP_TABS[state.tab], state.q).length - 1)); render(); }
+      else if (tile) { const i = +tile.dataset.i; if (i === state.sel) run(); else { state.sel = i; place(); } }
+      else if (e.target.closest('[data-run]')) run();
+      q.focus({ preventScroll: true });
+    });
+    arc.addEventListener('wheel', e => { e.preventDefault(); const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY; if (Math.abs(d) > 8) move(d > 0 ? 1 : -1); }, { passive: false });
+    const reset = () => { q.value = ''; state.q = ''; state.tab = 0; state.sel = 2; state.said = ''; render(); };
+    reset();
+    return {
+      input: q, move, tab, run, focus: () => q.focus({ preventScroll: true }), reset,
+      script: [['', o => { o.move(1); setTimeout(() => o.move(1), 500); setTimeout(() => o.move(-1), 1000); }], ['no', o => o.run()], ['', o => { o.tab(1); o.move(1); }], ['', o => { o.tab(1); o.tab(1); o.move(1); o.run(); }]]
+    };
+  }
+  const OPENERS = { launcher: Launcher, minimal: OpenerMinimal, tree: OpenerTree, orbit: OpenerOrbit };
 
   /* ═════ Daily Shelf ═════ */
   function Shelf(root, opt = {}) {
@@ -466,7 +760,7 @@
 
     const shelf = Shelf($('[data-shelf]', desk), { onClose: () => toggleShelf(false), titles: { 91: 'Pin the runner image digest' } });
     const opHost = $('[data-op]', desk), opEl = document.createElement('div'); opHost.appendChild(opEl);
-    const opener = Opener(opEl, { onEscape: () => toggleOpener(false), onRun: x => later(() => { toggleOpener(false); if (x.go === 'dshelf') toggleShelf(true); else if (x.go === 'deck') toggleDeck(true); else if (x.go) { setOpen(true); go(x.go); } else echo(`${kbd('↵', 1)}<b>${esc(x.n)}</b><span class="d">in the app this opens for real</span>`); }, 620) });
+    const opener = Launcher(opEl, { wall: desk, onEscape: () => toggleOpener(false), onWall: w => later(() => { toggleOpener(false); echo(`${kbd('↵', 1)}<b>WALLPAPER SET</b><span class="d">${esc(w.n)}</span>`); }, 420), onRun: x => later(() => { toggleOpener(false); if (x.go === 'dshelf') toggleShelf(true); else if (x.go === 'deck') toggleDeck(true); else if (x.go) { setOpen(true); go(x.go); } else echo(`${kbd('↵', 1)}<b>${esc(x.n)}</b><span class="d">in the app this opens for real</span>`); }, 620) });
     const deckHost = $('[data-deck]', desk), deckEl = document.createElement('div'); deckHost.appendChild(deckEl);
     const deck = Deck(deckEl, { onEscape: () => toggleDeck(false), onCopied: () => toggleDeck(false), onCopy: it => echo(`${kbd('↵', 1)}<b>COPIED</b><span class="d">${esc(it.title.slice(0, 34))}</span><span class="ft">⌘V to paste</span>`), onOpenFull: () => { toggleDeck(false); setOpen(true); go('clip'); } });
     const wingsApi = Wings($('[data-wings]', desk), { onState: s => { zz.style.opacity = s === 'idle' ? '' : '0'; zz.style.pointerEvents = s === 'idle' ? '' : 'none'; hint.style.opacity = s === 'idle' && !st.open ? '' : '0'; setTry('agent', s !== 'idle'); } });
@@ -661,8 +955,9 @@ ${lbl('COLOUR THEME', null, '<span style="letter-spacing:.04em">nine built in</s
     function toggleOpener(v) {
       const on = opHost.classList.contains('on'); v = v ?? !on;
       if (v === on) return;
-      if (v) { opener.reset(); toggleDeck(false); }
-      opHost.classList.toggle('on', v); dimr.classList.toggle('on', v); setTry('opener', v);
+      opener.reset();      // also on the way out: a picture only tried on is taken off again
+      if (v) toggleDeck(false);
+      opHost.classList.toggle('on', v); dimr.classList.toggle('on', v); dimr.classList.toggle('bare', v); setTry('opener', v);
       if (v) later(() => opener.focus(), 60); else desk.focus({ preventScroll: true });
     }
     function agent() {
@@ -887,23 +1182,47 @@ ${lbl('COLOUR THEME', null, '<span style="letter-spacing:.04em">nine built in</s
       whileSeen(vd, () => { if (hands || still()) return; id = setInterval(() => { n++; if (n % 4 === 0) { d.copy(); return; } if (!d.step(dir)) { dir = -dir; d.step(dir); } }, 1900); }, () => clearInterval(id));
     }
 
-    /* App opener */
+    /* App opener: four looks behind a switcher, each one live */
     const vo = $('[data-vig="opener"]');
     if (vo) {
-      vo.innerHTML = '<div class="vopen"><div data-o></div></div>';
-      const o = Opener($('[data-o]', vo));
+      const KEYS = Object.keys(OPENERS);
+      vo.innerHTML = `<div class="vopen">${KEYS.map(k => `<div class="vo-look" data-look="${k}" hidden><div data-o></div></div>`).join('')}</div>`;
+      const made = {};
+      const look = k => made[k] || (made[k] = OPENERS[k]($(`.vo-look[data-look="${k}"] > [data-o]`, vo), k === 'launcher' ? { wall: vo } : {}));
       S.autofit(vo, 1);
-      let hands = false, cancel = null, t = 0;
-      const stop = () => { hands = true; if (cancel) cancel(); clearTimeout(t); };
-      vo.addEventListener('pointerdown', stop); vo.addEventListener('keydown', e => { if (e.isTrusted) stop(); });
+      const note = $('[data-opnote]'), NOTES = { launcher: 'LIVE · TYPE > FOR COMMANDS', minimal: 'LIVE · TYPE TO FILTER', tree: 'LIVE · ⇥ OPENS THE NEXT BRANCH', orbit: 'LIVE · ← → ALONG THE ARC' };
+      let cur = 'launcher', hands = false, cancel = null, t = 0, started = false, step = 0;
+      const halt = () => { if (cancel) cancel(); clearTimeout(t); };
       const loop = () => {
-        if (hands) return;
-        const script = [['saf', 0], ['', 2], ['fo', 2], ['', 0]], [text, tab] = script[loop.i++ % script.length];
-        o.reset(); for (let i = 0; i < tab; i++) o.tab(1);
-        cancel = typeInto(o.input, text, () => { if (hands) return; if (text) o.run(); else { o.move(1); o.move(1); } t = setTimeout(() => { if (!hands) { o.input.value = ''; loop(); } }, 2400); }, 130);
+        if (hands || still()) return;
+        const o = look(cur), [text, then] = o.script[step++ % o.script.length];
+        o.reset();
+        cancel = typeInto(o.input, text, () => { if (hands) return; then(o); t = setTimeout(loop, 2800); }, 120);
       };
-      loop.i = 0;
-      let started = false;
+      function show(k, byHand) {
+        halt();
+        if (cur === 'launcher' && made.launcher) made.launcher.reset();
+        cur = k; step = 0;
+        $$('.vo-look', vo).forEach(el => { el.hidden = el.dataset.look !== k; });
+        vo.dataset.shown = k;
+        look(k).reset();
+        $$('[data-opstyle]').forEach(b => { const on = b.dataset.opstyle === k; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; });
+        if (note) note.textContent = NOTES[k];
+        // Picking a look is not taking the keys: it shows itself until you touch it.
+        hands = false;
+        if (started || byHand) { started = true; t = setTimeout(loop, 600); }
+      }
+      vo.addEventListener('pointerdown', () => { hands = true; halt(); });
+      vo.addEventListener('keydown', e => { if (e.isTrusted) { hands = true; halt(); } });
+      $$('[data-opstyle]').forEach(b => {
+        b.addEventListener('click', () => show(b.dataset.opstyle, true));
+        b.addEventListener('keydown', e => {
+          if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+          const next = KEYS[(KEYS.indexOf(cur) + (e.key === 'ArrowRight' ? 1 : KEYS.length - 1)) % KEYS.length];
+          show(next, true); $(`[data-opstyle="${next}"]`).focus(); e.preventDefault();
+        });
+      });
+      show(cur);
       whileSeen(vo, () => { if (!started && !still()) { started = true; t = setTimeout(loop, 700); } }, () => {});
     }
   }

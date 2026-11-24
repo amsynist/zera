@@ -241,7 +241,7 @@ final class VoiceApproval {
 // cursor is. Recognition is on-device when the Mac supports it. Text is inserted into the
 // original field through native accessibility or targeted Unicode events. Esc while holding cancels.
 // Any other key pressed with the right Option makes it a normal shortcut instead.
-/// Which key you hold to dictate (Settings → Notch → Voice).
+/// Which key you hold to dictate (Settings → Features → Voice).
 enum DictationKey: Int, CaseIterable {
     case rightOptionOrShift = 0, rightOption = 1, rightShift = 2, fn = 3
     var title: String {

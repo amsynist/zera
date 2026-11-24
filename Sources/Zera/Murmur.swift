@@ -17,7 +17,7 @@ private struct MurmurPipeline: @unchecked Sendable { let kit: WhisperKit }
 // this Mac's Neural Engine. Nothing you say leaves the Mac. While you hold right ⌥ the words
 // are re-read from what you've said so far about once a second, so they appear in the notch as
 // you speak; on release the whole take is read once more and typed. A first-launch intro offers
-// the download; Settings → Notch → Voice can change, re-download or remove it.
+// the download; Settings → Features → Voice can change, re-download or remove it.
 
 enum MurmurModel: String, CaseIterable {
     case quick = "openai_whisper-base"

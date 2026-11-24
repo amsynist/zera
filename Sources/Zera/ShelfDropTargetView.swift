@@ -8,7 +8,7 @@ class ShelfDropTargetView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        registerForDraggedTypes([.fileURL, .png, .tiff, .pdf, .rtf, .string, .URL])
+        registerForDraggedTypes(FileDragCatch.dropTypes)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -16,7 +16,8 @@ class ShelfDropTargetView: NSView {
     func acceptsDrop(at point: NSPoint) -> Bool { bounds.contains(point) }
 
     private func canAccept(_ sender: NSDraggingInfo) -> Bool {
-        onDrop != nil && sender.draggingSourceOperationMask.contains(.copy)
+        // Any source that lets go of its file will do: some only offer "generic" or "move".
+        onDrop != nil && !sender.draggingSourceOperationMask.isEmpty
             && sender.draggingPasteboard.types?.contains(shelfDragType) != true
             && acceptsDrop(at: convert(sender.draggingLocation, from: nil))
     }
@@ -32,7 +33,7 @@ class ShelfDropTargetView: NSView {
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         let accepted = canAccept(sender)
         setTargeted(accepted)
-        return accepted ? .copy : []
+        return accepted ? FileDragCatch.operation(for: sender.draggingSourceOperationMask) : []
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) { setTargeted(false) }

@@ -79,12 +79,27 @@ enum AppOpenerSettings {
         set { UserDefaults.standard.set(newValue, forKey: runningKey) }
     }
     static let defaultShortcut = HotKeyShortcut(keyCode: 49, modifiers: UInt32(2048), key: "Space")   // ⌥Space
-    /// The look: the orbit in the middle of a dimmed screen (v2), or the classic tree window.
-    enum Style: Int { case orbit, tree, minimal }
+    /// The look: the launcher risen from the bottom edge (the default), the orbit in the middle
+    /// of a dimmed screen, the classic tree window, or the centred minimal palette. Raw values
+    /// are saved: append, never reorder.
+    enum Style: Int { case orbit, tree, minimal, launcher }
     private static let styleKey = "appOpener.style"
+    private static let launcherDefaultKey = "appOpener.launcherDefault"
     static var style: Style {
-        get { Style(rawValue: UserDefaults.standard.integer(forKey: styleKey)) ?? .orbit }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: styleKey) }
+        get {
+            let d = UserDefaults.standard
+            // Once: the launcher becomes the look, whatever was saved before it existed. A look
+            // picked in Settings afterwards stays.
+            if !d.bool(forKey: launcherDefaultKey) {
+                d.set(true, forKey: launcherDefaultKey)
+                d.set(Style.launcher.rawValue, forKey: styleKey)
+            }
+            return (d.object(forKey: styleKey) as? Int).flatMap(Style.init(rawValue:)) ?? .launcher
+        }
+        set {
+            UserDefaults.standard.set(true, forKey: launcherDefaultKey)
+            UserDefaults.standard.set(newValue.rawValue, forKey: styleKey)
+        }
     }
     private static let keepKey = "appOpener.keepRunning"
     /// Apps Quit All leaves open (bundle IDs), remembered between runs.
@@ -99,6 +114,7 @@ final class AppOpener: NSObject, NSWindowDelegate {
     let panel: FloatingPanel
     private lazy var orbitView = AppOpenerView()
     private lazy var treeView = TreeOpenerView()
+    private lazy var launcherView = LauncherOpenerView()
     /// The look chosen in Settings, picked each time it opens.
     private var view: OpenerSurface?
     private(set) var isOpen = false
@@ -162,26 +178,41 @@ final class AppOpener: NSObject, NSWindowDelegate {
         onOpenChanged?(true)
         let band = max(24, notch.height)
         let style = AppOpenerSettings.style
-        let tree = style != .orbit
-        if tree { treeView.minimal = style == .minimal }
-        let view: OpenerSurface = tree ? treeView : orbitView
+        let view: OpenerSurface
+        switch style {
+        case .launcher: view = launcherView
+        case .orbit: view = orbitView
+        case .tree, .minimal:
+            treeView.minimal = style == .minimal
+            view = treeView
+        }
         self.view = view
         wire(view)
         if panel.contentView !== view { panel.contentView = view }
-        if style == .minimal {
+        switch style {
+        case .launcher:
+            // Risen from the bottom edge of the screen, or resting just above a Dock that is there.
+            let visible = NSScreen.screens.first { $0.frame == screen }?.visibleFrame ?? screen
+            let dockBelow = visible.minY > screen.minY + 4
+            let size = LauncherOpenerView.panelSize(available: screen.size)
+            launcherView.flush = !dockBelow
+            panel.setFrame(NSRect(x: (screen.midX - size.width / 2).rounded(), y: dockBelow ? visible.minY : screen.minY,
+                                  width: size.width, height: size.height), display: false)
+            view.ropeX = size.width / 2
+        case .minimal:
             // Minimal: a centred command palette, a little above the middle of the screen.
             let size = NSSize(width: treeView.panelWidth, height: treeView.panelHeight(band: band, availableHeight: screen.height))
             let y = (screen.midY - size.height / 2 + screen.height * 0.06).rounded()
             panel.setFrame(NSRect(x: (screen.midX - size.width / 2).rounded(), y: min(screen.maxY - size.height, max(screen.minY, y)),
                                   width: size.width, height: size.height), display: false)
             view.ropeX = size.width / 2
-        } else if tree {
+        case .tree:
             // Classic: a window held by Zera under the notch.
             let size = NSSize(width: TreeOpenerView.panelWidth, height: treeView.panelHeight(band: band, availableHeight: screen.height))
             let x = max(screen.minX, min(screen.maxX - size.width, notch.midX - size.width / 2))
             panel.setFrame(NSRect(x: x, y: screen.maxY - size.height, width: size.width, height: size.height), display: false)
             view.ropeX = notch.midX - x
-        } else {
+        case .orbit:
             // v2: it covers the whole screen — dimmed and blurred — with the search in the middle.
             panel.setFrame(screen, display: false)
             view.ropeX = notch.midX - screen.minX

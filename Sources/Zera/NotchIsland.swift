@@ -212,6 +212,10 @@ final class IslandView: ShelfDropTargetView {
     /// (copy sweeps, volume arcs, an approval waiting) even while the island is closed.
     let light = NotchLightLayer()
     private let hostMask = CAShapeLayer()
+    /// The catch: while a file is carried up to the open Shelf, the island's outline runs as a
+    /// lit, dashed net; on the drop it closes solid and fades (`setCatching`, `catchLanded`).
+    private let catchRim = CAShapeLayer()
+    private(set) var catching = false
     /// v2: where the lens attaches under the notch — a bright hairline and a soft accent bloom.
     private let rootLine = CAGradientLayer()
     private let rootGlow = CAGradientLayer()
@@ -271,6 +275,14 @@ final class IslandView: ShelfDropTargetView {
         // for the morph geometry but never shows.
         edge.isHidden = true
         chrome.layer?.addSublayer(light)
+        catchRim.fillColor = nil
+        catchRim.lineWidth = 1.6
+        catchRim.lineCap = .round
+        catchRim.shadowOffset = .zero
+        catchRim.shadowRadius = 7
+        catchRim.shadowOpacity = 0.8
+        catchRim.opacity = 0
+        chrome.layer?.addSublayer(catchRim)
 
         rootGlow.type = .radial
         rootGlow.startPoint = CGPoint(x: 0.5, y: 0)
@@ -370,7 +382,7 @@ final class IslandView: ShelfDropTargetView {
         islandRect = r
         let closedPath = Self.path(r, corner: corner, closed: true, neck: tiledPeek ? notchWidth : nil, band: band)
         let openPath = Self.path(r, corner: corner, closed: false, neck: tiledPeek ? notchWidth : nil, band: band)
-        let pairs: [(CAShapeLayer, CGPath)] = [(glow, closedPath), (fillMask, closedPath), (ambientMask, closedPath), (hostMask, closedPath), (phoneLiquid.outline, closedPath), (glass.shape, closedPath), (edge, openPath)]
+        let pairs: [(CAShapeLayer, CGPath)] = [(glow, closedPath), (fillMask, closedPath), (ambientMask, closedPath), (hostMask, closedPath), (phoneLiquid.outline, closedPath), (glass.shape, closedPath), (edge, openPath), (catchRim, openPath)]
         for (layer, p) in pairs {
             if animated, !Motion.reduced {
                 let from = layer.presentation()?.path ?? layer.path
@@ -406,6 +418,65 @@ final class IslandView: ShelfDropTargetView {
         light.react(r)
     }
     func clearStickyLight() { light.clearSticky() }
+
+    // MARK: - Catching a dragged file
+
+    /// A file is being carried up to the open Shelf: the outline becomes a running, lit net and
+    /// the whole island takes the drop. Off again when the file is carried away.
+    func setCatching(_ on: Bool) {
+        guard on != catching else { return }
+        catching = on
+        catchRim.removeAnimation(forKey: "land")
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        catchRim.strokeColor = Neon.accent.cgColor
+        catchRim.shadowColor = Neon.accent.cgColor
+        catchRim.lineWidth = 1.6
+        catchRim.lineDashPattern = [7, 6]
+        catchRim.opacity = on ? 1 : 0
+        CATransaction.commit()
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = catchRim.presentation()?.opacity ?? (on ? 0 : 1)
+        fade.toValue = on ? 1 : 0
+        fade.duration = Motion.duration(on ? 0.22 : 0.18)
+        catchRim.add(fade, forKey: "fade")
+        if on, !Motion.reduced {
+            // The dashes run toward the notch: one pattern length per beat, so it never jumps.
+            let run = CABasicAnimation(keyPath: "lineDashPhase")
+            run.fromValue = 0; run.toValue = -13
+            run.duration = 0.55
+            run.repeatCount = .infinity
+            run.timingFunction = CAMediaTimingFunction(name: .linear)
+            catchRim.add(run, forKey: "run")
+        } else {
+            catchRim.removeAnimation(forKey: "run")
+        }
+    }
+
+    /// The drop landed: the net closes into one solid line that swells once and fades.
+    func catchLanded() {
+        catching = false
+        catchRim.removeAnimation(forKey: "run")
+        catchRim.removeAnimation(forKey: "fade")
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        catchRim.strokeColor = Neon.accent.cgColor
+        catchRim.shadowColor = Neon.accent.cgColor
+        catchRim.lineDashPattern = nil
+        catchRim.opacity = 0
+        catchRim.lineWidth = 1.6
+        CATransaction.commit()
+        guard !Motion.reduced else { return }
+        let swell = CAKeyframeAnimation(keyPath: "lineWidth")
+        swell.values = [1.6, 4.5, 1.2]
+        swell.keyTimes = [0, 0.3, 1]
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [1, 1, 0]
+        fade.keyTimes = [0, 0.35, 1]
+        let land = CAAnimationGroup()
+        land.animations = [swell, fade]
+        land.duration = 0.5
+        land.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        catchRim.add(land, forKey: "land")
+    }
 
     private func recolorRoot() {
         rootGlow.colors = [Neon.accent.withAlphaComponent(0.16).cgColor, Neon.accent.withAlphaComponent(0).cgColor]
@@ -779,6 +850,7 @@ final class IslandView: ShelfDropTargetView {
 
     /// Just the notch: nothing to see, nothing to click.
     func close(animated: Bool = true, completion: (() -> Void)? = nil) {
+        setCatching(false)
         status.setRunning(false)
         status.alphaValue = 0
         status.isHidden = true
@@ -973,7 +1045,9 @@ final class IslandView: ShelfDropTargetView {
     }
 
     override func acceptsDrop(at point: NSPoint) -> Bool {
-        mode != .closed && point.y >= 0 && point.y <= band
+        // Open to catch: anywhere on the island counts, not only the band along the notch.
+        if catching, mode == .open, islandRect.contains(point) { return true }
+        return mode != .closed && point.y >= 0 && point.y <= band
             && abs(point.x - centerX) <= notchWidth / 2 + NotchBuddyView.wingWidth(forHeight: band)
     }
 

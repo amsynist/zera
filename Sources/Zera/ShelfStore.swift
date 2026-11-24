@@ -244,6 +244,59 @@ final class ShelfStore {
         return nil
     }
 
+    /// True when a drop holds something the Shelf can keep.
+    static func canTake(_ pb: NSPasteboard) -> Bool {
+        payload(from: pb) != nil || pb.canReadObject(forClasses: [NSFilePromiseReceiver.self], options: nil)
+    }
+
+    /// Takes whatever a drop holds: files in place, promised files (Photos, Mail, a browser's
+    /// picture or video) written into staging by their source, raw pictures and text staged here.
+    /// False when there is nothing usable; otherwise `done` gets how many were added (main thread).
+    @discardableResult
+    func take(_ pb: NSPasteboard, done: @escaping (Int) -> Void) -> Bool {
+        let files = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        // A promise is the original file with its own name; raw picture data beside it is a copy.
+        if files.isEmpty, receivePromised(from: pb, done: done) { return true }
+        guard let p = Self.payload(from: pb) else { return false }
+        ingest(p, done: done)
+        return true
+    }
+
+    private func receivePromised(from pb: NSPasteboard, done: @escaping (Int) -> Void) -> Bool {
+        guard let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver],
+              !receivers.isEmpty else { return false }
+        let folder = stagingDir
+        let queue = OperationQueue()
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var written: [URL] = []
+        for receiver in receivers {
+            // The reader runs once per promised file, with the file or the reason it failed.
+            let expected = max(1, receiver.fileTypes.count)
+            for _ in 0..<expected { group.enter() }
+            var left = expected
+            receiver.receivePromisedFiles(atDestination: folder, options: [:], operationQueue: queue) { url, error in
+                lock.lock()
+                let counted = left > 0
+                if counted { left -= 1 }
+                if error == nil { written.append(url) }
+                lock.unlock()
+                if counted { group.leave() }
+            }
+        }
+        var finished = false
+        let finish = { [weak self] in
+            guard !finished else { return }
+            finished = true
+            lock.lock(); let urls = written; lock.unlock()
+            done(self?.add(urls: urls) ?? 0)
+        }
+        group.notify(queue: .main, execute: finish)
+        // A source that never keeps its promise must not leave the drop hanging.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: finish)
+        return true
+    }
+
     /// Pulls everything usable out of a pasteboard, right now.
     func ingest(pasteboard pb: NSPasteboard) -> Int {
         guard let p = Self.payload(from: pb) else { return 0 }

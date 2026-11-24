@@ -818,6 +818,60 @@ final class ScreenRenderTests: XCTestCase {
         ThemeStore.shared.select(ThemeStore.shared.builtIns[0])
     }
 
+    /// The regrouped settings panes: every row under a labelled section.
+    func testRenderSettingsGroups() {
+        for pane in [SettingsCard.Pane.general, .features, .notch, .appearance] {
+            let settings = SettingsCard(defaultKind: .home, showingZera: true, loginEnabled: false)
+            settings.select(pane)
+            island(settings, tab: .settings, "settings-\(pane.title.lowercased())")
+        }
+    }
+
+    /// The launcher (the default opener look): apps, ">" commands, the wallpaper strip.
+    func testRenderLauncher() {
+        var catalogReady = !AppCatalog.shared.apps.isEmpty
+        AppCatalog.shared.refreshIfNeeded { catalogReady = true }
+        let until = Date().addingTimeInterval(8)
+        while !catalogReady, Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        let size = LauncherOpenerView.panelSize(available: NSSize(width: 1440, height: 900))
+        func make() -> LauncherOpenerView {
+            let v = LauncherOpenerView(frame: NSRect(origin: .zero, size: size))
+            // Repository artwork only: never the pictures on this Mac.
+            let assets = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("site/assets")
+            let names = ["v3/wallpaper.webp", "v2/sharing-poster.jpg", "v3/desktop.webp", "zera-film-poster.jpg", "v2/walkthrough-poster.jpg", "v3/og.jpg", "og.jpg"]
+            v.wallpaperSource = { names.map { WallpaperEntry(url: assets.appendingPathComponent($0)) } }
+            v.currentWallpaper = { assets.appendingPathComponent("v3/desktop.webp") }
+            v.previewWallpaper = { _ in }
+            v.applyWallpaper = { _ in true }
+            v.endWallpaperPreview = { _ in }
+            v.prepare()
+            return v
+        }
+        panel(make(), "20j-launcher")
+        let typing = make()
+        typing.previewType("saf")
+        panel(typing, "20k-launcher-typing")
+        let commands = make()
+        commands.previewType(">")
+        panel(commands, "20l-launcher-commands")
+        let themes = make()
+        themes.previewType(">theme ")
+        themes.previewMove(2)
+        panel(themes, "20m-launcher-themes")
+        let floating = make()
+        floating.flush = false
+        floating.previewType(">wa")
+        panel(floating, "20n-launcher-above-dock")
+        let wall = make()
+        wall.previewType(">wallpaper ")
+        let ready = Date().addingTimeInterval(3)
+        while !wall.isShowingWallpapers, Date() < ready { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        wall.previewMove(1)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        panel(wall, "20o-launcher-wallpaper")
+    }
+
     // MARK: Populated states
 
     /// A month of commit-made tasks across two projects, with the long repo names real work has.

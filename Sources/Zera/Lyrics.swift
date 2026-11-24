@@ -124,7 +124,7 @@ final class LyricsService {
     }
 }
 
-/// Settings → Notch: a slow wave along the notch in the album art's colour while music plays.
+/// Settings → Features → Music: a slow wave along the notch in the album art's colour while music plays.
 /// Off by default (it's a continuous animation, cheap but not free).
 enum MusicWave {
     private static let key = "zera.music.wave"

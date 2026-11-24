@@ -931,6 +931,9 @@ final class SettingsCard: CardBase, CardContent {
         case extras
         /// Claude Code, Codex and future agents: shared options, then a tab per agent. Appended: pane IDs persist.
         case agents
+        /// What Zera does beyond the notch itself (tasks, breaks, battery, voice, music, weather,
+        /// teleprompter). Appended: pane IDs persist.
+        case features
         var title: String {
             switch self {
             case .general: return "General"
@@ -950,6 +953,7 @@ final class SettingsCard: CardBase, CardContent {
             case .permissions: return "Permissions & Diagnostics"
             case .extras: return "Extras"
             case .agents: return "Agents"
+            case .features: return "Features"
             }
         }
         var symbol: String {
@@ -971,12 +975,13 @@ final class SettingsCard: CardBase, CardContent {
             case .permissions: return "hand.raised"
             case .extras: return "shippingbox"
             case .agents: return "person.2.fill"
+            case .features: return "square.grid.2x2.fill"
             }
         }
         /// Where ‹ Back goes.
         var parent: Pane { self == .diagnostics ? .claude : .integrations }
-        var isDetail: Bool { rawValue >= Pane.claude.rawValue && self != .shelf && self != .permissions && self != .extras }
-        static let nav: [Pane] = [.general, .appearance, .notch, .sounds, .clipboard, .shelf, .integrations, .extras, .permissions, .shortcuts, .about]
+        var isDetail: Bool { rawValue >= Pane.claude.rawValue && self != .shelf && self != .permissions && self != .extras && self != .features }
+        static let nav: [Pane] = [.general, .appearance, .notch, .features, .sounds, .clipboard, .shelf, .integrations, .extras, .permissions, .shortcuts, .about]
     }
 
     private var navRows: [NavRow] = []
@@ -1071,7 +1076,9 @@ final class SettingsCard: CardBase, CardContent {
 
     var desiredHeight: CGFloat {
         let nav = headerBottom + CGFloat(Pane.nav.count) * (38 + Space.xs) + Metrics.cardPad
-        return max(nav, headerBottom + 40 + visiblePaneHeight + Metrics.cardPad)
+        // The sidebar's rows shrink a little to fit (`layout`), so a longer list never asks for
+        // more than the island can give.
+        return min(Isle.maxContentHeight, max(nav, headerBottom + 40 + visiblePaneHeight + Metrics.cardPad))
     }
 
     /// As much of the pane as fits in the island; the rest scrolls.
@@ -1189,6 +1196,7 @@ final class SettingsCard: CardBase, CardContent {
         case .diagnostics: buildDiagnostics(&s)
         case .permissions: buildPermissions(&s)
         case .extras: buildExtras(&s)
+        case .features: buildFeatures(&s)
         }
         paneHeight = max(120, s.y)
         needsLayout = true
@@ -1341,7 +1349,9 @@ final class SettingsCard: CardBase, CardContent {
         NSPasteboard.general.setString(AndroidTransfer.shared.pairingCode, forType: .string)
     }
 
+    /// General: Zera herself, how the app starts, and the launcher.
     private func buildGeneral(_ s: inout Stack) {
+        sectionLabel("Zera", &s)
         defaultPopup = popupRow("Tap on Zera opens", items: Self.defaultChoices.map { $0?.title ?? "Nothing" },
                                 selected: Self.defaultChoices.firstIndex(of: defaultKind) ?? 0, &s, action: #selector(defaultChanged))
         toggleRow("Remember last screen", on: NotchNavigation.shared.remembersScreen, &s) { on in NotchNavigation.shared.remembersScreen = on }
@@ -1352,39 +1362,14 @@ final class SettingsCard: CardBase, CardContent {
         popupRow("In full-screen apps", items: FullScreenHide.titles,
                  selected: FullScreenHide.choices.firstIndex(of: FullScreenHide.delay) ?? 0, &s, action: #selector(fullScreenHideChanged(_:)))
         hint("So she doesn't get in the way of full-screen work. She's back when you leave full screen, or any time from the Zera icon in the menu bar › Bring Zera Back.", &s)
+        sectionLabel("Startup", &s)
         toggleRow("Open at login", on: SMAppService.mainApp.status == .enabled, &s) { on in
             do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
             catch { NSSound.beep() }
         }
         toggleRow("Show in the Dock", on: DockIcon.shown, &s) { on in DockIcon.shown = on }
         hint("With it off, she lives in the menu bar and at the notch — drop files on Zera instead of the Dock icon.", &s)
-        let rs = ReminderService.shared
-        breakPopup = popupRow("Break reminder", items: ["Off", "Every 30 min", "Every 45 min", "Every hour", "Every 90 min", "Every 2 hours"],
-                              selected: Self.breakChoices.firstIndex(of: rs.breakInterval) ?? 0, &s, action: #selector(breakChanged))
-        hint("Breaks are only suggested while you're actually at the keyboard.", &s)
-
-        // Battery: a banner when it runs low, and (if you like) when its health drops.
-        let battery = BatteryAlerts.shared
-        if battery.hasBattery {
-            toggleRow("Warn when the battery is low", on: battery.lowEnabled, &s) { [weak self] on in
-                battery.lowEnabled = on
-                self?.rebuildPane()
-            }
-            let low = popupRow("Warn at", items: BatteryAlerts.lowChoices.map { "\($0)%" },
-                               selected: BatteryAlerts.lowChoices.firstIndex(of: battery.lowThreshold) ?? 2, &s, action: #selector(batteryLowChanged(_:)))
-            low.isEnabled = battery.lowEnabled
-            toggleRow("Show a banner when you plug in", on: battery.pluggedInEnabled, &s) { on in battery.pluggedInEnabled = on }
-            toggleRow("Warn when battery health drops", on: battery.healthEnabled, &s) { [weak self] on in
-                battery.healthEnabled = on
-                self?.rebuildPane()
-            }
-            let health = popupRow("Health below", items: BatteryAlerts.healthChoices.map { "\($0)%" },
-                                  selected: BatteryAlerts.healthChoices.firstIndex(of: battery.healthThreshold) ?? 2, &s, action: #selector(batteryHealthChanged(_:)))
-            health.isEnabled = battery.healthEnabled
-            hint("Low battery: once when it crosses your mark, once more at \(BatteryAlerts.critical)%, and not again until you've plugged in. "
-                 + "Health: once when it drops below your mark.", &s)
-        }
-
+        sectionLabel("App launcher", &s)
         // The app opener has no tab: Zera brings it down from the notch when you press its shortcut.
         toggleRow("App opener", on: AppOpenerSettings.enabled, &s) { [weak self] on in
             AppOpenerSettings.enabled = on
@@ -1400,13 +1385,25 @@ final class SettingsCard: CardBase, CardContent {
         }
         recorder.onRecording = { [weak self] on in self?.onOpenerShortcutRecording?(on) }
         settingRow("Open apps with", &s, control: recorder, controlWidth: 150)
-        let style = popupRow("Opener style", items: ["Orbit (centred)", "Classic tree", "Minimal (centred)"], selected: AppOpenerSettings.style.rawValue, &s,
+        let style = popupRow("Opener style", items: ["Orbit (centred)", "Classic tree", "Minimal (centred)", "Launcher (bottom)"], selected: AppOpenerSettings.style.rawValue, &s,
                              action: #selector(openerStyleChanged))
         style.isEnabled = AppOpenerSettings.enabled
         toggleRow("Show running apps first", on: AppOpenerSettings.runningFirst, &s, enabled: AppOpenerSettings.enabled) { on in
             AppOpenerSettings.runningFirst = on
         }
+        // The launcher's >wallpaper: your folders only once any are added, else the defaults.
+        buttonRow("Add wallpaper folder…", style: .secondary, status: "The launcher’s >wallpaper shows \(WallpaperLibrary.sourceSummary).", &s,
+                  action: #selector(wallpaperAddFolderTapped))
+        if !WallpaperLibrary.folders.isEmpty {
+            buttonRow("Use default folders", style: .secondary, status: "Forget the folders you added (the pictures themselves are not touched).", &s,
+                      action: #selector(wallpaperResetFoldersTapped))
+        }
+        hint("Tasks, breaks, battery alerts, voice, music, weather and the teleprompter are under Features.", &s)
+    }
 
+    /// Features: what Zera does beyond the notch itself, one labelled group each.
+    private func buildFeatures(_ s: inout Stack) {
+        sectionLabel("Tasks and focus", &s)
         // Tasks: a tab right of the notch, plus the orb on the screen edge.
         toggleRow("Focus orb on the screen edge", on: TasksSettings.orb, &s) { [weak self] on in
             TasksSettings.orb = on
@@ -1425,6 +1422,34 @@ final class SettingsCard: CardBase, CardContent {
         hint("Drag the orb along either edge. Its outer ring is today's tasks, the inner one your time against the estimate (type 30m after a task to set one; without, it goes round hourly); "
              + "the timer pauses itself after 5 minutes away. Right-click a project → Link Code Folder… and your commits there "
              + "become its done tasks (only commit messages go to Claude, through your Claude Code login).", &s)
+        sectionLabel("Break reminders", &s)
+        let rs = ReminderService.shared
+        breakPopup = popupRow("Break reminder", items: ["Off", "Every 30 min", "Every 45 min", "Every hour", "Every 90 min", "Every 2 hours"],
+                              selected: Self.breakChoices.firstIndex(of: rs.breakInterval) ?? 0, &s, action: #selector(breakChanged))
+        hint("Breaks are only suggested while you're actually at the keyboard.", &s)
+        // Battery: a banner when it runs low, and (if you like) when its health drops.
+        let battery = BatteryAlerts.shared
+        if battery.hasBattery {
+            sectionLabel("Battery alerts", &s)
+            toggleRow("Warn when the battery is low", on: battery.lowEnabled, &s) { [weak self] on in
+                battery.lowEnabled = on
+                self?.rebuildPane()
+            }
+            let low = popupRow("Warn at", items: BatteryAlerts.lowChoices.map { "\($0)%" },
+                               selected: BatteryAlerts.lowChoices.firstIndex(of: battery.lowThreshold) ?? 2, &s, action: #selector(batteryLowChanged(_:)))
+            low.isEnabled = battery.lowEnabled
+            toggleRow("Show a banner when you plug in", on: battery.pluggedInEnabled, &s) { on in battery.pluggedInEnabled = on }
+            toggleRow("Warn when battery health drops", on: battery.healthEnabled, &s) { [weak self] on in
+                battery.healthEnabled = on
+                self?.rebuildPane()
+            }
+            let health = popupRow("Health below", items: BatteryAlerts.healthChoices.map { "\($0)%" },
+                                  selected: BatteryAlerts.healthChoices.firstIndex(of: battery.healthThreshold) ?? 2, &s, action: #selector(batteryHealthChanged(_:)))
+            health.isEnabled = battery.healthEnabled
+            hint("Low battery: once when it crosses your mark, once more at \(BatteryAlerts.critical)%, and not again until you've plugged in. "
+                 + "Health: once when it drops below your mark.", &s)
+        }
+        buildVoiceMediaFeatures(&s)
     }
 
     @objc private func batteryLowChanged(_ sender: ZeraSelect) {
@@ -1566,6 +1591,7 @@ final class SettingsCard: CardBase, CardContent {
         hint(GlassSettings.reduceTransparency
              ? "Reduce transparency is on in System Settings, so every surface is solid."
              : "Signal uses a solid background by default. Turn on translucency to show the desktop behind the tint.", &s)
+        sectionLabel("Text", &s)
         popupRow("Interface font", items: ZFont.Family.allCases.map(\.title),
                  selected: ZFont.Family.allCases.firstIndex(of: ZFont.chosenFamily) ?? 0, &s, action: #selector(fontFamilyChanged(_:)))
         hint(ZFont.chosenFamily == ZFont.family ? "JetBrains Mono is included with Zera."
@@ -1600,17 +1626,18 @@ final class SettingsCard: CardBase, CardContent {
         buttonRow("Open themes folder", style: .tertiary, status: "Add or edit .json theme files; Zera picks up saved changes", &s, action: #selector(openThemesTapped))
         for problem in store.problems { hint("⚠︎ " + problem, &s) }
         hint("Zera herself and her bubble keep their own look in every theme.", &s)
+        sectionLabel("Motion", &s)
         toggleRow("Reduce motion (system setting)", on: Motion.reduced, &s, enabled: false) { _ in }
         hint("Change it in System Settings → Accessibility → Display.", &s)
     }
 
     private var weatherCityField: ThemedField?
 
-    /// Notch: what shows under the notch while you work (Command Echo), the weather on Home, and
-    /// the teleprompter's defaults.
+    /// Notch: where Zera sits, what shows beside the notch while you work (Command Echo), its
+    /// light, and whether it shows while your screen is shared.
     private func buildNotch(_ s: inout Stack) {
         let echo = CommandEcho.shared
-        sectionLabel("Zera", &s)
+        sectionLabel("Zera in the notch", &s)
         toggleRow("Zera lives in the notch (off: hanging from her rope)", on: BuddyStyle.current == .notch, &s) { on in
             BuddyStyle.current = on ? .notch : .hanging
         }
@@ -1647,8 +1674,13 @@ final class SettingsCard: CardBase, CardContent {
                  &s, action: #selector(edgeThicknessChanged(_:)))
         buttonRow("Try the light", style: .tertiary, status: EdgeLight.shared.style.blurb, &s, action: #selector(edgePreviewTapped))
         toggleRow("Light takes your wallpaper's colour", on: WallpaperTint.shared.enabled, &s) { on in WallpaperTint.shared.enabled = on }
-        popupRow("Screen sharing", items: ["Always visible", "Hide during calls", "Always hide"],
+        sectionLabel("Screen sharing", &s)
+        popupRow("When your screen is shared", items: ["Always visible", "Hide during calls", "Always hide"],
                  selected: ShareShield.shared.mode.rawValue, &s, action: #selector(shareShieldChanged(_:)))
+    }
+
+    /// Voice, music, the weather on Home and the teleprompter's defaults (Features).
+    private func buildVoiceMediaFeatures(_ s: inout Stack) {
         sectionLabel("Voice", &s)
         toggleRow("Hold a key to dictate, release to type it", on: Dictation.shared.enabled, &s) { on in
             Dictation.shared.enabled = on
@@ -1660,7 +1692,6 @@ final class SettingsCard: CardBase, CardContent {
             Dictation.shared.typesLive = on
         }
         hint("Editors that don’t support live text insertion receive the full transcript when you release the dictation key.", &s)
-        hint("Agent options (the wings, keeping the Mac awake, Codex and Cursor) are under Integrations › Agents.", &s)
         sectionLabel("Music", &s)
         toggleRow("Synced lyrics on the music tile (asks lrclib.net)", on: LyricsService.shared.enabled, &s) { on in LyricsService.shared.enabled = on }
         toggleRow("A wave along the notch while music plays", on: MusicWave.enabled, &s) { on in MusicWave.enabled = on }
@@ -1668,10 +1699,6 @@ final class SettingsCard: CardBase, CardContent {
             toggleRow("Music bars follow the real sound (asks for System Audio Recording)", on: SystemAudioLevels.shared.enabled, &s) { on in
                 SystemAudioLevels.shared.enabled = on
             }
-        }
-        if GitHubService.shared.tokenNeedsUnlock {
-            buttonRow("Allow Zera to read your GitHub token", style: .secondary,
-                      status: "Saved by an older build; macOS asks once — choose Always Allow", &s, action: #selector(unlockGitHubTapped))
         }
 
         sectionLabel("Weather on Home", &s)
@@ -1705,6 +1732,7 @@ final class SettingsCard: CardBase, CardContent {
         toggleRow("Mirror (for a glass in front of the camera)", on: tp.mirrored, &s) { on in TeleprompterStore.shared.mirrored = on }
         buttonRow(TeleprompterWindowController.shared.isShown ? "Close the floating window" : "Open as a floating window", style: .secondary,
                   status: "Keeps scrolling above every app; Space plays and pauses", &s, action: #selector(teleprompterDetachTapped))
+    
     }
 
     private static let teleprompterSpeeds: [Double] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
@@ -2162,6 +2190,10 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private func buildGitHub(_ s: inout Stack) {
+        if GitHubService.shared.tokenNeedsUnlock {
+            buttonRow("Allow Zera to read your GitHub token", style: .secondary,
+                      status: "Saved by an older build; macOS asks once — choose Always Allow", &s, action: #selector(unlockGitHubTapped))
+        }
         let gh = GitHubService.shared
         if gh.isConnected {
             let expired = gh.lastError?.contains("401") ?? false
@@ -2323,6 +2355,15 @@ final class SettingsCard: CardBase, CardContent {
         FreshFiles.shared.window = FreshFiles.windows[i].1
     }
 
+    @objc private func wallpaperAddFolderTapped() {
+        WallpaperLibrary.chooseFolders(owner: window) { [weak self] _ in self?.rebuildPane() }
+    }
+
+    @objc private func wallpaperResetFoldersTapped() {
+        WallpaperLibrary.resetFolders()
+        rebuildPane()
+    }
+
     @objc private func freshAddFolderTapped() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -2343,7 +2384,7 @@ final class SettingsCard: CardBase, CardContent {
             ("Close any card", "Esc"), ("Approve / reject a Claude command", "⏎ / Esc"), ("Add an event or reminder", "+ Add event ▾"),
             ("Open clipboard history", clipboardShortcut?.label ?? "Clipboard tab"),
             ("Open an app", openerShortcut?.label ?? "Off (Settings → General)"),
-            ("Add a task from anywhere", tasksShortcut?.label ?? "Off (Settings → General)"),
+            ("Add a task from anywhere", tasksShortcut?.label ?? "Off (Settings → Features)"),
             ("Focus card: pause · done · next", "Space · ⏎ · ⇥"),
             ("Export tasks (from the list)", "⌘E"),
             ("Copy an item again", "Click it · ⏎ · ⌘1–⌘9"),
@@ -2442,11 +2483,12 @@ final class SettingsCard: CardBase, CardContent {
 
     @objc private func openAppShortcutsTapped() { onOpenAppShortcuts?() }
     @objc private func openerStyleChanged(_ pop: ZeraSelect) {
-        AppOpenerSettings.style = AppOpenerSettings.Style(rawValue: pop.selectedIndex) ?? .orbit
+        AppOpenerSettings.style = AppOpenerSettings.Style(rawValue: pop.selectedIndex) ?? .launcher
         switch AppOpenerSettings.style {
         case .orbit: say?("the opener comes down in the middle now ✨", .happy)
         case .tree: say?("back to the classic tree 🌳", .happy)
         case .minimal: say?("minimal opener, right in the middle", .happy)
+        case .launcher: say?("launcher at the bottom: type > for commands ✨", .happy)
         }
     }
 
