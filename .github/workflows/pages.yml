@@ -33,12 +33,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Pages deploys by looking up the artifact through the Actions API.
-          # The upload can finish before the artifact appears in that listing.
-          for attempt in {1..15}; do
-            if available=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=github-pages" \
+          # Pages deploys by looking up the unfiltered run artifacts through the Actions API.
+          # Require consecutive hits so read replicas settle before deploy-pages queries it.
+          hits=0
+          for attempt in {1..20}; do
+            if available=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
               --jq 'any(.artifacts[]; .name == "github-pages" and (.expired | not))') && [ "$available" = true ]; then
-              exit 0
+              hits=$((hits + 1))
+              if [ "$hits" -ge 3 ]; then
+                exit 0
+              fi
+            else
+              hits=0
             fi
             sleep 2
           done
