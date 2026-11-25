@@ -23,6 +23,7 @@ The downloadable debug-signed Androp APK includes the following direct runtime d
 | AndroidX ConstraintLayout | 2.1.4 | Apache-2.0 | https://github.com/androidx/constraintlayout |
 | Material Components Android | 1.11.0 | Apache-2.0 | https://github.com/material-components/material-components-android |
 | OkHttp / Okio | 4.12.0 / transitive | Apache-2.0 | https://github.com/square/okhttp · https://github.com/square/okio |
+| ZXing Android Embedded / ZXing Core | 4.3.0 / 3.4.1 (transitive) | Apache-2.0 | https://github.com/journeyapps/zxing-android-embedded · https://github.com/zxing/zxing |
 | Kotlin standard library / coroutines Android | 1.9.23 / 1.8.0 | Apache-2.0 | https://github.com/JetBrains/kotlin · https://github.com/Kotlin/kotlinx.coroutines |
 
 The Gradle wrapper and Android/Kotlin build plugins are build tools, not Mac app dependencies. Gradle is Apache-2.0. Apache license: https://www.apache.org/licenses/LICENSE-2.0.

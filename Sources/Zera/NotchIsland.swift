@@ -691,19 +691,22 @@ final class IslandView: ShelfDropTargetView {
         tabs.forEach { $0.tiled = tiledPeek }
         searchNode.expanded = tiledPeek
         guard animated, !Motion.reduced else {
+            nodesMovingUntil = 0
             tabs.forEach { $0.bloomed = bloom }
             layoutTabs()
             return
         }
         let total = 0.5 + Double(tabs.count) * 0.03
-        nodesMovingUntil = CACurrentMediaTime() + total
+        let end = CACurrentMediaTime() + total
+        nodesMovingUntil = end
         let rail = railFrames()
         for (i, t) in tabs.enumerated() {
             let target = bloom ? bloomFrame(i) : rail[i]
             t.bloomed = bloom
             // Out from the middle in turn, like petals; back in all at once.
             let delay = bloom ? Double(min(i, tabs.count - 1 - i)) * 0.035 : 0
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard self?.nodesMovingUntil == end else { return }
                 NSAnimationContext.runAnimationGroup { ctx in
                     ctx.duration = bloom ? 0.5 : 0.36
                     ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, bloom ? 1.25 : 1.05, 0.4, 1)
@@ -719,7 +722,10 @@ final class IslandView: ShelfDropTargetView {
             // The search node only hangs in the bloom; the rail has just the screens.
             searchNode.animator().alphaValue = bloom ? 1 : 0
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + total) { [weak self] in self?.needsLayout = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + total) { [weak self] in
+            guard self?.nodesMovingUntil == end else { return }
+            self?.needsLayout = true
+        }
     }
 
     /// The innermost rail centre's distance from the rope: the design's, or clear of a wide notch.
@@ -893,7 +899,7 @@ final class IslandView: ShelfDropTargetView {
     }
 
     /// Hovering her: the notch widens to show the tabs.
-    func peek() {
+    func peek(animated: Bool = true) {
         // A screen is up: the rail is already there. (Open with nothing presented is a state
         // that should not exist; rather than swallow every hover, the bloom takes over.)
         guard mode != .open || content == nil else { return }
@@ -901,10 +907,10 @@ final class IslandView: ShelfDropTargetView {
         mode = .peek
         if barPeek {
             companion.isHidden = false
-            if wasClosed { companion.enterFromNotch() }
+            if wasClosed, animated { companion.enterFromNotch() }
         }
         activeTab = nil
-        if wasClosed, !Motion.reduced {
+        if wasClosed, animated, !Motion.reduced {
             // From her: every node starts small at the rope and blooms out.
             let start = NSRect(x: centerX - 8, y: band + 30, width: 16, height: 16)
             tabs.forEach { $0.frame = start }
@@ -915,14 +921,14 @@ final class IslandView: ShelfDropTargetView {
         // v2: the notch only widens a little; the nodes float round her.
         if barPeek {
             // The notch itself grows sideways, then down: the deck, then one row of screens.
-            applyShape(shapeRect(width: barWidth, height: barHeight), corner: 28, animated: true)
+            applyShape(shapeRect(width: barWidth, height: barHeight), corner: 28, animated: animated)
             showDeck(true)
         } else {
             applyShape(shapeRect(width: tiledPeek ? tileWidth : notchWidth + 44,
                                  height: tiledPeek ? tileHeight : band + 2),
-                       corner: tiledPeek ? Isle.corner : 14, animated: true)
+                       corner: tiledPeek ? Isle.corner : 14, animated: animated)
         }
-        moveNodes(animated: true)
+        moveNodes(animated: animated)
     }
 
     /// Opens (or switches to, or resizes for) a screen. `direction` is the side the new screen

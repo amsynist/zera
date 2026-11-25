@@ -214,15 +214,23 @@ final class ProductionReadinessTests: XCTestCase {
 
     func testCancelledModelLoadCannotResurrectOrFailRemovedModel() async throws {
         guard Murmur.isAvailable else { throw XCTSkip("WhisperKit not linked") }
-        let defaults = UserDefaults.standard, key = "zera.murmur.folder"
-        let saved = defaults.object(forKey: key)
+        let suite = "zera-murmur-lazy-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let key = "zera.murmur.folder"
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("zera-empty-model-\(UUID())")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { defaults.set(saved, forKey: key); try? FileManager.default.removeItem(at: folder) }
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: folder) }
         defaults.set(folder.path, forKey: key)
-        let model = Murmur()
-        model.start()
+        let model = Murmur(defaults: defaults)
+        XCTAssertEqual(model.state, .installed, "an installed model must start on disk only")
+        model.beginTake()
         XCTAssertEqual(model.state, .loading)
+        XCTAssertFalse(model.canCancelSetup, "setup controls must not cancel a load for an active take")
+        model.endTake()
+        XCTAssertTrue(model.canUnload)
+        model.unloadWhenIdle()
+        XCTAssertEqual(model.state, .installed, "an explicit unload also cancels unused warm-up")
+        model.beginTake()
         model.remove()
         XCTAssertEqual(model.state, .notInstalled)
         try await Task.sleep(nanoseconds: 1_000_000_000)

@@ -56,6 +56,7 @@ final class Murmur: @unchecked Sendable {
 
     enum State: Equatable {
         case notInstalled
+        case installed
         case downloading(Double)
         case loading
         case ready
@@ -64,6 +65,7 @@ final class Murmur: @unchecked Sendable {
         var summary: String {
             switch self {
             case .notInstalled: return "Not downloaded"
+            case .installed: return "On disk · loads on first use"
             case .downloading(let p): return "Downloading… \(Int(p * 100))%"
             case .loading: return "Getting ready…"
             case .ready: return "Ready · on this Mac"
@@ -97,37 +99,49 @@ final class Murmur: @unchecked Sendable {
     }
     private var job: Task<Void, Never>?
     private var generation = 0
+    private let defaults: UserDefaults
+    private let idleTimeout: TimeInterval
+    private var idleRelease: Task<Void, Never>?
+    private var takeActive = false
     private(set) var isRemoving = false
     private var transcriptionTail: Task<String?, Never>?
     #if canImport(WhisperKit)
     private var pipe: MurmurPipeline?
     #endif
 
-    init() {
+    init(defaults: UserDefaults = .standard, idleTimeout: TimeInterval = 60) {
+        self.defaults = defaults
+        self.idleTimeout = idleTimeout
+        state = installedFolder == nil ? .notInstalled : .installed
         // Older builds used Apple automatically when no model was installed. Preserve
         // that working provider on update, then persist the choice explicitly.
-        if UserDefaults.standard.object(forKey: Key.use) == nil {
-            UserDefaults.standard.set(installedFolder != nil, forKey: Key.use)
+        if defaults.object(forKey: Key.use) == nil {
+            defaults.set(installedFolder != nil, forKey: Key.use)
         }
     }
 
     var model: MurmurModel {
-        get { MurmurModel(rawValue: UserDefaults.standard.string(forKey: Key.model) ?? "") ?? MurmurModel.recommended }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.model) }
+        get { MurmurModel(rawValue: defaults.string(forKey: Key.model) ?? "") ?? MurmurModel.recommended }
+        set { defaults.set(newValue.rawValue, forKey: Key.model) }
     }
 
     /// Explicit provider choice, migrated from the effective provider in older builds.
     var useForDictation: Bool {
-        get { UserDefaults.standard.object(forKey: Key.use) as? Bool ?? false }
-        set { UserDefaults.standard.set(newValue, forKey: Key.use) }
+        get { defaults.object(forKey: Key.use) as? Bool ?? false }
+        set {
+            defaults.set(newValue, forKey: Key.use)
+            if !newValue { unloadWhenIdle() }
+        }
     }
 
     var introSeen: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.intro) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.intro) }
+        get { defaults.bool(forKey: Key.intro) }
+        set { defaults.set(newValue, forKey: Key.intro) }
     }
 
     var isReady: Bool { state == .ready }
+    var canUnload: Bool { !takeActive && !isReleasing && !isRemoving && (isReady || state == .loading) }
+    var canCancelSetup: Bool { isBusy && !isRemoving && !takeActive }
     var isBusy: Bool {
         switch state {
         case .downloading, .loading: return true
@@ -142,7 +156,7 @@ final class Murmur: @unchecked Sendable {
 
     /// The downloaded model's folder, when it is still there.
     var installedFolder: URL? {
-        guard let path = UserDefaults.standard.string(forKey: Key.folder) else { return nil }
+        guard let path = defaults.string(forKey: Key.folder) else { return nil }
         var dir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &dir), dir.boolValue else { return nil }
         return URL(fileURLWithPath: path, isDirectory: true)
@@ -153,16 +167,67 @@ final class Murmur: @unchecked Sendable {
         return url.resolvingSymlinksInPath().path.hasPrefix(base)
     }
 
-    /// At launch: loads a model that is already on disk (in the background).
-    func start() {
-        guard Self.isAvailable, !isBusy, !isReady, installedFolder != nil else { return }
-        load()
+    var canBeginTake: Bool {
+        guard Self.isAvailable, !isRemoving, installedFolder != nil else { return false }
+        if case .downloading = state { return false }
+        return true
+    }
+
+    /// The recorder can start right away. A first take may need to wait for the model at release.
+    func beginTake() {
+        guard canBeginTake else { return }
+        takeActive = true
+        idleRelease?.cancel(); idleRelease = nil
+        isReleasing = false
+        if !isReady, !isBusy { load() }
+        else { NotificationCenter.default.post(name: Self.stateChanged, object: nil) }
+    }
+
+    func endTake() {
+        guard takeActive else { return }
+        takeActive = false
+        unloadWhenIdle(after: useForDictation ? idleTimeout : 0)
+        NotificationCenter.default.post(name: Self.stateChanged, object: nil)
+    }
+
+    private var isReleasing = false
+
+    /// Drop the Core ML runtime after the current decode has drained. The model files stay on disk.
+    func unloadWhenIdle(after delay: TimeInterval = 0) {
+        guard !takeActive else { return }
+        if delay == 0, state == .loading {
+            cancelDownload()
+            return
+        }
+        guard isReady else { return }
+        idleRelease?.cancel()
+        isReleasing = delay == 0
+        if isReleasing { NotificationCenter.default.post(name: Self.stateChanged, object: nil) }
+        idleRelease = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            _ = await self.transcriptionTail?.value
+            guard !Task.isCancelled else { return }
+            self.idleRelease = nil
+            self.transcriptionTail = nil
+            self.isReleasing = false
+            #if canImport(WhisperKit)
+            let old = self.pipe
+            self.pipe = nil
+            #endif
+            self.state = self.installedFolder == nil ? .notInstalled : .installed
+            #if canImport(WhisperKit)
+            if let old { await old.kit.unloadModels() }
+            #endif
+        }
     }
 
     /// Downloads `m` (replacing any other) and loads it. Progress goes to `state`.
     func download(_ m: MurmurModel) {
         #if canImport(WhisperKit)
-        guard !isBusy else { return }
+        guard !isBusy, !takeActive else { return }
+        idleRelease?.cancel(); idleRelease = nil
+        isReleasing = false
         generation += 1
         let ticket = generation
         job?.cancel()
@@ -182,8 +247,8 @@ final class Murmur: @unchecked Sendable {
                 try Task.checkCancellation()
                 await MainActor.run {
                     guard self.generation == ticket else { return }
-                    let old = UserDefaults.standard.string(forKey: Key.folder)
-                    UserDefaults.standard.set(folder.path, forKey: Key.folder)
+                    let old = self.defaults.string(forKey: Key.folder)
+                    self.defaults.set(folder.path, forKey: Key.folder)
                     self.model = m
                     self.load(removingAfterSuccess: old.flatMap { $0 != folder.path ? URL(fileURLWithPath: $0) : nil })
                 }
@@ -206,16 +271,18 @@ final class Murmur: @unchecked Sendable {
     }
 
     func cancelDownload() {
-        guard !isRemoving else { return }
+        guard canCancelSetup else { return }
         generation += 1
         job?.cancel()
         job = nil
-        state = installedFolder == nil ? .notInstalled : .failed("Setup cancelled · retry when you're ready")
+        state = installedFolder == nil ? .notInstalled : .installed
     }
 
     /// Deletes the model from disk; dictation falls back to Apple's recogniser.
     func remove() {
         guard !isRemoving else { return }
+        idleRelease?.cancel(); idleRelease = nil
+        isReleasing = false
         generation += 1
         let ticket = generation
         transcriptionTail?.cancel(); transcriptionTail = nil
@@ -224,7 +291,7 @@ final class Murmur: @unchecked Sendable {
         pipe = nil
         #endif
         let folder = installedFolder
-        UserDefaults.standard.removeObject(forKey: Key.folder)
+        defaults.removeObject(forKey: Key.folder)
         guard let folder, Self.isManagedFolder(folder) else { state = .notInstalled; return }
         // Serialize deletion with the next download of the same variant.
         isRemoving = true
@@ -253,7 +320,7 @@ final class Murmur: @unchecked Sendable {
         job = Task.detached(priority: .utility) { [self] in
             do {
                 let config = WhisperKitConfig(model: variant, modelFolder: folder.path, verbose: false,
-                                              logLevel: .error, prewarm: true, load: true, download: false)
+                                              logLevel: .error, prewarm: false, load: true, download: false)
                 let loaded = MurmurPipeline(kit: try await WhisperKit(config))
                 try Task.checkCancellation()
                 if let oldFolder, Self.isManagedFolder(oldFolder), oldFolder != folder {
@@ -271,11 +338,13 @@ final class Murmur: @unchecked Sendable {
                     self.pipe = loaded
                     self.state = .ready
                     self.job = nil
+                    self.unloadWhenIdle(after: self.useForDictation ? self.idleTimeout : 0)
                 }
             } catch {
                 let why = error.localizedDescription
                 await MainActor.run {
                     guard self.generation == ticket else { return }
+                    self.job = nil
                     self.state = .failed(why)
                 }
             }
@@ -286,9 +355,32 @@ final class Murmur: @unchecked Sendable {
     /// What was said in `samples` (16 kHz mono), or nil. Runs off the main thread; `done` is
     /// called on the main thread.
     @discardableResult
-    func transcribe(_ samples: [Float], done: @escaping (String?) -> Void) -> Task<Void, Never>? {
+    func transcribe(_ samples: [Float], onDecodeStarting: (() -> Void)? = nil,
+                    done: @escaping (String?) -> Void) -> Task<Void, Never>? {
         #if canImport(WhisperKit)
-        guard let pipeline = pipe, samples.count > 8000 else { done(nil); return nil }
+        guard samples.count > 8000 else { done(nil); return nil }
+        let loading = pipe == nil && state == .loading && !isRemoving ? job : nil
+        guard pipe != nil || loading != nil else { done(nil); return nil }
+        let ticket = generation
+        return Task { @MainActor in
+            await loading?.value
+            guard !Task.isCancelled else { return }
+            guard self.generation == ticket, let pipeline = self.pipe else { done(nil); return }
+            onDecodeStarting?()
+            let decode = self.decode(samples, pipeline: pipeline)
+            self.unloadWhenIdle(after: self.idleTimeout)
+            let text = await withTaskCancellationHandler(operation: { await decode.value }, onCancel: { decode.cancel() })
+            guard !Task.isCancelled else { return }
+            done(text)
+        }
+        #else
+        done(nil)
+        return nil
+        #endif
+    }
+
+    #if canImport(WhisperKit)
+    private func decode(_ samples: [Float], pipeline: MurmurPipeline) -> Task<String?, Never> {
         // WhisperKit's decoder is shared by live and final reads. Serialize those
         // requests; releasing the hold must not run two decoders concurrently.
         let previous = transcriptionTail
@@ -304,16 +396,9 @@ final class Murmur: @unchecked Sendable {
             return results.map { Murmur.clean($0.map(\.text).joined(separator: " ")) }
         }
         transcriptionTail = decode
-        return Task { @MainActor in
-            let text = await withTaskCancellationHandler(operation: { await decode.value }, onCancel: { decode.cancel() })
-            guard !Task.isCancelled else { return }
-            done(text)
-        }
-        #else
-        done(nil)
-        return nil
-        #endif
+        return decode
     }
+    #endif
 
     /// Drops Whisper's markers ("[BLANK_AUDIO]", "(music)", "<|en|>") and tidies spaces.
     static func clean(_ raw: String) -> String {
@@ -549,13 +634,13 @@ final class MurmurIntroController: NSWindowController, NSWindowDelegate {
             primary.isEnabled = false
             choice.isEnabled = false
             secondary.setTitleText("Close")
-        case .ready:
+        case .installed, .ready:
             bar.isHidden = true
             primary.isEnabled = true
             primary.setTitleText(picked == m.model ? "Done" : "Switch model")
             choice.isEnabled = true
             secondary.isHidden = true
-            status.stringValue = "Murmur (\(m.model.title)) is ready. Hold \(Dictation.shared.trigger.short) anywhere and talk."
+            status.stringValue = "Murmur (\(m.model.title)) is downloaded. Hold \(Dictation.shared.trigger.short) anywhere and talk."
         case .notInstalled, .failed:
             bar.isHidden = true
             primary.isEnabled = true
@@ -567,7 +652,8 @@ final class MurmurIntroController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func primaryTapped() {
-        if Murmur.shared.isReady, picked == Murmur.shared.model { close(); return }
+        let state = Murmur.shared.state
+        if (state == .ready || state == .installed), picked == Murmur.shared.model { close(); return }
         if !Dictation.shared.enabled { Dictation.shared.enabled = true }
         Murmur.shared.useForDictation = true
         Murmur.shared.download(picked)

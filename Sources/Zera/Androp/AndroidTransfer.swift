@@ -68,7 +68,12 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
     private var displayObserver: NSObjectProtocol?
     private let defaults: UserDefaults
     private(set) var isRunning = false
+    private(set) var listeningPort: UInt16?
     var enabled: Bool { defaults.object(forKey: "zera.androp.enabled") as? Bool ?? false }
+    var pairing: AndroidPairing? {
+        guard let port = listeningPort, let address = AndroidPairing.localAddress() else { return nil }
+        return AndroidPairing(address: address, port: port, code: pairingCode)
+    }
 
     override convenience init() { self.init(defaults: .standard) }
 
@@ -96,7 +101,7 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
         placeAtNotch()
         displayObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                                 object: nil, queue: .main) { [weak self] _ in self?.placeAtNotch() }
-        let requested = ProcessInfo.processInfo.environment["ZERA_ANDROP_PORT"].flatMap(UInt16.init) ?? 8989
+        let requested = ProcessInfo.processInfo.environment["ZERA_ANDROP_PORT"].flatMap(UInt16.init).flatMap { $0 == 0 ? nil : $0 } ?? 8989
         let server = WebSocketServer(port: requested, code: pairingCode)
         self.server = server
         server.delegate = self
@@ -105,6 +110,7 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
 
     func stop() {
         isRunning = false
+        listeningPort = nil
         hideWork?.cancel(); hideWork = nil
         server?.delegate = nil
         server?.stop()
@@ -152,10 +158,16 @@ final class AndroidTransfer: NSObject, WebSocketServerDelegate {
     }
     func serverDidStart(port: UInt16) {
         guard isRunning else { return }
-        status = "Ready · local Wi-Fi / hotspot"; statusChanged() }
+        listeningPort = port
+        status = "Ready · local Wi-Fi / hotspot"
+        statusChanged()
+    }
     func serverDidStop() {
         guard isRunning else { return }
-        status = "Receiver unavailable · quit standalone Androp, then toggle receiving"; statusChanged() }
+        listeningPort = nil
+        status = "Receiver unavailable · quit standalone Androp, then toggle receiving"
+        statusChanged()
+    }
     func clientConnected(endpoint: String) {
         guard isRunning else { return }
         phoneConnected = true; statusChanged() }

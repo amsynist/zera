@@ -93,8 +93,10 @@ final class PermissionSetupView: NSView {
             let providerStatus = Murmur.shared.useForDictation ? Murmur.shared.state.summary : "Apple speech: \(PermissionAccess.status(authorized: speechAuth == .authorized, determined: speechAuth != .notDetermined).rawValue)"
             status.stringValue = "Microphone: \(micStatus) · \(providerStatus)"
             actionButton.setTitleText(mic == .authorized && (Murmur.shared.useForDictation || speechAuth == .authorized) ? "Open microphone settings" : "Allow microphone & speech")
-            modelButton.setTitleText(Murmur.shared.isBusy ? "Cancel setup" : Murmur.shared.isReady ? "Model ready" : "Download / retry model")
-            modelButton.isEnabled = !Murmur.shared.isReady && !Murmur.shared.isRemoving
+            let murmur = Murmur.shared
+            let downloaded = murmur.state == .ready || murmur.state == .installed
+            modelButton.setTitleText(murmur.canCancelSetup ? "Cancel setup" : downloaded ? "Model downloaded" : murmur.isBusy ? "Getting ready…" : "Download / retry model")
+            modelButton.isEnabled = murmur.canCancelSetup || (!murmur.isBusy && !downloaded)
             if case .downloading(let value) = Murmur.shared.state { progress.isHidden = false; progress.doubleValue = value }
             if case .loading = Murmur.shared.state { progress.isHidden = false; progress.doubleValue = 1 }
         }

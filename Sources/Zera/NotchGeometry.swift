@@ -6,14 +6,18 @@ struct NotchGeometry {
     /// Coordinates are unflipped. The rectangle includes the two outward shoulders.
     static func shoulderWidth(height: CGFloat) -> CGFloat { min(14, max(6, height * 0.34)) }
 
-    static func notchOutline(in rect: CGRect, arms: CGFloat = 0, closed: Bool = false, edges: ClosedRange<CGFloat>? = nil) -> CGPath {
+    static func notchOutline(in rect: CGRect, arms: CGFloat = 0, closed: Bool = false, edges: ClosedRange<CGFloat>? = nil,
+                             topBleed: CGFloat = 0) -> CGPath {
         let shoulder = min(shoulderWidth(height: rect.height), rect.width / 4)
         let radius = min(8, rect.height * 0.23, rect.width / 4)
         let drop = min(rect.height - radius, shoulder * 1.45)
         let left = rect.minX + shoulder, right = rect.maxX - shoulder
         let top = rect.maxY, bottom = rect.minY
+        let outerLeft = edges?.lowerBound ?? rect.minX - arms
+        let outerRight = edges?.upperBound ?? rect.maxX + arms
         let p = CGMutablePath()
-        p.move(to: CGPoint(x: edges?.lowerBound ?? rect.minX - arms, y: top))
+        p.move(to: CGPoint(x: outerLeft, y: top + topBleed))
+        if topBleed > 0 { p.addLine(to: CGPoint(x: outerLeft, y: top)) }
         p.addLine(to: CGPoint(x: rect.minX, y: top))
         p.addCurve(to: CGPoint(x: left, y: top - drop),
                    control1: CGPoint(x: left, y: top), control2: CGPoint(x: left, y: top - drop * 0.28))
@@ -24,7 +28,8 @@ struct NotchGeometry {
         p.addLine(to: CGPoint(x: right, y: top - drop))
         p.addCurve(to: CGPoint(x: rect.maxX, y: top),
                    control1: CGPoint(x: right, y: top - drop * 0.28), control2: CGPoint(x: right, y: top))
-        p.addLine(to: CGPoint(x: edges?.upperBound ?? rect.maxX + arms, y: top))
+        p.addLine(to: CGPoint(x: outerRight, y: top))
+        if topBleed > 0 { p.addLine(to: CGPoint(x: outerRight, y: top + topBleed)) }
         if closed { p.closeSubpath() }
         return p
     }

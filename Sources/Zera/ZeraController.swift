@@ -495,8 +495,9 @@ final class ZeraController: NSObject {
 
     /// Her ear: grown out of the right side of the notch, flush with the top of the screen.
     private func positionNotchBuddy() {
-        let f = NotchBuddyView.frame(around: geometry.notchRect)
+        let f = NotchBuddyView.panelFrame(around: geometry.notchRect)
         if notchBuddyPanel.frame != f { notchBuddyPanel.setFrame(f, display: true) }
+        notchBuddy.topBleed = NotchBuddyView.topBleed
         notchBuddy.frame = NSRect(origin: .zero, size: f.size)
     }
 
@@ -1382,9 +1383,10 @@ final class ZeraController: NSObject {
         say("welcome back! \(news)", mood: .happy, for: 4.5)
     }
 
-    func showExtras() {
+    func showExtras(pairAndroid: Bool = false) {
         show(.settings)
-        (cards[.settings] as? SettingsCard)?.select(.extras)
+        guard let card = cards[.settings] as? SettingsCard else { return }
+        if pairAndroid { card.showAndroidPairing() } else { card.select(.extras) }
     }
 
     // MARK: - Events from services

@@ -22,6 +22,8 @@ import com.androp.gesture.EdgeGestureDetector
 import com.androp.network.*
 import com.androp.overlay.EdgeOverlayService
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.*
 
 /** A gallery first: tap a photo or video, then glide the picture itself off any edge to the Mac. */
@@ -94,6 +96,16 @@ class MainActivity : AppCompatActivity() {
     }
     private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { startOverlay() }
     private val mediaAccess = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { showMedia() }
+    private val pairingScanner = registerForActivityResult(ScanContract()) { result ->
+        result.contents?.let { payload ->
+            runCatching {
+                val (endpoint, code) = PairingEndpoint.scanned(payload)
+                AndropConnection.pair(endpoint, code)
+                findViewById<EditText>(R.id.etHost).setText(endpoint.address)
+                findViewById<EditText>(R.id.etCode).setText(code)
+            }.onFailure { findViewById<TextView>(R.id.connectionStatus).text = it.message }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -113,8 +125,20 @@ class MainActivity : AppCompatActivity() {
         overlaySwitch = findViewById(R.id.overlaySwitch)
         AndropConnection.acquire(this)
         AndropConnection.observe(observer)
-        findViewById<EditText>(R.id.etHost).setText(prefs.getString("host", ""))
+        if (prefs.getBoolean("manualHost", true)) {
+            val host = prefs.getString("host", "").orEmpty()
+            val port = prefs.getInt("port", PairingEndpoint.DEFAULT_PORT)
+            if (host.isNotBlank()) findViewById<EditText>(R.id.etHost).setText(PairingEndpoint(host, port).address)
+        }
         findViewById<EditText>(R.id.etCode).setText(prefs.getString("code", ""))
+        findViewById<View>(R.id.btnScanPairing).setOnClickListener {
+            val options = ScanOptions()
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt("Scan the pairing QR shown in Zera")
+                .setBeepEnabled(false)
+                .setOrientationLocked(false)
+            pairingScanner.launch(options)
+        }
         findViewById<View>(R.id.btnConnect).setOnClickListener {
             runCatching { AndropConnection.pair(findViewById<EditText>(R.id.etHost).text.toString().trim(), findViewById<EditText>(R.id.etCode).text.toString()) }
                 .onFailure { findViewById<TextView>(R.id.connectionStatus).text = it.message }

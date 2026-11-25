@@ -2,6 +2,7 @@ import XCTest
 import AppKit
 import CryptoKit
 import AndropKit
+import Vision
 @testable import Zera
 
 final class AndroidTransferTests: XCTestCase {
@@ -13,6 +14,7 @@ final class AndroidTransferTests: XCTestCase {
         XCTAssertFalse(receiver.enabled)
         receiver.start()
         XCTAssertFalse(receiver.isRunning)
+        XCTAssertNil(receiver.pairing)
         receiver.preview()
         receiver.didReceiveDragEnter(event: DragEnterEvent(id: "late", name: "file.txt", mimeType: "text/plain", thumbnail: ""))
         receiver.serverDidStart(port: 8989)
@@ -24,6 +26,20 @@ final class AndroidTransferTests: XCTestCase {
         XCTAssertFalse(receiver.isRunning)
         XCTAssertEqual(AndroidTransfer(defaults: defaults).pairingCode, receiver.pairingCode)
         XCTAssertFalse(AppShortcutPreferences().enabled)
+    }
+
+    @MainActor func testThemedPairingQRDecodesToEndpointAndCode() throws {
+        let pairing = AndroidPairing(address: "192.0.2.18", port: 18989, code: "012345")
+        let expected = "androp://pair?v=1&host=192.0.2.18&port=18989&code=012345"
+        for accent in [NSColor.systemMint, .systemPurple, .systemRed, .black, .white] {
+            let image = try XCTUnwrap(pairing.image(accent: accent))
+            var bounds = CGRect(origin: .zero, size: image.size)
+            let bitmap = try XCTUnwrap(image.cgImage(forProposedRect: &bounds, context: nil, hints: nil))
+            let request = VNDetectBarcodesRequest()
+            request.symbologies = [.qr]
+            try VNImageRequestHandler(cgImage: bitmap).perform([request])
+            XCTAssertEqual(request.results?.first?.payloadStringValue, expected)
+        }
     }
 
     func testReceiptNeedsFinalSaveAndIgnoresStaleEvents() {
@@ -113,6 +129,18 @@ extension AndroidTransferTests {
         defer { service.stop(); UserDefaults.standard.set(previousEnabled, forKey: "zera.androp.enabled") }
         for _ in 0..<100 where !service.status.hasPrefix("Ready") { try await Task.sleep(nanoseconds: 20_000_000) }
         XCTAssertTrue(service.status.hasPrefix("Ready"), service.status)
+        XCTAssertEqual(service.listeningPort, port)
+        let wrongCode = service.pairingCode == "000000" ? "111111" : "000000"
+        let rejected = URLSession.shared.webSocketTask(with: URL(string: "ws://127.0.0.1:\(port)")!)
+        rejected.resume()
+        defer { rejected.cancel(with: .normalClosure, reason: nil) }
+        try await rejected.send(.string("{\"type\":\"HELLO\",\"code\":\"\(wrongCode)\",\"version\":3}"))
+        guard case .string(let response) = try await rejected.receive() else {
+            return XCTFail("Rejected pairings must return a text AUTH reply")
+        }
+        let denied = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(response.utf8)) as? [String: Any])
+        XCTAssertEqual(denied["type"] as? String, "AUTH")
+        XCTAssertEqual(denied["ok"] as? Bool, false)
         let socket = URLSession.shared.webSocketTask(with: URL(string: "ws://127.0.0.1:\(port)")!)
         socket.resume()
         defer { socket.cancel(with: .normalClosure, reason: nil) }

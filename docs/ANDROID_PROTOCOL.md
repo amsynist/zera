@@ -11,6 +11,9 @@ Local RFC 6455 WebSocket, Bonjour `_androp._tcp.`, default TCP 8989. JSON **text
 
 The Mac permits four connected sockets, closes unauthenticated peers after 10 seconds, and rate-limits failed authentication to five attempts/minute across peers. New Android clients require AUTH version >= 3. An open socket alone does not mean paired.
 
+The optional setup QR is separate from the WebSocket protocol. Its version 1 payload is
+`androp://pair?v=1&host=192.0.2.18&port=8989&code=123456`. Androp validates the shape, numeric IPv4 address, port and six-digit code before using the existing HELLO exchange. It pins the scanned endpoint as an explicit address. Zera builds the QR from the ready listener's port and the current Wi-Fi address, with Ethernet as a fallback.
+
 One pending gesture or upload belongs to one authenticated socket. A second peer cannot update, cancel, append to, or finish it. Another ENTER receives RESULT false while the receiver is busy. An owner's repeated ENTER with the same ID enriches edge-preview metadata at drop time.
 
 ## Follow a gesture from any edge

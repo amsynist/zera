@@ -1063,6 +1063,7 @@ final class SettingsCard: CardBase, CardContent {
         }
         NotificationCenter.default.addObserver(self, selector: #selector(codexSettingsChanged), name: CodexAgentService.changed, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(managedClaudeSettingsChanged), name: ClaudeAgentService.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(murmurChanged), name: Murmur.stateChanged, object: nil)
         rebuildPane()
     }
 
@@ -1094,6 +1095,7 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     func select(_ requested: Pane) {
+        if requested != .extras { showingAndroidPairing = false }
         var p = requested
         if p == .codex { agentTab = .codex; NotchNavigation.shared.set(AgentTab.codex.rawValue, for: "settings.agentTab"); p = .agents }
         // A detail pane (Claude, GitHub…) comes in like a page and Back reverses it; switching
@@ -1146,6 +1148,12 @@ final class SettingsCard: CardBase, CardContent {
     @objc private func serviceChanged() {
         guard window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
         refreshServicePane()
+    }
+
+    @objc private func murmurChanged() {
+        guard current == .features, window?.isVisible == true, !isHiddenOrHasHiddenAncestor else { return }
+        if case .downloading = Murmur.shared.state { return }
+        rebuildPane()
     }
 
     private var managedClaudeSettingsCount = -1
@@ -1260,9 +1268,10 @@ final class SettingsCard: CardBase, CardContent {
         return pop
     }
 
-    private func buttonRow(_ title: String, style: CardButton.Style, status: String, _ s: inout Stack, action: Selector) {
+    private func buttonRow(_ title: String, style: CardButton.Style, status: String, _ s: inout Stack, action: Selector, enabled: Bool = true) {
         let row = FlippedView()
         let b = CardButton(title, style: style, target: self, action: action)
+        b.isEnabled = enabled
         let bw = min(s.width, max(110, b.fittedWidth))
         b.frame = NSRect(x: 0, y: 0, width: bw, height: Metrics.control)
         row.addSubview(b)
@@ -1329,20 +1338,55 @@ final class SettingsCard: CardBase, CardContent {
     @objc private func keyboardAccessTapped() { GlobalKeys.requestListen() }
     @objc private func copyTranscriptTapped() { Dictation.shared.copyUninsertedText() }
 
+    private var showingAndroidPairing = false
+
+    func showAndroidPairing() {
+        showingAndroidPairing = true
+        select(.extras)
+    }
+
     private func buildExtras(_ s: inout Stack) {
-        hint("Optional modules. Both are off on a fresh install and run only after you enable them.", &s)
+        let transfer = AndroidTransfer.shared
+        sectionLabel("Android sharing", &s)
+        toggleRow("Receive from Android", on: transfer.enabled, &s) { yes in
+            transfer.setEnabled(yes)
+        }
+        let pairing = transfer.pairing
+        let status = pairing.map { "Mac address · \($0.endpoint)" } ?? transfer.status
+        buttonRow(showingAndroidPairing ? "Hide pairing QR" : "Show pairing QR", style: .secondary, status: status, &s,
+                  action: #selector(toggleExtrasPairing))
+        if showingAndroidPairing {
+            if let pairing, let image = pairing.image(accent: ThemeStore.shared.current.accent) {
+                let row = FlippedView()
+                let code = NSImageView(image: image)
+                code.imageScaling = .scaleNone
+                code.frame = NSRect(x: 0, y: 0, width: 158, height: 158)
+                code.setAccessibilityLabel("Androp pairing QR")
+                row.addSubview(code)
+                let instructions = label("Open Androp and tap Scan pairing QR.", font: Typo.body, in: row, wraps: true)
+                instructions.frame = NSRect(x: 158 + Space.m, y: 0, width: s.width - 158 - Space.m, height: 68)
+                pane.addSubview(row)
+                s.place(row, height: 158, gap: Space.m)
+            } else {
+                hint(transfer.listeningPort == nil
+                     ? "Turn on receiving to show the pairing QR."
+                     : "Connect this Mac to Wi-Fi, a phone hotspot or Ethernet to show the pairing QR.", &s)
+            }
+        }
+        buttonRow("Copy pairing code", style: .tertiary,
+                  status: showingAndroidPairing ? "Manual code · \(transfer.pairingCode)" : "For older Androp apps",
+                  &s, action: #selector(copyExtrasPairing))
+        hint("Use the same trusted Wi-Fi or hotspot. Transfers are paired and unencrypted.", &s)
         sectionLabel("App Shortcuts", &s)
         toggleRow("Enable App Shortcuts", on: AppShortcuts.shared.preferences.enabled, &s) { yes in
             _ = AppShortcuts.shared.update { $0.enabled = yes }
         }
         hint("Choose your own shortcuts to open or focus applications. No Accessibility access is needed. Your window manager controls layouts and workspaces.", &s)
         buttonRow("Configure App Shortcuts…", style: .secondary, status: AppShortcuts.shared.message, &s, action: #selector(openAppShortcutsTapped))
-        sectionLabel("Android sharing", &s)
-        toggleRow("Receive from Android", on: AndroidTransfer.shared.enabled, &s) { yes in
-            AndroidTransfer.shared.setEnabled(yes)
-        }
-        hint("When off, no receiving port or Bonjour advertisement is active. Turning it off disconnects phones and cancels incoming transfers. Enabled traffic is paired but unencrypted; use trusted Wi-Fi or a hotspot.", &s)
-        buttonRow("Copy pairing code", style: .secondary, status: AndroidTransfer.shared.status, &s, action: #selector(copyExtrasPairing))
+    }
+    @objc private func toggleExtrasPairing() {
+        showingAndroidPairing.toggle()
+        rebuildPane()
     }
     @objc private func copyExtrasPairing() {
         NSPasteboard.general.clearContents()
@@ -1686,6 +1730,11 @@ final class SettingsCard: CardBase, CardContent {
             Dictation.shared.enabled = on
         }
         buttonRow("Permissions & Diagnostics", style: .secondary, status: "Set up access, choose a speech provider and repair dictation", &s, action: #selector(permissionsTapped))
+        let murmur = Murmur.shared
+        if murmur.installedFolder != nil {
+            buttonRow("Unload Murmur now", style: .secondary, status: murmur.canUnload ? "Frees memory now. Murmur also unloads after 1 minute idle." : murmur.state.summary,
+                      &s, action: #selector(unloadMurmurTapped), enabled: murmur.canUnload)
+        }
         popupRow("Dictation key", items: DictationKey.allCases.map(\.title), selected: Dictation.shared.trigger.rawValue,
                  &s, action: #selector(dictationKeyChanged(_:)))
         toggleRow("Type words into the field as you speak (off: all at once when you let go)", on: Dictation.shared.typesLive, &s) { on in
@@ -2469,6 +2518,8 @@ final class SettingsCard: CardBase, CardContent {
         Murmur.shared.remove()
         NSSound(named: "Pop")?.play()
     }
+
+    @objc private func unloadMurmurTapped() { Murmur.shared.unloadWhenIdle() }
 
     @objc private func edgePreviewTapped() {
         EdgeLight.shared.preview()

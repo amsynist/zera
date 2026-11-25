@@ -33,7 +33,7 @@ object AndropConnection {
         private set
     @Volatile var isConnected = false
         private set
-    val client = StreamClient({ connected, status -> main.post {
+    val client = StreamClient({ connected, status, shouldRetry -> main.post {
         isConnected = connected
         message = status
         observers.toList().forEach { it(connected, status) }
@@ -42,7 +42,7 @@ object AndropConnection {
             waiting.values.forEach { it.completeExceptionally(IllegalStateException(status)) }
             waiting.clear()
             uploads.values.forEach { it.fail(IllegalStateException(status)) }
-            scheduleReconnect()
+            if (shouldRetry) scheduleReconnect()
         } else { reconnect?.cancel(); discovery?.stop() }
     } }, { id, ok, status -> main.post {
         waiting[id]?.let { if (ok) it.complete(status) else it.completeExceptionally(IllegalStateException(status)) }
@@ -96,15 +96,31 @@ object AndropConnection {
     }
 
     fun pair(host: String, code: String) {
-        require(code.matches(Regex("[0-9]{6}"))) { "Enter the six-digit code from the Mac menu" }
-        val selectedHost = host.ifBlank { discovered?.first ?: endpoint?.first ?: error("No Mac found yet. Enter its local IP or hostname.") }
-        require(selectedHost.isNotBlank() && !selectedHost.contains('/') && !selectedHost.any(Char::isWhitespace)) { "Enter your Mac's local IP or hostname" }
-        val selectedPort = if (host.isBlank()) discovered?.second ?: 8989 else 8989
+        if (host.isNotBlank()) {
+            pair(PairingEndpoint.manual(host), code)
+            return
+        }
+        val (address, port, name) = discovered ?: run {
+            val prefs = requireNotNull(context).getSharedPreferences("androp", Context.MODE_PRIVATE)
+            val savedName = prefs.getString("serviceName", null)
+            val selected = endpoint
+            require(!prefs.getBoolean("manualHost", true) && savedName != null && selected != null) {
+                "No Mac found yet. Scan its pairing QR or enter its local IP address."
+            }
+            Triple(selected.first, selected.second, savedName)
+        }
+        pair(PairingEndpoint(address, port), code, name)
+    }
+
+    internal fun pair(endpoint: PairingEndpoint, code: String, serviceName: String? = null) {
+        require(PairingEndpoint.validCode(code)) { "Enter the six-digit code from Zera" }
+        reconnect?.cancel()
+        reconnect = null
         context!!.getSharedPreferences("androp", Context.MODE_PRIVATE).edit()
-            .putString("host", selectedHost).putString("code", code).putInt("port", selectedPort)
-            .putBoolean("manualHost", host.isNotBlank())
-            .putString("serviceName", if (host.isBlank()) discovered?.third else null).apply()
-        connect(selectedHost, selectedPort)
+            .putString("host", endpoint.host).putString("code", code).putInt("port", endpoint.port)
+            .putBoolean("manualHost", serviceName == null)
+            .putString("serviceName", serviceName).apply()
+        connect(endpoint.host, endpoint.port)
     }
     private fun connect(host: String, port: Int) {
         endpoint = host to port

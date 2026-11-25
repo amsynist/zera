@@ -39,6 +39,10 @@
             </intent-filter>
         </activity>
 
+        <activity android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="portrait"
+            tools:replace="android:screenOrientation" />
+
         <!-- Share Target: Share image directly from Google Photos / Gallery to Androp -->
         <activity
             android:name=".ui.ShareActivity"

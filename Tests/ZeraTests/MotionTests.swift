@@ -2,6 +2,22 @@ import XCTest
 @testable import Zera
 
 final class MotionTests: XCTestCase {
+    func testMiniNotchFillsTheTopSeamOnBothWings() {
+        let notch = CGRect(x: 400, y: 860, width: 180, height: 38)
+        let band = NotchBuddyView.frame(around: notch)
+        let panel = NotchBuddyView.panelFrame(around: notch)
+        XCTAssertEqual(panel.minY, notch.minY)
+        XCTAssertEqual(panel.maxY, notch.maxY + NotchBuddyView.topBleed)
+        XCTAssertEqual(panel.width, band.width)
+        let rect = CGRect(origin: .zero, size: band.size)
+        let path = NotchGeometry.notchOutline(in: rect, closed: true, topBleed: NotchBuddyView.topBleed)
+        for x in [NotchBuddyView.wingWidth(forHeight: band.height) / 2,
+                  rect.width - NotchBuddyView.wingWidth(forHeight: band.height) / 2] {
+            XCTAssertTrue(path.contains(CGPoint(x: x, y: rect.maxY + 1)))
+            XCTAssertFalse(path.contains(CGPoint(x: x, y: rect.minY - 1)))
+        }
+    }
+
     func testEveryCurvedLightStyleStopsItsAnimationsWhenRemoved() {
         func layers(_ root: CALayer) -> [CALayer] {
             [root] + (root.sublayers ?? []).flatMap(layers) + (root.mask.map(layers) ?? [])

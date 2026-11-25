@@ -43,7 +43,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         WallpaperTint.shared.start()
         VoiceApproval.shared.start()
         Dictation.shared.start()
-        Murmur.shared.start()
         AgentWatch.shared.start()
         AppShortcuts.shared.start()
         LyricsService.shared.start()
@@ -133,7 +132,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            let img = ZeraView.headImage(size: 20)
+            let img = NSImage(size: NSSize(width: 22, height: 22), flipped: false) { rect in
+                guard let context = NSGraphicsContext.current?.cgContext else { return false }
+                CompanionGlyph.draw(context, in: rect, mood: .happy, gaze: .zero, blink: 0)
+                return true
+            }
             img.isTemplate = false
             button.image = img
             button.imagePosition = .imageLeading
@@ -182,7 +185,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(status)
         let toggle = menu.addItem(withTitle: "Receive from Android", action: #selector(toggleAndroidSharing), keyEquivalent: "")
         toggle.target = self; toggle.tag = 89891
-        menu.addItem(withTitle: "Copy pairing code · \(AndroidTransfer.shared.pairingCode)", action: #selector(copyAndroidPairingCode), keyEquivalent: "").target = self
+        let pair = menu.addItem(withTitle: "Show pairing QR…", action: #selector(showAndroidPairing), keyEquivalent: "")
+        pair.target = self
+        pair.image = NSImage(systemSymbolName: "qrcode", accessibilityDescription: nil)
+        let address = menu.addItem(withTitle: "Copy Mac address", action: #selector(copyAndroidAddress), keyEquivalent: "")
+        address.target = self; address.tag = 89893
+        menu.addItem(withTitle: "Copy pairing code", action: #selector(copyAndroidPairingCode), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Open received files", action: #selector(openAndroidInbox), keyEquivalent: "").target = self
         let preview = menu.addItem(withTitle: "Preview arrival", action: #selector(previewAndroidArrival), keyEquivalent: "")
         preview.target = self; preview.tag = 89892
@@ -196,6 +204,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu?.item(withTag: 89890)?.title = service.phoneConnected ? "Phone connected · \(service.status)" : service.status
         menu?.item(withTag: 89891)?.state = service.enabled ? .on : .off
         menu?.item(withTag: 89892)?.isEnabled = service.isRunning
+        let address = service.pairing?.address
+        menu?.item(withTag: 89893)?.title = address.map { "Copy Mac address · \($0)" } ?? "Copy Mac address"
+        menu?.item(withTag: 89893)?.isEnabled = address != nil
     }
     @objc private func toggleAndroidSharing() {
         AndroidTransfer.shared.setEnabled(!AndroidTransfer.shared.enabled)
@@ -204,6 +215,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func copyAndroidPairingCode() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(AndroidTransfer.shared.pairingCode, forType: .string)
+    }
+    @objc private func showAndroidPairing() { controller.showExtras(pairAndroid: true) }
+    @objc private func copyAndroidAddress() {
+        guard let pairing = AndroidTransfer.shared.pairing else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(pairing.port == 8989 ? pairing.address : pairing.endpoint, forType: .string)
     }
     @objc private func openAndroidInbox() {
         NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads/Androp", isDirectory: true))

@@ -170,11 +170,11 @@ public final class WebSocketServer {
         }
     }
 
-    private func send(_ object: [String: Any], to connection: NWConnection) {
+    private func send(_ object: [String: Any], to connection: NWConnection, completion: @escaping (NWError?) -> Void = { _ in }) {
         guard running, let data = try? JSONSerialization.data(withJSONObject: object) else { return }
         let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
         let context = NWConnection.ContentContext(identifier: "androp", metadata: [metadata])
-        connection.send(content: data, contentContext: context, isComplete: true, completion: .contentProcessed { _ in })
+        connection.send(content: data, contentContext: context, isComplete: true, completion: .contentProcessed(completion))
     }
 
     private func receive(_ connection: NWConnection, peer: String) {
@@ -190,30 +190,34 @@ public final class WebSocketServer {
             if let data {
                 guard data.count <= 12 * 1024 * 1024,
                       let text = String(data: data, encoding: .utf8) else { connection.cancel(); return }
-                self.process(text, connection: connection, peer: peer)
+                if self.authenticated.contains(peer) {
+                    self.process(text, connection: connection, peer: peer)
+                } else if !self.authenticate(text, connection: connection, peer: peer) {
+                    return
+                }
             }
             if self.connections[peer] != nil { self.receive(connection, peer: peer) }
         }
     }
 
-    private func process(_ text: String, connection: NWConnection, peer: String) {
-        if !authenticated.contains(peer) {
-            failedPairings.removeAll { Date().timeIntervalSince($0) > 60 }
-            guard failedPairings.count < 5,
-                  let data = text.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  json["type"] as? String == "HELLO", json["code"] as? String == code else {
-                failedPairings.append(Date())
-                send(["type": "AUTH", "ok": false], to: connection)
-                connection.cancel()
-                return
-            }
-            timeouts.removeValue(forKey: "auth." + peer)?.cancel()
-            authenticated.insert(peer)
-            send(["type": "AUTH", "ok": true, "version": 3, "chunkBytes": FileReceiver.chunkBytes], to: connection)
-            notify { $0.clientConnected(endpoint: peer) }
-            return
+    private func authenticate(_ text: String, connection: NWConnection, peer: String) -> Bool {
+        failedPairings.removeAll { Date().timeIntervalSince($0) > 60 }
+        guard failedPairings.count < 5,
+              let json = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
+              json["type"] as? String == "HELLO", json["code"] as? String == code else {
+            // Keep the rate-limit history bounded during bursts of rejected connections.
+            if failedPairings.count < 5 { failedPairings.append(Date()) }
+            send(["type": "AUTH", "ok": false], to: connection) { _ in connection.cancel() }
+            return false
         }
+        timeouts.removeValue(forKey: "auth." + peer)?.cancel()
+        authenticated.insert(peer)
+        send(["type": "AUTH", "ok": true, "version": 3, "chunkBytes": FileReceiver.chunkBytes], to: connection)
+        notify { $0.clientConnected(endpoint: peer) }
+        return true
+    }
+
+    private func process(_ text: String, connection: NWConnection, peer: String) {
         switch parseClientMessage(jsonString: text) {
         case .enter(let event):
             guard upload == nil, !isOpening, (pending == nil || (pending?.peer == peer && pending?.event.id == event.id)), !event.id.isEmpty, event.id.count <= 80,

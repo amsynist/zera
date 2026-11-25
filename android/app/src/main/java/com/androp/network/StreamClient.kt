@@ -3,14 +3,17 @@ package com.androp.network
 import okhttp3.*
 import org.json.JSONObject
 import okio.ByteString.Companion.toByteString
+import java.net.Proxy
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 class StreamClient(
-    private val onState: (Boolean, String) -> Unit,
+    private val onState: (Boolean, String, Boolean) -> Unit,
     private val onResult: (String, Boolean, String) -> Unit,
     private val onSignal: (String, String, Long) -> Unit
 ) {
     private val client = OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS)
+        .proxy(Proxy.NO_PROXY).followRedirects(false)
         .connectTimeout(5, TimeUnit.SECONDS).build()
     @Volatile private var socket: WebSocket? = null
     @Volatile private var generation = 0
@@ -23,8 +26,9 @@ class StreamClient(
         val address = host.trim().removePrefix("[").removeSuffix("]")
         val authority = if (address.contains(':')) "[$address]" else address
         val request = Request.Builder().url("ws://$authority:$port").build()
-        onState(false, "Connecting to your Mac…")
+        onState(false, "Connecting to $authority:$port…", false)
         socket = client.newWebSocket(request, object : WebSocketListener() {
+            private var authRejected = false
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 if (epoch != generation) { webSocket.cancel(); return }
                 webSocket.send(JSONObject().put("type", "HELLO").put("code", code).put("version", 3).toString())
@@ -35,7 +39,13 @@ class StreamClient(
                 when (json.optString("type")) {
                     "AUTH" -> {
                         isConnected = json.optBoolean("ok") && json.optInt("version") >= 3
-                        onState(isConnected, if (isConnected) "Your Mac is within reach" else if (json.optBoolean("ok")) "Update Androp on your Mac to enable streaming" else "Check the pairing code in the Mac menu")
+                        authRejected = !isConnected
+                        val message = when {
+                            isConnected -> "Connected to your Mac"
+                            json.optBoolean("ok") -> "Update Zera on your Mac to enable streaming"
+                            else -> "Pairing rejected. Check the six-digit code in Zera or scan its QR again."
+                        }
+                        onState(isConnected, message, false)
                     }
                     "TRANSFER_READY", "CHUNK_ACK" -> onSignal(json.optString("id"), json.optString("type"), json.optLong("received"))
                     "RESULT" -> onResult(json.optString("id"), json.optBoolean("ok"),
@@ -44,9 +54,16 @@ class StreamClient(
             }
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, reason) }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { lost("Mac disconnected") }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { lost("Can't reach Mac · check Wi-Fi and code") }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                val message = when {
+                    response != null -> "$authority:$port didn’t accept Androp. Check that Zera is receiving on this address."
+                    t is UnknownHostException -> "Mac name not found. Use the local IP address shown in Zera."
+                    else -> "Can’t reach $authority:$port. Use the same Wi-Fi or phone hotspot and turn on receiving in Zera."
+                }
+                lost(message)
+            }
             private fun lost(message: String) {
-                if (epoch == generation) { isConnected = false; onState(false, message) }
+                if (epoch == generation && !authRejected) { isConnected = false; onState(false, message, true) }
             }
         })
     }

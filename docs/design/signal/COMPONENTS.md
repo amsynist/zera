@@ -89,7 +89,7 @@ pane frame, trace, type, controls); "Signal pass" means the screen-specific layo
 | Reminders | `RemindersView.swift`, `ReminderComponents.swift` | done | to do: time column rule |
 | Teleprompter | `Teleprompter.swift` | done | to do: line numbers, hairline reading band |
 | Focus | `FocusView.swift`, `TasksUI.swift` (FocusRing) | done | done (60-tick bezel, input block) |
-| Settings | `Cards.swift` (SettingsCard) | done | Glass + font rows added; to do: numbered pane rail |
+| Settings | `Cards.swift` (SettingsCard), `Androp/AndroidPairing.swift` | done | Extras pairs Android inside the notch. The QR uses the active Signal accent, dark modules, and a light quiet zone. The menu bar opens the same Settings surface. Features → Voice shows whether Murmur is loaded and offers immediate unload through the shared button row. |
 | App Shortcuts | `AppShortcutsView.swift` | done | to do |
 | Daily Shelf | `DailyShelf/*View.swift`, `*Panel.swift` | done (glass, lit edge) | PR index tiles done; to do: status foot |
 | Focus orb / card / quick add | `TasksUI.swift` | done (OpenerGlass) | quick add input block done; to do: orb tick bezel |

@@ -91,19 +91,19 @@ final class NavigationStateTests: XCTestCase {
                 island.centerX = width / 2; island.band = 34; island.notchWidth = 190; island.hoverStyle = style
                 let window = NSWindow(contentRect: island.frame, styleMask: .borderless, backing: .buffered, defer: false)
                 window.contentView = island
-                island.peek()
-                RunLoop.main.run(until: Date().addingTimeInterval(0.85))
+                island.peek(animated: false)
                 island.layoutSubtreeIfNeeded()
                 let tabs = descendants(island).compactMap { $0 as? IslandTab }
                 for (i, tab) in tabs.enumerated() {
                     XCTAssertTrue(island.bounds.contains(tab.frame), "\(width), \(style), \(tab.kind)")
-                    for other in tabs.dropFirst(i + 1) { XCTAssertFalse(tab.frame.intersects(other.frame), "hover targets must not overlap") }
+                    for other in tabs.dropFirst(i + 1) {
+                        XCTAssertFalse(tab.frame.intersects(other.frame), "\(width), \(style): \(tab.kind) overlaps \(other.kind)")
+                    }
                 }
                 let pr = try XCTUnwrap(tabs.first { $0.kind == .github })
                 let tasks = try XCTUnwrap(tabs.first { $0.kind == .tasks })
                 XCTAssertEqual(pr.accessibilityLabel(), "Pull requests")
                 island.present(NSView(), size: NSSize(width: min(880, width - 24), height: 400), direction: 0, animated: false)
-                RunLoop.main.run(until: Date().addingTimeInterval(0.9))
                 island.layoutSubtreeIfNeeded()
                 for (i, tab) in tabs.enumerated() {
                     XCTAssertTrue(island.islandRect.contains(tab.frame), "open rail must fit its screen")

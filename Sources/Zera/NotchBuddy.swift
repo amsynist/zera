@@ -100,6 +100,16 @@ final class NotchBuddyView: ShelfDropTargetView, ZeraAnimating {
         return NSRect(x: notch.minX - w, y: notch.minY, width: notch.width + 2 * w, height: notch.height)
     }
 
+    /// Keep the black backing past the screen edge so a fractional compositor offset cannot
+    /// expose wallpaper between either wing and the top bezel. The face and hit area stay put.
+    static let topBleed: CGFloat = 2
+    var topBleed: CGFloat = 0
+    static func panelFrame(around notch: NSRect) -> NSRect {
+        var panel = frame(around: notch)
+        panel.size.height += topBleed
+        return panel
+    }
+
     /// When the current agent activity began (for the elapsed time in the right wing).
     private var activitySince = CACurrentMediaTime()
     private var lastActivity: ZeraActivity = .none
@@ -152,14 +162,15 @@ final class NotchBuddyView: ShelfDropTargetView, ZeraAnimating {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let b = bounds
+        var b = bounds
+        b.size.height -= topBleed
         let reduce = Motion.reduced
 
         // One black shape: the notch plus a wing on each side, flush with the top of the screen,
         // flared where it meets the menu bar and rounded at its two outer bottom corners.
         let flare = NotchGeometry.shoulderWidth(height: b.height)
         let left = b.minX + flare
-        let shape = NotchGeometry.notchOutline(in: b, closed: true)
+        let shape = NotchGeometry.notchOutline(in: b, closed: true, topBleed: topBleed)
         let activity = activityOverride ?? source?.activity ?? .none
         let rawMood = source?.mood ?? .idle
         let mood: ZeraMood = source?.isReactingToPokes == true ? rawMood : activity == .running ? .focused : activity == .approval ? .surprised : activity == .done ? .celebrate : rawMood

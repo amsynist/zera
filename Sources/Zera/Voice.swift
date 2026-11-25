@@ -410,6 +410,7 @@ final class Dictation {
         monitors.removeAll()
         holdWork?.cancel(); holdWork = nil
         if isActive || isProcessing { cancel() }
+        Murmur.shared.unloadWhenIdle()
     }
 
     private func handle(_ e: NSEvent) {
@@ -490,8 +491,8 @@ final class Dictation {
         typingTarget = DictationInsertionTarget.capture()
         sentTypingEvents = false
         if Murmur.shared.useForDictation {
-            guard Murmur.shared.isReady else {
-                onDone?("Murmur isn’t ready · set up speech in Settings → Permissions & Diagnostics")
+            guard Murmur.shared.canBeginTake else {
+                onDone?("Murmur needs a downloaded model · see Settings → Permissions")
                 return
             }
             Diag.log("dictation: starting with Murmur")
@@ -558,6 +559,7 @@ final class Dictation {
             onTranscript?(nil); onDone?("The microphone isn't available")
             return
         }
+        Murmur.shared.beginTake()
         onTranscript?("")
         // Words appear as you speak: what you've said so far is read again about once a second.
         let t = Timer(timeInterval: 0.9, repeats: true) { [weak self] _ in self?.liveRead() }
@@ -566,7 +568,7 @@ final class Dictation {
     }
 
     private func liveRead() {
-        guard isActive, usingMurmur, !liveBusy else { return }
+        guard isActive, usingMurmur, !liveBusy, Murmur.shared.isReady else { return }
         // Keep the transcript anchored at the start; a sliding 28-second suffix
         // cannot be reconciled with words already inserted into the original field.
         guard MurmurRecorder.shared.duration <= 28 else { return }
@@ -592,9 +594,22 @@ final class Dictation {
         liveTranscriptionJob?.cancel(); liveTranscriptionJob = nil
         let audio = MurmurRecorder.shared.stop()
         let s = session
-        onTranscript?(transcript.isEmpty ? "…" : transcript)
+        let waitingForModel = !Murmur.shared.isReady
+        onTranscript?(transcript.isEmpty ? (waitingForModel ? "Loading Murmur…" : "…") : transcript)
+        finishWork?.cancel()
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, self.session == s, self.isProcessing else { return }
+            self.lastUninsertedText = self.transcript.isEmpty ? nil : self.transcript
+            self.cancel()
+            self.onDone?("Transcription timed out · partial text is in Permissions & Diagnostics")
+        }
+        finishWork = timeout
         // A long take is read in 30-second pieces by the model itself.
-        transcriptionJob = Murmur.shared.transcribe(audio) { [weak self] text in
+        transcriptionJob = Murmur.shared.transcribe(audio, onDecodeStarting: {
+            // Core ML may compile a model for this Mac on first use. Start the decoding deadline
+            // only after loading succeeds, while Escape can cancel either stage.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: timeout)
+        }) { [weak self] text in
             guard let self = self, s == self.session else { return }
             guard let text else {
                 self.lastUninsertedText = self.transcript.isEmpty ? nil : self.transcript
@@ -605,17 +620,6 @@ final class Dictation {
             self.transcript = text
             self.deliver()
         }
-        guard isProcessing, session == s else { return }
-        finishWork?.cancel()
-        let take = session
-        let w = DispatchWorkItem { [weak self] in
-            guard let self, self.session == take, self.isProcessing else { return }
-            self.lastUninsertedText = self.transcript.isEmpty ? nil : self.transcript
-            self.cancel()
-            self.onDone?("Transcription timed out · partial text is in Permissions & Diagnostics")
-        }
-        finishWork = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: w)
     }
 
     /// Key released: stop the microphone and wait (≤ 1.5 s) for the final words.
@@ -645,6 +649,7 @@ final class Dictation {
             liveTimer?.invalidate(); liveTimer = nil
             MurmurRecorder.shared.stop()
             usingMurmur = false
+            Murmur.shared.endTake()
         }
         SpeechListener.shared.stop()
         onTranscript?(nil)
@@ -668,6 +673,7 @@ final class Dictation {
             session += 1
             liveTimer?.invalidate(); liveTimer = nil
             if MurmurRecorder.shared.isRunning { MurmurRecorder.shared.stop() }
+            Murmur.shared.endTake()
         }
         SpeechListener.shared.stop()
         onTranscript?(nil)

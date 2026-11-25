@@ -31,7 +31,7 @@ More on the rail:
 - **Tasks, timesheets and Focus.** Add a task from anywhere with `⌥ ⌘ T`, focus on one at a time, and export a range to Excel, CSV or text.
 - **File Shelf.** Carry any file, picture or video up to the notch and the Shelf opens to catch it; drag it out later. Zera reads a file only when you ask about it.
 - **Reminders, Alerts and Teleprompter.** Your calendars in one day view, one inbox for what needs you, and a script that rolls beside the camera.
-- **Dictation.** Hold right `⌥` or `⇧` to dictate with Apple speech or on-device Murmur.
+- **Dictation.** Hold right `⌥` or `⇧` to dictate with Apple speech or on-device Murmur. Murmur loads when used and releases its model after one idle minute. **Settings → Features → Voice** can unload it immediately.
 - **Signal interface.** One monospaced face, a lit trace from Zera to the open screen, nine colour themes, solid or translucent. [Themes](docs/THEMES.md) · [Design reference](docs/design/signal/COMPONENTS.md)
 - **Android sharing.** Send original photos and files from your phone over local Wi-Fi. [See below](#android-sharing).
 
@@ -62,7 +62,7 @@ Every shortcut can be changed or turned off in Settings.
 Androp is the Android companion. Glide a photo off the edge of your phone and it arrives on the Mac as the original. Documents drop into the notch, where a liquid receipt shows progress, and then wait on the File Shelf.
 
 1. Put your phone and Mac on the same trusted Wi-Fi, or use your phone’s hotspot.
-2. Turn on receiving in **Extras → Android sharing** and enter the pairing code in Androp.
+2. Turn on receiving in Zera and choose **Extras → Android sharing → Show pairing QR** from the menu bar, or open **Settings → Extras**. In Androp, tap **Scan pairing QR**. Older APKs can enter the displayed Mac IP address and six-digit code separately.
 3. Send from Androp’s gallery or Files tab, or use **Share → Androp** from another app.
 
 Transfers stay on your local network. They are paired but not encrypted, and a file counts as saved only after its SHA-256 is verified. Androp needs Android 8 or later. [Download Androp.apk](Androp.apk?raw=1) · [Pairing guide](docs/ANDROID_SHARING.md) · [Protocol](docs/ANDROID_PROTOCOL.md) · [Watch the sharing film](https://zera.pravincodes.in/#sharing)

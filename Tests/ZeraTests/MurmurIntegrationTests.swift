@@ -25,12 +25,24 @@ final class MurmurIntegrationTests: XCTestCase {
         XCTAssertNil(conversionError)
         let data = try XCTUnwrap(output.floatChannelData?[0])
         let samples = Array(UnsafeBufferPointer(start: data, count: Int(output.frameLength)))
-        let model = Murmur()
-        model.download(.quick)
-        let deadline = Date().addingTimeInterval(180)
-        while model.isBusy && Date() < deadline { try await Task.sleep(nanoseconds: 200_000_000) }
-        XCTAssertEqual(model.state, .ready, "real WhisperKit download/load must succeed")
-        guard model.isReady else { model.cancelDownload(); return }
+        let suite = "zera-murmur-integration-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model: Murmur
+        if let path = env["ZERA_TEST_MURMUR_MODEL"] {
+            defaults.set(path, forKey: "zera.murmur.folder")
+            model = Murmur(defaults: defaults, idleTimeout: 0.25)
+        } else {
+            model = Murmur(defaults: defaults, idleTimeout: 0.25)
+            model.useForDictation = true
+            model.download(.quick)
+            let deadline = Date().addingTimeInterval(180)
+            while model.isBusy && Date() < deadline { try await Task.sleep(nanoseconds: 200_000_000) }
+            XCTAssertEqual(model.state, .ready, "real WhisperKit download/load must succeed")
+            guard model.isReady else { model.cancelDownload(); return }
+            model.unloadWhenIdle()
+            while model.isReady { try await Task.sleep(nanoseconds: 20_000_000) }
+        }
         var fixture: NSRunningApplication?
         var target: DictationInsertionTarget?
         defer { fixture?.terminate() }
@@ -44,10 +56,34 @@ final class MurmurIntegrationTests: XCTestCase {
             try await Task.sleep(nanoseconds: 700_000_000)
             target = try XCTUnwrap(DictationInsertionTarget.capture())
         }
+        XCTAssertEqual(model.state, .installed)
+        model.beginTake()
+        XCTAssertEqual(model.state, .loading)
         let transcript = await withCheckedContinuation { continuation in
-            model.transcribe(samples) { continuation.resume(returning: $0) }
+            model.transcribe(samples, onDecodeStarting: { XCTAssertTrue(model.isReady) }) {
+                continuation.resume(returning: $0)
+            }
         }
         XCTAssertTrue(transcript?.lowercased().contains("quick brown fox") == true, "synthetic speech must be recognized")
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertTrue(model.isReady, "a held take keeps the model loaded beyond the idle deadline")
+        XCTAssertFalse(model.canUnload)
+        model.endTake()
+        XCTAssertTrue(model.canUnload)
+        let idleDeadline = Date().addingTimeInterval(10)
+        while model.isReady && Date() < idleDeadline { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertEqual(model.state, .installed, "the idle timer must release the runtime")
+        XCTAssertNotNil(model.installedFolder, "idle unload must keep the download")
+        model.beginTake()
+        let next = await withCheckedContinuation { continuation in
+            model.transcribe(samples) { continuation.resume(returning: $0) }
+        }
+        XCTAssertTrue(next?.lowercased().contains("quick brown fox") == true, "a second cold take must still transcribe")
+        model.endTake()
+        model.unloadWhenIdle()
+        let overrideDeadline = Date().addingTimeInterval(2)
+        while model.isReady && Date() < overrideDeadline { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertEqual(model.state, .installed)
         if let target, let transcript {
             XCTAssertEqual(target.insert(transcript), .sent)
             try await Task.sleep(nanoseconds: 700_000_000)
