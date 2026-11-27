@@ -12,8 +12,8 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "com.androp.SmokeInstrumentation"
-        versionCode = 5
-        versionName = "3.0.2"
+        versionCode = 10
+        versionName = "3.1.4"
     }
 
     buildTypes {
@@ -24,6 +24,10 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+    sourceSets.named("main") {
+        res.srcDir("../signal/src/main/res")
+        assets.srcDir("../signal/src/main/assets")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -44,6 +48,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("com.google.android.gms:play-services-wearable:19.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
     testImplementation("junit:junit:4.13.2")
 }

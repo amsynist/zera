@@ -14,24 +14,24 @@ object FileCard {
         val bitmap = Bitmap.createBitmap(w.toInt(), h.toInt(), Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        paint.shader = LinearGradient(0f, 0f, w, h, Color.rgb(36, 58, 60), Color.rgb(18, 32, 34), Shader.TileMode.CLAMP)
+        paint.shader = LinearGradient(0f, 0f, w, h, Color.rgb(14, 26, 35), Color.rgb(5, 8, 11), Shader.TileMode.CLAMP)
         canvas.drawRoundRect(0f, 0f, w, h, 44f, 44f, paint)
         paint.shader = null
-        paint.style = Paint.Style.STROKE; paint.strokeWidth = 3f; paint.color = Color.rgb(64, 88, 86)
+        paint.style = Paint.Style.STROKE; paint.strokeWidth = 3f; paint.color = Color.rgb(57, 94, 92)
         canvas.drawRoundRect(1.5f, 1.5f, w - 1.5f, h - 1.5f, 44f, 44f, paint)
         paint.style = Paint.Style.FILL
         val kind = label(name, mime)
         paint.color = color(kind)
         canvas.drawRoundRect(56f, 56f, 256f, 256f, 40f, 40f, paint)
         paint.color = Color.WHITE; paint.textAlign = Paint.Align.CENTER
-        paint.typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        paint.typeface = Typeface.create("monospace", Typeface.BOLD)
         paint.textSize = if (kind.length > 3) 50f else 62f
         canvas.drawText(kind, 156f, 156f - (paint.descent() + paint.ascent()) / 2, paint)
         paint.textAlign = Paint.Align.LEFT
-        paint.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-        paint.textSize = 46f; paint.color = Color.rgb(237, 243, 233)
+        paint.typeface = Typeface.create("monospace", Typeface.NORMAL)
+        paint.textSize = 46f; paint.color = Color.rgb(221, 232, 238)
         canvas.drawText(fit(name, paint, w - 112f), 56f, 352f, paint)
-        paint.textSize = 30f; paint.color = Color.rgb(169, 190, 185)
+        paint.textSize = 30f; paint.color = Color.rgb(154, 174, 189)
         canvas.drawText(listOfNotNull(kind, size?.let { Formatter.formatShortFileSize(context, it) }).joinToString("  ·  "), 56f, 412f, paint)
         return bitmap
     }

@@ -57,10 +57,36 @@ object AndropConnection {
 
     fun acquire(context: Context) {
         users++
-        if (users > 1) return
+        if (users > 1) { updateDiscovery(); return }
         this.context = context.applicationContext
         val prefs = context.getSharedPreferences("androp", Context.MODE_PRIVATE)
-        discovery = MacDiscovery(context.applicationContext) { host, port, name ->
+        updateDiscovery()
+        val host = prefs.getString("host", "").orEmpty()
+        if (host.isNotBlank() && prefs.getString("code", "").orEmpty().length == 6) connect(host, prefs.getInt("port", 8989))
+    }
+
+    /**
+     * Bonjour discovery holds a Wi-Fi multicast lock, which keeps the radio from dozing. Screens
+     * report when they are hidden, so discovery runs only while something visible (or the edge
+     * overlay) needs it. Hiding never drops the connection or an upload in progress.
+     */
+    private var hiddenUsers = 0
+
+    fun hidden(isHidden: Boolean) {
+        hiddenUsers = (hiddenUsers + if (isHidden) 1 else -1).coerceIn(0, users)
+        updateDiscovery()
+    }
+
+    private fun updateDiscovery() {
+        val app = context ?: return
+        if (users <= hiddenUsers) {
+            discovery?.stop()
+            discovery = null
+            return
+        }
+        if (discovery != null) return
+        val prefs = app.getSharedPreferences("androp", Context.MODE_PRIVATE)
+        discovery = MacDiscovery(app) { host, port, name ->
             val savedHost = prefs.getString("host", "").orEmpty()
             val savedName = prefs.getString("serviceName", null)
             val manual = prefs.getBoolean("manualHost", true)
@@ -75,15 +101,14 @@ object AndropConnection {
             val allowed = if (manual) savedHost == host && prefs.getInt("port", 8989) == port else savedName == name
             if (!isConnected && allowed && endpoint != (host to port) && !prefs.getString("code", "").isNullOrBlank()) connect(host, port)
         }.also { it.start() }
-        val host = prefs.getString("host", "").orEmpty()
-        if (host.isNotBlank() && prefs.getString("code", "").orEmpty().length == 6) connect(host, prefs.getInt("port", 8989))
     }
 
     fun observe(callback: (Boolean, String) -> Unit) { observers.add(callback); callback(isConnected, message) }
     fun removeObserver(callback: (Boolean, String) -> Unit) { observers.remove(callback) }
     fun release() {
         users = (users - 1).coerceAtLeast(0)
-        if (users != 0) return
+        hiddenUsers = hiddenUsers.coerceAtMost(users)
+        if (users != 0) { updateDiscovery(); return }
         reconnect?.cancel()
         discovery?.stop()
         discovery = null

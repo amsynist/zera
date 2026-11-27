@@ -1,5 +1,7 @@
 package com.androp.ui
 
+import com.androp.R
+
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -96,27 +98,26 @@ class FileBrowser(
         for (i in 0 until places.childCount) {
             val chip = places.getChildAt(i) as TextView
             val on = chip.tag == root
-            chip.setTextColor(if (on) Color.rgb(18, 41, 32) else Color.rgb(196, 236, 221))
-            chip.background = GradientDrawable().apply {
-                cornerRadius = 18 * density
-                setColor(if (on) Color.rgb(196, 236, 221) else Color.rgb(34, 57, 51))
-            }
+            chip.setTextColor(context.getColor(if (on) R.color.signal_background else R.color.signal_secondary))
+            chip.setBackgroundResource(if (on) R.drawable.signal_primary else R.drawable.signal_control)
+            chip.typeface = context.resources.getFont(R.font.signal_mono)
         }
     }
 
     private fun row(file: File, recycled: View?): View {
         val row = (recycled as? LinearLayout) ?: LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(context.getColor(R.color.signal_row))
             setPadding((16 * density).toInt(), (10 * density).toInt(), (16 * density).toInt(), (10 * density).toInt())
             addView(TextView(context).apply {
                 gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 10f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                typeface = context.resources.getFont(R.font.signal_semibold)
             }, LinearLayout.LayoutParams((44 * density).toInt(), (44 * density).toInt()))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding((14 * density).toInt(), 0, 0, 0)
-                addView(TextView(context).apply { setTextColor(Color.rgb(237, 243, 233)); textSize = 14f; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE })
-                addView(TextView(context).apply { setTextColor(Color.rgb(150, 173, 164)); textSize = 11f; maxLines = 1 })
+                addView(TextView(context).apply { setTextColor(context.getColor(R.color.signal_text)); typeface = context.resources.getFont(R.font.signal_mono); textSize = 14f; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE })
+                addView(TextView(context).apply { setTextColor(context.getColor(R.color.signal_secondary)); typeface = context.resources.getFont(R.font.signal_mono); textSize = 11f; maxLines = 1 })
             }, LinearLayout.LayoutParams(0, -2, 1f))
         }
         val badge = row.getChildAt(0) as TextView
@@ -125,8 +126,8 @@ class FileBrowser(
         badge.text = kind
         badge.textSize = if (kind.length > 3) 9f else 11f
         badge.background = GradientDrawable().apply {
-            cornerRadius = 12 * density
-            setColor(if (file.isDirectory) Color.rgb(34, 57, 51) else FileCard.color(kind))
+            cornerRadius = 7 * density
+            setColor(if (file.isDirectory) context.getColor(R.color.signal_pressed) else FileCard.color(kind))
         }
         (texts.getChildAt(0) as TextView).text = file.name
         val age = DateUtils.getRelativeTimeSpanString(file.lastModified(), System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)

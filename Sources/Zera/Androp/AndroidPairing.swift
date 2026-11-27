@@ -44,6 +44,10 @@ struct AndroidPairing {
 
     /// Theme-colored modules with a light, opaque four-module quiet zone and integer scaling.
     func image(accent: NSColor) -> NSImage? {
+        Self.image(payload: payload, accent: accent)
+    }
+
+    static func image(payload: String, accent: NSColor, size points: CGFloat = 158) -> NSImage? {
         let qr = CIFilter.qrCodeGenerator()
         qr.message = Data(payload.utf8)
         qr.correctionLevel = "M"
@@ -58,7 +62,7 @@ struct AndroidPairing {
         guard let colored = colors.outputImage,
               let modules = Self.imageContext.createCGImage(colored, from: raw.extent) else { return nil }
         let side = CGFloat(modules.width)
-        let size = NSSize(width: 158, height: 158)
+        let size = NSSize(width: points, height: points)
         return NSImage(size: size, flipped: false) { rect in
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
             let pitch = floor(min(rect.width, rect.height) / (side + 8))

@@ -1,5 +1,7 @@
 package com.androp.ui
 
+import com.androp.R
+
 import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
@@ -82,7 +84,7 @@ class MediaGrid(private val context: Context, private val grid: GridView, privat
                 override fun getOutline(view: View, outline: android.graphics.Outline) = outline.setRoundRect(0, 0, view.width, view.height, radius)
             }
             clipToOutline = true
-            addView(ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(Color.rgb(27, 41, 43)) },
+            addView(ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(context.getColor(R.color.signal_surface)) },
                 FrameLayout.LayoutParams(-1, -1))
             addView(TextView(context).apply { text = "▶"; setTextColor(Color.WHITE); textSize = 12f; setShadowLayer(4f, 0f, 1f, Color.BLACK) },
                 FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 8, 4) })

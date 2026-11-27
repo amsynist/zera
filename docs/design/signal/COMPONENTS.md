@@ -39,6 +39,7 @@ Everything is local work on the `feature/daily-shelf` branch; nothing here is co
 | Island glass | `NotchIsland.swift` (`IslandView.glass`) | The island body; its mask morphs with the island path in `applyShape`. |
 | Wing glass | `ActivityPill.swift` (`LiveActivityView.glass` + `WingFace`) | `WingFace` paints the pill-and-tendril outline above the blur. Layout invalidates the face when the wing geometry changes, alongside the glass mask, glow and controls. |
 | Shelf glass | `DailyShelf/DailyShelfPanel.swift` (`DailyShelfRootView.glass`) | Clipped to the shelf outline. |
+| Zera X mobile surfaces | `android/signal/src/main/res` | Phone and Wear OS share Signal colors, JetBrains Mono NL, 7 dp controls, selected mint tabs, and bracketed focus panels. Decision controls pair mint or danger colors with text labels. |
 
 ## Chrome
 
@@ -89,7 +90,7 @@ pane frame, trace, type, controls); "Signal pass" means the screen-specific layo
 | Reminders | `RemindersView.swift`, `ReminderComponents.swift` | done | to do: time column rule |
 | Teleprompter | `Teleprompter.swift` | done | to do: line numbers, hairline reading band |
 | Focus | `FocusView.swift`, `TasksUI.swift` (FocusRing) | done | done (60-tick bezel, input block) |
-| Settings | `Cards.swift` (SettingsCard), `Androp/AndroidPairing.swift` | done | Extras pairs Android inside the notch. The QR uses the active Signal accent, dark modules, and a light quiet zone. The menu bar opens the same Settings surface. Features → Voice shows whether Murmur is loaded and offers immediate unload through the shared button row. |
+| Settings | `Cards.swift` (SettingsCard), `Androp/AndroidPairing.swift` | done | Extras pairs Android inside the notch. The QR uses the active Signal accent, dark modules, and a light quiet zone. Android file sharing and Zera X approvals have independent opt-in rows and QR codes. Features → Voice shows whether Murmur is loaded and offers immediate unload through the shared button row. |
 | App Shortcuts | `AppShortcutsView.swift` | done | to do |
 | Daily Shelf | `DailyShelf/*View.swift`, `*Panel.swift` | done (glass, lit edge) | PR index tiles done; to do: status foot |
 | Focus orb / card / quick add | `TasksUI.swift` | done (OpenerGlass) | quick add input block done; to do: orb tick bezel |

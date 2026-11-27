@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         buildStatusItem()
         AndroidTransfer.shared.onTransferChange = { [weak self] in self?.controller.updateAndroidTransfer($0) }
         AndroidTransfer.shared.start()
+        MainActor.assumeIsolated { MobileApprovalBridge.shared.restoreIfEnabled() }
         AndroidTransfer.shared.onStatusChange = { [weak self] in self?.refreshAndroidMenu() }
         if ProcessInfo.processInfo.environment["ZERA_ANDROP_PREVIEW"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { AndroidTransfer.shared.preview() }
@@ -294,7 +295,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         AndroidTransfer.shared.stop()
         CodexAgentService.shared.disconnect()
         ClaudeAgentService.shared.disconnectAll()
-        MainActor.assumeIsolated { ZeraAssistant.shared.cancelAll() }
+        MainActor.assumeIsolated {
+            MobileApprovalBridge.shared.stop()
+            ZeraAssistant.shared.cancelAll()
+        }
         ClipboardStore.shared.flush()
     }
 }

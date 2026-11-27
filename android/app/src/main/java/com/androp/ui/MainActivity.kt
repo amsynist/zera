@@ -18,6 +18,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.androp.R
+import com.androp.approvals.ApprovalsActivity
 import com.androp.gesture.EdgeGestureDetector
 import com.androp.network.*
 import com.androp.overlay.EdgeOverlayService
@@ -110,6 +111,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        com.androp.approvals.ApprovalStore.resume(this)
         val root = findViewById<View>(R.id.rootContainer)
         root.setOnApplyWindowInsetsListener { view, insets ->
             @Suppress("DEPRECATION")
@@ -152,6 +154,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnFiles).setOnClickListener { askFileAccess() }
         findViewById<View>(R.id.tabPhotos).setOnClickListener { showTab(files = false) }
         findViewById<View>(R.id.tabFiles).setOnClickListener { showTab(files = true) }
+        findViewById<View>(R.id.tabApprovals).setOnClickListener {
+            startActivity(Intent(this, ApprovalsActivity::class.java))
+        }
         showTab(files = prefs.getBoolean("filesTab", false))
         findViewById<View>(R.id.viewerClose).setOnClickListener { closeViewer() }
         findViewById<View>(R.id.viewerSend).setOnClickListener { if (!sending && content != null) { send(); closeViewer() } }
@@ -198,12 +203,8 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().putBoolean("filesTab", files).apply()
         findViewById<View>(R.id.photosPane).visibility = if (files) View.GONE else View.VISIBLE
         findViewById<View>(R.id.filesPane).visibility = if (files) View.VISIBLE else View.GONE
-        for ((id, on) in listOf(R.id.tabPhotos to !files, R.id.tabFiles to files)) findViewById<TextView>(id).apply {
-            setTextColor(if (on) Color.rgb(18, 41, 32) else Color.rgb(196, 236, 221))
-            background = if (on) android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = 18 * resources.displayMetrics.density; setColor(Color.rgb(196, 236, 221))
-            } else null
-        }
+        findViewById<View>(R.id.tabPhotos).isSelected = !files
+        findViewById<View>(R.id.tabFiles).isSelected = files
         if (files) showFiles() else showMedia()
     }
 
@@ -426,6 +427,18 @@ class MainActivity : AppCompatActivity() {
         overlaySwitch.isChecked = Settings.canDrawOverlays(this) && EdgeOverlayService.isRunning
         updatingSwitch = false
     }
+    private var hiddenFromDiscovery = false
+
+    override fun onStart() {
+        super.onStart()
+        if (hiddenFromDiscovery) { hiddenFromDiscovery = false; AndropConnection.hidden(false) }
+    }
+
+    override fun onStop() {
+        if (!hiddenFromDiscovery) { hiddenFromDiscovery = true; AndropConnection.hidden(true) }
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         if (::overlaySwitch.isInitialized && !wantsOverlay) syncSwitch()
@@ -438,6 +451,7 @@ class MainActivity : AppCompatActivity() {
         files?.close()
         scope.cancel()
         AndropConnection.removeObserver(observer)
+        if (hiddenFromDiscovery) { hiddenFromDiscovery = false; AndropConnection.hidden(false) }
         AndropConnection.release()
         super.onDestroy()
     }

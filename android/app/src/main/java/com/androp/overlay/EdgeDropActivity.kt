@@ -52,7 +52,7 @@ class EdgeDropActivity : Activity() {
             runCatching {
                 val read = withContext(Dispatchers.IO) {
                     item.uri?.let { TransferContent.read(this@EdgeDropActivity, it) }
-                        ?: TransferContent.text(item.text?.toString() ?: error("Use Share → Androp for this item"))
+                        ?: TransferContent.text(item.text?.toString() ?: error("Use Share → Zera X for this item"))
                 }
                 content = read
                 // The repeated ENTER hands the Mac the real name, type and picture for the same card.
@@ -201,7 +201,7 @@ class EdgeDropActivity : Activity() {
         settled = true
         EdgeOverlayService.status.value = error.message ?: "Transfer interrupted"
         transfer?.let { AndropConnection.cancel(it) }
-        Toast.makeText(this, error.message ?: "Use Share → Androp instead", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, error.message ?: "Use Share → Zera X instead", Toast.LENGTH_LONG).show()
         finish()
     }
 

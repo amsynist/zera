@@ -1,0 +1,15 @@
+<resources>
+    <color name="signal_background">#05080B</color>
+    <color name="signal_glass">#0B151D</color>
+    <color name="signal_surface">#0E1A23</color>
+    <color name="signal_pressed">#13232D</color>
+    <color name="signal_field">#060E14</color>
+    <color name="signal_row">#09131A</color>
+    <color name="signal_border">#29FFFFFF</color>
+    <color name="signal_trace">#407BE1C2</color>
+    <color name="signal_text">#DDE8EE</color>
+    <color name="signal_secondary">#9AAEBD</color>
+    <color name="signal_accent">#7BE1C2</color>
+    <color name="signal_warning">#FFC661</color>
+    <color name="signal_danger">#FF6F7F</color>
+</resources>

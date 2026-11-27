@@ -1,0 +1,11 @@
+<resources>
+    <string-array name="android_wear_capabilities">
+        <item>zerax_approval_watch</item>
+    </string-array>
+    <style name="WatchTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">@font/signal_mono</item>
+        <item name="android:windowSwipeToDismiss">false</item>
+        <item name="android:windowBackground">@color/signal_background</item>
+        <item name="android:colorAccent">@color/signal_accent</item>
+    </style>
+</resources>

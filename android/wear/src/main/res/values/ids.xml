@@ -1,0 +1,4 @@
+<resources>
+    <item name="zerax_approve" type="id" />
+    <item name="zerax_deny" type="id" />
+</resources>

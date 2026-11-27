@@ -1058,7 +1058,8 @@ final class SettingsCard: CardBase, CardContent {
         paneScroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(updateScrollHint), name: NSView.boundsDidChangeNotification, object: paneScroll.contentView)
         for name in [GitHubService.changed, ClaudeHookService.changed, ReminderService.changed, ShelfStore.changed, ClaudeCLI.changed,
-                     ClaudeActivityService.changed, ClaudeUsageService.changed, AnthropicAPIClient.configuredChanged, AndroidTransfer.changed, AppShortcuts.changed] {
+                     ClaudeActivityService.changed, ClaudeUsageService.changed, AnthropicAPIClient.configuredChanged,
+                     AndroidTransfer.changed, MobileApprovalBridge.changed, AppShortcuts.changed] {
             NotificationCenter.default.addObserver(self, selector: #selector(serviceChanged), name: name, object: nil)
         }
         NotificationCenter.default.addObserver(self, selector: #selector(codexSettingsChanged), name: CodexAgentService.changed, object: nil)
@@ -1339,6 +1340,7 @@ final class SettingsCard: CardBase, CardContent {
     @objc private func copyTranscriptTapped() { Dictation.shared.copyUninsertedText() }
 
     private var showingAndroidPairing = false
+    private var showingApprovalPairing = false
 
     func showAndroidPairing() {
         showingAndroidPairing = true
@@ -1346,6 +1348,7 @@ final class SettingsCard: CardBase, CardContent {
     }
 
     private func buildExtras(_ s: inout Stack) {
+        MainActor.assumeIsolated { buildMobileApprovals(&s) }
         let transfer = AndroidTransfer.shared
         sectionLabel("Android sharing", &s)
         toggleRow("Receive from Android", on: transfer.enabled, &s) { yes in
@@ -1361,9 +1364,9 @@ final class SettingsCard: CardBase, CardContent {
                 let code = NSImageView(image: image)
                 code.imageScaling = .scaleNone
                 code.frame = NSRect(x: 0, y: 0, width: 158, height: 158)
-                code.setAccessibilityLabel("Androp pairing QR")
+                code.setAccessibilityLabel("Android file sharing pairing QR")
                 row.addSubview(code)
-                let instructions = label("Open Androp and tap Scan pairing QR.", font: Typo.body, in: row, wraps: true)
+                let instructions = label("Open Zera X and tap Scan pairing QR.", font: Typo.body, in: row, wraps: true)
                 instructions.frame = NSRect(x: 158 + Space.m, y: 0, width: s.width - 158 - Space.m, height: 68)
                 pane.addSubview(row)
                 s.place(row, height: 158, gap: Space.m)
@@ -1383,6 +1386,39 @@ final class SettingsCard: CardBase, CardContent {
         }
         hint("Choose your own shortcuts to open or focus applications. No Accessibility access is needed. Your window manager controls layouts and workspaces.", &s)
         buttonRow("Configure App Shortcuts…", style: .secondary, status: AppShortcuts.shared.message, &s, action: #selector(openAppShortcutsTapped))
+    }
+
+    @MainActor private func buildMobileApprovals(_ s: inout Stack) {
+        let bridge = MobileApprovalBridge.shared
+        sectionLabel("Zera X approvals", &s)
+        toggleRow("Send Claude approvals to Android", on: bridge.enabled, &s) { [weak self] yes in
+            MainActor.assumeIsolated {
+                self?.showingApprovalPairing = yes
+                bridge.setEnabled(yes)
+                self?.rebuildPane()
+            }
+        }
+        if bridge.enabled {
+            buttonRow(showingApprovalPairing ? "Hide approval QR" : "Show approval QR",
+                      style: .secondary, status: bridge.status, &s,
+                      action: #selector(toggleApprovalPairing), enabled: bridge.pairingPayload != nil)
+            if showingApprovalPairing, let payload = bridge.pairingPayload,
+               let image = AndroidPairing.image(payload: payload, accent: ThemeStore.shared.current.accent, size: 176) {
+                let imageView = NSImageView(image: image)
+                imageView.imageScaling = .scaleNone
+                imageView.setAccessibilityLabel("Zera X approval pairing QR")
+                pane.addSubview(imageView)
+                s.place(imageView, height: 176)
+                hint("Open Zera X → Approvals → Pair with Mac. Keep this QR private. Turning this off revokes it.", &s)
+            }
+        } else if bridge.status != "Off" {
+            hint(bridge.status, &s)
+        }
+    }
+
+    @objc private func toggleApprovalPairing() {
+        showingApprovalPairing.toggle()
+        rebuildPane()
     }
     @objc private func toggleExtrasPairing() {
         showingAndroidPairing.toggle()

@@ -31,7 +31,9 @@ final class ProductionReadinessTests: XCTestCase {
             for row in descendants(card).filter({ $0 is NavRow }) {
                 XCTAssertTrue(card.bounds.contains(card.convert(row.bounds, from: row)))
             }
-            XCTAssertEqual(descendants(card).compactMap { $0 as? Toggle }.count, 2)
+            let toggles = descendants(card).compactMap { $0 as? Toggle }
+            XCTAssertEqual(toggles.count, 3)
+            XCTAssertFalse(MobileApprovalBridge.shared.enabled, "Opening Extras must not enable the approval listener")
         }
     }
 

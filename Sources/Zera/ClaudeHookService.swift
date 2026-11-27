@@ -220,6 +220,20 @@ final class ClaudeHookService {
 
     // MARK: - Answering
 
+    /// Return the exact permission input for an active Claude hook. Managed sessions and
+    /// Cursor have separate decision paths and cannot be addressed through this bridge.
+    func mobileInput(for request: HookRequest) -> [String: Any]? {
+        guard !request.sessionID.isEmpty, !request.sessionID.hasPrefix("cursor:"),
+              Date().timeIntervalSince(request.receivedAt) < 540,
+              !Self.ownerExited(id: request.id),
+              let data = try? Data(contentsOf: requestsDir.appendingPathComponent(request.id + ".json")),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["hook_event_name"] as? String == "PermissionRequest",
+              object["session_id"] as? String == request.sessionID,
+              object["tool_name"] as? String == request.toolName else { return nil }
+        return object["tool_input"] as? [String: Any]
+    }
+
     /// After a decision goes out, the next request is not answerable for this long, so a
     /// double-click (or a key repeat) on Approve cannot reach the request that slid in under it.
     static let decisionLockout: TimeInterval = 0.6

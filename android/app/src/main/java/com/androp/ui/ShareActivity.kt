@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.*
+import com.androp.R
 import androidx.appcompat.app.AppCompatActivity
 import com.androp.network.*
 import kotlinx.coroutines.*
@@ -20,15 +21,15 @@ class ShareActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(32, 56, 32, 32)
-            setBackgroundColor(0xFF101A1C.toInt())
+            setBackgroundResource(R.drawable.signal_pane)
         }
-        layout.addView(TextView(this).apply { text = "A little closer."; textSize = 32f; setTextColor(0xFFEDF3E9.toInt()); typeface = android.graphics.Typeface.SERIF })
-        status = TextView(this).apply { textSize = 16f; setPadding(0, 24, 0, 24); setTextColor(0xFFC4ECDD.toInt()) }
+        layout.addView(TextView(this).apply { text = "Send to Mac"; textSize = 24f; setTextColor(getColor(R.color.signal_text)); typeface = resources.getFont(R.font.signal_semibold) })
+        status = TextView(this).apply { textSize = 16f; setPadding(0, 24, 0, 24); setTextColor(getColor(R.color.signal_secondary)); typeface = resources.getFont(R.font.signal_mono) }
         layout.addView(status)
         layout.addView(Button(this).apply { text = "Connection settings"; setOnClickListener { startActivity(Intent(this@ShareActivity, MainActivity::class.java)); finish() } })
         layout.addView(Button(this).apply { text = "Close"; setOnClickListener { finish() } })
         setContentView(layout)
-        if (intent.action != Intent.ACTION_SEND) { status.text = "Share one file or a piece of text to Androp."; return }
+        if (intent.action != Intent.ACTION_SEND) { status.text = "Share one file or a piece of text to Zera X."; return }
         AndropConnection.acquire(this); acquired = true
         AndropConnection.observe(observer)
         scope.launch { delay(15_000); if (!sent) status.text = "Mac not connected. Open connection settings, check Wi-Fi, then share again." }
@@ -36,7 +37,7 @@ class ShareActivity : AppCompatActivity() {
     private fun send() {
         sent = true
         scope.launch {
-            status.text = "Passing through…"
+            status.text = "Sending…"
             runCatching {
                 val content = withContext(Dispatchers.IO) {
                     @Suppress("DEPRECATION")

@@ -74,7 +74,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
   <key>NSLocalNetworkUsageDescription</key><string>Receive original files from your paired Android phone on the same Wi-Fi or hotspot.</string>
-  <key>NSBonjourServices</key><array><string>_androp._tcp</string></array>
+  <key>NSBonjourServices</key><array><string>_androp._tcp</string><string>_zerax._tcp</string></array>
   <key>NSCalendarsUsageDescription</key><string>Zera shows your events for the next two weeks next to your reminders, warns you before meetings, and adds events to a calendar only when you choose one. Calendar data stays on your Mac.</string>
   <key>NSAppleEventsUsageDescription</key><string>Zera asks Spotify or Music what is playing to show it on Home with play, pause and skip, and opens a Terminal window running claude for the explicit “Open Claude” action when the Claude app is not installed. When you drag an Arc tab to the Daily Shelf that Arc has not saved yet, Zera asks Arc for that one tab’s link. Summarize, Explain and Ask never use this.</string>
   <key>NSLocationWhenInUseUsageDescription</key><string>Only for the weather on Home, if you turn it on: your location fetches the local forecast and is not stored or sent anywhere else.</string>

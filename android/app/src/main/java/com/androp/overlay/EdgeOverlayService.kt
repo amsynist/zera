@@ -46,7 +46,7 @@ class EdgeOverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         if (!Settings.canDrawOverlays(this)) { updateStatus("Allow display over other apps to enable the receiver"); stopSelf(); return }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("edge", "Androp edge sharing", NotificationManager.IMPORTANCE_LOW))
+        getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("edge", "Zera X edge sharing", NotificationManager.IMPORTANCE_LOW))
         if (Build.VERSION.SDK_INT >= 29) startForeground(41, notification("Connecting to your Mac…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         else startForeground(41, notification("Connecting to your Mac…"))
         windows = getSystemService(WindowManager::class.java)
@@ -66,7 +66,7 @@ class EdgeOverlayService : Service() {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val stop = PendingIntent.getService(this, 1, Intent(this, EdgeOverlayService::class.java).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, "edge").setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("Androp · all edges active").setContentText(text).setContentIntent(open)
+            .setContentTitle("Zera X · all edges active").setContentText(text).setContentIntent(open)
             .setOngoing(true).setSilent(true).addAction(0, "Turn off", stop).build()
     }
     private fun updateStatus(text: String) {
@@ -84,7 +84,7 @@ class EdgeOverlayService : Service() {
         }
         val view = View(this).apply {
             tag = edge
-            contentDescription = "Androp ${edge.lowercase()} drop edge"
+            contentDescription = "Zera X ${edge.lowercase()} drop edge"
             setOnDragListener { target, event -> onDrag(target, event, edge) }
             setOnTouchListener { _, _ -> false }
         }
@@ -206,7 +206,7 @@ class EdgeOverlayService : Service() {
                         putExtra("drop", event); putExtra("transferId", id); putExtra("phoneEdge", edge)
                         putExtra("coordinate", coordinate); putExtra("crossed", lastCrossed)
                     })
-                }.onFailure { id?.let { AndropConnection.cancel(it) }; updateStatus("Android blocked the drop handoff · use Share → Androp"); return false }
+                }.onFailure { id?.let { AndropConnection.cancel(it) }; updateStatus("Android blocked the drop handoff · use Share → Zera X"); return false }
                 updateStatus("Caught · push it to your Mac, or drag it back to cancel")
                 return true
             }

@@ -13,8 +13,9 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Androp"
+rootProject.name = "ZeraX"
 include(":app")
+include(":wear")
 
 // Optional, dependency-free app for testing native drags across a real app boundary.
 include(":drag-source")
